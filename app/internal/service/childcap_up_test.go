@@ -4,12 +4,13 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
-	"strings"
 	"sync"
 	"testing"
 	"time"
 
+	"github.com/kecbigmt/plecture/app/internal/config"
 	"github.com/kecbigmt/plecture/app/internal/domain"
+	"github.com/kecbigmt/plecture/app/internal/state"
 	contract "github.com/kecbigmt/plecture/contracts/state"
 )
 
@@ -41,7 +42,7 @@ args    = ["-c", `+fmt.Sprintf("%q", script)+`, "provider"]
 `)
 }
 
-func TestUp_RejectsThirdChildAtCapAndCreatesNoStateEntry(t *testing.T) {
+func TestUp_AcceptsThirdChildAtCapAsQueuedSleep(t *testing.T) {
 	store := testStore(t)
 	workdir := filepath.Join(t.TempDir(), "wd")
 	cfg := writeWorkflowFixture(t, filepath.Join(t.TempDir(), "workdirs"), "capwf",
@@ -58,20 +59,19 @@ func TestUp_RejectsThirdChildAtCapAndCreatesNoStateEntry(t *testing.T) {
 
 	url := "https://example.test/cases/reject"
 	newChildName := "case_reject+capwf"
-	_, err := Up(cfg, store, UpParams{Identifier: url, ParentSession: "parent1"})
-	if err == nil {
-		t.Fatal("expected Up to reject the third child")
+	result, err := Up(cfg, store, UpParams{Identifier: url, ParentSession: "parent1"})
+	if err != nil {
+		t.Fatal(err)
 	}
-	svcErr, ok := err.(*Error)
-	if !ok || svcErr.Code != ErrChildCapExceeded {
-		t.Fatalf("want ErrChildCapExceeded, got %v", err)
+	if result.Result != "sleeping" || result.QueuePosition != 1 {
+		t.Fatalf("Up result = %+v, want sleeping at position 1", result)
 	}
-	if store.Get(newChildName) != nil {
-		t.Fatalf("session %q was persisted despite the cap rejection", newChildName)
+	if got := store.Get(newChildName); got == nil || got.SleepSince.IsZero() || got.Status != contract.SessionStatusDown {
+		t.Fatalf("session %q = %+v, want queued sleep", newChildName, got)
 	}
 }
 
-func TestUp_ManualParentlessAdmissionHonorsVirtualRootCap(t *testing.T) {
+func TestUp_ManualParentlessAdmissionQueuesAtVirtualRootCap(t *testing.T) {
 	store := testStore(t)
 	workdir := filepath.Join(t.TempDir(), "wd")
 	cfg := writeWorkflowFixture(t, filepath.Join(t.TempDir(), "workdirs"), "capwf",
@@ -81,19 +81,161 @@ func TestUp_ManualParentlessAdmissionHonorsVirtualRootCap(t *testing.T) {
 	cfg.MaxUpChildren = intPtr(1)
 	seedSessionWithNodes(t, store, "existingRoot", "acct", 1, "", upTasks())
 
-	_, err := Up(cfg, store, UpParams{Identifier: "https://example.test/cases/manual"})
-	if err == nil {
-		t.Fatal("expected manual parentless Up to reject at the virtual-root cap")
+	result, err := Up(cfg, store, UpParams{Identifier: "https://example.test/cases/manual"})
+	if err != nil {
+		t.Fatal(err)
 	}
-	svcErr, ok := err.(*Error)
-	if !ok || svcErr.Code != ErrChildCapExceeded {
-		t.Fatalf("want ErrChildCapExceeded, got %v", err)
+	if result.Result != "sleeping" || result.QueuePosition != 1 {
+		t.Fatalf("Up result = %+v, want queued sleep", result)
 	}
-	if !strings.Contains(svcErr.Message, "virtual root") || !strings.Contains(svcErr.Message, "max_up_children") {
-		t.Fatalf("Message = %q, want virtual root and max_up_children named", svcErr.Message)
+	if got := store.Get("case_manual+capwf"); got == nil || got.SleepSince.IsZero() {
+		t.Fatalf("session = %+v, want persisted sleep", got)
 	}
-	if store.Get("case_manual+capwf") != nil {
-		t.Fatal("manual admission persisted a session despite the virtual-root cap")
+}
+
+func TestWakeQueuedSessions_UsesCapacityInQueueOrder(t *testing.T) {
+	store := testStore(t)
+	cfg := writeWorkflowFixture(t, t.TempDir(), "child_wf",
+		[]taskFixture{{id: "runtime", scope: "run", setup: "echo '{}'", cleanup: "true"}},
+		[]nodeFixture{{id: "runtime"}})
+	writeCapWorkflow(t, cfg.BaseDir, "parent_wf", intPtr(1))
+	seedSessionWithNodes(t, store, "parent", "acct", 1, "parent_wf", nil)
+	for _, name := range []string{"active", "first", "second"} {
+		seedSessionWithNodes(t, store, name, "acct", 1, "child_wf", nil)
+		setParent(t, store, name, "parent")
+	}
+	if _, err := Up(cfg, store, UpParams{Identifier: "active"}); err != nil {
+		t.Fatal(err)
+	}
+	for i, name := range []string{"first", "second"} {
+		result, err := Up(cfg, store, UpParams{Identifier: name})
+		if err != nil || result.Result != "sleeping" || result.QueuePosition != i+1 {
+			t.Fatalf("up %s = %+v, %v", name, result, err)
+		}
+	}
+	if _, err := Down(cfg, store, DownParams{Identifier: "active"}); err != nil {
+		t.Fatal(err)
+	}
+	seedSessionWithNodes(t, store, "newcomer", "acct", 1, "child_wf", nil)
+	setParent(t, store, "newcomer", "parent")
+	if newcomer, err := Up(cfg, store, UpParams{Identifier: "newcomer"}); err != nil || newcomer.Result != "sleeping" {
+		t.Fatalf("newcomer = %+v, %v, want to wait behind first", newcomer, err)
+	}
+	if err := WakeQueuedSessions(cfg, store); err != nil {
+		t.Fatal(err)
+	}
+	if got := store.Get("first"); got.Status != contract.SessionStatusUp || !got.SleepSince.IsZero() {
+		t.Fatalf("first = %+v, want awake", got)
+	}
+	if got := store.Get("second"); got.SleepSince.IsZero() {
+		t.Fatalf("second = %+v, want queued", got)
+	}
+}
+
+func TestUp_IgnoresQueuedSessionsThatCannotWake(t *testing.T) {
+	for _, tc := range []struct {
+		name    string
+		prepare func(*testing.T, *state.Store, *config.Config)
+	}{
+		{"suspended", func(t *testing.T, store *state.Store, cfg *config.Config) {
+			for i := 0; i < 4; i++ {
+				if err := WakeQueuedSessions(cfg, store); err != nil {
+					t.Fatal(err)
+				}
+			}
+			if reason, _, err := WakeSuspension(store, "broken"); err != nil || reason == "" {
+				t.Fatalf("wake suspension = %q, %v", reason, err)
+			}
+		}},
+		{"finalized", func(t *testing.T, store *state.Store, _ *config.Config) {
+			if err := store.Update("broken", func(s *domain.Session) error {
+				s.Tasks = map[string]*contract.TaskState{"work": {Scope: contract.TaskScopeSession, Status: contract.TaskStatusProduced, FinalizedAt: time.Now()}}
+				return nil
+			}); err != nil {
+				t.Fatal(err)
+			}
+		}},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			store := testStore(t)
+			cfg := writeWorkflowFixture(t, t.TempDir(), "child_wf",
+				[]taskFixture{{id: "runtime", scope: "run", setup: "echo '{}'"}},
+				[]nodeFixture{{id: "runtime"}})
+			writeCapWorkflow(t, cfg.BaseDir, "parent_wf", intPtr(1))
+			seedSessionWithNodes(t, store, "parent", "acct", 1, "parent_wf", nil)
+			brokenWorkflow := "child_wf"
+			if tc.name == "suspended" {
+				brokenWorkflow = "missing_wf"
+			}
+			seedSessionWithNodes(t, store, "broken", "acct", 2, brokenWorkflow, nil)
+			seedSessionWithNodes(t, store, "ok", "acct", 3, "child_wf", nil)
+			setParent(t, store, "broken", "parent")
+			setParent(t, store, "ok", "parent")
+			if _, err := queueSleep(store, "broken", "capacity", time.Now().Add(-time.Minute)); err != nil {
+				t.Fatal(err)
+			}
+			tc.prepare(t, store, cfg)
+			if position, err := SleepQueuePosition(cfg, store, "broken"); err != nil || position != 0 {
+				t.Fatalf("blocked session queue position = %d, %v; want zero", position, err)
+			}
+			result, err := Up(cfg, store, UpParams{Identifier: "ok"})
+			if err != nil || result.Result != "up" {
+				t.Fatalf("Up(ok) = %+v, %v; want up with free capacity", result, err)
+			}
+			if tc.name == "suspended" {
+				result, err := Up(cfg, store, UpParams{Identifier: "broken", HumanInitiated: true})
+				if err != nil || result.Result != "sleeping" || result.QueuePosition != 1 {
+					t.Fatalf("manual Up(broken) = %+v, %v; want a fresh queued request", result, err)
+				}
+			}
+		})
+	}
+}
+
+func TestWakeQueuedSessions_DoesNotRestartFullStoppedSnapshotEntry(t *testing.T) {
+	store := testStore(t)
+	started := filepath.Join(t.TempDir(), "started")
+	release := filepath.Join(t.TempDir(), "release")
+	setup := fmt.Sprintf("touch %q; while [ ! -e %q ]; do sleep 0.01; done; echo '{}'", started, release)
+	cfg := writeWorkflowFixture(t, t.TempDir(), "child_wf",
+		[]taskFixture{{id: "runtime", scope: "run", setup: setup, cleanup: "true"}},
+		[]nodeFixture{{id: "runtime"}})
+	writeCapWorkflow(t, cfg.BaseDir, "parent_wf", intPtr(1))
+	seedSessionWithNodes(t, store, "parent", "acct", 1, "parent_wf", nil)
+	for _, name := range []string{"first", "second"} {
+		seedSessionWithNodes(t, store, name, "acct", 1, "child_wf", nil)
+		setParent(t, store, name, "parent")
+	}
+	if _, err := queueSleep(store, "first", "capacity", time.Now().Add(-time.Minute)); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := queueSleep(store, "second", "capacity", time.Now()); err != nil {
+		t.Fatal(err)
+	}
+	done := make(chan error, 1)
+	go func() { done <- WakeQueuedSessions(cfg, store) }()
+	defer os.WriteFile(release, nil, 0o644)
+	deadline := time.Now().Add(3 * time.Second)
+	for {
+		if _, err := os.Stat(started); err == nil {
+			break
+		}
+		if time.Now().After(deadline) {
+			t.Fatal("first wake did not start")
+		}
+		time.Sleep(5 * time.Millisecond)
+	}
+	if _, err := Down(cfg, store, DownParams{Identifier: "second"}); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(release, nil, 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := <-done; err != nil {
+		t.Fatal(err)
+	}
+	if got := store.Get("second"); got.Status != contract.SessionStatusDown || !got.SleepSince.IsZero() {
+		t.Fatalf("full-stopped session restarted: %+v", got)
 	}
 }
 
@@ -230,12 +372,9 @@ func TestUp_LiveReservationBlocksSiblingThroughTheRealUpPath(t *testing.T) {
 		t.Fatalf("simulate an in-progress reservation: %v", err)
 	}
 
-	_, err := Up(cfg, store, UpParams{Identifier: "https://example.test/cases/blocked", ParentSession: "parent1"})
-	if err == nil {
-		t.Fatal("expected Up to reject a sibling while childA's live reservation stands")
-	}
-	if svcErr, ok := err.(*Error); !ok || svcErr.Code != ErrChildCapExceeded {
-		t.Fatalf("want ErrChildCapExceeded, got %v", err)
+	result, err := Up(cfg, store, UpParams{Identifier: "https://example.test/cases/blocked", ParentSession: "parent1"})
+	if err != nil || result.Result != "sleeping" {
+		t.Fatalf("Up = %+v, %v, want accepted sleep while sibling reserves capacity", result, err)
 	}
 }
 
@@ -331,12 +470,9 @@ func TestUp_ForceRecreateHoldsItsCapSlotThroughTheRebuild(t *testing.T) {
 	// before the sibling attempts to admit.
 	time.Sleep(150 * time.Millisecond)
 
-	_, siblingErr := Up(cfg, store, UpParams{Identifier: "childB"})
-	if siblingErr == nil {
-		t.Fatal("expected childB to be rejected while childA's force-recreate was still in flight")
-	}
-	if svcErr, ok := siblingErr.(*Error); !ok || svcErr.Code != ErrChildCapExceeded {
-		t.Fatalf("childB err = %v, want ErrChildCapExceeded", siblingErr)
+	siblingResult, siblingErr := Up(cfg, store, UpParams{Identifier: "childB"})
+	if siblingErr != nil || siblingResult.Result != "sleeping" {
+		t.Fatalf("childB = %+v, %v, want accepted sleep", siblingResult, siblingErr)
 	}
 
 	if err := <-done; err != nil {

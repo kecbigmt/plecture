@@ -135,6 +135,9 @@ func refreshNodeIdentities(store *state.Store, sessionName string, session *doma
 func setSessionStatus(store *state.Store, sessionName, status string) error {
 	return store.Update(sessionName, func(s *domain.Session) error {
 		s.Status = status
+		if status == contract.SessionStatusUp {
+			s.SleepSince = time.Time{}
+		}
 		s.UpdatedAt = time.Now()
 		return nil
 	})

@@ -305,6 +305,8 @@ type ListEntry struct {
 	SessionName      string             `json:"session_name"`
 	Title            string             `json:"title,omitempty"`
 	Run              domain.RunState    `json:"run"`
+	Sleep            string             `json:"sleep,omitempty"`
+	QueuePosition    int                `json:"queue_position,omitempty"`
 	Health           domain.HealthState `json:"health,omitempty"`
 	HealthReason     string             `json:"health_reason,omitempty"`
 	DisplayStatus    string             `json:"display_status"`
@@ -333,7 +335,11 @@ func List(cfg *config.Config, store *state.Store) ([]ListEntry, error) {
 
 	entries := make([]ListEntry, 0, len(sessions))
 	for _, s := range sessions {
-		entries = append(entries, buildListEntry(cfg, store, displayWorkflows, displayTasks, s, sessions))
+		entry, err := buildListEntry(cfg, store, displayWorkflows, displayTasks, s, sessions)
+		if err != nil {
+			return nil, err
+		}
+		entries = append(entries, entry)
 	}
 
 	// store.All ranges a map, so sort by name to make List deterministic —
@@ -345,11 +351,15 @@ func List(cfg *config.Config, store *state.Store) ([]ListEntry, error) {
 	return entries, nil
 }
 
-func buildListEntry(cfg *config.Config, store *state.Store, displayWorkflows map[string]config.WorkflowFile, displayTasks taskDeclarations, s *domain.Session, sessions map[string]*domain.Session) ListEntry {
+func buildListEntry(cfg *config.Config, store *state.Store, displayWorkflows map[string]config.WorkflowFile, displayTasks taskDeclarations, s *domain.Session, sessions map[string]*domain.Session) (ListEntry, error) {
 	var cached cachedInfo
 	applyDisplay(displayWorkflows, s, &cached)
 
 	run := sessionRunState(cfg, s)
+	sleep, position, err := sleepVisibility(cfg, store, s)
+	if err != nil {
+		return ListEntry{}, err
+	}
 	health, healthReason := persistedHealth(s)
 	if run != domain.RunUp {
 		// The sweep skips a down session, so its last recorded verdict can
@@ -361,6 +371,8 @@ func buildListEntry(cfg *config.Config, store *state.Store, displayWorkflows map
 		SessionName:      s.Name,
 		Title:            cached.Title,
 		Run:              run,
+		Sleep:            sleep,
+		QueuePosition:    position,
 		Health:           health,
 		HealthReason:     healthReason,
 		DisplayStatus:    cached.DisplayStatus,
@@ -374,7 +386,7 @@ func buildListEntry(cfg *config.Config, store *state.Store, displayWorkflows map
 		Tasks:            taskViews(cfg, displayTasks, s, sessions),
 	}
 
-	return entry
+	return entry, nil
 }
 
 // sessionRunState reports the "run" fact: whether a current-plan run-scoped

@@ -69,6 +69,65 @@ revision = "{{.Work.outputs.revision}}"
 	}
 }
 
+func TestStatus_ReportsEventSleepAndQueuePosition(t *testing.T) {
+	store := testStore(t)
+	cfg := writeWorkflowFixture(t, t.TempDir(), "wf",
+		[]taskFixture{{id: "runtime", scope: "run", setup: "echo '{}'", cleanup: "true"}},
+		[]nodeFixture{{id: "runtime"}})
+	seedSessionWithNodes(t, store, "first", "acct", 1, "wf", nil)
+	seedSessionWithNodes(t, store, "second", "acct", 2, "wf", nil)
+	for _, name := range []string{"first", "second"} {
+		if _, err := Down(cfg, store, DownParams{Identifier: name, Sleep: true}); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if got, err := Status(cfg, store, "first"); err != nil || got.Runtime.Sleep != "waiting_event" {
+		t.Fatalf("idle sleep = %+v, %v", got, err)
+	}
+	if _, err := RequestWake(store, "first", time.Now()); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := RequestWake(store, "second", time.Now().Add(time.Second)); err != nil {
+		t.Fatal(err)
+	}
+	if got, err := Status(cfg, store, "second"); err != nil || got.Runtime.Sleep != "waiting_capacity" || got.Runtime.QueuePosition != 2 {
+		t.Fatalf("queued sleep = %+v, %v", got, err)
+	}
+}
+
+func TestStatus_ReportsSuspendedWakeFailure(t *testing.T) {
+	store := testStore(t)
+	cfg := writeWorkflowFixture(t, t.TempDir(), "wf",
+		[]taskFixture{{id: "runtime", scope: "run", setup: "exit 1"}},
+		[]nodeFixture{{id: "runtime"}})
+	seedSessionWithNodes(t, store, "failed-wake", "acct", 1, "wf", nil)
+	if _, err := queueSleep(store, "failed-wake", "capacity", time.Now()); err != nil {
+		t.Fatal(err)
+	}
+	for i := 0; i < 4; i++ {
+		if err := WakeQueuedSessions(cfg, store); err != nil {
+			t.Fatal(err)
+		}
+	}
+	got, err := Status(cfg, store, "failed-wake")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(got.Runtime.WakeReason, "suspended after 3 attempts") {
+		t.Fatalf("wake reason = %q", got.Runtime.WakeReason)
+	}
+	if got.Runtime.Sleep != "suspended" || got.Runtime.QueuePosition != 0 {
+		t.Fatalf("suspended sleep = %q at position %d", got.Runtime.Sleep, got.Runtime.QueuePosition)
+	}
+	if err := appendWakeEvent(store, "failed-wake", "succeeded", "runtime started"); err != nil {
+		t.Fatal(err)
+	}
+	got, err = Status(cfg, store, "failed-wake")
+	if err != nil || got.Runtime.WakeReason != "" {
+		t.Fatalf("wake reason after success = %+v, %v; want empty", got, err)
+	}
+}
+
 func TestStatus_RuntimeCarriesHealthMovementTimestamps(t *testing.T) {
 	store := testStore(t)
 	cfg := aliveFixtureConfig(t, "true")

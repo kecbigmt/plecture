@@ -2,6 +2,7 @@ package persistence
 
 import (
 	"context"
+	"database/sql"
 	"testing"
 	"time"
 
@@ -18,6 +19,70 @@ import (
 const eventTablesVersion = 20260906143514
 const preDissolutionVersion = 20260906231449
 const preForwardCursorVersion = 20260907085032
+
+func TestMigrate_CapacityDownBecomesSleepAndManualDownStaysStopped(t *testing.T) {
+	db := openTestDB(t)
+	ctx := context.Background()
+	provider, err := goose.NewProvider(goose.DialectSQLite3, db.write, db.migrations)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := provider.UpTo(ctx, 20261103194111); err != nil {
+		t.Fatal(err)
+	}
+	for _, name := range []string{"capacity", "manual"} {
+		if _, err := db.write.ExecContext(ctx, `INSERT INTO sessions(id,name,status,workflow,created_at,updated_at) VALUES(?,?, 'down','wf',?,?)`, name, name, "2026-11-03T10:00:00.000000000Z", "2026-11-03T10:00:00.000000000Z"); err != nil {
+			t.Fatal(err)
+		}
+		if _, err := db.write.ExecContext(ctx, `INSERT INTO events(id,session_id,sequence,time,type,source,direction,summary,body,metadata_json) VALUES(?,?,1,?,'lifecycle.up','plect','internal','','','{}')`, name+"-up", name, "2026-11-03T10:00:30.000000000Z"); err != nil {
+			t.Fatal(err)
+		}
+		if _, err := db.write.ExecContext(ctx, `INSERT INTO events(id,session_id,sequence,time,type,source,direction,summary,body,metadata_json) VALUES(?,?,2,?,'lifecycle.down','plect','internal','','','{}')`, name+"-down", name, "2026-11-03T10:01:00.000000000Z"); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if _, err := db.write.ExecContext(ctx, `INSERT INTO events(id,session_id,sequence,time,type,source,direction,summary,body,metadata_json) VALUES('cap-event','capacity',3,?,'plect.workflow_population.down','plect','internal','','','{"reason":"capacity"}')`, "2026-11-03T10:02:00.000000000Z"); err != nil {
+		t.Fatal(err)
+	}
+	if err := db.Migrate(ctx); err != nil {
+		t.Fatal(err)
+	}
+	for _, tc := range []struct {
+		name     string
+		sleeping bool
+	}{{"capacity", true}, {"manual", false}} {
+		var since sql.NullString
+		if err := db.write.QueryRowContext(ctx, `SELECT sleep_since FROM sessions WHERE name=?`, tc.name).Scan(&since); err != nil {
+			t.Fatal(err)
+		}
+		if since.Valid != tc.sleeping {
+			t.Errorf("%s sleep_since = %+v, want sleeping=%t", tc.name, since, tc.sleeping)
+		}
+		events, _, err := db.ListEventsFrom(ctx, tc.name, 0)
+		if err != nil {
+			t.Fatal(err)
+		}
+		stops := 0
+		latestIntent := ""
+		for _, ev := range events {
+			if ev.Type == event.TypeLifecyclePrefix+"up" || ev.Type == event.TypeSessionStop {
+				latestIntent = ev.Type
+			}
+			if ev.Type == event.TypeSessionStop {
+				stops++
+				if ev.Metadata["origin"] != "migration" {
+					t.Fatalf("%s stop event = %+v, want migration origin", tc.name, ev)
+				}
+			}
+		}
+		if tc.sleeping && stops != 0 || !tc.sleeping && stops != 1 {
+			t.Errorf("%s stop events = %d, sleeping=%t", tc.name, stops, tc.sleeping)
+		}
+		if !tc.sleeping && latestIntent != event.TypeSessionStop {
+			t.Errorf("%s latest lifecycle intent = %q, want %q", tc.name, latestIntent, event.TypeSessionStop)
+		}
+	}
+}
 
 // seedEventRow uses raw SQL rather than AppendEvent: AppendEvent's generated
 // insert targets only the current, already-migrated column set.
@@ -55,10 +120,17 @@ func assertEventRowIntact(t *testing.T, db *DB, ctx context.Context, session, ev
 	if err != nil {
 		t.Fatalf("ListEventsFrom: %v", err)
 	}
-	if len(evs) != 1 || len(seqs) != 1 {
-		t.Fatalf("got %d events, want 1", len(evs))
+	var got event.Event
+	sequence := int64(0)
+	for i, ev := range evs {
+		if ev.ID == eventID {
+			got = ev
+			sequence = seqs[i]
+		}
 	}
-	got := evs[0]
+	if got.ID == "" {
+		t.Fatalf("event %q missing after migration", eventID)
+	}
 	if got.ID != eventID || got.Type != "widget.message" || got.Source != "widget" ||
 		string(got.Direction) != "inbound" || got.Summary != "hello" || got.Body != "hello body" {
 		t.Fatalf("surviving columns = %+v, want the seeded values intact", got)
@@ -69,8 +141,8 @@ func assertEventRowIntact(t *testing.T, db *DB, ctx context.Context, session, ev
 	if got.Metadata["k"] != "v" {
 		t.Errorf("Metadata = %v, want k=v", got.Metadata)
 	}
-	if seqs[0] != 1 {
-		t.Fatalf("sequence = %d, want 1", seqs[0])
+	if sequence != 1 {
+		t.Fatalf("sequence = %d, want 1", sequence)
 	}
 }
 

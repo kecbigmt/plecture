@@ -6,8 +6,11 @@ import (
 	"os/exec"
 	"path/filepath"
 	"testing"
+	"time"
 
 	"github.com/kecbigmt/plecture/app/internal/domain"
+	"github.com/kecbigmt/plecture/app/internal/eventlog"
+	"github.com/kecbigmt/plecture/contracts/event"
 	contract "github.com/kecbigmt/plecture/contracts/state"
 )
 
@@ -82,6 +85,10 @@ func TestUp_SuccessfulLaunchSetsStatusUp(t *testing.T) {
 	if s := store.Get(sessionName); s.Status != contract.SessionStatusUp {
 		t.Fatalf("Status after successful Up = %q, want %q", s.Status, contract.SessionStatusUp)
 	}
+	wakes, _, _, err := eventlog.NewStore(store.Dir()).List(sessionName, 0, event.Filter{Types: []string{event.TypeSessionWake}})
+	if err != nil || len(wakes) != 0 {
+		t.Fatalf("ordinary Up wake events = %v, %v; want none", wakes, err)
+	}
 }
 
 func TestUp_FailedLaunchLeavesStatusDown(t *testing.T) {
@@ -127,6 +134,92 @@ func TestDown_SetsStatusDown(t *testing.T) {
 	}
 	if s := store.Get(sessionName); s.Status != contract.SessionStatusDown {
 		t.Fatalf("Status after Down = %q, want %q", s.Status, contract.SessionStatusDown)
+	}
+}
+
+func TestDown_SleepAndFullStopTransitions(t *testing.T) {
+	store := testStore(t)
+	cfg := writeWorkflowFixture(t, t.TempDir(), "default",
+		[]taskFixture{{id: "runtime", scope: "run", setup: `echo '{}'`, cleanup: "true"}},
+		[]nodeFixture{{id: "runtime"}})
+	seedSessionWithNodes(t, store, "sleep-transition", "acct", 23, "default", nil)
+	if _, err := Down(cfg, store, DownParams{Identifier: "sleep-transition", Sleep: true}); err != nil {
+		t.Fatal(err)
+	}
+	if got := store.Get("sleep-transition"); got.SleepSince.IsZero() || got.Status != contract.SessionStatusDown {
+		t.Fatalf("sleep state = %+v, want down with sleep marker", got)
+	}
+	if _, err := RequestWake(store, "sleep-transition", time.Now()); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := Down(cfg, store, DownParams{Identifier: "sleep-transition"}); err != nil {
+		t.Fatal(err)
+	}
+	if got := store.Get("sleep-transition"); !got.SleepSince.IsZero() {
+		t.Fatalf("full stop retained sleep marker: %v", got.SleepSince)
+	}
+	if position, err := SleepQueuePosition(cfg, store, "sleep-transition"); err != nil || position != 0 {
+		t.Fatalf("full stop queue position = %d, %v", position, err)
+	}
+	if _, err := Down(cfg, store, DownParams{Identifier: "sleep-transition", Sleep: true}); err != nil {
+		t.Fatal(err)
+	}
+	if got := store.Get("sleep-transition"); got.SleepSince.IsZero() {
+		t.Fatal("sleep after full stop did not set marker")
+	}
+	if _, err := Up(cfg, store, UpParams{Identifier: "sleep-transition"}); err != nil {
+		t.Fatal(err)
+	}
+	wakes, _, _, err := eventlog.NewStore(store.Dir()).List("sleep-transition", 0, event.Filter{Types: []string{event.TypeSessionWake}})
+	if err != nil || len(wakes) != 1 || wakes[0].Metadata["result"] != "succeeded" {
+		t.Fatalf("sleep wake events = %v, %v; want one success", wakes, err)
+	}
+}
+
+func TestRequestWake_SkipsFinalizedSession(t *testing.T) {
+	store := testStore(t)
+	now := time.Now()
+	seedSessionWithNodes(t, store, "finalized", "acct", 1, "default", nil)
+	if err := store.Update("finalized", func(s *domain.Session) error {
+		s.SleepSince = now.Add(-time.Minute)
+		s.Tasks = map[string]*contract.TaskState{"initial": {Scope: contract.TaskScopeSession, Status: contract.TaskStatusProduced, FinalizedAt: now}}
+		return nil
+	}); err != nil {
+		t.Fatal(err)
+	}
+	requested, err := RequestWake(store, "finalized", now)
+	if err != nil || requested {
+		t.Fatalf("RequestWake = %t, %v; want no wake", requested, err)
+	}
+	if position, err := SleepQueuePosition(nil, store, "finalized"); err != nil || position != 0 {
+		t.Fatalf("finalized queue position = %d, %v", position, err)
+	}
+}
+
+func TestQueueSleep_EventFailureLeavesSessionStopped(t *testing.T) {
+	store := testStore(t)
+	seedSessionWithNodes(t, store, "queued", "acct", 1, "default", nil)
+	eventlog.FailNextAppend(store.Dir(), fmt.Errorf("injected event failure"))
+	if _, err := queueSleep(store, "queued", "capacity", time.Now()); err == nil {
+		t.Fatal("queueSleep succeeded despite event failure")
+	}
+	if got := store.Get("queued"); !got.SleepSince.IsZero() {
+		t.Fatalf("failed queue request left a sleep marker: %+v", got)
+	}
+}
+
+func TestDownSleep_EventFailureLeavesSessionStopped(t *testing.T) {
+	store := testStore(t)
+	cfg := writeWorkflowFixture(t, t.TempDir(), "default",
+		[]taskFixture{{id: "runtime", scope: "run", setup: `echo '{}'`, cleanup: "true"}},
+		[]nodeFixture{{id: "runtime"}})
+	seedSessionWithNodes(t, store, "sleep-failure", "acct", 1, "default", nil)
+	eventlog.FailNextAppend(store.Dir(), fmt.Errorf("injected event failure"))
+	if _, err := Down(cfg, store, DownParams{Identifier: "sleep-failure", Sleep: true}); err == nil {
+		t.Fatal("Down --sleep succeeded despite event failure")
+	}
+	if got := store.Get("sleep-failure"); !got.SleepSince.IsZero() {
+		t.Fatalf("failed sleep request left a sleep marker: %+v", got)
 	}
 }
 

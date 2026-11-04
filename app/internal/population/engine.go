@@ -12,11 +12,13 @@ import (
 	"time"
 
 	"github.com/kecbigmt/plecture/app/internal/admitstatus"
+	"github.com/kecbigmt/plecture/app/internal/domain"
 	"github.com/kecbigmt/plecture/app/internal/eventlog"
 	"github.com/kecbigmt/plecture/app/internal/lang"
 	"github.com/kecbigmt/plecture/app/internal/service"
 	"github.com/kecbigmt/plecture/app/internal/state"
 	"github.com/kecbigmt/plecture/contracts/event"
+	contract "github.com/kecbigmt/plecture/contracts/state"
 )
 
 const (
@@ -33,6 +35,8 @@ const (
 type UpOutcome struct {
 	SessionName string
 	AlreadyUp   bool
+	Sleeping    bool
+	Woke        bool
 }
 
 type Hooks struct {
@@ -188,6 +192,25 @@ func (e *Engine) Reconcile(ctx context.Context) error {
 		if member.Tombstoned || !member.PendingUp {
 			continue
 		}
+		if member.SessionName != "" {
+			session, err := e.state.GetE(member.SessionName)
+			if err != nil {
+				if firstErr == nil {
+					firstErr = err
+				}
+				continue
+			}
+			stopped, err := e.fullyStopped(session)
+			if err != nil {
+				if firstErr == nil {
+					firstErr = err
+				}
+				continue
+			}
+			if stopped {
+				continue
+			}
+		}
 		if member.AdmitSuspended || (!member.AdmitRetryAt.IsZero() && e.now().Before(member.AdmitRetryAt)) {
 			continue
 		}
@@ -198,10 +221,18 @@ func (e *Engine) Reconcile(ctx context.Context) error {
 	return firstErr
 }
 
-func (e *Engine) SweepExpiry(ctx context.Context) error {
-	if err := e.processInbound(); err != nil {
-		return err
+func (e *Engine) fullyStopped(session *domain.Session) (bool, error) {
+	if session == nil || session.Status != contract.SessionStatusDown || !session.SleepSince.IsZero() {
+		return false, nil
 	}
+	events, err := e.log.Tail(session.Name, event.Filter{Types: []string{event.TypeSessionStop, event.TypeLifecyclePrefix + "up"}}, 1)
+	if err != nil {
+		return false, err
+	}
+	return len(events) > 0 && events[0].Type == event.TypeSessionStop, nil
+}
+
+func (e *Engine) SweepExpiry(ctx context.Context) error {
 	if e.definition.Population.UsesPoll() {
 		return e.Reconcile(ctx)
 	}
@@ -243,41 +274,6 @@ func (e *Engine) SweepExpiry(ctx context.Context) error {
 	return firstErr
 }
 
-func (e *Engine) processInbound() error {
-	population, err := e.state.Population(e.key)
-	if err != nil || population == nil {
-		return err
-	}
-	updates := make(map[string]time.Time)
-	for _, resource := range sortedMembers(population.Members) {
-		member := population.Members[resource]
-		if member.Tombstoned || member.SessionName == "" {
-			continue
-		}
-		inbound, err := e.latestInbound(member.SessionName)
-		if err != nil {
-			return err
-		}
-		if inbound.After(member.LastInbound) {
-			updates[resource] = inbound
-		}
-	}
-	if len(updates) == 0 {
-		return nil
-	}
-	return e.state.UpdatePopulation(e.key, func(population *state.PopulationState) error {
-		for resource, inbound := range updates {
-			member := population.Members[resource]
-			if member == nil || member.Tombstoned {
-				continue
-			}
-			member.LastInbound = inbound
-			member.PendingUp = true
-		}
-		return nil
-	})
-}
-
 func (e *Engine) admit(ctx context.Context, member *state.PopulationMember) error {
 	inputs, err := e.sessionInputs(member.ResourceID, member.Item)
 	if err != nil {
@@ -285,6 +281,28 @@ func (e *Engine) admit(ctx context.Context, member *state.PopulationMember) erro
 	}
 	if e.hooks.Up == nil {
 		return e.failAdmit(member, member.SessionName, "up", fmt.Errorf("population admission has no lifecycle hook"))
+	}
+	if member.SessionName != "" {
+		session, err := e.state.GetE(member.SessionName)
+		if err != nil {
+			return e.failAdmit(member, member.SessionName, "up", err)
+		}
+		if session != nil && !session.SleepSince.IsZero() {
+			reason, since, err := service.WakeSuspension(e.state, member.SessionName)
+			if err != nil {
+				return e.failAdmit(member, member.SessionName, "up", err)
+			}
+			if reason != "" {
+				return e.state.UpdatePopulation(e.key, func(population *state.PopulationState) error {
+					current := population.Members[member.ResourceID]
+					if current == nil || current.Generation != member.Generation || current.Tombstoned {
+						return nil
+					}
+					current.AdmitRetryAt = e.now().Add(wakeWaitDelay(e.now().Sub(since)))
+					return nil
+				})
+			}
+		}
 	}
 	outcome, err := e.hooks.Up(ctx, member.ResourceID, inputs)
 	if err != nil {
@@ -324,11 +342,21 @@ func (e *Engine) admit(ctx context.Context, member *state.PopulationMember) erro
 	}); err != nil {
 		return err
 	}
+	if outcome.Sleeping {
+		return e.state.UpdatePopulation(e.key, func(population *state.PopulationState) error {
+			current := population.Members[member.ResourceID]
+			if current == nil || current.Generation != member.Generation || current.Tombstoned {
+				return nil
+			}
+			current.AdmitRetryAt = e.now().Add(admitRetryBase)
+			return nil
+		})
+	}
 	// The record has to land here rather than after a completed admission:
 	// initial-task setup runs against an already-up session, and its failure
 	// leaves a retry whose up hook reports no transition, so a record deferred
 	// past it would be lost for good instead of merely delayed.
-	if !outcome.AlreadyUp {
+	if !outcome.AlreadyUp && !outcome.Woke {
 		e.record(session, event.TypeWorkflowPopulationUp, "up", "population member is up", member.ResourceID)
 	}
 	if e.definition.Population.Session.Task != "" && e.hooks.EnsureInitial != nil {
@@ -401,6 +429,16 @@ func admitRetryDelay(failures uint) time.Duration {
 	}
 	if delay > admitRetryMax {
 		return admitRetryMax
+	}
+	return delay
+}
+
+func wakeWaitDelay(suspendedFor time.Duration) time.Duration {
+	attempts := uint(1)
+	delay := admitRetryDelay(attempts)
+	for suspendedFor >= delay && delay < admitRetryMax {
+		attempts++
+		delay = admitRetryDelay(attempts)
 	}
 	return delay
 }

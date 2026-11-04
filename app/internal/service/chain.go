@@ -24,7 +24,7 @@ const (
 // status / plect_check) reports it as a dry-run plan (Spawned always false,
 // so a fired-but-unspawned entry is reported as eligible, never as having
 // actually fired); TickSession (plect tick) spawns each fired,
-// not-already-active entry and fills Spawned/TargetSession/CapRefused in
+// not-already-active entry and fills Spawned/TargetSession in
 // with the result.
 type ChainSpawn struct {
 	ChainID       string `json:"chain_id"`
@@ -43,16 +43,11 @@ type ChainSpawn struct {
 	MissingOutputs []string       `json:"missing_outputs,omitempty"`
 	Inputs         map[string]any `json:"inputs,omitempty"`
 	Spawned        bool           `json:"spawned,omitempty"`
+	Sleeping       bool           `json:"sleeping,omitempty"`
 	AlreadyActive  bool           `json:"already_active,omitempty"`
-	// CapRefused marks a fired, not-already-active chain whose spawn was
-	// refused by the parent's max_up_children cap specifically, rather than
-	// some other execution failure: the fire itself stays eligible (the
-	// predicate is still true) and is retried, unblocked, on the next tick —
-	// this only distinguishes the refusal reason for reporting.
-	CapRefused    bool     `json:"cap_refused,omitempty"`
-	KickDelivered bool     `json:"kick_delivered,omitempty"`
-	KickDebounced bool     `json:"kick_debounced,omitempty"`
-	Warnings      []string `json:"warnings,omitempty"`
+	KickDelivered  bool           `json:"kick_delivered,omitempty"`
+	KickDebounced  bool           `json:"kick_debounced,omitempty"`
+	Warnings       []string       `json:"warnings,omitempty"`
 }
 
 // pendingJudgeIDs lists, sorted, the judge leaf ids with no usable verdict at

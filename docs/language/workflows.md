@@ -380,6 +380,11 @@ failure. `plect workflow populations <workflow-id> <population-name>`
 shows each member's current status, including its last admit error and how
 many attempts have failed in a row since the last `admit_ok`.
 
+A wake-suspended member remains pending. Population admission waits with a
+retry interval that grows from five seconds to one minute without consuming its
+admission failure budget. A new inbound event requests another wake and resets
+the wait, after which admission sets up the initial task.
+
 A task chain may start another session under a selected workflow once its
 condition holds. It addresses the same resource by default or another concrete
 resource it observed, such as a pull request created from issue work. The

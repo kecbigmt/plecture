@@ -111,6 +111,7 @@ type = "object"
 // Both a broken and a genuinely idle member occupy the cap, so success here
 // can only mean the broken one stopped blocking the idle one's eviction.
 func TestCapacityPriorityIgnoresMemberWithNonCapacityFailure(t *testing.T) {
+	t.Setenv("PLECT_SESSION_NAME", "")
 	cfg := populationConfig(t, `[source.query.poll]
 type = "exec"
 command = "true"
@@ -153,8 +154,9 @@ type = "object"
 	}
 	if err := store.Put(&contract.Session{
 		Name: "broken+agent", ResourceID: "urn:case:broken",
+		Workflow:   def.Workflow.Address,
 		Population: &contract.PopulationProvenance{Workflow: def.Workflow.Address, Name: def.Population.Name},
-		Tasks: map[string]*contract.TaskState{
+		Nodes: map[string]*contract.TaskState{
 			"runtime": {Scope: contract.TaskScopeRun, Status: contract.TaskStatusProduced},
 		},
 	}); err != nil {
@@ -177,8 +179,8 @@ type = "object"
 	if outcome.SessionName == "" || store.Get(outcome.SessionName) == nil {
 		t.Fatalf("session = %q, want a newly admitted population session", outcome.SessionName)
 	}
-	if idle := store.Get("idle+agent"); idle == nil || cfg.RunScopeUp(idle) {
-		t.Fatalf("idle session = %+v, want it brought down to free capacity", idle)
+	if idle := store.Get("idle+agent"); idle == nil || cfg.RunScopeUp(idle) || idle.SleepSince.IsZero() {
+		t.Fatalf("idle session = %+v, want it sleeping to free capacity", idle)
 	}
 }
 
@@ -330,6 +332,299 @@ type = "object"
 	}
 }
 
+func TestQueuedAdmissionWaitsForWakeBeforeInitialTask(t *testing.T) {
+	t.Setenv("PLECT_SESSION_NAME", "")
+	cfg := populationConfig(t, `[source.query.poll]
+type = "exec"
+command = "true"
+`, "uses = [\"poll\"]\npoll_every = \"1m\"", `resource = { from = "resource.id" }`)
+	writeDefinition(t, cfg.BaseDir, "provider", fmt.Sprintf(`[provider]
+kind = "workspace_provider"
+match = "^urn:case:(?P<id>[A-Za-z0-9]+)$"
+name = { from = "match.id" }
+[provider.setup]
+type = "exec"
+command = "printf"
+args = ['{"workspace_dir":"%s","branch":"main"}']
+[provider.outputs_schema]
+type = "object"
+`, cfg.WorkspaceDirsRoot))
+	writeDefinition(t, cfg.BaseDir, "work", `[work]
+kind = "effect"
+scope = "run"
+[work.setup]
+type = "exec"
+command = "printf"
+args = ['{}']
+[work.outputs_schema]
+type = "object"
+[work.health.alive]
+type = "noop"
+`)
+	limit := 1
+	cfg.MaxUpChildren = &limit
+	definitions, err := Load(cfg)
+	if err != nil {
+		t.Fatal(err)
+	}
+	def := definitions[0]
+	def.Population.Session.Task = "work"
+	store := state.NewStore(t.TempDir())
+	logStore := eventlog.NewStore(store.Dir())
+	coordinator := newCapacityCoordinator(func() *config.Config { return cfg }, store, logStore, admitstatus.NewCache(logStore))
+	coordinator.setDefinitions([]Definition{def})
+	engine := NewEngine(def, store, logStore, coordinator.cache, serviceHooks(func() *config.Config { return cfg }, store, def, coordinator))
+	if err := store.Put(&contract.Session{Name: "manual", Tasks: map[string]*contract.TaskState{
+		"runtime": {Scope: contract.TaskScopeRun, Status: contract.TaskStatusProduced},
+	}}); err != nil {
+		t.Fatal(err)
+	}
+	ctx := context.Background()
+	resource := "urn:case:new"
+	if err := engine.ApplyAppearance(ctx, map[string]any{"resource": resource}); err != nil {
+		t.Fatalf("admit while cap is full: %v", err)
+	}
+	population, err := store.Population(engine.key)
+	if err != nil {
+		t.Fatal(err)
+	}
+	member := population.Members[resource]
+	if member == nil || !member.PendingUp || member.AdmitSuspended || member.ConsecutiveAdmitFailures != 0 || member.AdmitRetryAt.IsZero() {
+		t.Fatalf("queued member = %+v, want pending retry without a failure", member)
+	}
+	queued := store.Get(member.SessionName)
+	if queued == nil || queued.SleepSince.IsZero() || cfg.RunScopeUp(queued) {
+		t.Fatalf("queued session = %+v, want sleeping with run scope down", queued)
+	}
+	events, _, _, err := logStore.List(member.SessionName, 0, event.Filter{Types: []string{event.TypeWorkflowPopulationUp}})
+	if err != nil || len(events) != 0 {
+		t.Fatalf("population up events before wake = %v, %v; want none", events, err)
+	}
+	if err := store.Update("manual", func(session *contract.Session) error {
+		session.Tasks["runtime"].Status = contract.TaskStatusCleaned
+		return nil
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if err := service.WakeQueuedSessions(cfg, store); err != nil {
+		t.Fatalf("wake queued session: %v", err)
+	}
+	events, _, _, err = logStore.List(member.SessionName, 0, event.Filter{Types: []string{event.TypeWorkflowPopulationUp}})
+	if err != nil || len(events) != 1 {
+		t.Fatalf("population up events after wake = %v, %v; want one transition", events, err)
+	}
+	engine.now = func() time.Time { return member.AdmitRetryAt }
+	if err := engine.Reconcile(ctx); err != nil {
+		t.Fatalf("admit after wake: %v", err)
+	}
+	population, err = store.Population(engine.key)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := population.Members[resource]; got.PendingUp || got.AdmitSuspended {
+		t.Fatalf("member after wake = %+v, want completed admission", got)
+	}
+	session := store.Get(member.SessionName)
+	if session == nil || session.Tasks["initial"] == nil || session.Tasks["initial"].Status != contract.TaskStatusProduced {
+		t.Fatalf("initial task after wake = %+v, want produced", session)
+	}
+	events, _, _, err = logStore.List(member.SessionName, 0, event.Filter{Types: []string{event.TypeWorkflowPopulationUp}})
+	if err != nil || len(events) != 1 {
+		t.Fatalf("population up events after admission = %v, %v; want one transition", events, err)
+	}
+	if _, err := service.Down(cfg, store, service.DownParams{Identifier: member.SessionName, Sleep: true}); err != nil {
+		t.Fatalf("sleep admitted member: %v", err)
+	}
+	engine.hooks.EnsureInitial = nil
+	if err := engine.ApplyAppearance(ctx, map[string]any{"resource": resource}); err != nil {
+		t.Fatalf("re-admit sleeping member: %v", err)
+	}
+	events, _, _, err = logStore.List(member.SessionName, 0, event.Filter{Types: []string{event.TypeWorkflowPopulationUp}})
+	if err != nil || len(events) != 2 {
+		t.Fatalf("population up events after direct re-admission = %v, %v; want one per transition", events, err)
+	}
+}
+
+func TestAdmitDoesNotRearmWakeSuspendedMember(t *testing.T) {
+	t.Setenv("PLECT_SESSION_NAME", "")
+	cfg := populationConfig(t, `[source.query.poll]
+type = "exec"
+command = "true"
+`, "uses = [\"poll\"]\npoll_every = \"1m\"", `resource = { from = "resource.id" }`)
+	writeDefinition(t, cfg.BaseDir, "provider", fmt.Sprintf(`[provider]
+kind = "workspace_provider"
+match = "^urn:case:(?P<id>[A-Za-z0-9]+)$"
+name = { from = "match.id" }
+[provider.setup]
+type = "exec"
+command = "printf"
+args = ['{"workspace_dir":"%s","branch":"main"}']
+[provider.outputs_schema]
+type = "object"
+`, cfg.WorkspaceDirsRoot))
+	writeDefinition(t, cfg.BaseDir, "work", `[work]
+kind = "effect"
+scope = "run"
+[work.setup]
+type = "exec"
+command = "printf"
+args = ['{}']
+[work.outputs_schema]
+type = "object"
+[work.health.alive]
+type = "noop"
+`)
+	limit := 1
+	cfg.MaxUpChildren = &limit
+	definitions, err := Load(cfg)
+	if err != nil {
+		t.Fatal(err)
+	}
+	def := definitions[0]
+	def.Population.Session.Task = "work"
+	store := state.NewStore(t.TempDir())
+	logStore := eventlog.NewStore(store.Dir())
+	coordinator := newCapacityCoordinator(func() *config.Config { return cfg }, store, logStore, admitstatus.NewCache(logStore))
+	coordinator.setDefinitions(definitions)
+	engine := NewEngine(def, store, logStore, coordinator.cache, serviceHooks(func() *config.Config { return cfg }, store, def, coordinator))
+	if err := store.Put(&contract.Session{Name: "manual", Tasks: map[string]*contract.TaskState{
+		"runtime": {Scope: contract.TaskScopeRun, Status: contract.TaskStatusProduced},
+	}}); err != nil {
+		t.Fatal(err)
+	}
+	earlier, err := service.Up(cfg, store, service.UpParams{Identifier: "urn:case:earlier", Workflow: def.Workflow.Address,
+		Inputs: map[string]any{"resource": "urn:case:earlier"}})
+	if err != nil || earlier.Result != "sleeping" || earlier.QueuePosition != 1 {
+		t.Fatalf("earlier up = %+v, %v; want first queued sleeper", earlier, err)
+	}
+	resource := "urn:case:later"
+	if err := engine.ApplyAppearance(context.Background(), map[string]any{"resource": resource}); err != nil {
+		t.Fatal(err)
+	}
+	population, err := store.Population(engine.key)
+	if err != nil {
+		t.Fatal(err)
+	}
+	member := population.Members[resource]
+	if member == nil || member.SessionName == "" || member.AdmitRetryAt.IsZero() {
+		t.Fatalf("pending member = %+v, want queued admission", member)
+	}
+	position, err := service.SleepQueuePosition(cfg, store, member.SessionName)
+	if err != nil || position != 2 {
+		t.Fatalf("member queue position = %d, %v; want behind earlier sleeper", position, err)
+	}
+	for i := 0; i < 3; i++ {
+		if _, _, _, err := logStore.Append(event.Event{SessionName: member.SessionName, Type: event.TypeSessionWake,
+			Direction: event.Internal, Metadata: map[string]string{"result": "failed"}}); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if _, _, _, err := logStore.Append(event.Event{SessionName: member.SessionName, Type: event.TypeSessionWake,
+		Direction: event.Internal, Summary: "wake attempts exhausted", Metadata: map[string]string{"result": "suspended"}}); err != nil {
+		t.Fatal(err)
+	}
+	sleepsBefore, _, _, err := logStore.List(member.SessionName, 0, event.Filter{Types: []string{event.TypeSessionSleep}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	engine.now = func() time.Time { return member.AdmitRetryAt }
+	if err := engine.Reconcile(context.Background()); err != nil {
+		t.Fatalf("admission wait while wake is suspended: %v", err)
+	}
+	previousDelay := time.Duration(0)
+	previousAttemptAt := member.AdmitRetryAt
+	sleepsAfter, _, _, err := logStore.List(member.SessionName, 0, event.Filter{Types: []string{event.TypeSessionSleep}})
+	if err != nil || len(sleepsAfter) != len(sleepsBefore) {
+		t.Fatalf("sleep events after admission retry = %v, %v; want unchanged count %d", sleepsAfter, err, len(sleepsBefore))
+	}
+	status, err := service.Status(cfg, store, member.SessionName)
+	if err != nil || status.Runtime.WakeReason != "wake attempts exhausted" {
+		t.Fatalf("wake suspension after admission retry = %+v, %v", status, err)
+	}
+	for attempt := 1; attempt < admitFailureLimit; attempt++ {
+		population, err = store.Population(engine.key)
+		if err != nil {
+			t.Fatal(err)
+		}
+		retryAt := population.Members[resource].AdmitRetryAt
+		delay := retryAt.Sub(previousAttemptAt)
+		if delay <= previousDelay || delay > admitRetryMax {
+			t.Fatalf("wake-suspended retry delay %d = %s, want growth from %s up to %s", attempt, delay, previousDelay, admitRetryMax)
+		}
+		previousDelay = delay
+		previousAttemptAt = retryAt
+		engine.now = func() time.Time { return retryAt }
+		if err := engine.Reconcile(context.Background()); err != nil {
+			t.Fatalf("admission wait %d while wake is suspended: %v", attempt+1, err)
+		}
+	}
+	population, err = store.Population(engine.key)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if delay := population.Members[resource].AdmitRetryAt.Sub(previousAttemptAt); delay != admitRetryMax {
+		t.Fatalf("last wake-suspended retry delay = %s, want capped at %s", delay, admitRetryMax)
+	}
+	if got := population.Members[resource]; !got.PendingUp || got.AdmitSuspended || got.ConsecutiveAdmitFailures != 0 || got.AdmitRetryAt.IsZero() {
+		t.Fatalf("member after suspended admission waits = %+v, want pending without failures", got)
+	}
+	sleepsAfter, _, _, err = logStore.List(member.SessionName, 0, event.Filter{Types: []string{event.TypeSessionSleep}})
+	if err != nil || len(sleepsAfter) != len(sleepsBefore) {
+		t.Fatalf("sleep events after admission waits = %v, %v; want unchanged count %d", sleepsAfter, err, len(sleepsBefore))
+	}
+	if _, _, _, err := logStore.Append(event.Event{SessionName: member.SessionName, Type: "resource.changed", Direction: event.Inbound}); err != nil {
+		t.Fatal(err)
+	}
+	wakeAt := time.Now()
+	requested, err := service.RequestWake(store, member.SessionName, wakeAt)
+	if err != nil || !requested {
+		t.Fatalf("inbound wake request = %t, %v; want queued", requested, err)
+	}
+	population, err = store.Population(engine.key)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := population.Members[resource].AdmitRetryAt; !got.IsZero() {
+		t.Fatalf("retry after inbound wake = %s, want reset for prompt admission", got)
+	}
+	engine.now = func() time.Time { return wakeAt }
+	if err := engine.Reconcile(context.Background()); err != nil {
+		t.Fatalf("admission after inbound wake while capacity is full: %v", err)
+	}
+	population, err = store.Population(engine.key)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := population.Members[resource].AdmitRetryAt; !got.Equal(wakeAt.Add(admitRetryBase)) {
+		t.Fatalf("retry after renewed wake = %s, want base interval after %s", got, wakeAt)
+	}
+	if _, err := service.Down(cfg, store, service.DownParams{Identifier: earlier.SessionName}); err != nil {
+		t.Fatalf("remove earlier sleeper from queue: %v", err)
+	}
+	if err := store.Update("manual", func(session *contract.Session) error {
+		session.Tasks["runtime"].Status = contract.TaskStatusCleaned
+		return nil
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if err := service.WakeQueuedSessions(cfg, store); err != nil {
+		t.Fatalf("wake after inbound event: %v", err)
+	}
+	population, err = store.Population(engine.key)
+	if err != nil {
+		t.Fatal(err)
+	}
+	retryAt := population.Members[resource].AdmitRetryAt
+	engine.now = func() time.Time { return retryAt }
+	if err := engine.Reconcile(context.Background()); err != nil {
+		t.Fatalf("admit after inbound wake: %v", err)
+	}
+	completed := store.Get(member.SessionName)
+	if completed == nil || completed.Tasks["initial"] == nil || completed.Tasks["initial"].Status != contract.TaskStatusProduced {
+		t.Fatalf("initial task after inbound wake = %+v, want produced", completed)
+	}
+}
+
 func addCapacityMember(t *testing.T, def Definition, store *state.Store, logStore *eventlog.Store, name, resource string, created, cleared time.Time) {
 	t.Helper()
 	// The population row must exist before a session can reference it
@@ -349,7 +644,7 @@ func addCapacityMember(t *testing.T, def Definition, store *state.Store, logStor
 		ResourceID: resource,
 		Workflow:   def.Workflow.Address,
 		Population: &contract.PopulationProvenance{Workflow: def.Workflow.Address, Name: def.Population.Name},
-		Tasks: map[string]*contract.TaskState{
+		Nodes: map[string]*contract.TaskState{
 			"runtime": {Scope: contract.TaskScopeRun, Status: contract.TaskStatusProduced},
 		},
 		CreatedAt: created,

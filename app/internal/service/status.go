@@ -49,6 +49,9 @@ type StatusRuntimeTask struct {
 // StatusRuntime is layer 2: whether the session is actually alive right now.
 type StatusRuntime struct {
 	Run                domain.RunState     `json:"run"`
+	Sleep              string              `json:"sleep,omitempty"`
+	QueuePosition      int                 `json:"queue_position,omitempty"`
+	WakeReason         string              `json:"wake_reason,omitempty"`
 	Health             domain.HealthState  `json:"health,omitempty"`
 	RepairStatus       string              `json:"repair_status,omitempty"`
 	RepairReason       string              `json:"repair_reason,omitempty"`
@@ -163,6 +166,14 @@ func Status(cfg *config.Config, store *state.Store, identifier string) (*StatusR
 
 	wtExists := fileExists(session.WorkspaceDirPath)
 	runState := sessionRunState(cfg, session)
+	sleep, queuePosition, err := sleepVisibility(cfg, store, session)
+	if err != nil {
+		return nil, err
+	}
+	wakeReason, _, err := WakeSuspension(store, sessionName)
+	if err != nil {
+		return nil, err
+	}
 	healthReport, healthState := sessionHealthReport(cfg, store, sessionName)
 	repairStatus, repairReason := "", ""
 	boundary, found, err := eventlog.NewStore(store.Dir()).LatestRepairStateChange(sessionName)
@@ -226,6 +237,9 @@ func Status(cfg *config.Config, store *state.Store, identifier string) (*StatusR
 		},
 		Runtime: StatusRuntime{
 			Run:                runState,
+			Sleep:              sleep,
+			QueuePosition:      queuePosition,
+			WakeReason:         wakeReason,
 			Health:             healthState,
 			RepairStatus:       repairStatus,
 			RepairReason:       repairReason,
@@ -408,10 +422,13 @@ func sessionTag(name string) string {
 // done_when-bearing instance only, the material an orchestrator needs to pick
 // its next action — no full outputs/flow/runtime dump (that's --full).
 type StatusSummary struct {
-	Identity     StatusSummaryIdentity `json:"identity"`
-	RepairStatus string                `json:"repair_status,omitempty"`
-	RepairReason string                `json:"repair_reason,omitempty"`
-	Work         []StatusSummaryWork   `json:"work,omitempty"`
+	Identity      StatusSummaryIdentity `json:"identity"`
+	Sleep         string                `json:"sleep,omitempty"`
+	QueuePosition int                   `json:"queue_position,omitempty"`
+	WakeReason    string                `json:"wake_reason,omitempty"`
+	RepairStatus  string                `json:"repair_status,omitempty"`
+	RepairReason  string                `json:"repair_reason,omitempty"`
+	Work          []StatusSummaryWork   `json:"work,omitempty"`
 }
 
 type StatusSummaryIdentity struct {
@@ -466,8 +483,11 @@ type StatusSummaryChain struct {
 // orchestrator's next-action decision needs.
 func Summarize(result *StatusResult) *StatusSummary {
 	sum := &StatusSummary{
-		RepairStatus: result.Runtime.RepairStatus,
-		RepairReason: result.Runtime.RepairReason,
+		Sleep:         result.Runtime.Sleep,
+		QueuePosition: result.Runtime.QueuePosition,
+		WakeReason:    result.Runtime.WakeReason,
+		RepairStatus:  result.Runtime.RepairStatus,
+		RepairReason:  result.Runtime.RepairReason,
 		Identity: StatusSummaryIdentity{
 			SessionName:   result.Identity.SessionName,
 			ResourceID:    result.Identity.ResourceID,

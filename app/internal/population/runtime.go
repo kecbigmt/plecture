@@ -90,7 +90,7 @@ func upPopulation(cfg func() *config.Config, store *state.Store, def Definition,
 		if err != nil {
 			return UpOutcome{}, err
 		}
-		return UpOutcome{SessionName: result.SessionName, AlreadyUp: alreadyUp}, nil
+		return UpOutcome{SessionName: result.SessionName, AlreadyUp: alreadyUp, Sleeping: result.Result == "sleeping", Woke: result.Woke}, nil
 	}
 	result, err := service.Up(cfg(), store, service.UpParams{
 		Identifier: resource,
@@ -101,5 +101,5 @@ func upPopulation(cfg func() *config.Config, store *state.Store, def Definition,
 	if err != nil {
 		return UpOutcome{}, err
 	}
-	return UpOutcome{SessionName: result.SessionName}, nil
+	return UpOutcome{SessionName: result.SessionName, Sleeping: result.Result == "sleeping"}, nil
 }

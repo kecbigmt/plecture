@@ -105,6 +105,7 @@ func (sup *Supervisor) Run(ctx context.Context) {
 		wg.Wait()
 	}()
 	wg.Go(func() { sup.repairDownLoop(ctx) })
+	wg.Go(func() { sup.wakeLoop(ctx) })
 
 	tick := time.NewTicker(sup.poll)
 	defer tick.Stop()
@@ -127,6 +128,21 @@ func (sup *Supervisor) Run(ctx context.Context) {
 		case <-tick.C:
 		case <-deadman.C:
 			sup.checkDeadman(ctx)
+		}
+	}
+}
+
+func (sup *Supervisor) wakeLoop(ctx context.Context) {
+	ticker := time.NewTicker(time.Second)
+	defer ticker.Stop()
+	for {
+		if err := service.WakeQueuedSessions(sup.cfg(), sup.state); err != nil {
+			sup.logger.Warn("reactor: wake queued sessions failed", "error", err)
+		}
+		select {
+		case <-ctx.Done():
+			return
+		case <-ticker.C:
 		}
 	}
 }

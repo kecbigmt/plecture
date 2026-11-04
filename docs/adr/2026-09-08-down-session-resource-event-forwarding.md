@@ -1,3 +1,7 @@
+---
+superseded_by: 2026-11-04-down-and-sleep
+---
+
 # Route a down session's inbound events to its nearest live ancestor
 
 ## Context

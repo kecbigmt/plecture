@@ -84,6 +84,7 @@ var downTool = mcp.NewTool("plect_down",
 		mcp.Required(),
 		mcp.Description("Resource identifier or session name (e.g. session-123)"),
 	),
+	mcp.WithBoolean("sleep", mcp.Description("Wake on the next inbound event, subject to available capacity")),
 )
 
 var destroyTool = mcp.NewTool("plect_destroy",
@@ -213,9 +214,11 @@ func handleUp(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallToolRe
 	}
 
 	return jsonResult(map[string]any{
-		"ok":           true,
-		"session_name": result.SessionName,
-		"tasks":        result.Tasks,
+		"ok":             true,
+		"result":         result.Result,
+		"queue_position": result.QueuePosition,
+		"session_name":   result.SessionName,
+		"tasks":          result.Tasks,
 	})
 }
 
@@ -231,7 +234,7 @@ func handleDown(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallTool
 		return mcp.NewToolResultError("session is required"), nil
 	}
 
-	result, err := service.Down(cfg, store, service.DownParams{Identifier: identifier})
+	result, err := service.Down(cfg, store, service.DownParams{Identifier: identifier, Sleep: request.GetBool("sleep", false)})
 	if err != nil {
 		return errorResult(err), nil
 	}

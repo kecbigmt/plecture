@@ -349,6 +349,7 @@ func (db *DB) writeSessionTx(ctx context.Context, tx *sql.Tx, s *domain.Session)
 		ID:                       candidateID,
 		Name:                     s.Name,
 		Status:                   status,
+		SleepSince:               formatTimeNull(s.SleepSince),
 		DestroyedAt:              formatTimeNull(s.DestroyedAt),
 		ParentSessionID:          parentCol,
 		RootSessionID:            rootCol,
@@ -389,6 +390,7 @@ func insertSessionParams(id, status string, parentCol, rootCol, populationWorkfl
 		ID:                       id,
 		Name:                     s.Name,
 		Status:                   status,
+		SleepSince:               formatTimeNull(s.SleepSince),
 		DestroyedAt:              formatTimeNull(s.DestroyedAt),
 		ParentSessionID:          parentCol,
 		RootSessionID:            rootCol,
@@ -621,6 +623,11 @@ func sessionFromRow(row sqlcgen.Session) (*domain.Session, error) {
 		return nil, fmt.Errorf("parse session %q destroyed_at: %w", row.Name, err)
 	}
 	s.DestroyedAt = destroyedAt
+	sleepSince, err := parseTimeNull(row.SleepSince)
+	if err != nil {
+		return nil, fmt.Errorf("parse session %q sleep_since: %w", row.Name, err)
+	}
+	s.SleepSince = sleepSince
 
 	health, err := healthFromRow(row)
 	if err != nil {

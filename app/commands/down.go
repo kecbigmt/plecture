@@ -13,9 +13,11 @@ import (
 
 var downCmd = &cobra.Command{
 	Use:   "down <resource-id|session>",
-	Short: "Run run-scoped cleanup for a session",
+	Short: "Fully stop a session or sleep it until an inbound event",
 	Long: `Run cleanup commands for all run-scoped tasks in reverse dependency order.
-session-scoped tasks are preserved.`,
+Session-scoped tasks are preserved. A plain down is a full stop: inbound
+events stay in the log and are forwarded to an ancestor without waking the
+session. --sleep wakes for the next inbound event when capacity permits.`,
 	Args: cobra.ExactArgs(1),
 	RunE: func(cmd *cobra.Command, args []string) error {
 		cfg, err := config.Load()
@@ -26,6 +28,7 @@ session-scoped tasks are preserved.`,
 		result, err := service.Down(cfg, store, service.DownParams{
 			Identifier: args[0],
 			Observer:   newTaskObserver(cfg),
+			Sleep:      downSleep,
 		})
 		if err != nil {
 			return err
@@ -35,6 +38,9 @@ session-scoped tasks are preserved.`,
 	},
 }
 
+var downSleep bool
+
 func init() {
+	downCmd.Flags().BoolVar(&downSleep, "sleep", false, "Wake on the next inbound event, subject to available capacity")
 	rootCmd.AddCommand(downCmd)
 }

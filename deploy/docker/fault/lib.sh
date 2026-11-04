@@ -15,7 +15,7 @@ wait_for() {
 }
 
 runtime_health() {
-  inside sh -c 'plect status "$1" --json --full | jq -r ".runtime.health // empty"' _ "$session"
+  inside sh -c 'plect --data-home /var/lib/plect/data/plect status "$1" --json --full | jq -r ".runtime.health // empty"' _ "$session"
 }
 
 assert_recovered() {
