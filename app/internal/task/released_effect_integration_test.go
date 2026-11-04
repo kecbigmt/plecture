@@ -16,8 +16,9 @@ import (
 // A session keeps the declarations and recorded outputs it was created with
 // while the executables are whatever is installed when an action runs, so a
 // plugin update must not break it. Each fixture under testdata/compat/<tag>/
-// runs under the released and the current declarations against the plugin's
-// checked-in scripts, and any action that declines fails; no invocation record
+// runs under the released declarations and any current declaration still
+// present, against the plugin's checked-in scripts. A retired declaration
+// still runs from its released fixture. No invocation record
 // is kept because the pass is the contract.
 func TestShippedEffects_ReleasedDeclarationsAndRecordsStillRun(t *testing.T) {
 	for _, source := range repoPluginDirs(t) {
@@ -38,7 +39,7 @@ func TestShippedEffects_ReleasedDeclarationsAndRecordsStillRun(t *testing.T) {
 					if len(scenarios) == 0 {
 						t.Fatalf("%s declares no scenarios", fixture)
 					}
-					produced := recordEffectsUnder(t, source, d.dir, true, scenarios)
+					produced := recordEffectsUnder(t, source, d.dir, true, scenarios, d.dir == "")
 					for _, declined := range declinedSections(produced) {
 						t.Errorf("%s", declined)
 					}

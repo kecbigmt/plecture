@@ -211,11 +211,11 @@ observer always sets `expire_after` rather than `poll_every`.
 `testdata/compat/<tag>/` holds this plugin's task declarations as of the
 latest tagged release (`config/tasks/`) and a `scenarios.toml` in the
 effect-scenario format. `TestShippedEffects_ReleasedDeclarationsAndRecordsStillRun`
-(`go test -tags integration ./app/internal/task`) runs it under both the
-released and the current declarations against the plugin's current
-executables, so updating the plugin cannot break a session created under that
-release. Scripts run as checked in and the other executables are built with their
-manifest `build` command; the programs a declaration launches in a terminal
+(`go test -tags integration ./app/internal/task`) runs every released
+declaration against current executables. Effects still present also run with
+the current declaration, so updating the plugin cannot break a session created
+under that release. Scripts run as checked in, and the other executables are
+built with their manifest `build` command; the programs a declaration launches in a terminal
 (the `claude`/`codex` CLI itself) and the system tools stay stand-ins under
 `testdata/effects/`.
 The scenarios cover the thread and subscription effects. The adapter needs a

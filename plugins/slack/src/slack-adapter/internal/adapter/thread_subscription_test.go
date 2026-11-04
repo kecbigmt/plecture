@@ -240,7 +240,7 @@ func TestMentionPublishFailureKeepsOnlyFailedSessionsWatermark(t *testing.T) {
 	}
 }
 
-func TestUnsubscribeExactPairAndRejectOldSocketField(t *testing.T) {
+func TestUnsubscribeExactPairAndAcceptReleasedSocketField(t *testing.T) {
 	a := newTestAdapter(&Config{})
 	for _, thread := range []string{"1700000000.000001", "1700000001.000001"} {
 		a.broker.Subscribe(Subscriber{SessionName: "one", ChannelID: "C1", ThreadTS: thread})
@@ -253,8 +253,12 @@ func TestUnsubscribeExactPairAndRejectOldSocketField(t *testing.T) {
 	w = httptest.NewRecorder()
 	body := strings.NewReader(`{"session_name":"one","thread_ts":"1700000000.000001","channel_id":"C1","socket_path":"/old"}`)
 	a.HandleSubscribe(w, httptest.NewRequest(http.MethodPost, "/subscribe", body))
-	if w.Code != http.StatusBadRequest || len(a.broker.List()) != 1 {
-		t.Fatalf("legacy socket accepted: %d, subscriptions=%+v", w.Code, a.broker.List())
+	if w.Code != http.StatusOK || len(a.broker.List()) != 2 {
+		t.Fatalf("released request rejected: %d, subscriptions=%+v", w.Code, a.broker.List())
+	}
+	raw, _ := json.Marshal(a.broker.List())
+	if strings.Contains(string(raw), "socket_path") {
+		t.Fatalf("socket path persisted: %s", raw)
 	}
 }
 
@@ -472,5 +476,17 @@ func TestFailedReplyPublicationDoesNotSetStreamRecipient(t *testing.T) {
 	}
 	if calls := a.streamManager.streamer.(*recordingStreamer).startCalls; len(calls) != 0 {
 		t.Fatalf("failed delivery set recipient: %+v", calls)
+	}
+}
+
+func TestReleasedThreadOnlyDeleteCannotRemoveMultipleSubscribers(t *testing.T) {
+	a := newTestAdapter(&Config{})
+	for _, session := range []string{"one", "two"} {
+		a.broker.Subscribe(Subscriber{SessionName: session, ChannelID: "C1", ThreadTS: "1700000000.000001"})
+	}
+	w := httptest.NewRecorder()
+	a.HandleSubscribe(w, httptest.NewRequest(http.MethodDelete, "/subscribe?thread_ts=1700000000.000001", nil))
+	if w.Code != http.StatusConflict || len(a.broker.List()) != 2 {
+		t.Fatalf("legacy delete: status=%d, subscriptions=%+v", w.Code, a.broker.List())
 	}
 }

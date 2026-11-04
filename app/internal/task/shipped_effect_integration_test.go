@@ -132,10 +132,10 @@ type effectHarness struct {
 
 func recordShippedEffects(t *testing.T, source string, scenarios map[string][]effectScenario) string {
 	t.Helper()
-	return recordEffectsUnder(t, source, "", false, scenarios)
+	return recordEffectsUnder(t, source, "", false, scenarios, false)
 }
 
-func recordEffectsUnder(t *testing.T, source, declarationsDir string, realScripts bool, scenarios map[string][]effectScenario) string {
+func recordEffectsUnder(t *testing.T, source, declarationsDir string, realScripts bool, scenarios map[string][]effectScenario, allowRetired bool) string {
 	t.Helper()
 	h := newEffectHarness(t, source, declarationsDir, realScripts)
 	cfg := &config.Config{PluginDirs: []string{h.mounted.Dir}, Plugins: []plugins.Mounted{h.mounted}}
@@ -153,6 +153,9 @@ func recordEffectsUnder(t *testing.T, source, declarationsDir string, realScript
 	ids := make([]string, 0, len(scenarios))
 	for id := range scenarios {
 		if _, ok := byID[id]; !ok {
+			if allowRetired {
+				continue
+			}
 			t.Fatalf("scenario names %q, which this plugin does not declare", id)
 		}
 		ids = append(ids, id)

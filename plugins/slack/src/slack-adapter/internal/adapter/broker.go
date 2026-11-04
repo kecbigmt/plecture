@@ -71,6 +71,30 @@ func (b *Broker) Unsubscribe(session, thread string) (Subscriber, bool) {
 	return s, ok
 }
 
+// A thread-only unsubscribe cannot choose among sessions; released cleanup
+// requests have no session name, so accept them only for a unique subscriber.
+func (b *Broker) UnsubscribeUniqueThread(thread string) bool {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	var found subscriptionKey
+	matched := false
+	for key := range b.subs {
+		if key.thread != thread {
+			continue
+		}
+		if matched {
+			return false
+		}
+		found, matched = key, true
+	}
+	if !matched {
+		return true
+	}
+	delete(b.subs, found)
+	b.persistLocked()
+	return true
+}
+
 func (b *Broker) UnsubscribeBySession(session string) []Subscriber {
 	b.mu.Lock()
 	defer b.mu.Unlock()

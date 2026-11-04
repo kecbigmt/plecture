@@ -39,9 +39,18 @@ session_name = { from = "session.name" }
 type = "noop"
 
 [slack_thread.cleanup]
-type = "exec"
-bin = "slack-adapter"
-args = ["resource", "unsubscribe", "--session", { from = "session.name" }, "--resource", { from = "self.outputs.permalink" }]
+type = "shell"
+script = '''
+set -eu
+curl -sf --max-time 10 -G -X DELETE "$base_url/subscribe" \
+  --data-urlencode "session_name=$session_name" \
+  --data-urlencode "thread_ts=$thread_ts" >/dev/null
+'''
+
+[slack_thread.cleanup.bind]
+base_url = { from = "inputs.base_url" }
+session_name = { from = "session.name" }
+thread_ts = { from = "self.outputs.thread_ts" }
 
 [slack_thread.inputs_schema]
 type                 = "object"

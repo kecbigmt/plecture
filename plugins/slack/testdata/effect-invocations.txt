@@ -5,3 +5,7 @@ outputs: {"channel_id":"C-review","permalink":"https://example.slack.com/archive
 
 == slack_thread / health.alive
 alive
+
+== slack_thread / cleanup
+call[0]: "curl" "-sf" "--max-time" "10" "-G" "-X" "DELETE" "http://127.0.0.1:7890/subscribe" "--data-urlencode" "session_name=acme/widget-1" "--data-urlencode" "thread_ts=1234.5678"
+cleaned

@@ -12,6 +12,8 @@ type subscribeRequest struct {
 	ChannelID      string `json:"channel_id"`
 	SessionName    string `json:"session_name"`
 	CatchUpThrough string `json:"catch_up_through,omitempty"`
+	// Released requests carry socket_path; ignore it until one release after v0.2.11.
+	SocketPath string `json:"socket_path,omitempty"`
 }
 
 type notifyRequest struct {
@@ -305,11 +307,19 @@ func (a *Adapter) handleSubscribePost(w http.ResponseWriter, req *http.Request) 
 
 func (a *Adapter) handleSubscribeDelete(w http.ResponseWriter, req *http.Request) {
 	session := req.URL.Query().Get("session_name")
+	thread := req.URL.Query().Get("thread_ts")
 	if session == "" {
-		http.Error(w, "session_name is required", http.StatusBadRequest)
+		if thread == "" {
+			http.Error(w, "session_name or thread_ts is required", http.StatusBadRequest)
+			return
+		}
+		if ok := a.broker.UnsubscribeUniqueThread(thread); !ok {
+			http.Error(w, "thread has multiple subscribers", http.StatusConflict)
+			return
+		}
+		w.WriteHeader(http.StatusNoContent)
 		return
 	}
-	thread := req.URL.Query().Get("thread_ts")
 	if thread == "" {
 		a.broker.UnsubscribeBySession(session)
 	} else {

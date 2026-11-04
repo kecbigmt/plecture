@@ -198,7 +198,8 @@ reason as the reply text.
 
 Registers `{session_name, thread_ts, channel_id, catch_up_through?}`. The
 pair `(session_name, thread_ts)` identifies one subscription; several sessions
-can subscribe to the same thread. `socket_path` is not accepted. Both Slack
+can subscribe to the same thread. A released request may carry `socket_path`;
+the adapter ignores it and never stores it. Both Slack
 timestamps must have the shape `<10 digits>.<6 digits>`.
 
 If `catch_up_through` is provided and exceeds this pair's watermark, the

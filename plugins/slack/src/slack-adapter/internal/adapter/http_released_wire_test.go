@@ -25,7 +25,7 @@ func TestReleasedSubscribeWireShapesAreAccepted(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			socketPath := startTestListener(t)
+			socketPath := "/ignored"
 			body := strings.ReplaceAll(string(raw), "SOCKET_PATH", socketPath)
 			var sent struct {
 				ThreadTS string `json:"thread_ts"`
@@ -58,7 +58,7 @@ func TestReleasedSubscribeWireShapesAreAccepted(t *testing.T) {
 			if w.Code != http.StatusNoContent {
 				t.Fatalf("unsubscribe status %d", w.Code)
 			}
-			if _, ok := a.broker.Find(sent.ThreadTS); ok {
+			if _, ok := a.broker.Find("acme/widget-1", sent.ThreadTS); ok {
 				t.Fatal("the subscription should be gone after the released unsubscribe")
 			}
 		})
