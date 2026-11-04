@@ -68,6 +68,7 @@ func Up(cfg *config.Config, store *state.Store, params UpParams) (*UpResult, err
 		if upErr != nil {
 			return upErr
 		}
+		flushPendingDeliveryLogged(cfg, store, name)
 		if params.HumanInitiated {
 			if err := resetRepairStreak(store, name, "manual_up"); err != nil {
 				return &Error{Code: ErrExecutionFailed, Message: fmt.Sprintf("up completed but repair reset event failed: %v", err)}
@@ -275,7 +276,7 @@ func upUnlocked(cfg *config.Config, store *state.Store, params UpParams) (*UpRes
 	// would then overwrite disk with our in-memory map, taken before the
 	// nested write landed, silently dropping it — the same hazard mergeTasks
 	// already exists to close for Create's initial_task dispatcher.
-	if err := mergeTasks(store, sessionName, session); err != nil {
+	if err := mergeTasksWithSubscriptions(store, sessionName, session, wiredNodes); err != nil {
 		return nil, &Error{Code: ErrExecutionFailed, Message: fmt.Sprintf("failed to save session state: %v", err)}
 	}
 	wireProducedNodeSubscriptions(cfg, store, sessionName, domain.SessionBranch(session), wiredNodes)
@@ -542,7 +543,7 @@ func recreateSessionRuntime(cfg *config.Config, store *state.Store, sessionName 
 	}
 	wiredNodes, setupErr := runNodeSetup(context.Background(), cfg, store, setupPlan.Session, sessionVars(cfg, session, setupPlan), session, observer)
 	session.UpdatedAt = time.Now()
-	if err := mergeTasks(store, sessionName, session); err != nil {
+	if err := mergeTasksWithSubscriptions(store, sessionName, session, wiredNodes); err != nil {
 		return nil, &Error{Code: ErrExecutionFailed, Message: fmt.Sprintf("failed to save session state: %v", err)}
 	}
 	wireProducedNodeSubscriptions(cfg, store, sessionName, domain.SessionBranch(session), wiredNodes)

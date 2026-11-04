@@ -126,14 +126,85 @@ script = "exit 3"
 type = "shell"
 script = "touch '`+log+`'"
 `)
-	if errs := flushPendingDelivery(cfg, store, "one"); len(errs) != 0 {
-		t.Fatalf("retry errors = %v", errs)
+	if _, err := Up(cfg, store, UpParams{Identifier: "one"}); err != nil {
+		t.Fatalf("retrying Up: %v", err)
 	}
 	if _, err := os.Stat(log); err != nil {
 		t.Fatalf("retry did not run the resource hook: %v", err)
 	}
 	if got := subscriptionRetryCount(t, store, "one", retrySubscribe, "thread://one", false); got != 0 {
 		t.Fatalf("pending retry count = %d", got)
+	}
+}
+
+func TestNodeSubscriptionCreatedSessionRetriesOnLaterUp(t *testing.T) {
+	cfg := writeWorkflowFixture(t, t.TempDir(), "work", []taskFixture{{
+		id: "thread", scope: "session", setup: `echo '{"permalink":"thread://one"}'`, cleanup: "true",
+	}}, []nodeFixture{{id: "thread", subscription: "self.outputs.permalink"}})
+	workdir := filepath.Join(t.TempDir(), "wd")
+	writeSetupWorkflow(t, cfg, "work", providerRunningScript("work", `mkdir -p '`+workdir+`'
+echo '{"workspace_dir":"`+workdir+`"}'
+`))
+	writeNodeSubscriptionResource(t, cfg.BaseDir, `
+[thread_resource.subscribe]
+type = "shell"
+script = "exit 3"
+`)
+	store := testStore(t)
+	created, err := Create(cfg, store, CreateParams{URL: "https://github.com/org/repo/issues/5"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	name := created.SessionName
+	if got := subscriptionRetryCount(t, store, name, retrySubscribe, "thread://one", false); got != 1 {
+		t.Fatalf("pending subscribe count after create = %d, want 1", got)
+	}
+	log := filepath.Join(t.TempDir(), "hook")
+	writeNodeSubscriptionResource(t, cfg.BaseDir, `
+[thread_resource.subscribe]
+type = "shell"
+script = "touch '`+log+`'"
+`)
+	if _, err := Up(cfg, store, UpParams{Identifier: name}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := os.Stat(log); err != nil {
+		t.Fatalf("later up did not retry the subscribe hook: %v", err)
+	}
+	if got := subscriptionRetryCount(t, store, name, retrySubscribe, "thread://one", false); got != 0 {
+		t.Fatalf("pending subscribe count after retry = %d, want 0", got)
+	}
+}
+
+func TestNodeSubscriptionQueuedWithProducedStateBeforeHookRuns(t *testing.T) {
+	cfg := writeWorkflowFixture(t, t.TempDir(), "work", []taskFixture{{
+		id: "thread", scope: "run", setup: `echo '{"permalink":"thread://one"}'`, cleanup: "true",
+	}}, []nodeFixture{{id: "thread", subscription: "self.outputs.permalink"}})
+	log := filepath.Join(t.TempDir(), "hook")
+	writeNodeSubscriptionResource(t, cfg.BaseDir, `
+[thread_resource.subscribe]
+type = "shell"
+script = "touch '`+log+`'"
+`)
+	store := testStore(t)
+	seedSessionWithNodes(t, store, "one", "org/repo", 1, "work", nil)
+	session := store.Get("one")
+	plan, err := buildPlanForSession(cfg, session.WorkspaceDirPath, session)
+	if err != nil {
+		t.Fatal(err)
+	}
+	wired, err := runNodeSetup(t.Context(), cfg, store, plan.UpOrder(), sessionVars(cfg, session, plan), session, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := mergeTasksWithSubscriptions(store, "one", session, wired); err != nil {
+		t.Fatal(err)
+	}
+	if got := subscriptionRetryCount(t, store, "one", retrySubscribe, "thread://one", false); got != 1 {
+		t.Fatalf("pending subscribe count before hook = %d, want 1", got)
+	}
+	if _, err := os.Stat(log); !os.IsNotExist(err) {
+		t.Fatalf("subscribe hook ran before write-ahead queue: %v", err)
 	}
 }
 

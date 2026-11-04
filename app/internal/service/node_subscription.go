@@ -73,6 +73,8 @@ func wireProducedNodeSubscriptions(cfg *config.Config, store *state.Store, sessi
 	for _, resource := range sortedResources(resources) {
 		if _, msg := wireDeliveryOnSetup(cfg, store, sessionName, resource, branch, true); msg != "" {
 			slog.Warn("node subscription setup failed", "session", sessionName, "resource", resource, "error", msg)
+		} else if err := dequeuePendingSubscribe(store, sessionName, resource); err != nil {
+			slog.Warn("node subscription retry cleanup failed", "session", sessionName, "resource", resource, "error", err)
 		}
 	}
 }

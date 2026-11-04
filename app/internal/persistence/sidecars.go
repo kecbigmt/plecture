@@ -185,3 +185,14 @@ func (db *DB) DeleteSubscriptionRetry(ctx context.Context, sessionID, action, re
 		return err
 	})
 }
+
+func (db *DB) DeleteSubscriptionRetryForLiveSession(ctx context.Context, session, action, resourceID string) error {
+	return db.WithImmediateTx(ctx, func(tx *sql.Tx) error {
+		id, err := currentSessionID(ctx, sqlcgen.New(tx), session)
+		if err != nil {
+			return err
+		}
+		_, err = tx.ExecContext(ctx, `DELETE FROM subscription_retries WHERE session_id = ? AND action = ? AND resource_id = ?`, id, action, resourceID)
+		return err
+	})
+}

@@ -220,7 +220,7 @@ func createWithWorkflowSetup(cfg *config.Config, store *state.Store, params Crea
 	// `plect task setup` subprocess that writes its instance straight to disk.
 	// Overlay our in-memory task entries onto the freshly-read session instead
 	// of a blind Put so that nested write (e.g. the `initial` task) survives.
-	if err := mergeTasks(store, sessionName, session); err != nil {
+	if err := mergeTasksWithSubscriptions(store, sessionName, session, wiredNodes); err != nil {
 		return nil, &Error{Code: ErrExecutionFailed, Message: fmt.Sprintf("failed to save session state: %v", err)}
 	}
 	wireProducedNodeSubscriptions(cfg, store, sessionName, domain.SessionBranch(session), wiredNodes)
@@ -240,6 +240,7 @@ func createWithWorkflowSetup(cfg *config.Config, store *state.Store, params Crea
 	if _, errMsg := wireDeliveryOnSetup(cfg, store, sessionName, resource, domain.SessionBranch(session), false); errMsg != "" {
 		slog.Warn("resource delivery wiring failed at session create", "session", sessionName, "resource", resource, "error", errMsg)
 	}
+	flushPendingDeliveryLogged(cfg, store, sessionName)
 
 	// Record lifecycle.created on the first successful create (idempotent across
 	// retries of a partial failure and re-runs of an already-created session).

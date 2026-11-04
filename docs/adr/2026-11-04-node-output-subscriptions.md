@@ -29,7 +29,7 @@ entry and task bindings do. A known resource requiring inputs fails revision
 loading; an identifier resolved at runtime reports a subscription failure and
 queues a retry. The declaration has no separate input evaluation surface.
 
-A delivery-only revision change receives the existing node-change class:
+A subscription-only revision change receives the existing node-change class:
 `recreate` for a session-scoped node and `restart` for a run-scoped node.
 `slack_thread` creates the thread and reports its existing outputs; workflows
 that need replies declare the subscription on that node.

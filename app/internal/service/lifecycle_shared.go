@@ -105,7 +105,15 @@ func runTaskCleanup(ctx context.Context, cfg *config.Config, store *state.Store,
 // than a blind Put, so a nested `plect task setup` subprocess's disk-only
 // write during this call's own (unlocked) setup pass survives.
 func mergeTasks(store *state.Store, sessionName string, session *domain.Session) error {
-	if err := store.Update(sessionName, func(s *domain.Session) error {
+	return mergeTasksWithSubscriptions(store, sessionName, session, nil)
+}
+
+func mergeTasksWithSubscriptions(store *state.Store, sessionName string, session *domain.Session, subscriptions map[string]string) error {
+	resources := make(map[string]bool)
+	for _, resource := range subscriptions {
+		resources[resource] = true
+	}
+	if err := store.UpdateWithSubscriptionRetries(sessionName, func(s *domain.Session) error {
 		if s.Nodes == nil {
 			s.Nodes = make(map[string]*contract.TaskState)
 		}
@@ -120,7 +128,7 @@ func mergeTasks(store *state.Store, sessionName string, session *domain.Session)
 		}
 		s.UpdatedAt = session.UpdatedAt
 		return nil
-	}); err != nil {
+	}, sortedResources(resources)); err != nil {
 		return err
 	}
 	return refreshNodeIdentities(store, sessionName, session)
