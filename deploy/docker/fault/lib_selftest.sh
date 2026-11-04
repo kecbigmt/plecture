@@ -55,9 +55,9 @@ expect fail 'resumed and healthy but uncommitted change lost is rejected'
 
 git_status="?? uncommitted-change"
 notices=0
-expect fail 'resumed and healthy but no resume notice arrived is rejected'
+expect fail 'resumed and healthy but no resume instruction arrived is rejected'
 
 notices=2
-expect fail 'resumed and healthy but the resume notice arrived twice is rejected'
+expect fail 'resumed and healthy but the resume instruction arrived twice is rejected'
 
 [ "$failures" -eq 0 ]

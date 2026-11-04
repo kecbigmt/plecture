@@ -310,7 +310,7 @@ func TestDispatcher_IncludeFilters(t *testing.T) {
 	}
 }
 
-func TestDispatcher_ResumeNoticeUsesRuntimeInstructionChannel(t *testing.T) {
+func TestDispatcher_ResumeInstructionUsesRuntimeInstructionChannel(t *testing.T) {
 	log := eventlog.NewStore(t.TempDir())
 	sock, recv := startFakeSocket(t)
 	d, s := runtimeDispatcher(t, "o/r-1", log, sock, event.TypeInstruction)

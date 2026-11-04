@@ -170,10 +170,10 @@ type HealthcheckConfig struct {
 
 type WorkflowHealthConfig struct {
 	AutoRepairAttempts int
-	ResumeNotice       string
+	ResumeInstruction  string
 }
 
-const DefaultResumeNotice = "The runtime was restarted; your previous turn may have been interrupted. Check the worktree (git status) and the state of related PRs and threads before continuing, and do not repeat operations that are already complete."
+const DefaultResumeInstruction = "The runtime was restarted; your previous turn may have been interrupted. Check the worktree (git status) and the state of related PRs and threads before continuing, and do not repeat operations that are already complete."
 
 // DefaultHealthcheckConfig returns the workflow healthcheck defaults.
 func DefaultHealthcheckConfig() HealthcheckConfig {

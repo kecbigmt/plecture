@@ -1074,7 +1074,7 @@
               "type": "integer",
               "minimum": 0
             },
-            "resume_notice": {
+            "resume_instruction": {
               "type": "string"
             }
           }

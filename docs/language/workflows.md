@@ -252,12 +252,12 @@ not individual keys.
 
 `[<id>.health]` optionally permits automatic repair with
 `auto_repair_attempts`, a required non-negative integer when the table is
-declared. The default is `0`, which disables repair. `resume_notice` is an
+declared. The default is `0`, which disables repair. `resume_instruction` is an
 optional string. Its default instructs the agent to check the worktree and
 related PRs and threads before continuing after an interrupted runtime.
-An empty string disables the notice. A later workflow table replaces an
+An empty string disables the instruction. A later workflow table replaces an
 inherited `[health]` table as a whole; setting `auto_repair_attempts` to `0`
-disables inherited permission, while omitting `resume_notice` selects the
+disables inherited permission, while omitting `resume_instruction` selects the
 default text. For example:
 
 ```toml
@@ -268,22 +268,17 @@ kind = "workflow"
 
 [review_workflow.health]
 auto_repair_attempts = 2
-resume_notice = "Check the worktree and the review thread before continuing."
+resume_instruction = "Check the worktree and the review thread before continuing."
 ```
 
-After the agent runtime is recreated from a previous run, core publishes one
-inbound `plect.session.resumed` event to the session's log. Its body is the
-effective notice; `trigger` metadata is `repair`, `up`, `wake`, or `recreate`, and
-`prev_session_id` identifies the previous runtime when available. A first
-launch and an `up` that reuses a live runtime publish no notice. The event is
-delivered through any channel whose `include` matches `plect.instruction`.
-The [event reference](events.md#session-resume-notices) defines each trigger.
-
-Core identifies the agent among run-scoped nodes that have previous outputs.
-It selects the sole node with a non-empty `session_id` output; otherwise, the
-sole node with a `pid` output read by a channel whose `include` matches
-`plect.instruction`; otherwise, the only run-scoped node in the plan. If none
-of these rules selects a node with previous outputs, no notice is published.
+When `Up` re-sets up at least one run-scoped node whose setup receives `prev`,
+core publishes one inbound `plect.session.resumed` event even if only a sidecar
+is rebuilt while the agent runtime is reused. Its body is the effective
+instruction, and `trigger` metadata is `repair`, `up`, or `wake`. A first
+launch and an `up` that reuses every run-scoped node publish no event. The
+event is delivered through any channel whose `include` matches
+`plect.instruction`.
+The [event reference](events.md#session-resume-instructions) defines each trigger.
 
 The health cycle may run plain `up` only while
 the session's recorded status is `up`, after a non-zero `alive` exit (a

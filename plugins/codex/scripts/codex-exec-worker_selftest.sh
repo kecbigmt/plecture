@@ -172,15 +172,15 @@ for _ in $(seq 1 100); do
   sleep 0.01
 done
 [ -e "$priority_state/ready" ] || { echo "FAIL resumed worker was never ready" >&2; fail=1; }
-echo '{"type":"plect.session.resumed","text":"resume notice"}' > "$priority_queue/2-resumed.json"
+echo '{"type":"plect.session.resumed","text":"resume instruction"}' > "$priority_queue/2-resumed.json"
 echo '{"type":"user.emit","text":"later turn"}' > "$priority_queue/3-later.json"
 wait_for_drain "$priority_queue/3-later.json" || { echo "FAIL queued turns were never drained" >&2; fail=1; }
 mapfile -t ordered_turns < "$STUB_ARGV"
 if [ "${#ordered_turns[@]}" -eq 3 ] &&
-   [[ "${ordered_turns[0]}" == *"-- resume notice"* ]] &&
+   [[ "${ordered_turns[0]}" == *"-- resume instruction"* ]] &&
    [[ "${ordered_turns[1]}" == *"-- leftover turn"* ]] &&
    [[ "${ordered_turns[2]}" == *"-- later turn"* ]]; then
-  echo "ok   a resume notice precedes an interrupted turn; other turns keep queue order"
+  echo "ok   a resume instruction precedes an interrupted turn; other turns keep queue order"
 else
   printf 'FAIL queued turn order: %s\n' "${ordered_turns[*]}" >&2
   fail=1
@@ -203,12 +203,12 @@ done
 [ -e "$timeout_state/ready" ] || { echo "FAIL fallback worker was never ready" >&2; fail=1; }
 sleep 0.5
 if [ -s "$STUB_ARGV" ]; then
-  echo "FAIL leftover turn ran before the resume-notice wait expired" >&2
+  echo "FAIL leftover turn ran before the resume-instruction wait expired" >&2
   fail=1
 fi
 wait_for_drain "$timeout_queue/1-leftover.json" || { echo "FAIL leftover turn was never drained without a notice" >&2; fail=1; }
 if [ "$(wc -l < "$STUB_ARGV")" -eq 1 ] && grep -q -- '-- leftover without notice' "$STUB_ARGV"; then
-  echo "ok   a queued turn runs once after the resume-notice wait expires"
+  echo "ok   a queued turn runs once after the resume-instruction wait expires"
 else
   echo "FAIL queued turn did not run once after the wait expired" >&2
   fail=1

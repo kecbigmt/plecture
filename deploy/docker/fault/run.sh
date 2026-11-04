@@ -116,9 +116,9 @@ inside kill -9 "$pid"
 failed=0
 if wait_for 'S1 resumed launch' "$recovery_wait" inside sh -c 'wc -l < "$HOME/fault/launches"' 2 \
   && assert_recovered; then
-  echo 'PASS: S1 agent loss recovered the same conversation and worktree, and the agent got the resume notice once'
+  echo 'PASS: S1 agent loss recovered the same conversation and worktree, and the agent got the resume instruction once'
 else
-  echo 'FAIL: S1 agent loss did not recover the same conversation and worktree, or the agent missed the resume notice' >&2
+  echo 'FAIL: S1 agent loss did not recover the same conversation and worktree, or the agent missed the resume instruction' >&2
   failed=1
 fi
 
@@ -135,16 +135,16 @@ container=""
 start_container
 if wait_for 'S2 resumed launch after container replacement' "$recovery_wait" inside sh -c 'wc -l < "$HOME/fault/launches"' 2 \
   && assert_recovered; then
-  echo 'PASS: S2 container replacement recovered the same conversation and worktree, and the agent got the resume notice once'
+  echo 'PASS: S2 container replacement recovered the same conversation and worktree, and the agent got the resume instruction once'
 else
-  echo 'FAIL: S2 container replacement did not recover the same conversation and worktree, or the agent missed the resume notice' >&2
+  echo 'FAIL: S2 container replacement did not recover the same conversation and worktree, or the agent missed the resume instruction' >&2
   failed=1
 fi
 if plect up "$session" --detach >/dev/null \
-  && [ "$(resume_notice_count)" = 1 ]; then
-  echo 'PASS: idempotent up did not deliver a second resume notice'
+  && [ "$(resume_instruction_count)" = 1 ]; then
+  echo 'PASS: idempotent up did not deliver a second resume instruction'
 else
-  echo 'FAIL: idempotent up delivered another resume notice or failed' >&2
+  echo 'FAIL: idempotent up delivered another resume instruction or failed' >&2
   failed=1
 fi
 

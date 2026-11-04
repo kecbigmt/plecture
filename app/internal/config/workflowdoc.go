@@ -142,7 +142,7 @@ func workflowFrom(def *lang.Definition, sourcePath string) (WorkflowFile, error)
 func workflowHealthFrom(body map[string]any) (WorkflowHealthConfig, error) {
 	raw, ok := body["health"]
 	if !ok {
-		return WorkflowHealthConfig{ResumeNotice: DefaultResumeNotice}, nil
+		return WorkflowHealthConfig{ResumeInstruction: DefaultResumeInstruction}, nil
 	}
 	tbl, ok := raw.(map[string]any)
 	if !ok {
@@ -152,15 +152,15 @@ func workflowHealthFrom(body map[string]any) (WorkflowHealthConfig, error) {
 	if !ok || value < 0 || value > int64(^uint(0)>>1) {
 		return WorkflowHealthConfig{}, fmt.Errorf("workflow [health].auto_repair_attempts must be a non-negative integer")
 	}
-	notice := DefaultResumeNotice
-	if raw, exists := tbl["resume_notice"]; exists {
+	instruction := DefaultResumeInstruction
+	if raw, exists := tbl["resume_instruction"]; exists {
 		var valid bool
-		notice, valid = raw.(string)
+		instruction, valid = raw.(string)
 		if !valid {
-			return WorkflowHealthConfig{}, fmt.Errorf("workflow [health].resume_notice must be a string")
+			return WorkflowHealthConfig{}, fmt.Errorf("workflow [health].resume_instruction must be a string")
 		}
 	}
-	return WorkflowHealthConfig{AutoRepairAttempts: int(value), ResumeNotice: notice}, nil
+	return WorkflowHealthConfig{AutoRepairAttempts: int(value), ResumeInstruction: instruction}, nil
 }
 
 func workflowPopulationsFrom(def *lang.Definition, pos lang.Position) ([]WorkflowPopulation, error) {
