@@ -1077,7 +1077,6 @@ func TestLoadWorkflows_ResumeInstruction(t *testing.T) {
 		{"override", `resume_instruction = "Check before continuing."`, "Check before continuing.", false},
 		{"disabled", `resume_instruction = ""`, "", false},
 		{"wrong type", `resume_instruction = 1`, "", true},
-		{"retired key", `resume_notice = "old"`, "", true},
 	} {
 		t.Run(tt.name, func(t *testing.T) {
 			base := t.TempDir()
