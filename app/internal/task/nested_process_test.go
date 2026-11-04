@@ -67,8 +67,6 @@ func TestRunSetup_NestedChainRecordsTheProcessIdentityOfItsDeclaringLayer(t *tes
 	}
 }
 
-// The declaring layer's `self.outputs` is its own contract, so a chain whose
-// outer layer binds the pid under another name still records the identity.
 func TestRunSetup_NestedChainReadsThePidFromTheDeclaringLayersOwnContract(t *testing.T) {
 	requireBash(t)
 	outer := config.TaskDefinition{
@@ -234,9 +232,6 @@ func TestExecuteTaskSetup_NestedChainWhoseProcessIsGoneFailsAndKeepsLayers(t *te
 	}
 }
 
-// Only the layer that declared the probe owns the recorded process, so only
-// its cleanup receives the identity; a layer wrapping it releases something
-// else and must not read as though it owned that pid.
 func TestRunCleanup_NestedChainHandsTheIdentityToTheDeclaringLayerOnly(t *testing.T) {
 	requireBash(t)
 	identity := contract.ProcessIdentity{PID: 4242, Start: 98765, Boot: "boot-a"}

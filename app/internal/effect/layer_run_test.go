@@ -643,9 +643,6 @@ func TestProcessLayer_IsAbsentWhenNoLayerDeclaresAProcessProbe(t *testing.T) {
 	}
 }
 
-// Teardown rebuilds the chain without compiling schemas, yet still has to
-// know which layer owns the recorded process so its cleanup alone receives
-// the identity.
 func TestCleanupLayers_KeepWhichLayerDeclaresTheProcessProbe(t *testing.T) {
 	if got := ProcessLayer(CleanupLayers(processChain(t, false, true))); got != 1 {
 		t.Fatalf("ProcessLayer(CleanupLayers) = %d, want 1", got)
