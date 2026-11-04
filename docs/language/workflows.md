@@ -258,6 +258,24 @@ a healthy observation or successful human `up` resets the budget. Exhaustion
 reports `repair_suspended`; three consecutive cycles with an unevaluable
 `alive` probe report `repair_undecidable` without consuming an attempt.
 
+An agent runtime whose worker can stay up while every turn fails composes
+core's process check with a script that reads the turn outcome. The script runs
+only while the pid is still the recorded process:
+
+```toml
+[headless_runtime.health.alive]
+process = "self.outputs.pid"
+type    = "shell"
+script  = '''
+HEALTH="$state_dir/health.json"
+[ -f "$HEALTH" ] || exit 0
+jq -e ".last_exit_code == 0" "$HEALTH" >/dev/null
+'''
+
+[headless_runtime.health.alive.bind]
+state_dir = { from = "self.outputs.state_dir" }
+```
+
 ## Concurrency
 
 `max_up_children` optionally caps sessions parented on a session this workflow

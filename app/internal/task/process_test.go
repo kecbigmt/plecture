@@ -227,3 +227,60 @@ func TestExecuteTaskSetup_RecordsProcessIdentity(t *testing.T) {
 		t.Fatalf("Process = %+v, want an identity for pid %d", got.Process, pid)
 	}
 }
+
+// A cleanup script cannot read the identity core holds, so core answers the
+// one question the script has: is the recorded process still this pid's.
+func TestRunCleanup_SelfProcessAliveAnswersFromTheRecordedIdentity(t *testing.T) {
+	if _, err := exec.LookPath("bash"); err != nil {
+		t.Skip("bash not available")
+	}
+	self := os.Getpid()
+	identity, err := procid.Capture(self)
+	if err != nil {
+		t.Fatal(err)
+	}
+	reused := identity
+	reused.Start += 1000
+	dead := exitedPid(t)
+
+	tests := []struct {
+		name    string
+		outputs map[string]any
+		process *contract.ProcessIdentity
+		want    string
+	}{
+		{"the recorded process", map[string]any{"pid": self}, &identity, "true"},
+		{"a reused pid", map[string]any{"pid": self}, &reused, "false"},
+		{"a process that exited", map[string]any{"pid": dead}, &contract.ProcessIdentity{PID: dead, Start: identity.Start, Boot: identity.Boot}, "false"},
+		{"a record without an identity", map[string]any{"pid": self}, nil, "absent"},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			out := t.TempDir() + "/answer"
+			plan := buildPlan(t,
+				[]taskStub{{
+					id: "worker", scope: "run", setup: "true", alive: "true",
+					cleanup: `printf '%s' "${process_alive-absent}" > "$out"`,
+				}},
+				[]nodeStub{{id: "worker"}},
+			)
+			plan.Run[0].Cleanup.Bind = map[string]*lang.Value{
+				"process_alive": {Form: lang.FormFrom, From: "self.process.alive", Optional: true},
+				"out":           {Form: lang.FormLiteral, Literal: out},
+			}
+			tasks := map[string]*contract.TaskState{
+				"worker": {Scope: "run", Status: contract.TaskStatusProduced, Outputs: tc.outputs, Process: tc.process},
+			}
+			if err := RunCleanup(context.Background(), plan.Run, SessionVars{}, tasks, nil); err != nil {
+				t.Fatalf("RunCleanup: %v", err)
+			}
+			got, err := os.ReadFile(out)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if string(got) != tc.want {
+				t.Fatalf("process_alive = %q, want %q", got, tc.want)
+			}
+		})
+	}
+}

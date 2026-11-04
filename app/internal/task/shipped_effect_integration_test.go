@@ -626,6 +626,7 @@ func (h *effectHarness) runHook(t *testing.T, hook string, def config.TaskDefini
 				Status:  contract.TaskStatusProduced,
 				Inputs:  inputs,
 				Outputs: self,
+				Process: h.recordedProcess(t, nil, self),
 			}
 		}
 		if err := RunCleanup(ctx, []Resolved{r}, session, tasks, nil); err != nil {

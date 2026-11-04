@@ -195,6 +195,11 @@ pid       = { type = "integer" }
 state_dir = { type = "string" }
 ```
 
+A cleanup script cannot read the recorded identity, so core answers its one
+question: `{ from = "self.process.alive" }` binds `true` while the recorded pid
+still belongs to the recorded process and `false` otherwise, and is absent for
+an instance recorded without an identity (bind it `optional = true`).
+
 The identity is recorded for a plain instance only: an effect that is a layer
 of a nesting chain cannot declare `process`, and resolving such a chain is an
 error.

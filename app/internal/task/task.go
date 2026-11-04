@@ -524,7 +524,10 @@ func topoSortNodes(list []Resolved) ([]Resolved, error) {
 // outputs in setup/cleanup templates; `.Tasks.<id>.<key>` is a shorter
 // alias that resolves to the same value.
 type RenderContext struct {
-	Self     map[string]any
+	Self map[string]any
+	// Process is the identity core recorded for the instance, from which a
+	// cleanup's `self.process.alive` is answered; nil when none was recorded.
+	Process  *contract.ProcessIdentity
 	Prev     map[string]any
 	Tasks    map[string]map[string]any
 	Inputs   map[string]any
@@ -1105,6 +1108,7 @@ func RunCleanup(goCtx context.Context, ordered []Resolved, session SessionVars, 
 		}
 		ctx := RenderContext{
 			Self:       state.Outputs,
+			Process:    state.Process,
 			Tasks:      dependencyOutputs(r.DependsOn, tasks),
 			Inputs:     state.Inputs,
 			Workflow:   workflowOutputs(tasks),
