@@ -114,6 +114,7 @@ type effectHarness struct {
 	liveProcess int
 	// aliveProcess is the current scenario's ProcessIdentity.
 	aliveProcess string
+	ignoreTerm   bool
 	liveCmd      *exec.Cmd
 	// workerProcess/workerCmd stands in for a launched thing distinct from
 	// the endpoint's own root process (liveProcess), so a scenario can
@@ -253,6 +254,9 @@ func (h *effectHarness) startLiveProcess(t *testing.T) {
 func (h *effectHarness) startWorkerProcess(t *testing.T) {
 	t.Helper()
 	cmd := exec.Command("sleep", "600")
+	if h.ignoreTerm {
+		cmd = exec.Command("sh", "-c", `trap '' TERM; while :; do sleep 1; done`)
+	}
 	if err := cmd.Start(); err != nil {
 		t.Fatal(err)
 	}
@@ -343,9 +347,21 @@ func copyDirOver(t *testing.T, from, to string) {
 
 func (h *effectHarness) runScenario(t *testing.T, b *strings.Builder, def config.TaskDefinition, id, label string, scenario effectScenario) {
 	t.Helper()
+	h.ignoreTerm = scenario.WorkerIgnoresTerm
 	h.startLiveProcess(t)
 	h.startWorkerProcess(t)
 	h.aliveProcess = scenario.ProcessIdentity
+	verify := scenario.ProcessVerify
+	if verify == "" {
+		verify = "always"
+		if scenario.ProcessIdentity == "reused" {
+			verify = "never"
+		}
+	}
+	t.Setenv("PLECT_EFFECT_PROCESS_VERIFY", verify)
+	if err := os.Remove(filepath.Join(h.stateDir, "verified-once")); err != nil && !os.IsNotExist(err) {
+		t.Fatal(err)
+	}
 	t.Setenv("PLECT_EFFECT_CAPTURE", scenario.Capture)
 	t.Setenv("PLECT_EFFECT_RETRY", "")
 	if scenario.NoTerminalPID {
@@ -362,15 +378,6 @@ func (h *effectHarness) runScenario(t *testing.T, b *strings.Builder, def config
 		t.Setenv("PLECT_EFFECT_FAIL_OUTPUT", "1")
 	} else {
 		t.Setenv("PLECT_EFFECT_FAIL_OUTPUT", "")
-	}
-	// Every scenario starts from the same zone: t.Setenv restores only when
-	// the shared plugin subtest ends, so a HookTZ set by one scenario would
-	// otherwise carry into the next one's setup.
-	t.Setenv("TZ", "UTC")
-	if scenario.EmptyStartTime {
-		t.Setenv("PLECT_EFFECT_EMPTY_LSTART", "1")
-	} else {
-		t.Setenv("PLECT_EFFECT_EMPTY_LSTART", "")
 	}
 	for _, file := range scenario.Files {
 		path := filepath.Join(h.homeDir, file.Path)
@@ -427,9 +434,6 @@ func (h *effectHarness) runScenario(t *testing.T, b *strings.Builder, def config
 			currentInputs = scenario.RetryInputs
 			self = h.runOneHook(t, b, def, "setup", " (retry)", resolved, nodeID, label, session, tasks, self, currentInputs, scenario.Artifacts)
 			continue
-		}
-		if hook != "setup" && scenario.HookTZ != "" {
-			t.Setenv("TZ", scenario.HookTZ)
 		}
 		self = h.runOneHook(t, b, def, hook, "", resolved, nodeID, label, session, tasks, self, currentInputs, scenario.Artifacts)
 	}

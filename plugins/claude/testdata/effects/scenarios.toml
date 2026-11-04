@@ -34,12 +34,13 @@ path    = ".claude/sessions/live.json"
 content = '{"sessionId":"aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee","pid":PID}'
 
 [[runtime]]
-name  = "pid-reused-by-unrelated-process-is-not-alive"
-self  = { pid = "WORKER_PID", pid_started = "started-before-reuse" }
-hooks = ["health.alive"]
+name             = "pid-reused-by-unrelated-process-is-not-alive"
+self             = { pid = "WORKER_PID" }
+process_identity = "reused"
+hooks            = ["health.alive"]
 
 [[runtime]]
-name  = "record-without-pid-started-is-judged-by-pid"
+name  = "record-without-a-start-time-is-judged-by-pid"
 self  = { pid = "WORKER_PID" }
 hooks = ["health.alive"]
 
@@ -161,22 +162,8 @@ path    = ".claude/sessions/aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee.json"
 content = '{"sessionId":"aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee","pid":PID}'
 
 [[runtime]]
-name     = "alive-under-a-different-time-zone-than-setup"
-hook_tz  = "Asia/Tokyo"
-hooks    = ["setup", "health.alive"]
-
-[[runtime.files]]
-path    = ".claude/sessions/aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee.json"
-content = '{"sessionId":"aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee","pid":PID}'
-
-# This proves a start time that cannot be read declines setup rather than
-# recording a pid that alive could not later tell apart from a reused one,
-# and the launched child is killed while the pane survives.
-[[runtime]]
-name                       = "unreadable-start-time-kills-worker"
-empty_start_time           = true
-expect_worker_process_dead = true
-hooks                      = ["setup"]
+name  = "launch-then-alive"
+hooks = ["setup", "health.alive"]
 
 [[runtime.files]]
 path    = ".claude/sessions/aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee.json"
@@ -258,23 +245,42 @@ expect_worker_process_dead = true
 path    = "headless/worker.pid"
 content = "WORKER_PID"
 
-[[headless_runtime]]
-name                       = "ambient-start-time-record-is-alive-and-cleaned-up"
-self                       = { pid = "WORKER_PID", pid_started = "started-WORKER_PID@Asia/Tokyo", state_dir = "HOME/headless" }
-hook_tz                    = "Asia/Tokyo"
-hooks                      = ["health.alive", "cleanup"]
-expect_worker_process_dead = true
-
-[[headless_runtime.files]]
-path    = "headless/worker.pid"
-content = "WORKER_PID"
-
 # The stale worker.pid and the pane parentage both still match; only the
 # recorded identity tells this reused pid apart from the worker that exited.
 [[headless_runtime]]
 name                        = "cleanup-spares-pid-reused-in-same-pane"
 self                        = { pid = "WORKER_PID", state_dir = "HOME/headless" }
 process_identity            = "reused"
+hooks                       = ["cleanup"]
+expect_worker_process_alive = true
+
+[[headless_runtime.files]]
+path    = "headless/worker.pid"
+content = "WORKER_PID"
+
+# A worker that ignores TERM is still the confirmed worker when the grace
+# period ends, so it is killed.
+[[headless_runtime]]
+name                       = "cleanup-kills-a-term-ignoring-worker-that-is-still-confirmed"
+self                       = { pid = "WORKER_PID", state_dir = "HOME/headless" }
+process_identity           = "recorded"
+worker_ignores_term        = true
+hooks                      = ["cleanup"]
+expect_worker_process_dead = true
+
+[[headless_runtime.files]]
+path    = "headless/worker.pid"
+content = "WORKER_PID"
+
+# Identity is confirmed again before the KILL, not carried over from the
+# TERM: a pid taken over by an unrelated process during the grace period
+# is spared.
+[[headless_runtime]]
+name                        = "cleanup-spares-a-pid-reused-during-the-term-grace-period"
+self                        = { pid = "WORKER_PID", state_dir = "HOME/headless" }
+process_identity            = "recorded"
+process_verify              = "once"
+worker_ignores_term         = true
 hooks                       = ["cleanup"]
 expect_worker_process_alive = true
 

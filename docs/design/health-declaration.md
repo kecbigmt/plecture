@@ -81,9 +81,10 @@ one per implementation technique.
   readiness-style third probe is a non-goal: health answers "is this surface
   present and moving", not "may traffic be sent".
 - Each member is an action: exec, shell, or, for `alive` only, `noop` — a
-  declared non-observation, with its values declared in `bind` or in `args`
-  rather than interpolated into the script. `noop` is legal only under
-  `[health.alive]`; the rule applies independently to every layer of a nesting
+  declared non-observation — or `process`, a check core evaluates itself,
+  alone or beside an exec or shell action. Values are declared in `bind` or in
+  `args` rather than interpolated into the script. `noop` and `process` are
+  legal only under `[health.alive]`; the rule applies independently to every layer of a nesting
   chain, and a `noop` layer does not suppress an inner layer's own executable
   probe.
 - Both members observe the same roots `cleanup` does, minus the ones a probe
@@ -126,8 +127,9 @@ cannot be read is a probe that cannot answer, the unevaluable case above. A
 `process` probe may sit beside an exec or shell action, which runs only after
 the process check passes. The identity is recorded for a plain instance, not
 for a layer of a nesting chain. A cleanup that must confirm the same identity
-reads `self.process.alive`, which core answers as a boolean because a script
-cannot read the record.
+receives it as the opaque token `self.process.identity` and asks core again
+before each signal with `plect process verify <token>`, because a script
+cannot read the record and a verdict taken once goes stale.
 
 ### activity
 

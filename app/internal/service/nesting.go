@@ -59,9 +59,7 @@ type probeTarget struct {
 	SourcePath string
 	// From names the layer that wrote that declaration, which is what
 	// decides whether its bin references may name another plugin.
-	From lang.Ownership
-	// Process is the identity core recorded at setup for a plain instance;
-	// nil for a nesting layer, whose effect cannot declare a process probe.
+	From    lang.Ownership
 	Process *contract.ProcessIdentity
 }
 

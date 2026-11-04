@@ -71,8 +71,6 @@ func NextInstanceNumber(taskID string, tasks map[string]*contract.TaskState) int
 // so the caller persists it either way.
 type InstanceSetup struct {
 	Outputs map[string]any
-	// Process is the identity core recorded for the process the effect's
-	// `process` alive probe names; nil when it declares none.
 	Process *contract.ProcessIdentity
 	Layers  []contract.LayerState
 	Stderr  []byte

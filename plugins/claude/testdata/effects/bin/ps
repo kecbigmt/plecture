@@ -2,8 +2,7 @@
 # comm: the pane's found child reports itself as the agent CLI. ppid:
 # answers whether a self-reported pid is really the pane's child, using
 # PLECT_EFFECT_PID as the pane's own identity so an unrelated pid can be
-# told apart from a real one. lstart: a start time unique to each pid, so a
-# stored one can be told apart from a reused pid's.
+# told apart from a real one.
 plect-effect-record ps "$@"
 target=""
 prev=""
@@ -17,14 +16,6 @@ case "$*" in
       printf '%s\n' "$PLECT_EFFECT_PID"
     else
       printf '%s\n' "1"
-    fi
-    ;;
-  *lstart=*)
-    [ -n "${PLECT_EFFECT_EMPTY_LSTART-}" ] && exit 0
-    if [ "${TZ-}" = UTC ] && [ "${LC_ALL-}" = C ]; then
-      printf '%s\n' "started-$target"
-    else
-      printf '%s\n' "started-$target@${TZ-}"
     fi
     ;;
   *)

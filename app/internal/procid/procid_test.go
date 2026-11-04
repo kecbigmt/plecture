@@ -149,3 +149,22 @@ func withBoot(id contract.ProcessIdentity, boot string) contract.ProcessIdentity
 	id.Boot = boot
 	return id
 }
+
+func TestEncodeDecode_RoundTripsAnIdentity(t *testing.T) {
+	want := contract.ProcessIdentity{PID: 42, Start: 7001, Boot: "boot-a"}
+	got, err := Decode(Encode(want))
+	if err != nil {
+		t.Fatalf("Decode: %v", err)
+	}
+	if got != want {
+		t.Fatalf("Decode(Encode(x)) = %+v, want %+v", got, want)
+	}
+}
+
+func TestDecode_RejectsWhatIsNotAnIdentity(t *testing.T) {
+	for _, token := range []string{"", "not json", `{"pid":0}`, `{"pid":-3,"start":1}`, `[]`} {
+		if _, err := Decode(token); err == nil {
+			t.Errorf("Decode(%q) succeeded, want an error", token)
+		}
+	}
+}

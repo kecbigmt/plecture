@@ -194,16 +194,18 @@ type   = "shell"
 script = '''
 # Reconfirmed before each signal, since the worker can exit during the TERM
 # grace period and its pid be reused: still the pane's child, still the pid
-# the worker recorded, and still the process core recorded at setup — the only
-# check a reuse by another process of the same pane cannot also pass.
+# the worker recorded, and still the process core recorded at setup, which core
+# alone can answer afresh — the only check a reuse by another process of the
+# same pane cannot also pass.
 # Without a pane there is no parent to confirm against, and a worker whose
 # pane is gone has gone with it.
 PANE_PID=$(sh -c "$terminal_pid" terminal-pid 2>/dev/null)
 is_worker() {
-  [ -n "$PANE_PID" ] && [ "${process_alive-}" = true ] || return 1
+  [ -n "$PANE_PID" ] && [ -n "${process_identity-}" ] || return 1
   case "${pid-}" in ''|0|*[!0-9]*) return 1 ;; esac
   [ "$(ps -o ppid= -p "$pid" 2>/dev/null | tr -d '[:space:]')" = "$PANE_PID" ] || return 1
-  [ "$(cat "${state_dir-}/worker.pid" 2>/dev/null)" = "$pid" ]
+  [ "$(cat "${state_dir-}/worker.pid" 2>/dev/null)" = "$pid" ] || return 1
+  plect process verify "$process_identity" >/dev/null 2>&1
 }
 if is_worker; then
   kill -TERM "$pid" 2>/dev/null
@@ -220,13 +222,13 @@ true
 '''
 
 [headless_runtime.cleanup.bind]
-pid          = { from = "self.outputs.pid", optional = true }
-process_alive = { from = "self.process.alive", optional = true }
-state_dir    = { from = "self.outputs.state_dir", optional = true }
-socket_path  = { from = "self.outputs.socket_path", optional = true }
-session_name = { from = "session.name" }
-activity_bin = { bin = "claude-agent-activity" }
-terminal_pid = { terminal = "pid" }
+pid              = { from = "self.outputs.pid", optional = true }
+process_identity = { from = "self.process.identity", optional = true }
+state_dir        = { from = "self.outputs.state_dir", optional = true }
+socket_path      = { from = "self.outputs.socket_path", optional = true }
+session_name     = { from = "session.name" }
+activity_bin     = { bin = "claude-agent-activity" }
+terminal_pid     = { terminal = "pid" }
 
 # A live PID alone would hide a worker stuck on a permanently failing turn,
 # such as one with an exhausted or revoked API key; core's process check

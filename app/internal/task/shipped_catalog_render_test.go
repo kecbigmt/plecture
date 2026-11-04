@@ -144,9 +144,9 @@ func TestShippedCatalog_EffectActionsResolve(t *testing.T) {
 			{"health.alive", def.Health.AliveProbe(), healthRoots(ctx)},
 			{"health.activity", def.Health.ActivityProbe(), healthRoots(ctx)},
 		} {
-			// A noop action deliberately runs nothing, so there is nothing
-			// for a resolution check to exercise.
-			if probe.action == nil || probe.action.Type == lang.ActionNoop {
+			// A noop or process action runs nothing, so there is nothing for a
+			// resolution check to exercise.
+			if probe.action == nil || probe.action.Type == lang.ActionNoop || probe.action.Type == lang.ActionProcess {
 				continue
 			}
 			resolved, err := resolveEffect(probe.action, probe.env, ctx, def.Ownership(), nil)

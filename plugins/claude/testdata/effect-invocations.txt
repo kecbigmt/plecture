@@ -38,8 +38,10 @@ activity: fingerprint="spy-turn-1" silence_expected=false
 == headless_runtime:fresh-with-inputs / cleanup
 call[0]: "terminal-pid"
 call[1]: "ps" "-o" "ppid=" "-p" "<pid>"
-call[2]: "ps" "-o" "ppid=" "-p" "<pid>"
-call[3]: "claude-agent-activity" "reset" "acme/widget-1"
+call[2]: "plect" "process" "verify"
+call[3]: "ps" "-o" "ppid=" "-p" "<pid>"
+call[4]: "plect" "process" "verify"
+call[5]: "claude-agent-activity" "reset" "acme/widget-1"
 cleaned
 
 == headless_runtime:resume-keeps-session / setup
@@ -69,13 +71,35 @@ declined: exit status 1
 == headless_runtime:cleanup-kills-confirmed-worker / cleanup
 call[0]: "terminal-pid"
 call[1]: "ps" "-o" "ppid=" "-p" "<pid>"
-call[2]: "ps" "-o" "ppid=" "-p" "<pid>"
-call[3]: "claude-agent-activity" "reset" "acme/widget-1"
+call[2]: "plect" "process" "verify"
+call[3]: "ps" "-o" "ppid=" "-p" "<pid>"
+call[4]: "plect" "process" "verify"
+call[5]: "claude-agent-activity" "reset" "acme/widget-1"
 cleaned
 
 == headless_runtime:cleanup-spares-pid-reused-in-same-pane / cleanup
 call[0]: "terminal-pid"
-call[1]: "claude-agent-activity" "reset" "acme/widget-1"
+call[1]: "ps" "-o" "ppid=" "-p" "<pid>"
+call[2]: "plect" "process" "verify"
+call[3]: "claude-agent-activity" "reset" "acme/widget-1"
+cleaned
+
+== headless_runtime:cleanup-kills-a-term-ignoring-worker-that-is-still-confirmed / cleanup
+call[0]: "terminal-pid"
+call[1]: "ps" "-o" "ppid=" "-p" "<pid>"
+call[2]: "plect" "process" "verify"
+call[3]: "ps" "-o" "ppid=" "-p" "<pid>"
+call[4]: "plect" "process" "verify"
+call[5]: "claude-agent-activity" "reset" "acme/widget-1"
+cleaned
+
+== headless_runtime:cleanup-spares-a-pid-reused-during-the-term-grace-period / cleanup
+call[0]: "terminal-pid"
+call[1]: "ps" "-o" "ppid=" "-p" "<pid>"
+call[2]: "plect" "process" "verify"
+call[3]: "ps" "-o" "ppid=" "-p" "<pid>"
+call[4]: "plect" "process" "verify"
+call[5]: "claude-agent-activity" "reset" "acme/widget-1"
 cleaned
 
 == headless_runtime:cleanup-spares-pid-without-worker-pidfile / cleanup
@@ -178,7 +202,13 @@ call[2]: "claude-agent-activity" "reset" "acme/widget-1"
 cleaned
 
 == runtime:stale-pid-is-not-rediscovered / health.alive
-declined: exit status 1
+declined: pid 999999999: process is not running
+
+== runtime:pid-reused-by-unrelated-process-is-not-alive / health.alive
+declined: pid <pid>: pid is held by a different process than the one recorded
+
+== runtime:record-without-a-start-time-is-judged-by-pid / health.alive
+alive
 
 == runtime:stale-pid-cleans-matching-pane-claude / cleanup
 call[0]: "terminal-pid"
@@ -345,3 +375,17 @@ call[11]: "ps" "-p" "<pid>" "-o" "comm="
 call[12]: "ps" "-o" "ppid=" "-p" "<pid>"
 call[13]: "ps" "-p" "<pid>" "-o" "comm="
 declined: task "runtime" setup: exit status 1
+
+== runtime:launch-then-alive / setup
+call[0]: "uuidgen"
+call[1]: "mktemp" "<state>/plect-mcp.XXXXXX"
+call[2]: "claude-mcp-servers"
+call[3]: "claude-agent-activity" "reset" "acme/widget-1"
+call[4]: "mktemp" "<state>/plect-hooks.XXXXXX"
+call[5]: "terminal-pid"
+call[6]: "terminal-send_text" "export PLECT_SESSION_NAME=acme/widget-1; claude --session-id aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee --mcp-config <state>/plect-mcp.json --settings <state>/plect-hooks.json    --permission-mode bypassPermissions --disallowedTools AskUserQuestion"
+call[7]: "terminal-send_keys" "Enter"
+outputs: {"hooks_settings":"<state>/plect-hooks.json","mcp_config":"<state>/plect-mcp.json","pid":<pid>,"session_id":"aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee","socket_path":"<state>/claude-channel/aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee.sock"}
+
+== runtime:launch-then-alive / health.alive
+alive

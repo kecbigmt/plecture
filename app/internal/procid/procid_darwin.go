@@ -11,8 +11,8 @@ import (
 	"golang.org/x/sys/unix"
 )
 
-// Zero because kinfo_proc records an absolute microsecond timestamp that
-// nothing rounds between reads.
+// The tolerance is zero because kinfo_proc records an absolute microsecond
+// timestamp that nothing rounds between reads.
 const startTolerance = 0
 
 const szomb = 5

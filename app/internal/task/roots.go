@@ -34,7 +34,7 @@ func cleanupRoots(ctx RenderContext) lang.Roots {
 	env := sessionRoots(ctx)
 	self := map[string]any{"outputs": orEmpty(normalizeOutputs(ctx.Self))}
 	if ctx.Process != nil {
-		self["process"] = map[string]any{"alive": procid.Verify(*ctx.Process) == nil}
+		self["process"] = map[string]any{"identity": procid.Encode(*ctx.Process)}
 	}
 	env["self"] = self
 	env["inputs"] = normalizeOutputs(ctx.Inputs)

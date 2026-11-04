@@ -134,9 +134,7 @@ type Probe struct {
 	SourcePath string
 	From       lang.Ownership
 	Env        []string
-	// Process is the identity core recorded for this instance when setup
-	// produced it; nil for a record without one.
-	Process *contract.ProcessIdentity
+	Process    *contract.ProcessIdentity
 }
 
 func (p Probe) context(session SessionVars) RenderContext {
@@ -524,9 +522,7 @@ func topoSortNodes(list []Resolved) ([]Resolved, error) {
 // outputs in setup/cleanup templates; `.Tasks.<id>.<key>` is a shorter
 // alias that resolves to the same value.
 type RenderContext struct {
-	Self map[string]any
-	// Process is the identity core recorded for the instance, from which a
-	// cleanup's `self.process.alive` is answered; nil when none was recorded.
+	Self     map[string]any
 	Process  *contract.ProcessIdentity
 	Prev     map[string]any
 	Tasks    map[string]map[string]any

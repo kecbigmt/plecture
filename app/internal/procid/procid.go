@@ -1,8 +1,9 @@
 // Package procid captures and compares process identity: a pid together with
-// its start time, since the kernel recycles pids.
+// its start time, because the kernel recycles pids.
 package procid
 
 import (
+	"encoding/json"
 	"errors"
 	"fmt"
 
@@ -45,4 +46,23 @@ func abs(n int64) int64 {
 		return -n
 	}
 	return n
+}
+
+// Encode renders an identity as the opaque token `plect process verify`
+// accepts, so a script can hand it back to core for a fresh check.
+func Encode(id contract.ProcessIdentity) string {
+	raw, _ := json.Marshal(id)
+	return string(raw)
+}
+
+// Decode reads a token Encode produced.
+func Decode(token string) (contract.ProcessIdentity, error) {
+	var id contract.ProcessIdentity
+	if err := json.Unmarshal([]byte(token), &id); err != nil {
+		return id, fmt.Errorf("not a process identity: %w", err)
+	}
+	if id.PID <= 0 {
+		return id, fmt.Errorf("not a process identity: pid %d", id.PID)
+	}
+	return id, nil
 }
