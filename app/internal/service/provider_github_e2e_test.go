@@ -474,6 +474,7 @@ func TestIntegration_CreateSubscribesToGithubWatcher(t *testing.T) {
 		[]taskFixture{{id: "noop", scope: "session", setup: `echo '{}'`}},
 		[]nodeFixture{{id: "noop"}},
 	)
+	copyShippedGithubResources(t, cfg.PluginDirs[0])
 
 	url := "https://github.com/testowner/testrepo/issues/55"
 	if _, err := Create(cfg, store, CreateParams{URL: url}); err != nil {
@@ -498,6 +499,7 @@ func TestIntegration_DestroyUnsubscribesFromGithubWatcher(t *testing.T) {
 		[]taskFixture{{id: "noop", scope: "session", setup: `echo '{}'`}},
 		[]nodeFixture{{id: "noop"}},
 	)
+	copyShippedGithubResources(t, cfg.PluginDirs[0])
 
 	url := "https://github.com/testowner/testrepo/issues/56"
 	sessionName := "testowner/testrepo-56+default"
