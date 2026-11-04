@@ -98,6 +98,9 @@ Its session-scoped setup also calls `plect subscribe` for the new permalink.
 Cleanup unsubscribes that thread. A runtime restart or `plect down` leaves the
 subscription intact. Keep `slack_thread`'s `base_url` pointed at the same
 resident adapter whose `listen_addr` the resource hook reads.
+If the adapter is unreachable at cleanup, the effect logs the failed
+unsubscribe and continues; the adapter's startup sweep removes the
+registration for the destroyed session when it returns.
 
 `examples/review-thread-workflow.toml` shows the review case: it composes
 `root_text` from a PR title, URL, and head sha, then wires `slack_thread`

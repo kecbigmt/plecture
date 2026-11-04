@@ -42,9 +42,20 @@ type = "noop"
 type = "shell"
 script = '''
 set -eu
-curl -sf --max-time 10 -G -X DELETE "$base_url/subscribe" \
+if curl -sf --max-time 10 -G -X DELETE "$base_url/subscribe" \
   --data-urlencode "session_name=$session_name" \
-  --data-urlencode "thread_ts=$thread_ts" >/dev/null
+  --data-urlencode "thread_ts=$thread_ts" >/dev/null; then
+  :
+else
+  status=$?
+  case "$status" in
+    6|7|28)
+      printf 'slack_thread cleanup: unsubscribe failed for %s/%s (adapter unreachable, curl exit %s); startup sweep will remove it\n' \
+        "$session_name" "$thread_ts" "$status" >&2
+      ;;
+    *) exit "$status" ;;
+  esac
+fi
 '''
 
 [slack_thread.cleanup.bind]
