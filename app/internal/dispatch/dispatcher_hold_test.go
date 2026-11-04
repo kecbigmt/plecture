@@ -196,3 +196,24 @@ func TestDispatcherHold_RetryDoesNotRedeliverToChannelsThatSucceeded(t *testing.
 	recvType(t, deadRecv)
 	assertNoDelivery(t, recv)
 }
+
+func TestDispatcherHold_TimeoutThatDoesNotResolveIsNeverHeld(t *testing.T) {
+	log := eventlog.NewStore(t.TempDir())
+	d, s := runtimeDispatcher(t, "session-1", log, filepath.Join(t.TempDir(), "absent.sock"), "plect.instruction")
+	for name, def := range d.defs {
+		def.Timeout = literalValue("not-a-duration")
+		d.defs[name] = def
+	}
+	fn, _ := awaitingRepair(true)
+	d.awaitingRepair = fn
+
+	appendInstruction(log, time.Now())
+	drainOnce(d, s)
+
+	if errs := channelErrors(t, log); len(errs) != 1 {
+		t.Fatalf("channel errors = %+v, want one: a timeout that does not resolve fails before any delivery attempt", errs)
+	}
+	if cur, _ := log.ReadCursor("session-1", dispatcherConsumer); cur == 0 {
+		t.Fatal("cursor did not advance past a failure repair cannot fix")
+	}
+}

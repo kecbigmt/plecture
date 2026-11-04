@@ -245,7 +245,7 @@ func (d *sessionDispatcher) processEvent(ctx context.Context, s *domain.Session,
 			mu.Lock()
 			defer mu.Unlock()
 			if derr != nil {
-				failures[i] = deliveryFailure{channel: ch.Name, attempts: attempts, cause: derr, attempted: true}
+				failures[i] = deliveryFailure{channel: ch.Name, attempts: attempts, cause: derr, attempted: attempts > 0}
 				return
 			}
 			delivered[ch.Name] = true

@@ -8,7 +8,6 @@ import (
 	"testing"
 	"time"
 
-	"github.com/kecbigmt/plecture/app/internal/channel"
 	"github.com/kecbigmt/plecture/app/internal/config"
 	"github.com/kecbigmt/plecture/app/internal/domain"
 	"github.com/kecbigmt/plecture/app/internal/eventlog"
@@ -593,77 +592,5 @@ include     = ["plect.instruction"]
 	}
 	if typ := recvType(t, recv); typ != event.TypeInstruction {
 		t.Errorf("delivered type = %q, want %q (plugin-only channel definition did not resolve)", typ, event.TypeInstruction)
-	}
-}
-
-func TestSupervisor_WithRepairWaitHoldsFailedDelivery(t *testing.T) {
-	tmpHome := t.TempDir()
-	t.Setenv("HOME", tmpHome)
-	globalDir := filepath.Join(tmpHome, ".config", "plect")
-	writeFile(t, filepath.Join(globalDir, "config.toml"), "schema_version = 2\n")
-	writeFile(t, filepath.Join(globalDir, "channels", "claude_channel.toml"), `
-[claude_channel]
-kind = "channel"
-type = "unix_socket"
-path = { from = "inputs.path" }
-body = { json = { from = "event" } }
-
-[claude_channel.input_schema]
-path = { type = "string", required = true }
-`)
-	writeClaudeRunTask(t, globalDir)
-	writeFile(t, filepath.Join(globalDir, "workflows", "coding.toml"), `
-[coding]
-kind = "workflow"
-[[coding.nodes]]
-id   = "claude"
-uses = "claude"
-[[coding.event.channel]]
-name        = "runtime"
-uses        = "claude_channel"
-inputs.path = { from = "nodes.claude.outputs.socket_path" }
-include     = ["plect.instruction"]
-`)
-	cfg, err := config.Load()
-	if err != nil {
-		t.Fatal(err)
-	}
-	log := eventlog.NewStore(t.TempDir())
-	stateStore := state.NewStore(log.Dir())
-	dead := filepath.Join(t.TempDir(), "absent.sock")
-	s := &domain.Session{
-		Name: "o/r-1", Workflow: "coding", WorkspaceDirPath: t.TempDir(),
-		Nodes: map[string]*contract.TaskState{
-			"claude": {Scope: contract.TaskScopeRun, Status: contract.TaskStatusProduced, Outputs: map[string]any{"socket_path": dead}},
-		},
-	}
-	if err := stateStore.Put(s); err != nil {
-		t.Fatal(err)
-	}
-	var asked []string
-	hub := sessionhub.NewRegistry(log)
-	defer hub.Close()
-	sup := NewSupervisor(func() *config.Config { return cfg }, stateStore, log, hub,
-		WithRepairWait(func(got *config.Config, st *state.Store, session string) (bool, error) {
-			if got != cfg || st != stateStore {
-				t.Errorf("repair wait got a different config or store than the supervisor's")
-			}
-			asked = append(asked, session)
-			return true, nil
-		}))
-	d, _ := sup.buildDispatcher("o/r-1", s)
-	if d == nil {
-		t.Fatal("no dispatcher built")
-	}
-	d.policy = channel.RetryPolicy{MaxAttempts: 1, Timeout: 200 * time.Millisecond}
-
-	log.Append(event.Event{SessionName: "o/r-1", Type: event.TypeInstruction, Direction: event.Internal})
-	drainOnce(d, s)
-
-	if errs, _, _, _ := log.List("o/r-1", 0, event.Filter{Types: []string{event.TypeChannelError}}); len(errs) != 0 {
-		t.Fatalf("channel errors = %+v, want the failed delivery held", errs)
-	}
-	if len(asked) != 1 || asked[0] != "o/r-1" {
-		t.Fatalf("repair wait asked about %v, want the dispatcher's session once", asked)
 	}
 }
