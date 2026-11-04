@@ -162,19 +162,20 @@ messages, and stored execution results cannot.
 trusted configuration, classifies the difference from the session's revision,
 and moves the session to the new revision when the class permits. `--all`
 covers every active session with a workflow and `--workflow <name>` narrows it.
-A refused session leaves its revision unchanged.
 
-| Class | Meaning | Outcome |
+| Class | Raised by | Outcome |
 |---|---|---|
-| compatible | The expansions agree on everything an existing allocation depends on. | The revision is replaced. |
-| automatic | Only changes that need no restart: an added node, a removed node whose saved execution is cleaned, or a changed alive probe. | The revision is replaced; removed nodes are cleaned and added nodes are set up on an up session. |
-| restart | A run-scoped node, or every run-scoped node, was replaced. | Refused unless `--with-restart`, which brings the session down on the old revision, switches, and brings an up session back up. |
-| recreate | A session-scoped node, the workspace provider, a dynamic task definition, saved outputs a new binding needs, or nesting records changed incompatibly. | Always refused; destroy and recreate the session. |
+| compatible | No difference below. A difference only in instructions, display, event channels, ticks, health, or the `description` or `instruction` of a task document is compatible. | The revision is replaced. |
+| automatic | A node added or removed; an alive probe changed on a node or a live dynamic instance, with the rest of its declaration unchanged. | Removed nodes, and nodes that depended on them, are cleaned with the old revision before the switch, whatever the session's status. Added nodes are set up by an `up` on the new revision, which a rebase runs only when the session is up. |
+| restart | A run-scoped node with unchanged scope whose node entry or effect definition changed; every run-scoped node replaced by different ones; a live run-scoped dynamic effect instance whose definition changed. | Refused unless `--with-restart`, which brings the session down on the old revision, cleans removed nodes, switches, and brings an up session back up. |
+| recreate | A node whose scope changed, or a session-scoped node whose declaration changed; a changed workspace provider or provider inputs; for a live dynamic instance, a removed or missing definition, a changed session-scoped effect definition, or a changed task document beyond its `description` or `instruction`; saved outputs that a new node input, alive binding, nesting layer, or event channel input cannot resolve from. | Always refused; destroy and recreate the session. |
 
 A session takes the highest class any difference raises, and the command prints
 each reason. `--dry-run` prints the classification and the nodes to recreate
-without changing the session. Each non-dry attempt appends a
-`plect.session.rebase` event recording the digests, class, and result.
+without changing the session. A refusal by class leaves the revision unchanged.
+Every classified, non-dry attempt appends one `plect.session.rebase` event
+recording the digests, class, and result, except an attempt that the session
+guard or the lifecycle relation guard refuses; a refusal by class is recorded.
 
 ## Execution records
 
@@ -195,11 +196,10 @@ whose declarations were removed or changed.
 
 The current operation supplies `force` and plugin-owned cleanup inputs; they
 do not replace setup-time facts. A record that still matches a node of the
-session's revision remains in use. A changed node effect, resolved setup
-inputs, scope, or execution directory requires reconstruction; the diagnostic
-directs the caller to `--force-recreate`. A node removed by a rebase is not set
-up again, but its record remains available for cleanup and release. Thus an
-existing node's execution contract changes only by rebase and reconstruction.
+session's revision remains in use. A node's effect, scope, or declaration
+changes only through a rebase, which classifies the change as described in
+[Rebase](#rebase). A node removed by a rebase is not set up again, but its
+record remains available for cleanup and release.
 Population reload is separate: its current policy controls future evaluation,
 while members and their provenance remain retained as specified below.
 

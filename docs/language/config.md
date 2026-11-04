@@ -80,8 +80,9 @@ declarations and channels resolve from current trusted configuration.
 
 The session's revision is the desired state used for reconciliation. Nodes
 already set up retain their operational cleanup facts, and executable cleanup
-code comes from the revision. If a node must be rebuilt, the diagnostic
-directs the caller to `--force-recreate`. Creation and rebase read definitions
+code comes from the revision. A change to a node's declaration reaches the
+session only through a rebase, which classifies it as described in
+[Rebase](workflows.md#rebase). Creation and rebase read definitions
 from the recorded root; if it cannot be read, they fail with an actionable
 error and do not select another root. Operations that execute a stored
 revision do not need the tree.
