@@ -1,8 +1,5 @@
-// Package procid captures and compares operating-system process identity: a
-// pid together with the numeric start time the platform reports for it. A pid
-// alone is not an identity, because the kernel recycles it; the start time is
-// what tells a still-running process apart from an unrelated later one that
-// received the same pid.
+// Package procid captures and compares process identity: a pid together with
+// its start time, since the kernel recycles pids.
 package procid
 
 import (
@@ -13,11 +10,9 @@ import (
 )
 
 var (
-	// ErrNotRunning means no live process holds the pid. A zombie counts as
-	// not running: it has exited and only awaits its parent's wait.
+	// ErrNotRunning means no live process holds the pid; a zombie has exited
+	// and does not count.
 	ErrNotRunning = errors.New("process is not running")
-	// ErrReused means a live process holds the pid but is not the one that was
-	// recorded.
 	ErrReused = errors.New("pid is held by a different process than the one recorded")
 )
 
@@ -29,9 +24,8 @@ func Capture(pid int) (contract.ProcessIdentity, error) {
 	return capture(pid)
 }
 
-// Verify reports whether the process holding recorded.PID is still the one
-// recorded: nil when it is, ErrNotRunning when nothing live holds the pid, and
-// ErrReused when something else does.
+// Verify returns ErrNotRunning when nothing live holds recorded.PID and
+// ErrReused when a different process does.
 func Verify(recorded contract.ProcessIdentity) error {
 	current, err := Capture(recorded.PID)
 	if err != nil {
@@ -43,8 +37,7 @@ func Verify(recorded contract.ProcessIdentity) error {
 	return nil
 }
 
-// VerifyPIDOnly is the judgment for a record that carries no start time: the
-// pid's existence is all there is to check.
+// VerifyPIDOnly judges a record that carries no start time.
 func VerifyPIDOnly(pid int) error {
 	_, err := Capture(pid)
 	return err

@@ -14,15 +14,12 @@ import (
 	contract "github.com/kecbigmt/plecture/contracts/state"
 )
 
-// startTolerance is one clock tick: the kernel reports the start time in
-// whole ticks, and a probe reading it back must not call a process different
-// over a rounding step.
+// One clock tick, the unit the kernel reports the start time in.
 const startTolerance = 1
 
-// The start time stays in ticks since boot, paired with the boot id, rather
-// than being converted to wall-clock time with the boot time: that conversion
-// shifts whenever the system clock is stepped, and a false "different
-// process" verdict recreates a live agent.
+// The start time stays in ticks since boot, paired with the boot id: a
+// wall-clock conversion shifts whenever the system clock is stepped, and a
+// false "different process" verdict recreates a live agent.
 func capture(pid int) (contract.ProcessIdentity, error) {
 	raw, err := os.ReadFile("/proc/" + strconv.Itoa(pid) + "/stat")
 	if err != nil {
@@ -45,9 +42,8 @@ func capture(pid int) (contract.ProcessIdentity, error) {
 	return contract.ProcessIdentity{PID: pid, Start: start, Boot: boot}, nil
 }
 
-// parseStat reads the state and start time out of /proc/<pid>/stat. The
-// command name (field 2) is parenthesized and may itself contain spaces and
-// parentheses, so fields are counted from the last closing parenthesis.
+// Fields are counted from the last closing parenthesis because the command
+// name (field 2) may itself contain spaces and parentheses.
 func parseStat(stat string) (state byte, start int64, err error) {
 	end := strings.LastIndexByte(stat, ')')
 	if end < 0 {

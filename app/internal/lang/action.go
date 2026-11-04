@@ -5,16 +5,10 @@ import (
 	"strings"
 )
 
-// Action is one lifecycle execution: exec or shell everywhere, plus two more
-// variants legal only where ParseAliveAction is the parser ([health.alive]):
-// noop, and process, which core evaluates itself. Exactly one variant's fields
-// are populated, named by Type; noop and process populate none of the exec or
-// shell fields.
-//
-// Process is the one field an alive action may carry alongside an exec or
-// shell variant: the reference naming the output that holds the pid core
-// recorded an identity for. It is set on a process variant, and on an exec or
-// shell variant that adds its own check after core's.
+// Action is one lifecycle execution: exec or shell everywhere, plus noop and
+// process, legal only where ParseAliveAction is the parser ([health.alive]).
+// Process is also set on an exec or shell alive action that runs after core's
+// own process check.
 type Action struct {
 	Type string
 
