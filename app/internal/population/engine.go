@@ -288,7 +288,7 @@ func (e *Engine) admit(ctx context.Context, member *state.PopulationMember) erro
 			return e.failAdmit(member, member.SessionName, "up", err)
 		}
 		if session != nil && !session.SleepSince.IsZero() {
-			reason, err := service.WakeSuspensionReason(e.state, member.SessionName)
+			reason, since, err := service.WakeSuspension(e.state, member.SessionName)
 			if err != nil {
 				return e.failAdmit(member, member.SessionName, "up", err)
 			}
@@ -298,7 +298,7 @@ func (e *Engine) admit(ctx context.Context, member *state.PopulationMember) erro
 					if current == nil || current.Generation != member.Generation || current.Tombstoned {
 						return nil
 					}
-					current.AdmitRetryAt = e.now().Add(admitRetryBase)
+					current.AdmitRetryAt = e.now().Add(wakeWaitDelay(e.now().Sub(since)))
 					return nil
 				})
 			}
@@ -429,6 +429,16 @@ func admitRetryDelay(failures uint) time.Duration {
 	}
 	if delay > admitRetryMax {
 		return admitRetryMax
+	}
+	return delay
+}
+
+func wakeWaitDelay(suspendedFor time.Duration) time.Duration {
+	attempts := uint(1)
+	delay := admitRetryDelay(attempts)
+	for suspendedFor >= delay && delay < admitRetryMax {
+		attempts++
+		delay = admitRetryDelay(attempts)
 	}
 	return delay
 }

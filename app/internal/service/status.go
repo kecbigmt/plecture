@@ -170,7 +170,7 @@ func Status(cfg *config.Config, store *state.Store, identifier string) (*StatusR
 	if err != nil {
 		return nil, err
 	}
-	wakeReason, err := WakeSuspensionReason(store, sessionName)
+	wakeReason, _, err := WakeSuspension(store, sessionName)
 	if err != nil {
 		return nil, err
 	}

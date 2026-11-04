@@ -55,7 +55,7 @@ func queuedForWake(cfg *config.Config, store *state.Store, s *domain.Session) (b
 	if err != nil || !queued {
 		return false, err
 	}
-	suspended, err := WakeSuspensionReason(store, s.Name)
+	suspended, _, err := WakeSuspension(store, s.Name)
 	if err != nil || suspended != "" {
 		return false, err
 	}
@@ -126,7 +126,7 @@ func sleepVisibility(cfg *config.Config, store *state.Store, s *domain.Session) 
 	if position > 0 {
 		return "waiting_capacity", position, nil
 	}
-	suspended, err := WakeSuspensionReason(store, s.Name)
+	suspended, _, err := WakeSuspension(store, s.Name)
 	if err != nil {
 		return "", 0, err
 	}
@@ -145,7 +145,7 @@ func queueSleep(store *state.Store, name, reason string, at time.Time) (bool, er
 	if err != nil {
 		return false, err
 	}
-	suspended, err := WakeSuspensionReason(store, name)
+	suspended, _, err := WakeSuspension(store, name)
 	if err != nil {
 		return false, err
 	}
@@ -174,7 +174,17 @@ func RequestWake(store *state.Store, name string, at time.Time) (bool, error) {
 			return err
 		}
 		woken, err = queueSleep(store, name, "event", at)
-		return err
+		if err != nil || !woken || s.Population == nil {
+			return err
+		}
+		key := s.Population.Workflow + "/" + s.Population.Name
+		return store.UpdatePopulation(key, func(population *state.PopulationState) error {
+			member := population.Members[s.ResourceID]
+			if member != nil && member.SessionName == name && member.PendingUp {
+				member.AdmitRetryAt = time.Time{}
+			}
+			return nil
+		})
 	})
 	return woken, err
 }
@@ -285,21 +295,21 @@ func wakeFailureCount(store *state.Store, name string) (int, error) {
 	return count, nil
 }
 
-func WakeSuspensionReason(store *state.Store, name string) (string, error) {
+func WakeSuspension(store *state.Store, name string) (string, time.Time, error) {
 	evs, _, _, err := eventlog.NewStore(store.Dir()).List(name, 0, event.Filter{Types: []string{event.TypeSessionSleep, event.TypeSessionWake}})
 	if err != nil {
-		return "", err
+		return "", time.Time{}, err
 	}
 	for i := len(evs) - 1; i >= 0; i-- {
 		if evs[i].Type == event.TypeSessionSleep {
-			return "", nil
+			return "", time.Time{}, nil
 		}
 		if evs[i].Metadata["result"] == "succeeded" {
-			return "", nil
+			return "", time.Time{}, nil
 		}
 		if evs[i].Metadata["result"] == "suspended" {
-			return evs[i].Summary, nil
+			return evs[i].Summary, evs[i].Time, nil
 		}
 	}
-	return "", nil
+	return "", time.Time{}, nil
 }

@@ -531,6 +531,8 @@ type = "noop"
 	if err := engine.Reconcile(context.Background()); err != nil {
 		t.Fatalf("admission wait while wake is suspended: %v", err)
 	}
+	previousDelay := time.Duration(0)
+	previousAttemptAt := member.AdmitRetryAt
 	sleepsAfter, _, _, err := logStore.List(member.SessionName, 0, event.Filter{Types: []string{event.TypeSessionSleep}})
 	if err != nil || len(sleepsAfter) != len(sleepsBefore) {
 		t.Fatalf("sleep events after admission retry = %v, %v; want unchanged count %d", sleepsAfter, err, len(sleepsBefore))
@@ -545,6 +547,12 @@ type = "noop"
 			t.Fatal(err)
 		}
 		retryAt := population.Members[resource].AdmitRetryAt
+		delay := retryAt.Sub(previousAttemptAt)
+		if delay <= previousDelay || delay > admitRetryMax {
+			t.Fatalf("wake-suspended retry delay %d = %s, want growth from %s up to %s", attempt, delay, previousDelay, admitRetryMax)
+		}
+		previousDelay = delay
+		previousAttemptAt = retryAt
 		engine.now = func() time.Time { return retryAt }
 		if err := engine.Reconcile(context.Background()); err != nil {
 			t.Fatalf("admission wait %d while wake is suspended: %v", attempt+1, err)
@@ -554,12 +562,41 @@ type = "noop"
 	if err != nil {
 		t.Fatal(err)
 	}
+	if delay := population.Members[resource].AdmitRetryAt.Sub(previousAttemptAt); delay != admitRetryMax {
+		t.Fatalf("last wake-suspended retry delay = %s, want capped at %s", delay, admitRetryMax)
+	}
 	if got := population.Members[resource]; !got.PendingUp || got.AdmitSuspended || got.ConsecutiveAdmitFailures != 0 || got.AdmitRetryAt.IsZero() {
 		t.Fatalf("member after suspended admission waits = %+v, want pending without failures", got)
 	}
 	sleepsAfter, _, _, err = logStore.List(member.SessionName, 0, event.Filter{Types: []string{event.TypeSessionSleep}})
 	if err != nil || len(sleepsAfter) != len(sleepsBefore) {
 		t.Fatalf("sleep events after admission waits = %v, %v; want unchanged count %d", sleepsAfter, err, len(sleepsBefore))
+	}
+	if _, _, _, err := logStore.Append(event.Event{SessionName: member.SessionName, Type: "resource.changed", Direction: event.Inbound}); err != nil {
+		t.Fatal(err)
+	}
+	wakeAt := time.Now()
+	requested, err := service.RequestWake(store, member.SessionName, wakeAt)
+	if err != nil || !requested {
+		t.Fatalf("inbound wake request = %t, %v; want queued", requested, err)
+	}
+	population, err = store.Population(engine.key)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := population.Members[resource].AdmitRetryAt; !got.IsZero() {
+		t.Fatalf("retry after inbound wake = %s, want reset for prompt admission", got)
+	}
+	engine.now = func() time.Time { return wakeAt }
+	if err := engine.Reconcile(context.Background()); err != nil {
+		t.Fatalf("admission after inbound wake while capacity is full: %v", err)
+	}
+	population, err = store.Population(engine.key)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := population.Members[resource].AdmitRetryAt; !got.Equal(wakeAt.Add(admitRetryBase)) {
+		t.Fatalf("retry after renewed wake = %s, want base interval after %s", got, wakeAt)
 	}
 	if _, err := service.Down(cfg, store, service.DownParams{Identifier: earlier.SessionName}); err != nil {
 		t.Fatalf("remove earlier sleeper from queue: %v", err)
@@ -569,13 +606,6 @@ type = "noop"
 		return nil
 	}); err != nil {
 		t.Fatal(err)
-	}
-	if _, _, _, err := logStore.Append(event.Event{SessionName: member.SessionName, Type: "resource.changed", Direction: event.Inbound}); err != nil {
-		t.Fatal(err)
-	}
-	requested, err := service.RequestWake(store, member.SessionName, time.Now())
-	if err != nil || !requested {
-		t.Fatalf("inbound wake request = %t, %v; want queued", requested, err)
 	}
 	if err := service.WakeQueuedSessions(cfg, store); err != nil {
 		t.Fatalf("wake after inbound event: %v", err)
