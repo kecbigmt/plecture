@@ -17,13 +17,12 @@ permission must follow lifecycle intent.
 
 ## Supersession scope
 
-The earlier forwarding decision's rule that every down session forwards its
-inbound events applies only to fully stopped sessions. A sleeping session
-requests its own wake and does not forward those events. Its rule that only an
-explicit `up` resumes the origin's tick also applies only to fully stopped
-sessions; an inbound event can wake a sleeping session. The earlier decision's
-forwarding path, ancestor selection, deduplication, and ancestor tick behavior
-remain in force for fully stopped sessions.
+- [Decision](2026-09-08-down-session-resource-event-forwarding.md#decision):
+  The rule to forward every down session's inbound events applies only to
+  fully stopped sessions. A sleeping session requests its own wake.
+- [Decision](2026-09-08-down-session-resource-event-forwarding.md#decision):
+  The rule that only an explicit `up` resumes the origin applies only to
+  fully stopped sessions. An inbound event can wake a sleeping session.
 
 ## Decision
 
