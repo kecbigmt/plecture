@@ -1,0 +1,55 @@
+[slack_thread]
+kind  = "effect"
+scope = "session"
+
+[slack_thread.setup]
+type = "shell"
+script = '''
+set -eu
+
+payload=$(jq -nc --arg channel_id "$channel_id" --arg text "$root_text" \
+  '{channel_id:$channel_id,text:$text}')
+
+resp=$(curl -sf --max-time 10 -X POST "$base_url/threads" \
+  -H "Content-Type: application/json" \
+  -d "$payload")
+thread_ts=$(printf '%s' "$resp" | jq -er '.thread_ts')
+response_channel_id=$(printf '%s' "$resp" | jq -er '.channel_id')
+permalink=$(printf '%s' "$resp" | jq -er '.permalink')
+
+jq -nc \
+  --arg thread_ts "$thread_ts" \
+  --arg channel_id "$response_channel_id" \
+  --arg permalink "$permalink" \
+  '{thread_ts:$thread_ts,channel_id:$channel_id,permalink:$permalink}'
+'''
+
+[slack_thread.setup.bind]
+base_url   = { from = "inputs.base_url" }
+channel_id = { from = "inputs.channel_id" }
+root_text  = { from = "inputs.root_text" }
+
+# Deliberately never re-observed: a deleted or archived Slack thread must not
+# be silently recreated, because a replacement thread would split the
+# conversation the original one held.
+[slack_thread.health.alive]
+type = "noop"
+
+[slack_thread.inputs_schema]
+type                 = "object"
+required             = ["base_url", "channel_id", "root_text"]
+additionalProperties = false
+
+[slack_thread.inputs_schema.properties]
+base_url   = { type = "string", minLength = 1 }
+channel_id = { type = "string", minLength = 1 }
+root_text  = { type = "string", minLength = 1 }
+
+[slack_thread.outputs_schema]
+type     = "object"
+required = ["thread_ts", "channel_id", "permalink"]
+
+[slack_thread.outputs_schema.properties]
+thread_ts  = { type = "string" }
+channel_id = { type = "string" }
+permalink  = { type = "string" }

@@ -1,0 +1,9 @@
+# Scenarios for the released declarations in config/ and for the current ones:
+# each effect set up as that release set it up, then probed and cleaned up
+# against the outputs that setup recorded, which are the outputs that release
+# recorded. Every action must succeed.
+
+[[gh_guard]]
+
+[[gh_app_guard]]
+inputs = { app_id = "123456", installation_id = "987654", private_key_path = "/etc/plect/gh-app.pem" }

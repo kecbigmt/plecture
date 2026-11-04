@@ -337,3 +337,32 @@ What stays in your own config after enabling this plugin:
   leaves).
 - Running `github-watcher serve` as a background daemon, and its delivery
   configuration (`PLECT_BUS_SOCKET` / `PLECT_BUS_TOKEN`).
+
+## Compatibility fixtures
+
+`testdata/compat/<tag>/` holds this plugin's task declarations as of the
+latest tagged release (`config/tasks/`) and a `scenarios.toml` in the
+effect-scenario format. `TestShippedEffects_ReleasedDeclarationsAndRecordsStillRun`
+(`go test -tags integration ./app/internal/task`) runs it under both the
+released and the current declarations against the plugin's current executables,
+so updating the plugin cannot break a session created under that release.
+The scenarios cover the two CLI guard effects.
+
+Refresh the fixtures when a release is tagged:
+
+```bash
+tag=$(git describe --tags --abbrev=0)
+dir=plugins/github/testdata/compat
+old=$(ls "$dir")
+mkdir -p "$dir/$tag/config"
+git mv "$dir/$old/scenarios.toml" "$dir/$tag/scenarios.toml"
+git rm -rq "$dir/$old"
+git archive "$tag" plugins/github/config/tasks | tar -x -C "$dir/$tag/config" --strip-components=3
+git show "$tag:plugins/github/testdata/effect-invocations.txt" | grep -E '^(==|outputs)'
+```
+
+Then set each `self` in the moved `scenarios.toml` to the `outputs:` line the
+last command prints for that effect, so the scenarios carry the shape that
+release recorded. When a stand-in under `testdata/effects/`
+changes how an executable answers, the released declarations run against the
+new answer too; keep them passing rather than editing the fixture.

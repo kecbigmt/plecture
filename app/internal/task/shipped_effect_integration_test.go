@@ -76,7 +76,11 @@ func TestShippedEffects_InvocationsMatchTheirPluginsRecord(t *testing.T) {
 
 func loadEffectScenarios(t *testing.T, source string) map[string][]effectScenario {
 	t.Helper()
-	path := filepath.Join(source, "testdata", "effects", "scenarios.toml")
+	return loadScenarioFile(t, filepath.Join(source, "testdata", "effects", "scenarios.toml"))
+}
+
+func loadScenarioFile(t *testing.T, path string) map[string][]effectScenario {
+	t.Helper()
 	raw, err := os.ReadFile(path)
 	if err != nil {
 		if os.IsNotExist(err) {
@@ -123,7 +127,15 @@ type effectHarness struct {
 
 func recordShippedEffects(t *testing.T, source string, scenarios map[string][]effectScenario) string {
 	t.Helper()
-	h := newEffectHarness(t, source)
+	return recordEffectsUnder(t, source, "", scenarios)
+}
+
+// recordEffectsUnder runs the scenarios against the plugin's executables as
+// they are now, with its task declarations taken from declarationsDir when
+// that is set.
+func recordEffectsUnder(t *testing.T, source, declarationsDir string, scenarios map[string][]effectScenario) string {
+	t.Helper()
+	h := newEffectHarness(t, source, declarationsDir)
 	cfg := &config.Config{PluginDirs: []string{h.mounted.Dir}, Plugins: []plugins.Mounted{h.mounted}}
 	defs, err := cfg.LoadTaskDefinitions("")
 	if err != nil {
@@ -178,7 +190,7 @@ func (h *effectHarness) removeAbsentExecutables(t *testing.T, names []string) {
 	}
 }
 
-func newEffectHarness(t *testing.T, source string) *effectHarness {
+func newEffectHarness(t *testing.T, source, declarationsDir string) *effectHarness {
 	t.Helper()
 	root := t.TempDir()
 	h := &effectHarness{
@@ -194,6 +206,15 @@ func newEffectHarness(t *testing.T, source string) *effectHarness {
 		}
 	}
 	h.mounted = spyPlugin(t, source, h.argvLog, effectSpyAnswer(t, source))
+	if declarationsDir != "" {
+		tasks := filepath.Join(h.mounted.Dir, "config", "tasks")
+		if err := os.RemoveAll(tasks); err != nil {
+			t.Fatal(err)
+		}
+		if out, err := exec.Command("cp", "-a", filepath.Join(declarationsDir, "tasks"), tasks).CombinedOutput(); err != nil {
+			t.Fatalf("copy declarations: %v: %s", err, out)
+		}
+	}
 	h.writeRecorders(t)
 	copyDirOver(t, filepath.Join(source, "testdata", "effects", "bin"), h.spyDir)
 
