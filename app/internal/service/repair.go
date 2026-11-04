@@ -109,11 +109,9 @@ func RepairSession(cfg *config.Config, store *state.Store, name string, report *
 	return attempted, err
 }
 
-// AwaitingRepair reports whether automatic repair is expected to act on the
-// session next: the same eligibility RepairSession applies, evaluated against
-// a fresh health observation. The persisted verdict is not used because it
-// lags the failure by up to one health period, and a delivery that failed in
-// that window would be misread as unrelated to liveness.
+// AwaitingRepair observes health afresh rather than reading the persisted
+// verdict, which lags a failure by up to one health period and would make a
+// delivery that failed in that window look unrelated to liveness.
 func AwaitingRepair(cfg *config.Config, store *state.Store, name string) (bool, error) {
 	s, err := store.GetE(name)
 	if err != nil || s == nil {

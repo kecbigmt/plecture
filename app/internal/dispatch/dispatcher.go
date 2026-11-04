@@ -27,10 +27,8 @@ const dispatcherConsumer = "delivery"
 // on the durable cursor, so this only bounds worst-case latency, not delivery.
 const fallbackDrain = 5 * time.Second
 
-// repairHoldLimit caps how long one event may wait, measured from its own
-// append time, for an automatic repair to bring the runtime back. Without a
-// cap a repair that never converges would stall every later event behind the
-// held one for as long as the session lives.
+// repairHoldLimit is measured from the event's own append time: a repair that
+// never converges would otherwise stall every later event behind the held one.
 const repairHoldLimit = 30 * time.Minute
 
 // sessionDispatcher follows one session's event log and fans each event out to
@@ -57,14 +55,12 @@ type sessionDispatcher struct {
 	// declares none; a channel that consumes no terminal verb is unaffected
 	// either way.
 	terminal *terminalOwner
-	// awaitingRepair reports whether automatic repair is expected to act on
-	// the session next. It is injected because that judgment lives in
-	// internal/service, which already imports this package. Nil means a
-	// failed delivery is never held.
+	// awaitingRepair is injected because the judgment lives in internal/service,
+	// which imports this package. Nil means a failed delivery is never held.
 	awaitingRepair func(session string) (bool, error)
-	// held remembers which channels already delivered the event currently
-	// held, so a retry does not re-send to them. It is memory only: a restart
-	// redelivers once, which at-least-once delivery allows.
+	// held is memory only: a restart redelivers once, which at-least-once
+	// delivery allows, and it keeps a retry from re-sending to channels that
+	// already delivered.
 	held heldEvent
 }
 
@@ -187,9 +183,8 @@ func (d *sessionDispatcher) drain(ctx context.Context, s *domain.Session, startG
 
 // processEvent runs one worker per matching channel and returns once all are
 // terminal, so the cursor only advances after the event is fully processed.
-// It returns true when a failed delivery is held for automatic repair instead
-// of being recorded: nothing is written for a held event, so the caller must
-// leave the cursor where it is.
+// It returns true when a failed delivery is held instead of recorded, in which
+// case the caller must leave the cursor in place.
 // The delivery streak (Session.ChannelDeliveryHealth) is updated once per
 // event, from the workers' combined outcome, rather than once per channel:
 // a multi-channel workflow with one permanently broken channel and one
@@ -289,8 +284,6 @@ func (d *sessionDispatcher) processEvent(ctx context.Context, s *domain.Session,
 	return false
 }
 
-// deliveryFailure is one channel's terminal failure for one event. attempted
-// is false when the channel never ran, because its inputs did not resolve.
 type deliveryFailure struct {
 	channel   string
 	attempts  int
@@ -298,10 +291,8 @@ type deliveryFailure struct {
 	attempted bool
 }
 
-// shouldHold reports whether every failure of ev is a delivery that reached
-// its channel and failed, while automatic repair is still expected to restore
-// the runtime. A failure before delivery (an unresolvable input) says nothing
-// about liveness, so repair cannot fix it.
+// shouldHold never holds a failure before delivery (an unresolvable input):
+// it says nothing about liveness, so repair cannot fix it.
 func (d *sessionDispatcher) shouldHold(ev event.Event, failures map[int]deliveryFailure) bool {
 	if d.awaitingRepair == nil {
 		return false
