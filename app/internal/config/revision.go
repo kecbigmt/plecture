@@ -6,6 +6,7 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
+	"maps"
 	"net/url"
 	"path/filepath"
 	"strings"
@@ -189,11 +190,22 @@ type decodedRevisionCache struct {
 	decode  func([]byte, string) (WorkflowRevision, error)
 }
 
+func copyRevisionDeclarations(revision WorkflowRevision) WorkflowRevision {
+	revision.Effects = maps.Clone(revision.Effects)
+	revision.Tasks = maps.Clone(revision.Tasks)
+	revision.Channels = maps.Clone(revision.Channels)
+	if revision.Provider != nil {
+		provider := *revision.Provider
+		revision.Provider = &provider
+	}
+	return revision
+}
+
 func (c *decodedRevisionCache) load(body []byte, digest string) (WorkflowRevision, error) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 	if revision, ok := c.entries[digest]; ok {
-		return revision, nil
+		return copyRevisionDeclarations(revision), nil
 	}
 	revision, err := c.decode(body, digest)
 	if err != nil {
@@ -203,9 +215,10 @@ func (c *decodedRevisionCache) load(body []byte, digest string) (WorkflowRevisio
 		c.entries = make(map[string]WorkflowRevision)
 	}
 	c.entries[digest] = revision
-	return revision, nil
+	return copyRevisionDeclarations(revision), nil
 }
 
+// A digest identifies immutable content, so each process keeps one decoded entry per distinct digest without eviction.
 var decodedRevisions = decodedRevisionCache{decode: DecodeWorkflowRevision}
 
 func RevisionForSession(s *domain.Session) (WorkflowRevision, bool, error) {

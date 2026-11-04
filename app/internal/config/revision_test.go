@@ -74,6 +74,36 @@ func TestDecodedRevisionCacheDecodesDigestOnce(t *testing.T) {
 	}
 }
 
+func TestDecodedRevisionCacheReturnsIndependentTopLevelDeclarations(t *testing.T) {
+	revision := WorkflowRevision{
+		Workflow: WorkflowFile{ID: "work", Address: "work"},
+		Effects:  map[string]TaskDefinition{"effect": {ID: "effect"}},
+		Tasks:    map[string]TaskDocument{"task": {ID: "task"}},
+		Channels: map[string]ChannelDefinition{"channel": {ID: "channel"}},
+		Provider: &WorkspaceProviderConfig{ID: "provider"},
+	}
+	body, digest, err := revision.CanonicalBody()
+	if err != nil {
+		t.Fatal(err)
+	}
+	cache := decodedRevisionCache{decode: DecodeWorkflowRevision}
+	first, err := cache.load(body, digest)
+	if err != nil {
+		t.Fatal(err)
+	}
+	first.Effects["effect"] = TaskDefinition{ID: "changed"}
+	first.Tasks["task"] = TaskDocument{ID: "changed"}
+	first.Channels["channel"] = ChannelDefinition{ID: "changed"}
+	first.Provider.ID = "changed"
+	second, err := cache.load(body, digest)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if second.Effects["effect"].ID != "effect" || second.Tasks["task"].ID != "task" || second.Channels["channel"].ID != "channel" || second.Provider.ID != "provider" {
+		t.Fatalf("cache lookup was changed by caller: %+v", second)
+	}
+}
+
 func TestWorkflowRevisionPluginSourceSurvivesMountChange(t *testing.T) {
 	oldDir := filepath.Join(t.TempDir(), "old")
 	newDir := filepath.Join(t.TempDir(), "new")
