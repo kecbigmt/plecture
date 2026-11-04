@@ -120,7 +120,11 @@ func runServer() {
 		os.Exit(1)
 	}
 
-	a := adapter.New(cfg, logger)
+	a, err := adapter.New(cfg, logger)
+	if err != nil {
+		logger.Error("load subscriber state", "error", err)
+		os.Exit(1)
+	}
 	defer a.Close()
 	a.SweepSubscriptions(context.Background(), adapter.LiveSessions)
 

@@ -3,6 +3,7 @@ package adapter
 import (
 	"encoding/json"
 	"errors"
+	"fmt"
 	"io/fs"
 	"log/slog"
 	"os"
@@ -22,10 +23,11 @@ type Subscriber struct {
 type subscriptionKey struct{ session, thread string }
 
 type Broker struct {
-	mu     sync.RWMutex
-	subs   map[subscriptionKey]Subscriber
-	path   string
-	logger *slog.Logger
+	mu      sync.RWMutex
+	subs    map[subscriptionKey]Subscriber
+	path    string
+	logger  *slog.Logger
+	loadErr error
 }
 
 func NewBroker(path string, logger *slog.Logger) *Broker {
@@ -34,7 +36,7 @@ func NewBroker(path string, logger *slog.Logger) *Broker {
 	}
 	b := &Broker{subs: make(map[subscriptionKey]Subscriber), path: path, logger: logger}
 	if path != "" {
-		b.load()
+		b.loadErr = b.load()
 	}
 	return b
 }
@@ -186,23 +188,20 @@ type persistedState struct {
 	Subscribers []Subscriber `json:"subscribers"`
 }
 
-func (b *Broker) load() {
+func (b *Broker) load() error {
 	data, err := os.ReadFile(b.path)
 	if errors.Is(err, fs.ErrNotExist) {
-		return
+		return nil
 	}
 	if err != nil {
-		b.logger.Warn("failed to read subscriber state", "error", err)
-		return
+		return fmt.Errorf("read subscriber state: %w", err)
 	}
 	var ps persistedState
 	if err := json.Unmarshal(data, &ps); err != nil {
-		b.logger.Warn("failed to parse subscriber state", "error", err)
-		return
+		return fmt.Errorf("parse subscriber state: %w", err)
 	}
 	if ps.Version != 2 {
-		b.logger.Warn("unsupported subscriber state version; run the migration", "version", ps.Version, "path", b.path)
-		return
+		return fmt.Errorf("unsupported subscriber state version %d at %s; run the migration", ps.Version, b.path)
 	}
 	for _, s := range ps.Subscribers {
 		if s.SessionName == "" || s.ThreadTS == "" || s.ChannelID == "" {
@@ -210,10 +209,11 @@ func (b *Broker) load() {
 		}
 		b.subs[subscriptionKey{s.SessionName, s.ThreadTS}] = s
 	}
+	return nil
 }
 
 func (b *Broker) persistLocked() {
-	if b.path == "" {
+	if b.path == "" || b.loadErr != nil {
 		return
 	}
 	dir := filepath.Dir(b.path)

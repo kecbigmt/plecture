@@ -158,24 +158,39 @@ func TestParseThreadResource(t *testing.T) {
 	}
 }
 
-func TestBrokerRejectsOldLedgerAndPersistsVersionTwo(t *testing.T) {
+func TestBrokerDoesNotOverwriteOldLedger(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "subscribers.json")
 	old := `{"subscribers":[{"session_name":"one","thread_ts":"1700000000.000001","channel_id":"C1","socket_path":"/gone"}]}`
 	if err := os.WriteFile(path, []byte(old), 0o600); err != nil {
 		t.Fatal(err)
 	}
-	if got := NewBroker(path, nil).List(); len(got) != 0 {
+	b := NewBroker(path, nil)
+	if got := b.List(); len(got) != 0 {
 		t.Fatalf("old ledger loaded: %+v", got)
 	}
-	b := NewBroker("", nil)
-	b.path = path
 	b.Subscribe(Subscriber{SessionName: "one", ThreadTS: "1700000000.000001", ChannelID: "C1"})
 	raw, err := os.ReadFile(path)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !strings.Contains(string(raw), `"version": 2`) || strings.Contains(string(raw), "socket_path") {
-		t.Fatalf("ledger = %s", raw)
+	if string(raw) != old {
+		t.Fatalf("old ledger was overwritten: %s", raw)
+	}
+}
+
+func TestAdapterRejectsOldLedgerAtStartup(t *testing.T) {
+	stateHome := t.TempDir()
+	t.Setenv("XDG_STATE_HOME", stateHome)
+	path := SubscribersStatePath()
+	if err := os.MkdirAll(filepath.Dir(path), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(path, []byte(`{"subscribers":[]}`), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	_, err := New(&Config{}, nil)
+	if err == nil || !strings.Contains(err.Error(), "unsupported subscriber state version") {
+		t.Fatalf("startup error = %v", err)
 	}
 }
 
@@ -328,13 +343,23 @@ func TestThreadSubscriptionRejectsFailedRegistration(t *testing.T) {
 	}
 }
 
-func TestBrokerCorruptLedgerStartsEmpty(t *testing.T) {
+func TestBrokerDoesNotOverwriteCorruptLedger(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "subscribers.json")
-	if err := os.WriteFile(path, []byte(`{"version":2,"subscribers":[`), 0o600); err != nil {
+	old := `{"version":2,"subscribers":[`
+	if err := os.WriteFile(path, []byte(old), 0o600); err != nil {
 		t.Fatal(err)
 	}
-	if got := NewBroker(path, nil).List(); len(got) != 0 {
-		t.Fatalf("corrupt ledger loaded: %+v", got)
+	b := NewBroker(path, nil)
+	if b.loadErr == nil {
+		t.Fatal("corrupt ledger was accepted")
+	}
+	b.Subscribe(Subscriber{SessionName: "one", ThreadTS: "1700000000.000001", ChannelID: "C1"})
+	raw, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if string(raw) != old {
+		t.Fatalf("corrupt ledger was overwritten: %s", raw)
 	}
 }
 

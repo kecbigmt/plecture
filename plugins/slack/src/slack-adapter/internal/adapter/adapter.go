@@ -64,7 +64,11 @@ func StreamStatePath() string {
 }
 
 // New creates a new Adapter.
-func New(cfg *Config, logger *slog.Logger) *Adapter {
+func New(cfg *Config, logger *slog.Logger) (*Adapter, error) {
+	broker := NewBroker(SubscribersStatePath(), logger)
+	if broker.loadErr != nil {
+		return nil, broker.loadErr
+	}
 	options := []slack.Option{}
 	if cfg.SlackAppToken != "" {
 		options = append(options, slack.OptionAppLevelToken(cfg.SlackAppToken))
@@ -75,7 +79,7 @@ func New(cfg *Config, logger *slog.Logger) *Adapter {
 		cfg:        cfg,
 		api:        api,
 		sessionAPI: newSlackSessionClient(cfg.SlackBotToken, "https://slack.com/api/", nil),
-		broker:     NewBroker(SubscribersStatePath(), logger),
+		broker:     broker,
 		logger:     logger,
 	}
 	if cfg.SlackAppToken != "" {
@@ -106,7 +110,7 @@ func New(cfg *Config, logger *slog.Logger) *Adapter {
 	}
 	a.streamManager = NewStreamManagerWithStatePath(a, a.poster, logger, StreamStatePath())
 
-	return a
+	return a, nil
 }
 
 // Close releases the adapter's background resources.
