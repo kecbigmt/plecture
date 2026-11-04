@@ -119,26 +119,51 @@ check_links_and_scope() {
   done
 }
 
-# Undoing the one permitted edit lets a byte-for-byte comparison with the base
-# version isolate every other change, including a rewritten superseded_by.
-undo_permitted_edit() {
-  local base_file="$1" head_file="$2"
-  if [ "$(head -n 1 "$base_file")" = "---" ]; then
-    awk '
-      NR == 1 { infm = 1; print; next }
-      infm && $0 == "---" { infm = 0; print; next }
-      infm && !dropped && /^superseded_by:[ \t]*[^ \t]/ { dropped = 1; next }
-      { print }
-    ' "$head_file"
-    return
-  fi
+# The one permitted edit is adding entries to `superseded_by`, whether it is a
+# single value or a list. Stripping that key from both versions lets a
+# byte-for-byte comparison isolate every other change; a frontmatter block left
+# empty is dropped with its trailing blank line, so a file that gained its first
+# frontmatter compares equal to one that had none.
+strip_superseded_by() {
   awk '
-    NR == 1 { if ($0 == "---") { infm = 1; next } }
-    infm && NR == 2 && /^superseded_by:[ \t]*[^ \t]/ { next }
-    infm && NR == 3 && $0 == "---" { infm = 0; skipblank = 1; next }
+    NR == 1 && $0 == "---" { infm = 1; next }
+    infm && $0 == "---" {
+      infm = 0
+      if (kept > 0) {
+        print "---"
+        for (i = 1; i <= kept; i++) print held[i]
+        print "---"
+      } else {
+        skipblank = 1
+      }
+      next
+    }
+    infm {
+      if ($0 ~ /^superseded_by:/) { skipping = 1; next }
+      if (skipping && $0 ~ /^[ \t]*-[ \t]*/) next
+      skipping = 0
+      held[++kept] = $0
+      next
+    }
     skipblank { skipblank = 0; if ($0 == "") next }
     { print }
-  ' "$head_file"
+    END {
+      if (infm) {
+        print "---"
+        for (i = 1; i <= kept; i++) print held[i]
+      }
+    }
+  ' "$1"
+}
+
+# Existing entries may not be dropped, so a link cannot be quietly retracted.
+superseded_by_entries() {
+  local k v
+  while read -r k v; do
+    if [ "$k" = "superseded_by" ] && [ -n "$v" ]; then
+      echo "$v"
+    fi
+  done < <(frontmatter_links "$1")
 }
 
 check_immutability() {
@@ -153,24 +178,28 @@ check_immutability() {
       A) continue ;;
       M) ;;
       *)
-        report "$path: accepted ADR was removed or changed file type (status $status); only a frontmatter \`superseded_by:\` addition is permitted"
+        report "$path: accepted ADR was removed or changed file type (status $status); only adding \`superseded_by:\` entries is permitted"
         continue
         ;;
     esac
     git show "$merge_base:$path" >"$tmp/base"
     git show "$head_ref:$path" >"$tmp/head"
-    if [ "$(head -n 1 "$tmp/base")" = "---" ] &&
-      awk 'NR > 1 && $0 == "---" { exit } NR > 1 && /^superseded_by:/ { found = 1 } END { exit found ? 0 : 1 }' "$tmp/base"; then
-      cp "$tmp/head" "$tmp/undone"
-    else
-      undo_permitted_edit "$tmp/base" "$tmp/head" >"$tmp/undone"
-    fi
-    if ! cmp -s "$tmp/base" "$tmp/undone"; then
+    strip_superseded_by "$tmp/base" >"$tmp/base.stripped"
+    strip_superseded_by "$tmp/head" >"$tmp/head.stripped"
+    if ! cmp -s "$tmp/base.stripped" "$tmp/head.stripped"; then
       local diffs diffline
-      diffs="$(diff "$tmp/base" "$tmp/undone" || true)"
+      diffs="$(diff "$tmp/base.stripped" "$tmp/head.stripped" || true)"
       diffline="$(grep -m1 '^[<>][[:space:]]*[^[:space:]]' <<<"$diffs" || grep -m1 '^[<>]' <<<"$diffs" || true)"
-      report "$path: accepted ADR changed beyond adding a frontmatter \`superseded_by:\` line; first differing line: $diffline"
+      report "$path: accepted ADR changed beyond adding \`superseded_by:\` entries; first differing line: $diffline"
+      continue
     fi
+    local entry
+    while read -r entry; do
+      [ -z "$entry" ] && continue
+      if ! has_link "$tmp/head" superseded_by "$entry"; then
+        report "$path: accepted ADR changed beyond adding \`superseded_by:\` entries; entry \`$entry\` was removed"
+      fi
+    done < <(superseded_by_entries "$tmp/base")
   done < <(git diff --no-renames --name-status "$merge_base" "$head_ref" -- "$adr_dir/*.md")
   rm -rf "$tmp"
 }

@@ -297,9 +297,11 @@ the breaking change — not as follow-up work.
 - Supersession is the only lifecycle fact recorded in ADR files. A
   superseding ADR declares YAML frontmatter
   `supersedes: <YYYY-MM-DD-slug>`, and the old ADR gets YAML frontmatter
-  `superseded_by: <YYYY-MM-DD-slug>`. That frontmatter edit is the only edit
-  permitted to an accepted ADR. A superseding ADR has a section titled
-  "Supersession scope", placed between Context and Decision, that lists only
+  `superseded_by: <YYYY-MM-DD-slug>`. An ADR that several later ADRs each
+  replace in part lists them all, with `superseded_by` as a YAML list.
+  Adding an entry to `superseded_by` is the only edit permitted to an accepted
+  ADR; removing or changing an entry is not. A superseding ADR has a section
+  titled "Supersession scope", placed between Context and Decision, that lists only
   the decisions of the superseded ADR it replaces, one bullet per decision
   citing the superseded ADR's heading; it does not enumerate what remains in
   force, because every decision not listed remains in force.
