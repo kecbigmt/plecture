@@ -21,10 +21,21 @@ type Subscriber struct {
 }
 
 type subscriptionKey struct{ session, thread string }
+type pendingMentionKey struct{ channel, thread string }
+
+type pendingMention struct {
+	ChannelID string    `json:"channel_id"`
+	ThreadTS  string    `json:"thread_ts"`
+	MentionTS string    `json:"mention_ts"`
+	Recorded  time.Time `json:"recorded"`
+}
+
+const pendingMentionLifetime = 24 * time.Hour
 
 type Broker struct {
 	mu      sync.RWMutex
 	subs    map[subscriptionKey]Subscriber
+	pending map[pendingMentionKey]pendingMention
 	path    string
 	logger  *slog.Logger
 	loadErr error
@@ -34,11 +45,57 @@ func NewBroker(path string, logger *slog.Logger) *Broker {
 	if logger == nil {
 		logger = slog.New(slog.NewTextHandler(os.Stderr, &slog.HandlerOptions{Level: slog.LevelError}))
 	}
-	b := &Broker{subs: make(map[subscriptionKey]Subscriber), path: path, logger: logger}
+	b := &Broker{subs: make(map[subscriptionKey]Subscriber), pending: make(map[pendingMentionKey]pendingMention), path: path, logger: logger}
 	if path != "" {
 		b.loadErr = b.load()
 	}
 	return b
+}
+
+func (b *Broker) RecordPendingMention(channel, thread, mention string) {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	now := time.Now()
+	pruned := b.prunePendingLocked(now)
+	key := pendingMentionKey{channel, thread}
+	if old, ok := b.pending[key]; ok && compareSlackTS(old.MentionTS, mention) > 0 {
+		if pruned {
+			b.persistLocked()
+		}
+		return
+	}
+	b.pending[key] = pendingMention{ChannelID: channel, ThreadTS: thread, MentionTS: mention, Recorded: now}
+	b.persistLocked()
+}
+
+func (b *Broker) PendingMention(channel, thread string) string {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	if b.prunePendingLocked(time.Now()) {
+		b.persistLocked()
+	}
+	return b.pending[pendingMentionKey{channel, thread}].MentionTS
+}
+
+func (b *Broker) ConsumePendingMention(channel, thread, mention string) {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	key := pendingMentionKey{channel, thread}
+	if b.pending[key].MentionTS == mention {
+		delete(b.pending, key)
+		b.persistLocked()
+	}
+}
+
+func (b *Broker) prunePendingLocked(now time.Time) bool {
+	changed := false
+	for key, mention := range b.pending {
+		if mention.Recorded.IsZero() || now.Sub(mention.Recorded) >= pendingMentionLifetime {
+			delete(b.pending, key)
+			changed = true
+		}
+	}
+	return changed
 }
 
 func (b *Broker) Subscribe(s Subscriber) Subscriber {
@@ -184,8 +241,9 @@ func (b *Broker) snapshotLocked() []Subscriber {
 }
 
 type persistedState struct {
-	Version     int          `json:"version"`
-	Subscribers []Subscriber `json:"subscribers"`
+	Version         int              `json:"version"`
+	Subscribers     []Subscriber     `json:"subscribers"`
+	PendingMentions []pendingMention `json:"pending_mentions,omitempty"`
 }
 
 func (b *Broker) load() error {
@@ -209,6 +267,13 @@ func (b *Broker) load() error {
 		}
 		b.subs[subscriptionKey{s.SessionName, s.ThreadTS}] = s
 	}
+	for _, mention := range ps.PendingMentions {
+		if mention.ChannelID == "" || mention.ThreadTS == "" || mention.MentionTS == "" {
+			continue
+		}
+		b.pending[pendingMentionKey{mention.ChannelID, mention.ThreadTS}] = mention
+	}
+	b.prunePendingLocked(time.Now())
 	return nil
 }
 
@@ -229,7 +294,11 @@ func (b *Broker) persistLocked() {
 	defer os.Remove(f.Name())
 	enc := json.NewEncoder(f)
 	enc.SetIndent("", "  ")
-	if err := enc.Encode(persistedState{Version: 2, Subscribers: b.snapshotLocked()}); err != nil {
+	pending := make([]pendingMention, 0, len(b.pending))
+	for _, mention := range b.pending {
+		pending = append(pending, mention)
+	}
+	if err := enc.Encode(persistedState{Version: 2, Subscribers: b.snapshotLocked(), PendingMentions: pending}); err != nil {
 		f.Close()
 		b.logger.Error("write subscriber state", "error", err)
 		return

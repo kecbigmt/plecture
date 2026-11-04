@@ -74,6 +74,7 @@ func (a *Adapter) dispatchUnboundMention(ev *slackevents.AppMentionEvent, thread
 			"thread_ts", threadTS, "channel_id", ev.Channel, "error", err)
 		return false
 	}
+	a.broker.RecordPendingMention(ev.Channel, threadTS, ev.TimeStamp)
 
 	published := false
 	if a.mentions != nil {
@@ -102,6 +103,9 @@ func (a *Adapter) dispatchUnboundMention(ev *slackevents.AppMentionEvent, thread
 	if err != nil {
 		a.logger.Warn("on_unbound_mention skipped: failed to encode payload",
 			"thread_ts", threadTS, "channel_id", ev.Channel, "error", err)
+		if !published {
+			a.broker.ConsumePendingMention(ev.Channel, threadTS, ev.TimeStamp)
+		}
 		return published
 	}
 
@@ -112,6 +116,9 @@ func (a *Adapter) dispatchUnboundMention(ev *slackevents.AppMentionEvent, thread
 	if err := runner.Run(a.cfg.OnUnboundMention, payload); err != nil {
 		a.logger.Warn("on_unbound_mention command exited with an error",
 			"command", a.cfg.OnUnboundMention, "thread_ts", threadTS, "channel_id", ev.Channel, "error", err)
+		if !published {
+			a.broker.ConsumePendingMention(ev.Channel, threadTS, ev.TimeStamp)
+		}
 		return published
 	}
 	a.logger.Info("on_unbound_mention command completed",

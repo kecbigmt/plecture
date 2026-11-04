@@ -299,7 +299,15 @@ func (a *Adapter) handleSubscribePost(w http.ResponseWriter, req *http.Request) 
 	})
 	a.logger.Info("subscribed", "thread_ts", sub.ThreadTS, "session_name", sub.SessionName)
 
-	sub = a.catchUpThread(sub, body.CatchUpThrough)
+	pending := a.broker.PendingMention(body.ChannelID, body.ThreadTS)
+	through := body.CatchUpThrough
+	if pending != "" && (through == "" || compareSlackTS(pending, through) > 0) {
+		through = pending
+	}
+	sub = a.catchUpThread(sub, through)
+	if pending != "" && sub.DeliveredThrough != "" && compareSlackTS(sub.DeliveredThrough, pending) >= 0 {
+		a.broker.ConsumePendingMention(body.ChannelID, body.ThreadTS, pending)
+	}
 
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(sub)

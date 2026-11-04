@@ -97,9 +97,12 @@ which workflow to start, rate limits — is the command's job, not this
 plugin's: it is deployment policy, and the adapter stays a source-agnostic
 relay. A typical command runs
 `plect up <permalink> --workflow <wf> --inputs '{"mention_ts": "<ts>"}'`.
-The thread resource subscribes the new session. The optional
-`catch_up_through` registration parameter can publish history including the
-triggering mention.
+The thread resource subscribes the new session. Before handing off the
+mention, the adapter saves its timestamp by channel and thread in the
+subscriber ledger. The first subscription fetches history through that
+timestamp and publishes a `user.emit` containing the triggering mention.
+A failed catch-up can retry on the next subscription; success consumes the
+pending record. Pending mentions expire after 24 hours.
 
 ### `subscribe unbound-mentions` (query.subscribe action)
 
@@ -196,16 +199,18 @@ reason as the reply text.
 
 ### POST /subscribe
 
-Registers `{session_name, thread_ts, channel_id, catch_up_through?}`. The
+Registers `{session_name, thread_ts, channel_id}`. The
 pair `(session_name, thread_ts)` identifies one subscription; several sessions
 can subscribe to the same thread. A released request may carry `socket_path`;
 the adapter ignores it and never stores it. Both Slack
 timestamps must have the shape `<10 digits>.<6 digits>`.
 
-If `catch_up_through` is provided and exceeds this pair's watermark, the
-adapter fetches thread history through that timestamp and publishes it as
-`user.emit`. The watermark advances only after a successful publication.
-A failed fetch or publish leaves it unchanged for a later retry.
+When an unbound mention started this thread's session, the adapter uses its
+pending timestamp to fetch history through that mention and publish it as
+`user.emit`. The watermark advances only after successful publication. A
+failed fetch or publish leaves the pending mention for a later subscription
+retry. The released request's optional `catch_up_through` field remains
+accepted for sessions running frozen declarations.
 
 The inputs-free resource hooks call `slack-adapter resource subscribe` and
 `unsubscribe`. They parse the thread permalink in `resource.id`, read the
@@ -350,6 +355,8 @@ version 1 ledger
 using `docs/migrations/slack-thread-resource-subscriptions.md` before starting
 the new adapter. For a corrupt ledger, restore a backup; remove the file only
 if discarding its subscriptions is acceptable.
+The ledger also stores pending unbound mentions by `(channel_id, thread_ts)`;
+each expires after 24 hours or is removed after successful catch-up.
 
 ## Setting up the Slack App
 

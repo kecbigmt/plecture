@@ -149,7 +149,7 @@ This is a display detail of an already-deprecated path, not a workflow
 commitment the config layer makes, so it is left as is rather than
 generalized.
 
-## Query (population source)
+## Standing sessions (population source)
 
 `config/resources/thread.toml` declares the `thread` resource observer's
 `[thread.query]` face
@@ -159,6 +159,12 @@ entry binds to keep a session present for a Slack thread that received an
 unbound `app_mention`. It declares only `subscribe` — a mention is not
 enumerable, so there is no `poll` means, and a population entry using this
 observer always sets `expire_after` rather than `poll_every`.
+
+The `official.slack.slack_subscribe` effect in that ADR's standing-session
+example is retired. Core automatically subscribes a session's entry thread
+resource, and the adapter's pending-mention catch-up publishes the mention
+that started the population-created session as `user.emit`. The resource
+hooks remain inputs-free.
 
 - **`slack-adapter subscribe unbound-mentions`** (see
   `src/slack-adapter/README.md`) is the subscribe means: it never opens a
