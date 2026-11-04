@@ -114,6 +114,11 @@ the same roots node inputs use, evaluated at delivery. `name` identifies the
 binding within the workflow; two bindings may select the same channel under
 different names and includes.
 
+An `include` entry matching `plect.instruction` also selects
+`plect.session.resumed`, even when the entry does not match that event's type.
+This applies to every channel binding with that include, regardless of its
+delivery target.
+
 ## Node lifecycle
 
 `plect.node.result` is appended to a session's log whenever a node's setup,
