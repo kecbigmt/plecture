@@ -101,6 +101,60 @@ func TestParseAliveActionDelegatesOtherVariants(t *testing.T) {
 	}
 }
 
+func TestParseAliveActionProcess(t *testing.T) {
+	a, err := ParseAliveAction(map[string]any{"process": "self.outputs.pid"}, Position{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if a.Type != ActionProcess || a.Process == nil || a.Process.From != "self.outputs.pid" {
+		t.Fatalf("got %+v", a)
+	}
+	if got := a.Source(); got != "process self.outputs.pid" {
+		t.Errorf("Source() = %q", got)
+	}
+}
+
+func TestParseAliveActionProcessBesideAnAction(t *testing.T) {
+	a, err := ParseAliveAction(map[string]any{
+		"process": "self.outputs.pid",
+		"type":    "shell",
+		"script":  "true",
+	}, Position{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if a.Type != ActionShell || a.Script != "true" || a.Process == nil {
+		t.Fatalf("got %+v", a)
+	}
+}
+
+func TestParseAliveActionProcessRejections(t *testing.T) {
+	tests := []struct {
+		name string
+		raw  map[string]any
+		code Code
+	}{
+		{"a non-string reference", map[string]any{"process": 7}, CodeFieldType},
+		{"a tagged value instead of a string", map[string]any{"process": map[string]any{"from": "self.outputs.pid"}}, CodeFieldType},
+		{"a root other than the effect's own outputs", map[string]any{"process": "inputs.pid"}, CodeFromRoot},
+		{"a nested output path", map[string]any{"process": "self.outputs.a.b"}, CodeFromRoot},
+		{"an empty output key", map[string]any{"process": "self.outputs."}, CodeFromRoot},
+		{"a stray field beside the reference", map[string]any{"process": "self.outputs.pid", "extra": 1}, CodeFieldUnknown},
+		{"noop with a process", map[string]any{"type": "noop", "process": "self.outputs.pid"}, CodeFieldUnknown},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			_, err := ParseAliveAction(tc.raw, Position{})
+			wantDiag(t, err, tc.code, LayerStructural)
+		})
+	}
+}
+
+func TestParseActionDoesNotRecognizeProcess(t *testing.T) {
+	_, err := ParseAction(map[string]any{"process": "self.outputs.pid"}, Position{})
+	wantDiag(t, err, CodeFieldRequired, LayerStructural)
+}
+
 func TestParseActionAcceptsACapabilityInArgv(t *testing.T) {
 	a, err := ParseAction(map[string]any{
 		"type": "exec",

@@ -237,6 +237,7 @@ func TaskSetup(cfg *config.Config, store *state.Store, params TaskSetupParams) (
 			st.Status = contract.TaskStatusProduced
 			st.Error = ""
 			st.Outputs = setupResult.Outputs
+			st.Process = setupResult.Process
 			st.SetupAt = mergedNow
 		}
 		resultOutputs = st.Outputs

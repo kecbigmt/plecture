@@ -469,6 +469,10 @@ func upsertNodeExecutionTx(ctx context.Context, q *sqlcgen.Queries, sessionID, n
 	if err != nil {
 		return fmt.Errorf("marshal node %q/%q outputs: %w", sessionID, nodeID, err)
 	}
+	processJSON, err := processColumn(ts.Process)
+	if err != nil {
+		return fmt.Errorf("marshal node %q/%q process: %w", sessionID, nodeID, err)
+	}
 	stateJSON, err := marshalJSONMap(ts.State)
 	if err != nil {
 		return fmt.Errorf("marshal node %q/%q state: %w", sessionID, nodeID, err)
@@ -525,6 +529,7 @@ func upsertNodeExecutionTx(ctx context.Context, q *sqlcgen.Queries, sessionID, n
 			FailedAt:                formatTimeNull(ts.FailedAt),
 			CleanedAt:               formatTimeNull(ts.CleanedAt),
 			FinalizedAt:             formatTimeNull(ts.FinalizedAt),
+			ProcessJson:             processJSON,
 		}); err != nil {
 			return fmt.Errorf("update node execution %q/%q: %w", sessionID, nodeID, err)
 		}
@@ -557,6 +562,7 @@ func upsertNodeExecutionTx(ctx context.Context, q *sqlcgen.Queries, sessionID, n
 				FailedAt:                formatTimeNull(ts.FailedAt),
 				CleanedAt:               formatTimeNull(ts.CleanedAt),
 				FinalizedAt:             formatTimeNull(ts.FinalizedAt),
+				ProcessJson:             processJSON,
 			})
 			if err != nil {
 				return fmt.Errorf("insert node execution %q/%q: %w", sessionID, nodeID, err)
@@ -587,6 +593,7 @@ func upsertNodeExecutionTx(ctx context.Context, q *sqlcgen.Queries, sessionID, n
 				FailedAt:                formatTimeNull(ts.FailedAt),
 				CleanedAt:               formatTimeNull(ts.CleanedAt),
 				FinalizedAt:             formatTimeNull(ts.FinalizedAt),
+				ProcessJson:             processJSON,
 			}); err != nil {
 				return fmt.Errorf("update node execution %q/%q: %w", sessionID, nodeID, err)
 			}
@@ -668,6 +675,10 @@ func nodeExecutionFromRow(row sqlcgen.NodeExecution) (*contract.TaskState, error
 	if err != nil {
 		return nil, fmt.Errorf("finalized_at: %w", err)
 	}
+	process, err := processFromColumn(row.ProcessJson)
+	if err != nil {
+		return nil, fmt.Errorf("process: %w", err)
+	}
 	return &contract.TaskState{
 		TaskID:        row.TaskID.String,
 		Name:          row.Name.String,
@@ -678,6 +689,7 @@ func nodeExecutionFromRow(row sqlcgen.NodeExecution) (*contract.TaskState, error
 		ExecutionID:   row.ID,
 		Inputs:        inputs,
 		Outputs:       outputs,
+		Process:       process,
 		State:         state,
 		Observed:      observed,
 		DoneWhen:      doneWhen,
@@ -704,6 +716,10 @@ func upsertTaskInstanceTx(ctx context.Context, q *sqlcgen.Queries, sessionID, in
 	outputsJSON, err := marshalJSONMap(ts.Outputs)
 	if err != nil {
 		return fmt.Errorf("marshal task %q/%q outputs: %w", sessionID, instanceName, err)
+	}
+	processJSON, err := processColumn(ts.Process)
+	if err != nil {
+		return fmt.Errorf("marshal task %q/%q process: %w", sessionID, instanceName, err)
 	}
 	stateJSON, err := marshalJSONMap(ts.State)
 	if err != nil {
@@ -735,6 +751,7 @@ func upsertTaskInstanceTx(ctx context.Context, q *sqlcgen.Queries, sessionID, in
 		FailedAt:                formatTimeNull(ts.FailedAt),
 		CleanedAt:               formatTimeNull(ts.CleanedAt),
 		FinalizedAt:             formatTimeNull(ts.FinalizedAt),
+		ProcessJson:             processJSON,
 	})
 	if err != nil {
 		return fmt.Errorf("upsert task instance %q/%q: %w", sessionID, instanceName, err)
@@ -810,6 +827,10 @@ func taskInstanceFromRow(row sqlcgen.TaskInstance) (*contract.TaskState, error) 
 	if err != nil {
 		return nil, fmt.Errorf("finalized_at: %w", err)
 	}
+	process, err := processFromColumn(row.ProcessJson)
+	if err != nil {
+		return nil, fmt.Errorf("process: %w", err)
+	}
 	ts := &contract.TaskState{
 		TaskID:        row.TaskID,
 		Scope:         row.Scope,
@@ -818,6 +839,7 @@ func taskInstanceFromRow(row sqlcgen.TaskInstance) (*contract.TaskState, error) 
 		Resource:      row.Resource.String,
 		Inputs:        inputs,
 		Outputs:       outputs,
+		Process:       process,
 		State:         state,
 		Observed:      observed,
 		ExtraDoneWhen: rawJSONFromColumn(row.ExtraDoneWhenJson),

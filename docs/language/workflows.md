@@ -250,7 +250,8 @@ not individual keys.
 declared. The default is `0`, which disables repair. A later workflow table
 replaces an inherited `[health]` table as a whole; setting the value to `0`
 disables inherited permission. The health cycle may run plain `up` only while
-the session's recorded status is `up`, after a non-zero `alive` exit, a failed
+the session's recorded status is `up`, after a non-zero `alive` exit (a
+`process` probe that finds its pid gone or reused counts as one), a failed
 or missing current-plan node, or a down run state. Probe errors that prevent
 evaluation do not permit repair. Each started repair consumes one attempt until
 a healthy observation or successful human `up` resets the budget. Exhaustion

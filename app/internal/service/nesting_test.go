@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"github.com/kecbigmt/plecture/app/internal/config"
+	"github.com/kecbigmt/plecture/app/internal/lang"
 	"github.com/kecbigmt/plecture/app/internal/task"
 	contract "github.com/kecbigmt/plecture/contracts/state"
 )
@@ -254,5 +255,24 @@ func TestProbeTargets_CarryEachLayersOwnSourcePath(t *testing.T) {
 		if !strings.HasSuffix(targets[i].SourcePath, want) {
 			t.Errorf("layer %d SourcePath = %q, want a path ending in %q", i, targets[i].SourcePath, want)
 		}
+	}
+}
+
+// The periodic health cycle judges a plain instance with the identity core
+// recorded at setup, not with the pid output alone.
+func TestProbeTargets_CarryThePlainInstancesRecordedProcess(t *testing.T) {
+	def := config.TaskDefinition{
+		ID:     "worker",
+		Health: &config.HealthConfig{Alive: &lang.Action{Type: lang.ActionProcess, Process: &lang.Value{Form: lang.FormFrom, From: "self.outputs.pid"}}},
+	}
+	identity := &contract.ProcessIdentity{PID: 7, Start: 99}
+	st := &contract.TaskState{Status: contract.TaskStatusProduced, Outputs: map[string]any{"pid": 7}, Process: identity}
+
+	targets := probeTargets("worker", def, st, nil)
+	if len(targets) != 1 {
+		t.Fatalf("targets = %d, want 1", len(targets))
+	}
+	if got := targets[0].probe(targets[0].Alive).Process; got != identity {
+		t.Fatalf("probe Process = %+v, want the recorded identity", got)
 	}
 }

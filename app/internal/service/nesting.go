@@ -60,6 +60,9 @@ type probeTarget struct {
 	// From names the layer that wrote that declaration, which is what
 	// decides whether its bin references may name another plugin.
 	From lang.Ownership
+	// Process is the identity core recorded at setup for a plain instance;
+	// nil for a nesting layer, whose effect cannot declare a process probe.
+	Process *contract.ProcessIdentity
 }
 
 // probe pairs one of the target's declared probes with the instance context
@@ -72,6 +75,7 @@ func (t probeTarget) probe(action *lang.Action) task.Probe {
 		SourcePath: t.SourcePath,
 		From:       t.From,
 		Env:        t.Env,
+		Process:    t.Process,
 	}
 }
 
@@ -91,6 +95,7 @@ func probeTargets(instance string, def config.TaskDefinition, st *contract.TaskS
 			Inputs:     st.Inputs,
 			SourcePath: def.SourcePath,
 			From:       def.Ownership(),
+			Process:    st.Process,
 		}}
 	}
 	var targets []probeTarget

@@ -174,7 +174,9 @@ checks_status = { type = "string" }
 probe and an `activity` probe, each an action. A setup-bearing effect declares
 `[health.alive]`: an executable probe, as below, or, when its produced record
 is deliberately never re-observed, `type = "noop"` (see
-[`actions.md`](actions.md#noop)). The rule applies independently to every
+[`actions.md`](actions.md#noop)); or, for an effect whose setup starts a
+process, `process = "self.outputs.<key>"`, which core checks against the
+identity it recorded for that process (see [`actions.md`](actions.md#process)). The rule applies independently to every
 layer of a nesting chain — a `noop` layer passes the liveness AND without
 suppressing an inner layer's own executable probe.
 

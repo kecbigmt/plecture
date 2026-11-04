@@ -5,12 +5,20 @@ import (
 	"strings"
 )
 
-// Action is one lifecycle execution: exec or shell everywhere, plus a third
-// variant, noop, legal only where ParseAliveAction is the parser
-// ([health.alive]). Exactly one variant's fields are populated, named by
-// Type; noop populates none of them.
+// Action is one lifecycle execution: exec or shell everywhere, plus two more
+// variants legal only where ParseAliveAction is the parser ([health.alive]):
+// noop, and process, which core evaluates itself. Exactly one variant's fields
+// are populated, named by Type; noop and process populate none of the exec or
+// shell fields.
+//
+// Process is the one field an alive action may carry alongside an exec or
+// shell variant: the reference naming the output that holds the pid core
+// recorded an identity for. It is set on a process variant, and on an exec or
+// shell variant that adds its own check after core's.
 type Action struct {
 	Type string
+
+	Process *Value
 
 	Bin     string
 	Command string
@@ -30,6 +38,10 @@ const (
 	ActionExec  = "exec"
 	ActionShell = "shell"
 	ActionNoop  = "noop"
+	// ActionProcess is the alive probe core evaluates itself: the pid named
+	// by Process must still belong to the process whose identity setup
+	// recorded.
+	ActionProcess = "process"
 )
 
 var (
@@ -70,12 +82,58 @@ func ParseAction(raw any, pos Position) (*Action, error) {
 // ordinary vocabulary check applied at a site that never widened its
 // vocabulary.
 func ParseAliveAction(raw any, pos Position) (*Action, error) {
-	if tbl, ok := raw.(map[string]any); ok {
-		if kind, _ := tbl["type"].(string); kind == ActionNoop {
-			return parseNoopAction(tbl, pos)
+	tbl, ok := raw.(map[string]any)
+	if !ok {
+		return ParseAction(raw, pos)
+	}
+	if kind, _ := tbl["type"].(string); kind == ActionNoop {
+		return parseNoopAction(tbl, pos)
+	}
+	processRaw, hasProcess := tbl["process"]
+	if !hasProcess {
+		return ParseAction(raw, pos)
+	}
+	process, err := parseProcessRef(processRaw, childPos(pos, "process"))
+	if err != nil {
+		return nil, err
+	}
+	rest := make(map[string]any, len(tbl))
+	for k, v := range tbl {
+		if k != "process" {
+			rest[k] = v
 		}
 	}
-	return ParseAction(raw, pos)
+	if _, hasType := rest["type"]; !hasType {
+		if err := rejectUnknownFields(tbl, pos, "process"); err != nil {
+			return nil, err
+		}
+		return &Action{Type: ActionProcess, Process: process}, nil
+	}
+	action, err := ParseAction(rest, pos)
+	if err != nil {
+		return nil, err
+	}
+	action.Process = process
+	return action, nil
+}
+
+// parseProcessRef reads the reference a process probe names its pid by. It
+// is a bare string rather than a tagged value because the probe has exactly
+// one legal source, the effect's own output: core records the identity of the
+// process setup produced, and a pid read from anywhere else has no recorded
+// identity to compare against.
+func parseProcessRef(raw any, pos Position) (*Value, error) {
+	ref, ok := raw.(string)
+	if !ok {
+		return nil, newDiag(CodeFieldType, LayerStructural, pos,
+			"process is a string naming an output, such as \"self.outputs.pid\"")
+	}
+	key, ok := strings.CutPrefix(ref, "self.outputs.")
+	if !ok || key == "" || strings.Contains(key, ".") {
+		return nil, newDiag(CodeFromRoot, LayerStructural, pos,
+			fmt.Sprintf("process names one of this effect's own outputs as self.outputs.<key>, not %q", ref))
+	}
+	return &Value{Form: FormFrom, From: ref, Pos: pos}, nil
 }
 
 // parseNoopAction reads a no-op action: it declares nothing beyond its type,
@@ -216,7 +274,10 @@ func sortedBindKeys(bind map[string]*Value) []string {
 // values returns every value this action carries, so one walk can validate
 // argv, stdin, and bindings alike.
 func (a *Action) values() []*Value {
-	out := make([]*Value, 0, len(a.Args)+len(a.Bind)+1)
+	out := make([]*Value, 0, len(a.Args)+len(a.Bind)+2)
+	if a.Process != nil {
+		out = append(out, a.Process)
+	}
 	out = append(out, a.Args...)
 	if a.Stdin != nil {
 		out = append(out, a.Stdin)
@@ -236,6 +297,9 @@ func (a *Action) Source() string {
 	}
 	if a.Type == ActionNoop {
 		return "noop"
+	}
+	if a.Type == ActionProcess {
+		return "process " + a.Process.From
 	}
 	if a.Type == ActionShell {
 		line, _, _ := strings.Cut(strings.TrimSpace(a.Script), "\n")
