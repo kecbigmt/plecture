@@ -109,6 +109,29 @@ func RepairSession(cfg *config.Config, store *state.Store, name string, report *
 	return attempted, err
 }
 
+// AwaitingRepair observes health afresh rather than reading the persisted
+// verdict, which lags a failure by up to one health period and would make a
+// delivery that failed in that window look unrelated to liveness.
+func AwaitingRepair(cfg *config.Config, store *state.Store, name string) (bool, error) {
+	s, err := store.GetE(name)
+	if err != nil || s == nil {
+		return false, err
+	}
+	limit, err := workflowRepairLimit(cfg, s)
+	if err != nil || limit <= 0 {
+		return false, err
+	}
+	if halt, _, err := repairHalt(store, name, s); err != nil || halt != "" {
+		return false, err
+	}
+	report, err := EvaluateHealth(cfg, store, name)
+	if err != nil {
+		return false, err
+	}
+	trigger, _ := repairCandidate(s, limit, sessionRunState(cfg, s), &report)
+	return trigger != "", nil
+}
+
 func workflowRepairLimit(cfg *config.Config, s *domain.Session) (int, error) {
 	if s == nil || s.Status != contract.SessionStatusUp || s.Workflow == "" {
 		return 0, nil
@@ -152,6 +175,22 @@ func repairAttemptObservation(store *state.Store, name string) (int, bool, strin
 		}
 	}
 	return attempts, suspended, reason, nil
+}
+
+// repairHalt names why automatic repair has stopped for a session, or returns
+// an empty status while repair is still being attempted.
+func repairHalt(store *state.Store, name string, s *domain.Session) (status, reason string, err error) {
+	boundary, found, err := eventlog.NewStore(store.Dir()).LatestRepairStateChange(name)
+	if err != nil {
+		return "", "", err
+	}
+	if found && boundary.Metadata["result"] == "suspended" {
+		return "repair_suspended", boundary.Metadata["reason"], nil
+	}
+	if s.Health != nil && s.Health.UnevaluableCycles >= 3 {
+		return "repair_undecidable", s.Health.LastReason, nil
+	}
+	return "", "", nil
 }
 
 func resetRepairStreak(store *state.Store, name, trigger string) error {

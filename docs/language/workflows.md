@@ -289,6 +289,17 @@ a healthy observation or successful human `up` resets the budget. Exhaustion
 reports `repair_suspended`; three consecutive cycles with an unevaluable
 `alive` probe report `repair_undecidable` without consuming an attempt.
 
+While repair is still expected, a channel delivery that fails is held rather
+than recorded: no `plect.channel.error` is written and the delivery cursor stays
+at the failed event, so later events wait behind it and the event is retried
+until delivery succeeds. Repair is expected for a session that opted in, whose
+fresh health observation permits repair, and that reports neither
+`repair_suspended` nor `repair_undecidable`. A hold ends when repair stops being
+expected, or once the event is thirty minutes old; the failure is then recorded
+as `plect.channel.error` and delivery moves on. A failure before delivery, such
+as a channel input that does not resolve, is never held, and a session that has
+not opted in is never held.
+
 An agent runtime whose worker can stay up while every turn fails composes
 core's process check with a script that reads the turn outcome. The script runs
 only while the pid is still the recorded process:

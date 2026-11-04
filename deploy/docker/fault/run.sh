@@ -113,12 +113,24 @@ if [ "${PLECT_FAULT_RECOVERY:-0}" != 1 ]; then
 fi
 
 inside kill -9 "$pid"
+plect event publish "$session" --type plect.instruction --direction internal \
+  --summary 'instruction while agent down' --body 'sent while the agent was down' >/dev/null
 failed=0
 if wait_for 'S1 resumed launch' "$recovery_wait" inside sh -c 'wc -l < "$HOME/fault/launches"' 2 \
   && assert_recovered; then
   echo 'PASS: S1 agent loss recovered the same conversation and worktree, and the agent got the resume instruction once'
 else
   echo 'FAIL: S1 agent loss did not recover the same conversation and worktree, or the agent missed the resume instruction' >&2
+  failed=1
+fi
+if wait_for 'S1 message sent while the agent was down' "$recovery_wait" held_message_count 1 \
+  && sleep 6 \
+  && [ "$(held_message_count)" = 1 ] \
+  && [ "$(held_message_channel_errors)" = 0 ]; then
+  echo 'PASS: S1 message sent while the agent was down was delivered once after repair, with no channel error'
+else
+  echo 'FAIL: S1 message sent while the agent was down was lost, duplicated, or recorded as a channel error' >&2
+  printf 'S1 held message deliveries: %s, channel errors: %s\n' "$(held_message_count)" "$(held_message_channel_errors)" >&2
   failed=1
 fi
 
