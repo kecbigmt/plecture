@@ -32,9 +32,7 @@ const (
 	ActionExec  = "exec"
 	ActionShell = "shell"
 	ActionNoop  = "noop"
-	// ActionProcess is the alive probe core evaluates itself: the pid named
-	// by Process must still belong to the process whose identity setup
-	// recorded.
+	// ActionProcess is the alive probe core evaluates itself.
 	ActionProcess = "process"
 )
 
