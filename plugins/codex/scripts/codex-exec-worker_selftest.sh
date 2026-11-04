@@ -189,5 +189,33 @@ kill "$worker_pid" 2>/dev/null || true
 wait "$worker_pid" 2>/dev/null || true
 worker_pid=""
 
+timeout_queue="$tmp/timeout-queue"
+timeout_state="$tmp/timeout-state"
+mkdir -p "$timeout_queue"
+echo '{"type":"user.emit","text":"leftover without notice"}' > "$timeout_queue/1-leftover.json"
+: > "$STUB_ARGV"
+"$worker" "$timeout_queue" "$timeout_state" &
+worker_pid=$!
+for _ in $(seq 1 100); do
+  [ -e "$timeout_state/ready" ] && break
+  sleep 0.01
+done
+[ -e "$timeout_state/ready" ] || { echo "FAIL fallback worker was never ready" >&2; fail=1; }
+sleep 0.5
+if [ -s "$STUB_ARGV" ]; then
+  echo "FAIL leftover turn ran before the resume-notice wait expired" >&2
+  fail=1
+fi
+wait_for_drain "$timeout_queue/1-leftover.json" || { echo "FAIL leftover turn was never drained without a notice" >&2; fail=1; }
+if [ "$(wc -l < "$STUB_ARGV")" -eq 1 ] && grep -q -- '-- leftover without notice' "$STUB_ARGV"; then
+  echo "ok   a queued turn runs once after the resume-notice wait expires"
+else
+  echo "FAIL queued turn did not run once after the wait expired" >&2
+  fail=1
+fi
+kill "$worker_pid" 2>/dev/null || true
+wait "$worker_pid" 2>/dev/null || true
+worker_pid=""
+
 [ "$fail" -eq 0 ] || { echo "codex-exec-worker selftest failed" >&2; exit 1; }
 echo "codex-exec-worker selftest passed"
