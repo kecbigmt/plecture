@@ -197,15 +197,20 @@ script = '''
 # the worker recorded, and still the process core recorded at setup, which core
 # alone can answer afresh — the only check a reuse by another process of the
 # same pane cannot also pass.
+# An instance recorded before core captured a process identity has none to
+# verify, so it is judged by the worker pidfile and parentage alone; leaving
+# its worker running would let a replacement start beside it. Drop this
+# fallback once no such instance can exist, which is after the upgrade window
+# of the first release that captures identities.
 # Without a pane there is no parent to confirm against, and a worker whose
 # pane is gone has gone with it.
 PANE_PID=$(sh -c "$terminal_pid" terminal-pid 2>/dev/null)
 is_worker() {
-  [ -n "$PANE_PID" ] && [ -n "${process_identity-}" ] || return 1
+  [ -n "$PANE_PID" ] || return 1
   case "${pid-}" in ''|0|*[!0-9]*) return 1 ;; esac
   [ "$(ps -o ppid= -p "$pid" 2>/dev/null | tr -d '[:space:]')" = "$PANE_PID" ] || return 1
   [ "$(cat "${state_dir-}/worker.pid" 2>/dev/null)" = "$pid" ] || return 1
-  plect process verify "$process_identity" >/dev/null 2>&1
+  [ -z "${process_identity-}" ] || plect process verify "$process_identity" >/dev/null 2>&1
 }
 if is_worker; then
   kill -TERM "$pid" 2>/dev/null
