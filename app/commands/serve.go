@@ -22,6 +22,7 @@ import (
 	"github.com/kecbigmt/plecture/app/internal/pluginservice"
 	"github.com/kecbigmt/plecture/app/internal/population"
 	"github.com/kecbigmt/plecture/app/internal/reactor"
+	"github.com/kecbigmt/plecture/app/internal/service"
 	"github.com/kecbigmt/plecture/app/internal/sessionhub"
 	"github.com/kecbigmt/plecture/app/internal/state"
 )
@@ -104,7 +105,7 @@ restart, within one refresh interval.`,
 
 		// Session dispatchers share this process's event log and session state:
 		// one per active session delivers events to its workflow-declared channels.
-		sup := dispatch.NewSupervisor(live.Get, stateStore, store, hub)
+		sup := dispatch.NewSupervisor(live.Get, stateStore, store, hub, dispatch.WithRepairWait(service.AwaitingRepair))
 		var supWG sync.WaitGroup
 		supWG.Go(func() { sup.Run(ctx) })
 

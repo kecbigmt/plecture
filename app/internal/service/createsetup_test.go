@@ -191,14 +191,23 @@ func TestCreate_ResourceSubscribesToMatchingProvider(t *testing.T) {
 		[]nodeFixture{{id: "probe"}})
 	extra := providerRunningScript("wf", fmt.Sprintf(`mkdir -p %s
 echo '{"workspace_dir":"%s"}'
-`, workdir, workdir)) + `
-[wf.subscribe]
+`, workdir, workdir))
+	resourceHooks := `[delivery]
+kind = "resource_observer"
+match = '^https://github\.com/'
+[delivery.observe]
+type = "exec"
+command = "printf"
+args = ['{}']
+
+[delivery.subscribe]
 type    = "exec"
 command = "sh"
 args    = ["-c", 'printf "%s\n%s\n" "$1" "$2" > "$3"', "provider",
   { from = "session.name" }, { from = "resource.id" }, "` + subRec + `"]
 `
 	writeSetupWorkflow(t, cfg, "wf", extra)
+	writeResourceDefFixture(t, cfg.BaseDir, "delivery", resourceHooks)
 
 	url := "https://github.com/org/repo/issues/9"
 	if _, err := Create(cfg, store, CreateParams{URL: url}); err != nil {
@@ -231,14 +240,23 @@ func TestCreate_ResourceSubscribeCarriesSetupProducedBranch(t *testing.T) {
 		[]nodeFixture{{id: "probe"}})
 	extra := providerRunningScript("wf", fmt.Sprintf(`mkdir -p %s
 echo '{"workspace_dir":"%s","branch":"issue/9"}'
-`, workdir, workdir)) + `
-[wf.subscribe]
+`, workdir, workdir))
+	resourceHooks := `[delivery]
+kind = "resource_observer"
+match = '^https://github\.com/'
+[delivery.observe]
+type = "exec"
+command = "printf"
+args = ['{}']
+
+[delivery.subscribe]
 type    = "exec"
 command = "sh"
 args    = ["-c", 'printf "%s" "$1" > "$2"', "provider",
   { from = "session.branch" }, "` + subRec + `"]
 `
 	writeSetupWorkflow(t, cfg, "wf", extra)
+	writeResourceDefFixture(t, cfg.BaseDir, "delivery", resourceHooks)
 
 	url := "https://github.com/org/repo/issues/9"
 	result, err := Create(cfg, store, CreateParams{URL: url})
@@ -389,20 +407,29 @@ func TestDestroy_UnsubscribesSessionResource(t *testing.T) {
 		[]nodeFixture{{id: "probe"}})
 	extra := providerRunningScript("wf", fmt.Sprintf(`mkdir -p %s
 echo '{"workspace_dir":"%s"}'
-`, workdir, workdir)) + `
-[wf.subscribe]
+`, workdir, workdir))
+	resourceHooks := `[delivery]
+kind = "resource_observer"
+match = '^https://github\.com/'
+[delivery.observe]
+type = "exec"
+command = "printf"
+args = ['{}']
+
+[delivery.subscribe]
 type    = "exec"
 command = "sh"
 args    = ["-c", 'printf "%s\n%s\n" "$1" "$2" > "$3"', "provider",
   { from = "session.name" }, { from = "resource.id" }, "` + subRec + `"]
 
-[wf.unsubscribe]
+[delivery.unsubscribe]
 type    = "exec"
 command = "sh"
 args    = ["-c", 'printf "%s\n%s\n" "$1" "$2" > "$3"', "provider",
   { from = "session.name" }, { from = "resource.id" }, "` + unsubRec + `"]
 `
 	writeSetupWorkflow(t, cfg, "wf", extra)
+	writeResourceDefFixture(t, cfg.BaseDir, "delivery", resourceHooks)
 
 	url := "https://github.com/org/repo/issues/12"
 	if _, err := Create(cfg, store, CreateParams{URL: url}); err != nil {
@@ -444,17 +471,26 @@ func TestDestroy_UnsubscribeFailureIsDurablyQueuedAndDrainsViaAnotherSession(t *
 		[]nodeFixture{{id: "probe"}})
 	extra := providerRunningScript("wf", fmt.Sprintf(`mkdir -p %s
 echo '{"workspace_dir":"%s"}'
-`, workdir, workdir)) + `
-[wf.subscribe]
+`, workdir, workdir))
+	resourceHooks := `[delivery]
+kind = "resource_observer"
+match = '^https://github\.com/'
+[delivery.observe]
+type = "exec"
+command = "printf"
+args = ['{}']
+
+[delivery.subscribe]
 type    = "exec"
 command = "true"
 
-[wf.unsubscribe]
+[delivery.unsubscribe]
 type    = "exec"
 command = "sh"
 args    = ["-c", 'test -e "$1" || exit 3; echo done > "$2"', "provider", "` + toggle + `", "` + rec + `"]
 `
 	writeSetupWorkflow(t, cfg, "wf", extra)
+	writeResourceDefFixture(t, cfg.BaseDir, "delivery", resourceHooks)
 
 	// toggle is absent, so the unsubscribe hook fails.
 	url := "https://github.com/org/repo/issues/13"

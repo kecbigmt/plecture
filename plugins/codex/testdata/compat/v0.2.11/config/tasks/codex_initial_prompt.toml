@@ -1,0 +1,134 @@
+[codex_initial_prompt]
+kind  = "effect"
+scope = "run"
+
+# Inputs:
+#   terminal_ready — ordering edge: forces this node to run after the
+#                    session's terminal-declaring effect (this plugin's own
+#                    launch effect does not own the interactive endpoint —
+#                    the multiplexer plugin's does) and after the agent is
+#                    up. Its value is never read; only its presence in the
+#                    workflow DAG matters, so a workflow typically wires it
+#                    to the multiplexer node's own output.
+#   prompt         — the already-resolved initial-prompt text (a task
+#                    document's own rendered instruction, typically); empty
+#                    means no prompt is sent. Resolving prompt text from a
+#                    name is the wiring layer's job (a `from` projection
+#                    against whatever root holds it), not this effect's —
+#                    it only ever delivers text it is handed.
+#   agent_session  — a second ordering edge: forces this node to run after
+#                    the agent launch effect specifically. Its value is
+#                    never read either.
+#   repeat         — "true" resends the prompt on every `plect up` (a
+#                    kick). Empty/unset sends it once per session lifetime.
+#
+# Composes the session's terminal verbs instead of naming a concrete
+# multiplexer directly (docs/design/plugin-boundary-contracts.md's Terminal
+# Operation Surface) — this plugin owns its own initial-prompt
+# submit/readiness composition (prompt glyphs, paste-burst retry schedule)
+# because that describes the agent CLI's TUI contract, not the
+# multiplexer's.
+#
+# Gate: by default the previous run's `sent` output short-circuits re-sends
+# across `plect down` → `up` (a resumed session stays quiet). `repeat=true`
+# skips the gate so the prompt re-sends on every `up`. State is wiped on
+# destroy, so the next `plect create` sends the prompt either way.
+[codex_initial_prompt.setup]
+type   = "shell"
+script = '''
+if [ "${repeat-}" != "true" ] && [ "${prev_sent-}" = "true" ]; then
+  echo '{"sent":"true"}'
+  exit 0
+fi
+
+# A cold pane can take tens of seconds to load its shell environment before
+# the agent CLI's input box (a `›`/`❯` prompt line — CLI versions differ on
+# which glyph they use) is even drawn. A fixed sleep loses the paste on a
+# slow cold load, so poll for either glyph instead. A `--resume` node with a
+# long conversation history (e.g. an orchestrator session) draws slower than
+# a cold boot, which is why the bound below is generous: it only costs time
+# on the failure path, since the loop exits as soon as the pane is ready.
+ready=0
+for _ in $(seq 1 180); do
+  if sh -c "$capture" terminal-capture 2>/dev/null | grep -q '^[›❯]'; then
+    ready=1
+    break
+  fi
+  sleep 1
+done
+if [ "$ready" != 1 ]; then
+  echo "initial_prompt: terminal did not show input box within 180s" >&2
+  exit 1
+fi
+
+PROMPT="${prompt-}"
+if [ -n "$PROMPT" ]; then
+  sh -c "$send_text" terminal-send-text "$PROMPT"
+  sleep 1
+  sh -c "$send_keys" terminal-send-keys Enter
+
+  # The TUI's paste-burst detection window can still be open just after a
+  # long paste, absorbing the trailing Enter as a newline instead of a
+  # submit — a distinct race from the boot-readiness one above, so gating
+  # on boot readiness alone does not fix it. Re-check the input box and
+  # resend Enter with backoff until it reads empty (submitted); a session
+  # with heavy resume history renders and processes input slowly enough
+  # that this needs several rounds in practice.
+  submitted=0
+  for delay in 2 4 8 16; do
+    input=$(sh -c "$capture" terminal-capture 2>/dev/null | grep '^[›❯]' | tail -n 1)
+    # The `❯` glyph is followed by NBSP (U+00A0), not a regular space, in
+    # observed pane output; normalize it before the case match below.
+    input=$(printf '%s' "$input" | sed 's/\xc2\xa0/ /g')
+    case "$input" in
+      ''|'›'|'› '|'❯'|'❯ ') submitted=1; break ;;
+    esac
+    sleep "$delay"
+    sh -c "$send_keys" terminal-send-keys Enter
+  done
+  if [ "$submitted" != 1 ]; then
+    input=$(sh -c "$capture" terminal-capture 2>/dev/null | grep '^[›❯]' | tail -n 1)
+    input=$(printf '%s' "$input" | sed 's/\xc2\xa0/ /g')
+    case "$input" in
+      ''|'›'|'› '|'❯'|'❯ ') submitted=1 ;;
+    esac
+  fi
+  if [ "$submitted" != 1 ]; then
+    echo "initial_prompt: instruction still unsubmitted after retries" >&2
+    exit 1
+  fi
+fi
+
+echo '{"sent":"true"}'
+'''
+
+[codex_initial_prompt.setup.bind]
+prompt    = { from = "inputs.prompt", optional = true }
+repeat    = { from = "inputs.repeat", optional = true }
+prev_sent = { from = "prev.sent", optional = true }
+capture   = { terminal = "capture" }
+send_text = { terminal = "send_text" }
+send_keys = { terminal = "send_keys" }
+
+# "sent" records that a prompt was submitted, not a surface this effect owns —
+# the terminal it typed into is the multiplexer effect's own liveness to
+# check, and re-checking submission here would just re-run the setup script.
+[codex_initial_prompt.health.alive]
+type = "noop"
+
+[codex_initial_prompt.inputs_schema]
+type                 = "object"
+additionalProperties = false
+
+[codex_initial_prompt.inputs_schema.properties]
+terminal_ready = { type = "string" }
+prompt         = { type = "string" }
+agent_session  = { type = "string" }
+repeat         = { type = "string" }
+
+[codex_initial_prompt.outputs_schema]
+type     = "object"
+required = ["sent"]
+
+[codex_initial_prompt.outputs_schema.properties]
+sent = { type = "string", enum = ["true"] }

@@ -2,8 +2,11 @@ package main
 
 import (
 	"bufio"
+	"encoding/binary"
 	"encoding/json"
 	"fmt"
+	"io"
+	"net"
 	"os"
 	"path/filepath"
 	"strings"
@@ -31,6 +34,25 @@ func main() {
 	}
 	appendLine(filepath.Join(logDir, "launches"), strings.Join(os.Args[1:], " "))
 	record, _ := json.Marshal(map[string]any{"sessionId": sid, "pid": os.Getpid()})
+	if _, err := os.Stat(filepath.Join(logDir, "mute")); os.IsNotExist(err) {
+		runtimeDir := os.Getenv("XDG_RUNTIME_DIR")
+		if runtimeDir == "" {
+			runtimeDir = "/tmp"
+		}
+		socket := filepath.Join(runtimeDir, "claude-channel", sid+".sock")
+		if err := os.MkdirAll(filepath.Dir(socket), 0700); err != nil {
+			panic(err)
+		}
+		if err := os.Remove(socket); err != nil && !os.IsNotExist(err) {
+			panic(err)
+		}
+		listener, err := net.Listen("unix", socket)
+		if err != nil {
+			panic(err)
+		}
+		defer listener.Close()
+		go recordEvents(listener, filepath.Join(logDir, "prompts"))
+	}
 	if err := os.WriteFile(filepath.Join(home, ".claude", "sessions", sid+".json"), record, 0600); err != nil {
 		panic(err)
 	}
@@ -56,6 +78,41 @@ func main() {
 	}
 	if err := scanner.Err(); err != nil {
 		panic(err)
+	}
+}
+
+func recordEvents(listener net.Listener, prompts string) {
+	for {
+		conn, err := listener.Accept()
+		if err != nil {
+			return
+		}
+		go func() {
+			defer conn.Close()
+			header := make([]byte, 4)
+			if _, err := io.ReadFull(conn, header); err != nil {
+				return
+			}
+			data := make([]byte, binary.BigEndian.Uint32(header))
+			if _, err := io.ReadFull(conn, data); err != nil {
+				return
+			}
+			var envelope struct {
+				Payload struct {
+					Text string `json:"text"`
+				} `json:"payload"`
+			}
+			if err := json.Unmarshal(data, &envelope); err != nil {
+				return
+			}
+			var message struct {
+				Body string `json:"body"`
+			}
+			if err := json.Unmarshal([]byte(envelope.Payload.Text), &message); err != nil {
+				return
+			}
+			appendLine(prompts, message.Body)
+		}()
 	}
 }
 

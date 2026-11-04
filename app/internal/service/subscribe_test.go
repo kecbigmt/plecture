@@ -20,20 +20,19 @@ import (
 func writeSubscribeProvider(t *testing.T, id, match, recordPath string) *config.Config {
 	t.Helper()
 	baseDir := t.TempDir()
-	providersDir := filepath.Join(baseDir, "workspaces")
+	providersDir := filepath.Join(baseDir, "resources")
 	if err := os.MkdirAll(providersDir, 0o755); err != nil {
 		t.Fatal(err)
 	}
 	body := fmt.Sprintf(`
 [%[1]s]
-kind  = "workspace_provider"
+kind  = "resource_observer"
 match = %[2]q
-name  = { expr = "match.owner + '/' + match.repo + '-' + match.number" }
 
-[%[1]s.setup]
+[%[1]s.observe]
 type    = "exec"
 command = "printf"
-args    = ['{"workspace_dir":"/tmp/x"}']
+args    = ['{}']
 
 [%[1]s.subscribe]
 type    = "exec"
@@ -92,20 +91,19 @@ func TestSubscribe_RunsProviderHookWithEnv(t *testing.T) {
 func TestSubscribe_ForwardsSessionBranch(t *testing.T) {
 	rec := filepath.Join(t.TempDir(), "rec")
 	baseDir := t.TempDir()
-	providersDir := filepath.Join(baseDir, "workspaces")
+	providersDir := filepath.Join(baseDir, "resources")
 	if err := os.MkdirAll(providersDir, 0o755); err != nil {
 		t.Fatal(err)
 	}
 	body := fmt.Sprintf(`
 [github]
-kind  = "workspace_provider"
+kind  = "resource_observer"
 match = %q
-name  = { expr = "match.owner + '/' + match.repo + '-' + match.number" }
 
-[github.setup]
+[github.observe]
 type    = "exec"
 command = "printf"
-args    = ['{"workspace_dir":"/tmp/x"}']
+args    = ['{}']
 
 [github.subscribe]
 type    = "exec"
@@ -223,20 +221,19 @@ func TestSubscribe_NoProviderMatches(t *testing.T) {
 
 func TestSubscribe_ProviderWithoutSubscribeHook(t *testing.T) {
 	baseDir := t.TempDir()
-	providersDir := filepath.Join(baseDir, "workspaces")
+	providersDir := filepath.Join(baseDir, "resources")
 	if err := os.MkdirAll(providersDir, 0o755); err != nil {
 		t.Fatal(err)
 	}
 	body := fmt.Sprintf(`
 [github]
-kind  = "workspace_provider"
+kind  = "resource_observer"
 match = %q
-name  = { expr = "match.owner + '/' + match.repo + '-' + match.number" }
 
-[github.setup]
+[github.observe]
 type    = "exec"
 command = "printf"
-args    = ['{"workdir":"/tmp/x"}']
+args    = ['{}']
 `, ghMatch)
 	if err := os.WriteFile(filepath.Join(providersDir, "github.toml"), []byte(body), 0o644); err != nil {
 		t.Fatal(err)
@@ -255,20 +252,19 @@ args    = ['{"workdir":"/tmp/x"}']
 
 func TestSubscribe_HookFailureSurfacesStderr(t *testing.T) {
 	baseDir := t.TempDir()
-	providersDir := filepath.Join(baseDir, "workspaces")
+	providersDir := filepath.Join(baseDir, "resources")
 	if err := os.MkdirAll(providersDir, 0o755); err != nil {
 		t.Fatal(err)
 	}
 	body := fmt.Sprintf(`
 [github]
-kind  = "workspace_provider"
+kind  = "resource_observer"
 match = %q
-name  = { expr = "match.owner + '/' + match.repo + '-' + match.number" }
 
-[github.setup]
+[github.observe]
 type    = "exec"
 command = "printf"
-args    = ['{"workdir":"/tmp/x"}']
+args    = ['{}']
 
 [github.subscribe]
 type    = "exec"

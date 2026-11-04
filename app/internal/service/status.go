@@ -9,7 +9,6 @@ import (
 
 	"github.com/kecbigmt/plecture/app/internal/config"
 	"github.com/kecbigmt/plecture/app/internal/domain"
-	"github.com/kecbigmt/plecture/app/internal/eventlog"
 	"github.com/kecbigmt/plecture/app/internal/state"
 	"github.com/kecbigmt/plecture/app/internal/task"
 	"github.com/kecbigmt/plecture/contracts/event"
@@ -176,15 +175,9 @@ func Status(cfg *config.Config, store *state.Store, identifier string) (*StatusR
 		return nil, err
 	}
 	healthReport, healthState := sessionHealthReport(cfg, store, sessionName)
-	repairStatus, repairReason := "", ""
-	boundary, found, err := eventlog.NewStore(store.Dir()).LatestRepairStateChange(sessionName)
+	repairStatus, repairReason, err := repairHalt(store, sessionName, session)
 	if err != nil {
 		return nil, err
-	}
-	if found && boundary.Metadata["result"] == "suspended" {
-		repairStatus, repairReason = "repair_suspended", boundary.Metadata["reason"]
-	} else if session.Health != nil && session.Health.UnevaluableCycles >= 3 {
-		repairStatus, repairReason = "repair_undecidable", session.Health.LastReason
 	}
 
 	displayTitle := sessionDisplayTitle(cfg, session)

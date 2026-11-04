@@ -171,6 +171,13 @@ func startDispatcher(t *testing.T, d *sessionDispatcher) func() {
 func startFakeSocket(t *testing.T) (string, <-chan protocol.MessagePayload) {
 	t.Helper()
 	path := filepath.Join(sockettest.Dir(t), "c.sock")
+	return path, startFakeSocketAt(t, path)
+}
+
+// startFakeSocketAt is startFakeSocket on a caller-chosen path, so a test can
+// bring a runtime "back" at the address a dispatcher already failed against.
+func startFakeSocketAt(t *testing.T, path string) <-chan protocol.MessagePayload {
+	t.Helper()
 	ln, err := net.Listen("unix", path)
 	if err != nil {
 		t.Fatal(err)
@@ -204,7 +211,7 @@ func startFakeSocket(t *testing.T) (string, <-chan protocol.MessagePayload) {
 			}(conn)
 		}
 	}()
-	return path, recv
+	return recv
 }
 
 func runtimeDispatcher(t *testing.T, session string, log *eventlog.Store, socketPath string, include ...string) (*sessionDispatcher, *domain.Session) {
@@ -307,6 +314,17 @@ func TestDispatcher_IncludeFilters(t *testing.T) {
 	assertNoDelivery(t, recv) // user.note is not in include
 	if cur, _ := log.ReadCursor("o/r-1", dispatcherConsumer); cur == 0 {
 		t.Error("cursor should advance past an unmatched event")
+	}
+}
+
+func TestDispatcher_ResumeInstructionUsesRuntimeInstructionChannel(t *testing.T) {
+	log := eventlog.NewStore(t.TempDir())
+	sock, recv := startFakeSocket(t)
+	d, s := runtimeDispatcher(t, "o/r-1", log, sock, event.TypeInstruction)
+	log.Append(event.Event{SessionName: "o/r-1", Type: event.TypeSessionResumed, Body: "Check prior work.", Direction: event.Inbound})
+	drainOnce(d, s)
+	if typ := recvType(t, recv); typ != event.TypeSessionResumed {
+		t.Fatalf("delivered type = %q", typ)
 	}
 }
 

@@ -1073,6 +1073,9 @@
             "auto_repair_attempts": {
               "type": "integer",
               "minimum": 0
+            },
+            "resume_instruction": {
+              "type": "string"
             }
           }
         }
@@ -1449,12 +1452,6 @@
         "cleanup": {
           "$ref": "#/$defs/action"
         },
-        "subscribe": {
-          "$ref": "#/$defs/action"
-        },
-        "unsubscribe": {
-          "$ref": "#/$defs/action"
-        },
         "inputs_schema": {
           "$ref": "#/$defs/schemaDocument"
         },
@@ -1487,6 +1484,15 @@
         },
         "finalize": {
           "$ref": "#/$defs/action"
+        },
+        "subscribe": {
+          "$ref": "#/$defs/action"
+        },
+        "unsubscribe": {
+          "$ref": "#/$defs/action"
+        },
+        "inputs_schema": {
+          "$ref": "#/$defs/schemaDocument"
         },
         "query": {
           "$ref": "#/$defs/resourceObserverQuery"

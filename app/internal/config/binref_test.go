@@ -205,7 +205,7 @@ kind = "workspace_provider"
 type    = "exec"
 command = "true"
 
-[github.subscribe]
+[github.cleanup]
 type = "exec"
 bin  = "local/runtime/watcher"
 `)

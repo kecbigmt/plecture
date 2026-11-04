@@ -155,6 +155,23 @@ func attachGithubWorkspaceProvider(t *testing.T, cfg *config.Config, wfID string
 	addWorkflowFields(t, cfg, wfID, "workspace_provider = \"official.github."+provID+"\"\n")
 }
 
+func copyShippedGithubResources(t *testing.T, pluginDir string) {
+	t.Helper()
+	dir := filepath.Join(pluginDir, "config", "resources")
+	if err := os.MkdirAll(dir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	for _, name := range []string{"issue", "pull_request"} {
+		data, err := os.ReadFile(filepath.Join(repoRoot(t), "plugins", "github", "config", "resources", name+".toml"))
+		if err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(filepath.Join(dir, name+".toml"), data, 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
+}
+
 // shippedGithubWorkspaceProviderTOML reads the workspace provider config the
 // GitHub workspace provider plugin ships, so fixtures never drift from it.
 func shippedGithubWorkspaceProviderTOML(t *testing.T) string {

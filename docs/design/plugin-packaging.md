@@ -870,6 +870,31 @@ Compatibility metadata decisions:
 - Executable adapter protocol versions remain adapter-specific documentation
   unless core later defines a generic adapter protocol.
 
+### Compatibility with released declarations
+
+A session keeps the declarations it was created with and the outputs they
+recorded, while a plugin's executables are the ones installed when an action
+runs. Updating a plugin therefore pairs older declarations and records with
+newer executables, and the plugin must work in that pairing:
+
+- An executable accepts every argument shape, input, and output shape that a
+  previously released declaration passes or records. A shape change keeps
+  accepting the old shape for at least one release before the old one is
+  dropped.
+- A declaration that reads an output added after a release treats it as
+  optional and judges a record without it as it was judged before the output
+  existed. A process alive probe judges an instance recorded without a process
+  identity by its pid alone.
+
+Each official plugin that ships runtime effects holds, under
+`testdata/compat/<tag>/`, the task declarations of the latest tagged release
+(`config/tasks/`) and a `scenarios.toml` in the effect-scenario format that
+sets each effect up as that release did and runs its alive probe and cleanup
+against the outputs that release recorded. The integration suite runs these
+scenarios under both the released and the current declarations against the
+current executables, and any action that declines fails it. The plugin's
+README states how the fixtures are refreshed.
+
 ## Walkthrough examples
 
 ### Runtime and delivery plugins

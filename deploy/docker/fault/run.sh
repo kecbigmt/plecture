@@ -113,12 +113,24 @@ if [ "${PLECT_FAULT_RECOVERY:-0}" != 1 ]; then
 fi
 
 inside kill -9 "$pid"
+plect event publish "$session" --type plect.instruction --direction internal \
+  --summary 'instruction while agent down' --body 'sent while the agent was down' >/dev/null
 failed=0
 if wait_for 'S1 resumed launch' "$recovery_wait" inside sh -c 'wc -l < "$HOME/fault/launches"' 2 \
   && assert_recovered; then
-  echo 'PASS: S1 agent loss recovered the same conversation and worktree'
+  echo 'PASS: S1 agent loss recovered the same conversation and worktree, and the agent got the resume instruction once'
 else
-  echo 'FAIL: S1 agent loss did not recover the same conversation and worktree' >&2
+  echo 'FAIL: S1 agent loss did not recover the same conversation and worktree, or the agent missed the resume instruction' >&2
+  failed=1
+fi
+if wait_for 'S1 message sent while the agent was down' "$recovery_wait" held_message_count 1 \
+  && sleep 6 \
+  && [ "$(held_message_count)" = 1 ] \
+  && [ "$(held_message_channel_errors)" = 0 ]; then
+  echo 'PASS: S1 message sent while the agent was down was delivered once after repair, with no channel error'
+else
+  echo 'FAIL: S1 message sent while the agent was down was lost, duplicated, or recorded as a channel error' >&2
+  printf 'S1 held message deliveries: %s, channel errors: %s\n' "$(held_message_count)" "$(held_message_channel_errors)" >&2
   failed=1
 fi
 
@@ -135,9 +147,40 @@ container=""
 start_container
 if wait_for 'S2 resumed launch after container replacement' "$recovery_wait" inside sh -c 'wc -l < "$HOME/fault/launches"' 2 \
   && assert_recovered; then
-  echo 'PASS: S2 container replacement recovered the same conversation and worktree'
+  echo 'PASS: S2 container replacement recovered the same conversation and worktree, and the agent got the resume instruction once'
 else
-  echo 'FAIL: S2 container replacement did not recover the same conversation and worktree' >&2
+  echo 'FAIL: S2 container replacement did not recover the same conversation and worktree, or the agent missed the resume instruction' >&2
+  failed=1
+fi
+if plect up "$session" --detach >/dev/null \
+  && [ "$(resume_instruction_count)" = 1 ]; then
+  echo 'PASS: idempotent up did not deliver a second resume instruction'
+else
+  echo 'FAIL: idempotent up delivered another resume instruction or failed' >&2
+  failed=1
+fi
+
+docker rm -f "$container" >/dev/null
+container=""
+docker volume rm "$volume" >/dev/null
+volume="plecture-fault-$RANDOM-$RANDOM"
+docker volume create "$volume" >/dev/null
+start_container
+new_session three
+inside sh -c 'touch "$HOME/fault/mute"'
+inside kill -9 "$pid"
+channel_error_count() {
+  plect event list "$session" --json | jq '[.events[] | select(.type == "plect.channel.error" and .metadata.event_type == "plect.session.resumed")] | length'
+}
+if wait_for 'S6 resumed launch' "$recovery_wait" inside sh -c 'wc -l < "$HOME/fault/launches"' 2 \
+  && wait_for 'S6 channel delivery error' "$recovery_wait" channel_error_count 1 \
+  && sleep 5 \
+  && [ "$(inside sh -c 'grep -c -- "--session-id" "$HOME/fault/launches" || true')" = 1 ]; then
+  echo 'PASS: S6 failed notice delivery left no fresh-start fallback agent'
+else
+  echo 'FAIL: S6 failed notice delivery started a fresh-start fallback agent or no channel error was recorded' >&2
+  inside sh -c 'cat "$HOME/fault/launches"' >&2
+  printf 'S6 channel errors: %s\n' "$(channel_error_count)" >&2
   failed=1
 fi
 
