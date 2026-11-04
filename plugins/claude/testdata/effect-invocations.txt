@@ -30,7 +30,6 @@ artifact state_dir/mcp.json:
 }
 
 == headless_runtime:fresh-with-inputs / health.alive
-call[0]: "ps" "-o" "lstart=" "-p" "<pid>"
 alive
 
 == headless_runtime:fresh-with-inputs / health.activity
@@ -55,6 +54,21 @@ call[4]: "terminal-send_keys" "Enter"
 call[5]: "ps" "-o" "ppid=" "-p" "<pid>"
 call[6]: "ps" "-o" "lstart=" "-p" "<pid>"
 outputs: {"pid":<pid>,"pid_started":"started-<pid>","queue_dir":"<state>/plect-claude-headless/acme/widget-1/11111111-2222-3333-4444-555555555555/queue","session_id":"11111111-2222-3333-4444-555555555555","socket_path":"<state>/claude-channel/11111111-2222-3333-4444-555555555555.sock","state_dir":"<state>/plect-claude-headless/acme/widget-1/11111111-2222-3333-4444-555555555555"}
+
+== headless_runtime:alive-for-the-recorded-process / health.alive
+alive
+
+== headless_runtime:not-alive-for-a-reused-pid / health.alive
+declined: pid <pid>: pid is held by a different process than the one recorded
+
+== headless_runtime:alive-for-a-record-without-a-start-time / health.alive
+alive
+
+== headless_runtime:not-alive-for-a-dead-pid-without-a-start-time / health.alive
+declined: pid 999999999: process is not running
+
+== headless_runtime:not-alive-after-a-failed-turn / health.alive
+declined: exit status 1
 
 == headless_runtime:cleanup-kills-confirmed-worker / cleanup
 call[0]: "terminal-pid"

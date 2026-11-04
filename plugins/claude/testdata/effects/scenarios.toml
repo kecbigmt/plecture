@@ -205,6 +205,44 @@ name  = "resume-keeps-session"
 prev  = { session_id = "11111111-2222-3333-4444-555555555555" }
 hooks = ["setup"]
 
+# Core records the worker's identity when setup produces its pid, so a pid
+# recycled by an unrelated process is not alive even though something still
+# answers to it.
+[[headless_runtime]]
+name             = "alive-for-the-recorded-process"
+self             = { pid = "WORKER_PID", state_dir = "HOME/headless" }
+process_identity = "recorded"
+hooks            = ["health.alive"]
+
+[[headless_runtime]]
+name             = "not-alive-for-a-reused-pid"
+self             = { pid = "WORKER_PID", state_dir = "HOME/headless" }
+process_identity = "reused"
+hooks            = ["health.alive"]
+
+# An instance recorded before the identity existed is judged by its pid alone.
+[[headless_runtime]]
+name  = "alive-for-a-record-without-a-start-time"
+self  = { pid = "WORKER_PID", state_dir = "HOME/headless" }
+hooks = ["health.alive"]
+
+[[headless_runtime]]
+name  = "not-alive-for-a-dead-pid-without-a-start-time"
+self  = { pid = "999999999", state_dir = "HOME/headless" }
+hooks = ["health.alive"]
+
+# The pid is the worker's, yet the last turn failed: the script beside core's
+# check still reports it.
+[[headless_runtime]]
+name             = "not-alive-after-a-failed-turn"
+self             = { pid = "WORKER_PID", state_dir = "HOME/headless" }
+process_identity = "recorded"
+hooks            = ["health.alive"]
+
+[[headless_runtime.files]]
+path    = "headless/health.json"
+content = '{"last_exit_code":1}'
+
 # Cleanup confirms a stored pid is still this effect's worker — the pane's
 # child that wrote worker.pid, started when setup recorded — before each
 # signal: a worker that exited can have had its pid reused by an unrelated

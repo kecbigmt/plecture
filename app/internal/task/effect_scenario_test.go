@@ -32,6 +32,12 @@ type effectScenario struct {
 	// Hooks selects what to run, defaulting to every action the declaration
 	// carries.
 	Hooks []string `toml:"hooks"`
+	// ProcessIdentity states the identity core holds for the instance a
+	// health.alive hook probes when the scenario does not set it up first:
+	// "recorded" is the live process's own, "reused" one whose start time
+	// differs, as a recycled pid's would. Absent, the instance has no recorded
+	// identity, like one set up before the process probe existed.
+	ProcessIdentity string `toml:"process_identity"`
 	// Files are seeded into the sandbox home before the run, for a script
 	// that discovers its own subject by reading the filesystem.
 	Files []effectScenarioFile `toml:"files"`

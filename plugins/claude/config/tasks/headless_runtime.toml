@@ -245,23 +245,20 @@ activity_bin = { bin = "claude-agent-activity" }
 terminal_pid = { terminal = "pid" }
 
 # A live PID alone would hide a worker stuck on a permanently failing turn,
-# such as one with an exhausted or revoked API key.
+# such as one with an exhausted or revoked API key; core's process check
+# confirms the pid is still the worker setup started, and the script adds the
+# turn outcome on top.
 [headless_runtime.health.alive]
-type   = "shell"
-script = '''
-started_pinned() { LC_ALL=C TZ=UTC ps -o lstart= -p "$1" 2>/dev/null | sed 's/^ *//; s/ *$//'; }
-started_ambient() { ps -o lstart= -p "$1" 2>/dev/null | sed 's/^ *//; s/ *$//'; }
-kill -0 "$pid" || exit 1
-[ "$(started_pinned "$pid")" = "$pid_started" ] || [ "$(started_ambient "$pid")" = "$pid_started" ] || exit 1
+process = "self.outputs.pid"
+type    = "shell"
+script  = '''
 HEALTH="$state_dir/health.json"
 [ -f "$HEALTH" ] || exit 0
 jq -e ".last_exit_code == 0" "$HEALTH" >/dev/null
 '''
 
 [headless_runtime.health.alive.bind]
-pid         = { from = "self.outputs.pid" }
-pid_started = { from = "self.outputs.pid_started" }
-state_dir   = { from = "self.outputs.state_dir" }
+state_dir = { from = "self.outputs.state_dir" }
 
 [headless_runtime.health.activity]
 type = "exec"
