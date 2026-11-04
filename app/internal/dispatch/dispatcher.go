@@ -242,6 +242,9 @@ func channelMatches(ch config.EventChannel, ev event.Event) bool {
 		if event.MatchType(include, ev.Type) {
 			return true
 		}
+		if ev.Type == event.TypeSessionResumed && event.MatchType(include, event.TypeInstruction) {
+			return true
+		}
 	}
 	return false
 }

@@ -3,8 +3,23 @@
 Plecture's event bus is the append-only, per-session log every runtime,
 provider, and consumer shares. A channel's `include` (`channels.md#selecting-events`)
 and a workflow's `[tick].on` (`workflows.md#clocks`) select events by
-type glob; this chapter documents the core, provider-neutral vocabulary those
-globs can name.
+type glob, with the resume-instruction alias described below. This chapter
+documents the core, provider-neutral vocabulary those globs can name.
+
+## Session resume instructions
+
+`plect.session.resumed` is an inbound event published when `Up` re-sets up a
+run-scoped node with `prev`. Its body is the workflow's effective
+`resume_instruction`. The `trigger` metadata records why setup ran:
+
+| Value | Cause |
+|---|---|
+| `repair` | Automatic health repair. |
+| `wake` | A sleeping session was brought back up. |
+| `up` | An `Up` call outside repair or wake re-set up a run-scoped node. |
+
+An `include` entry matching `plect.instruction` also selects this event (see
+[`workflows.md`](workflows.md#event-channels)).
 
 ## Agent messages
 

@@ -158,6 +158,64 @@ else
   fail=1
 fi
 
+echo ok > "$STUB_MODE_FILE"
+: > "$STUB_ARGV"
+priority_queue="$tmp/priority-queue"
+priority_state="$tmp/priority-state"
+mkdir -p "$priority_queue"
+echo '{"type":"user.emit","text":"leftover turn"}' > "$priority_queue/1-leftover.json"
+"$worker" "$priority_queue" "$priority_state" "$sid" "$tmp/mcp.json" "$tmp/hooks.json" &
+worker_pid=$!
+for _ in $(seq 1 100); do
+  [ -e "$priority_state/ready" ] && break
+  sleep 0.01
+done
+[ -e "$priority_state/ready" ] || { echo "FAIL resumed worker was never ready" >&2; fail=1; }
+echo '{"type":"plect.session.resumed","text":"resume instruction"}' > "$priority_queue/2-resumed.json"
+echo '{"type":"user.emit","text":"later turn"}' > "$priority_queue/3-later.json"
+wait_for_drain "$priority_queue/3-later.json" || { echo "FAIL queued turns were never drained" >&2; fail=1; }
+mapfile -t ordered_turns < "$STUB_ARGV"
+if [ "${#ordered_turns[@]}" -eq 3 ] &&
+   [[ "${ordered_turns[0]}" == *"-- resume instruction"* ]] &&
+   [[ "${ordered_turns[1]}" == *"-- leftover turn"* ]] &&
+   [[ "${ordered_turns[2]}" == *"-- later turn"* ]]; then
+  echo "ok   a resume instruction precedes an interrupted turn; other turns keep queue order"
+else
+  printf 'FAIL queued turn order: %s\n' "${ordered_turns[*]}" >&2
+  fail=1
+fi
+kill -TERM "$worker_pid" 2>/dev/null || true
+wait "$worker_pid" 2>/dev/null || true
+worker_pid=""
+
+timeout_queue="$tmp/timeout-queue"
+timeout_state="$tmp/timeout-state"
+mkdir -p "$timeout_queue"
+echo '{"type":"user.emit","text":"leftover without notice"}' > "$timeout_queue/1-leftover.json"
+: > "$STUB_ARGV"
+"$worker" "$timeout_queue" "$timeout_state" "$sid" "$tmp/mcp.json" "$tmp/hooks.json" &
+worker_pid=$!
+for _ in $(seq 1 100); do
+  [ -e "$timeout_state/ready" ] && break
+  sleep 0.01
+done
+[ -e "$timeout_state/ready" ] || { echo "FAIL fallback worker was never ready" >&2; fail=1; }
+sleep 0.5
+if [ -s "$STUB_ARGV" ]; then
+  echo "FAIL leftover turn ran before the resume-instruction wait expired" >&2
+  fail=1
+fi
+wait_for_drain "$timeout_queue/1-leftover.json" || { echo "FAIL leftover turn was never drained without a notice" >&2; fail=1; }
+if [ "$(wc -l < "$STUB_ARGV")" -eq 1 ] && grep -q -- '-- leftover without notice' "$STUB_ARGV"; then
+  echo "ok   a queued turn runs once after the resume-instruction wait expires"
+else
+  echo "FAIL queued turn did not run once after the wait expired" >&2
+  fail=1
+fi
+kill -TERM "$worker_pid" 2>/dev/null || true
+wait "$worker_pid" 2>/dev/null || true
+worker_pid=""
+
 # The bridge stub records its argv and pid, then stands in for the socket by
 # creating the file at --socket, after a delay long enough that a worker not
 # waiting for it would report ready first.

@@ -96,7 +96,7 @@ func RepairSession(cfg *config.Config, store *state.Store, name string, report *
 			return err
 		}
 		attempted = true
-		_, upErr := upUnlocked(cfg, store, UpParams{Identifier: name})
+		_, upErr := upUnlocked(cfg, store, UpParams{Identifier: name, repair: true})
 		result := "succeeded"
 		if upErr != nil {
 			result = "failed"

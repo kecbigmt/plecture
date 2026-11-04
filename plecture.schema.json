@@ -1073,6 +1073,9 @@
             "auto_repair_attempts": {
               "type": "integer",
               "minimum": 0
+            },
+            "resume_instruction": {
+              "type": "string"
             }
           }
         }

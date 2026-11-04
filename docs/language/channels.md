@@ -69,6 +69,10 @@ uses    = "delivery"
 include = ["plect.instruction", "plect.node.result"]
 ```
 
+An `include` entry matching `plect.instruction` also relays
+`plect.session.resumed`. This rule applies to any channel with that include,
+including a channel that delivers to a mirror rather than a runtime.
+
 A channel's own delivery failure produces a `plect.channel.error` event
 (`events.md`), which `include` can select like any other event type — a
 workflow can relay one channel's failures to a second, independent channel.

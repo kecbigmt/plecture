@@ -34,8 +34,6 @@ text="${text//\{url\}/$url}"
 
 mkdir -p "$queue_dir"
 
-# Filename orders FIFO by write time; the worker only reads oldest-first, so
-# a collision just needs a unique suffix, not a globally sortable one.
 tmp="$(mktemp "$queue_dir/.enqueue.XXXXXX")"
 jq -n --arg type "$event_type" --arg text "$text" --arg url "$url" \
   '{type: $type, text: $text, url: $url}' > "$tmp"

@@ -11,12 +11,14 @@ container=stub session=fault/one+fault_recovery sid=sid-1 recovery_wait=2
 resumed_launch="--resume sid-1"
 health=healthy
 git_status="?? uncommitted-change"
+notices=1
 
 docker() { :; }
 plect() { :; }
 inside() {
   case "$*" in
     *launches*) printf '%s\n' "$launch" ;;
+    *prompts*) printf '%s\n' "$notices" ;;
     *"plect status"*) printf '%s\n' "$health" ;;
     git*) printf '%s\n' "$git_status" ;;
   esac
@@ -50,5 +52,12 @@ expect fail 'healthy but not resumed is rejected'
 launch="$resumed_launch"
 git_status=""
 expect fail 'resumed and healthy but uncommitted change lost is rejected'
+
+git_status="?? uncommitted-change"
+notices=0
+expect fail 'resumed and healthy but no resume instruction arrived is rejected'
+
+notices=2
+expect fail 'resumed and healthy but the resume instruction arrived twice is rejected'
 
 [ "$failures" -eq 0 ]
