@@ -34,6 +34,7 @@ type UpParams struct {
 	// preserving durable identity and event log state.
 	ForceRecreate  bool
 	HumanInitiated bool
+	repair         bool
 }
 
 // UpResult holds the outcome of Up.
@@ -248,6 +249,12 @@ func upUnlocked(cfg *config.Config, store *state.Store, params UpParams) (*UpRes
 	} else if cleanupErr := cleanupStaleWorkflowNodes(cfg, store, sessionName, session, plan, params.Observer); cleanupErr != nil {
 		return nil, cleanupErr
 	}
+	previousRunSetups := make(map[string]time.Time)
+	for _, node := range plan.Run {
+		if old := session.Nodes[node.NodeID]; old != nil && old.Scope == contract.TaskScopeRun && old.Outputs != nil {
+			previousRunSetups[node.NodeID] = old.SetupAt
+		}
+	}
 	setupErr := runNodeSetup(context.Background(), plan.UpOrder(), sessionVars(cfg, session, plan), session, params.Observer)
 	session.UpdatedAt = time.Now()
 	// A run-scope node's setup script can itself shell out to a nested `plect
@@ -275,6 +282,32 @@ func upUnlocked(cfg *config.Config, store *state.Store, params UpParams) (*UpRes
 	}
 	if err := setSessionStatus(store, sessionName, contract.SessionStatusUp); err != nil {
 		return nil, &Error{Code: ErrExecutionFailed, Message: fmt.Sprintf("failed to record session status: %v", err)}
+	}
+	resumedRun := false
+	for nodeID, previousSetupAt := range previousRunSetups {
+		current := session.Nodes[nodeID]
+		if current != nil && current.Status == contract.TaskStatusProduced && !current.SetupAt.Equal(previousSetupAt) {
+			resumedRun = true
+			break
+		}
+	}
+	if resumedRun && wf.Health.ResumeInstruction != "" {
+		trigger := "up"
+		if params.repair {
+			trigger = "repair"
+		} else if wasSleeping {
+			trigger = "wake"
+		}
+		if _, _, _, err := eventlog.NewStore(store.Dir()).Append(event.Event{
+			SessionName: sessionName,
+			Type:        event.TypeSessionResumed,
+			Source:      event.SourcePlect,
+			Direction:   event.Inbound,
+			Body:        wf.Health.ResumeInstruction,
+			Metadata:    map[string]string{"trigger": trigger},
+		}); err != nil {
+			return nil, &Error{Code: ErrExecutionFailed, Message: fmt.Sprintf("up completed but resume instruction failed: %v", err)}
+		}
 	}
 	recordLifecycle(store, sessionName, "up", "run-scoped tasks produced")
 	if wasSleeping {

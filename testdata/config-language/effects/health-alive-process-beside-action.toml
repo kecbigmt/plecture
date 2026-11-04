@@ -1,0 +1,25 @@
+# plect-fixture: result=valid entry=definitions
+# reason: a process check may sit beside an executable probe, which runs only once core has confirmed the process is the recorded one.
+
+[runtime]
+kind  = "effect"
+scope = "run"
+
+[runtime.setup]
+type = "exec"
+bin  = "agent-runtime"
+args = ["launch"]
+
+[runtime.health.alive]
+process = "self.outputs.pid"
+type    = "exec"
+bin     = "agent-runtime"
+args    = ["probe", { from = "self.outputs.state_dir" }]
+
+[runtime.outputs_schema]
+type     = "object"
+required = ["pid", "state_dir"]
+
+[runtime.outputs_schema.properties]
+pid       = { type = "integer" }
+state_dir = { type = "string" }

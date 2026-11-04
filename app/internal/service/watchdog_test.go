@@ -17,6 +17,7 @@ import (
 	"github.com/kecbigmt/plecture/app/internal/eventlog"
 	"github.com/kecbigmt/plecture/app/internal/lang"
 	"github.com/kecbigmt/plecture/app/internal/plugins"
+	"github.com/kecbigmt/plecture/app/internal/procid"
 	"github.com/kecbigmt/plecture/app/internal/state"
 	"github.com/kecbigmt/plecture/app/internal/task"
 	"github.com/kecbigmt/plecture/contracts/event"
@@ -1680,5 +1681,58 @@ uses = "official.acme.runner"
 	}
 	if report.Healthy {
 		t.Errorf("report = %+v, want unhealthy: the found probe fails", report)
+	}
+}
+
+func TestEvaluateHealth_ProcessProbeClassification(t *testing.T) {
+	self := os.Getpid()
+	identity, err := procid.Capture(self)
+	if err != nil {
+		t.Fatal(err)
+	}
+	reused := identity
+	reused.Start += 1000
+	gone := exec.Command("true")
+	if err := gone.Run(); err != nil {
+		t.Fatal(err)
+	}
+	deadPID := gone.Process.Pid
+	deadRecord := identity
+	deadRecord.PID = deadPID
+
+	tests := []struct {
+		name           string
+		outputs        map[string]any
+		process        *contract.ProcessIdentity
+		wantHealthy    bool
+		wantRepairable bool
+		wantUnevaluate bool
+	}{
+		{"the recorded process", map[string]any{"pid": self}, &identity, true, false, false},
+		{"a pid reused by another process", map[string]any{"pid": self}, &reused, false, true, false},
+		{"a dead pid with a recorded identity", map[string]any{"pid": deadPID}, &deadRecord, false, true, false},
+		{"a dead pid without a recorded identity", map[string]any{"pid": deadPID}, nil, false, true, false},
+		{"a pid output that cannot be read", map[string]any{}, &identity, false, false, true},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			store := testStore(t)
+			cfg := currentPlanConfig(t, "true", "true")
+			definition := "[agent]\nkind = \"effect\"\nscope = \"run\"\n\n[agent.health.alive]\nprocess = \"self.outputs.pid\"\n"
+			if err := os.WriteFile(filepath.Join(cfg.BaseDir, "tasks", "agent.toml"), []byte(definition), 0o644); err != nil {
+				t.Fatal(err)
+			}
+			seedSessionWithNodes(t, store, "owner/repo-1", "owner/repo", 1, "default", map[string]*contract.TaskState{
+				"pane":  {Scope: contract.TaskScopeRun, TaskID: "pane", Status: contract.TaskStatusProduced},
+				"agent": {Scope: contract.TaskScopeRun, TaskID: "agent", Status: contract.TaskStatusProduced, Outputs: tc.outputs, Process: tc.process},
+			})
+			report, err := EvaluateHealth(cfg, store, "owner/repo-1")
+			if err != nil {
+				t.Fatal(err)
+			}
+			if report.Healthy != tc.wantHealthy || report.Repairable != tc.wantRepairable || report.ProbeUnevaluable != tc.wantUnevaluate {
+				t.Fatalf("report = %+v, want healthy=%t repairable=%t unevaluable=%t", report, tc.wantHealthy, tc.wantRepairable, tc.wantUnevaluate)
+			}
+		})
 	}
 }

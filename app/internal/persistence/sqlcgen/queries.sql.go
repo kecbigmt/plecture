@@ -48,7 +48,7 @@ SELECT id, session_id, node_id, sequence, task_id, name, scope, status, resource
        inputs_json, outputs_json, state_json,
        resource_observation_json, resource_observed_at, done_when_json,
        extra_done_when_json, error, setup_at,
-       failed_at, cleaned_at, finalized_at
+       failed_at, cleaned_at, finalized_at, process_json
 FROM node_executions WHERE session_id = ? AND node_id = ? AND status <> 'cleaned'
 `
 
@@ -82,6 +82,7 @@ func (q *Queries) CurrentNodeExecution(ctx context.Context, arg CurrentNodeExecu
 		&i.FailedAt,
 		&i.CleanedAt,
 		&i.FinalizedAt,
+		&i.ProcessJson,
 	)
 	return i, err
 }
@@ -450,8 +451,8 @@ INSERT INTO node_executions (
     inputs_json, outputs_json, state_json,
     resource_observation_json, resource_observed_at, done_when_json,
     extra_done_when_json, error, setup_at,
-    failed_at, cleaned_at, finalized_at
-) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    failed_at, cleaned_at, finalized_at, process_json
+) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 RETURNING id
 `
 
@@ -477,6 +478,7 @@ type InsertNodeExecutionParams struct {
 	FailedAt                sql.NullString
 	CleanedAt               sql.NullString
 	FinalizedAt             sql.NullString
+	ProcessJson             sql.NullString
 }
 
 func (q *Queries) InsertNodeExecution(ctx context.Context, arg InsertNodeExecutionParams) (string, error) {
@@ -502,6 +504,7 @@ func (q *Queries) InsertNodeExecution(ctx context.Context, arg InsertNodeExecuti
 		arg.FailedAt,
 		arg.CleanedAt,
 		arg.FinalizedAt,
+		arg.ProcessJson,
 	)
 	var id string
 	err := row.Scan(&id)
@@ -951,7 +954,7 @@ SELECT ne.id, ne.session_id, ne.node_id, ne.sequence, ne.task_id, ne.name,
        ne.outputs_json, ne.state_json, ne.resource_observation_json,
        ne.resource_observed_at, ne.done_when_json, ne.extra_done_when_json,
        ne.error, ne.setup_at, ne.failed_at,
-       ne.cleaned_at, ne.finalized_at
+       ne.cleaned_at, ne.finalized_at, ne.process_json
 FROM node_executions ne
 WHERE ne.session_id = ?
 AND NOT EXISTS (
@@ -993,6 +996,7 @@ func (q *Queries) ListCurrentNodeExecutions(ctx context.Context, sessionID strin
 			&i.FailedAt,
 			&i.CleanedAt,
 			&i.FinalizedAt,
+			&i.ProcessJson,
 		); err != nil {
 			return nil, err
 		}
@@ -1013,7 +1017,7 @@ SELECT ne.id, ne.session_id, ne.node_id, ne.sequence, ne.task_id, ne.name,
        ne.outputs_json, ne.state_json, ne.resource_observation_json,
        ne.resource_observed_at, ne.done_when_json, ne.extra_done_when_json,
        ne.error, ne.setup_at, ne.failed_at,
-       ne.cleaned_at, ne.finalized_at
+       ne.cleaned_at, ne.finalized_at, ne.process_json
 FROM node_executions ne
 WHERE ne.session_id IN (/*SLICE:session_ids*/?)
 AND NOT EXISTS (
@@ -1065,6 +1069,7 @@ func (q *Queries) ListCurrentNodeExecutionsForSessions(ctx context.Context, sess
 			&i.FailedAt,
 			&i.CleanedAt,
 			&i.FinalizedAt,
+			&i.ProcessJson,
 		); err != nil {
 			return nil, err
 		}
@@ -2140,7 +2145,7 @@ const listTaskInstances = `-- name: ListTaskInstances :many
 SELECT id, session_id, instance_name, task_id, scope, status, sequence,
        resource, named, inputs_json, outputs_json, state_json,
        resource_observation_json, resource_observed_at, extra_done_when_json,
-       error, setup_at, failed_at, cleaned_at, finalized_at
+       error, setup_at, failed_at, cleaned_at, finalized_at, process_json
 FROM task_instances WHERE session_id = ? ORDER BY instance_name
 `
 
@@ -2175,6 +2180,7 @@ func (q *Queries) ListTaskInstances(ctx context.Context, sessionID string) ([]Ta
 			&i.FailedAt,
 			&i.CleanedAt,
 			&i.FinalizedAt,
+			&i.ProcessJson,
 		); err != nil {
 			return nil, err
 		}
@@ -2193,7 +2199,7 @@ const listTaskInstancesForSessions = `-- name: ListTaskInstancesForSessions :man
 SELECT id, session_id, instance_name, task_id, scope, status, sequence,
        resource, named, inputs_json, outputs_json, state_json,
        resource_observation_json, resource_observed_at, extra_done_when_json,
-       error, setup_at, failed_at, cleaned_at, finalized_at
+       error, setup_at, failed_at, cleaned_at, finalized_at, process_json
 FROM task_instances WHERE session_id IN (/*SLICE:session_ids*/?) ORDER BY session_id, instance_name
 `
 
@@ -2237,6 +2243,7 @@ func (q *Queries) ListTaskInstancesForSessions(ctx context.Context, sessionIds [
 			&i.FailedAt,
 			&i.CleanedAt,
 			&i.FinalizedAt,
+			&i.ProcessJson,
 		); err != nil {
 			return nil, err
 		}
@@ -2316,7 +2323,7 @@ SELECT id, session_id, node_id, sequence, task_id, name, scope, status, resource
        inputs_json, outputs_json, state_json,
        resource_observation_json, resource_observed_at, done_when_json,
        extra_done_when_json, error, setup_at,
-       failed_at, cleaned_at, finalized_at
+       failed_at, cleaned_at, finalized_at, process_json
 FROM node_executions WHERE id = ?
 `
 
@@ -2345,6 +2352,7 @@ func (q *Queries) NodeExecutionByID(ctx context.Context, id string) (NodeExecuti
 		&i.FailedAt,
 		&i.CleanedAt,
 		&i.FinalizedAt,
+		&i.ProcessJson,
 	)
 	return i, err
 }
@@ -2434,7 +2442,7 @@ UPDATE node_executions SET
     inputs_json = ?, outputs_json = ?, state_json = ?,
     resource_observation_json = ?, resource_observed_at = ?, done_when_json = ?,
     extra_done_when_json = ?, error = ?,
-    setup_at = ?, failed_at = ?, cleaned_at = ?, finalized_at = ?
+    setup_at = ?, failed_at = ?, cleaned_at = ?, finalized_at = ?, process_json = ?
 WHERE id = ?
 `
 
@@ -2457,6 +2465,7 @@ type UpdateNodeExecutionParams struct {
 	FailedAt                sql.NullString
 	CleanedAt               sql.NullString
 	FinalizedAt             sql.NullString
+	ProcessJson             sql.NullString
 	ID                      string
 }
 
@@ -2480,6 +2489,7 @@ func (q *Queries) UpdateNodeExecution(ctx context.Context, arg UpdateNodeExecuti
 		arg.FailedAt,
 		arg.CleanedAt,
 		arg.FinalizedAt,
+		arg.ProcessJson,
 		arg.ID,
 	)
 	return err
@@ -2651,8 +2661,8 @@ INSERT INTO task_instances (
     id, session_id, instance_name, task_id, scope, status, sequence,
     resource, named, inputs_json, outputs_json, state_json,
     resource_observation_json, resource_observed_at, extra_done_when_json,
-    error, setup_at, failed_at, cleaned_at, finalized_at
-) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    error, setup_at, failed_at, cleaned_at, finalized_at, process_json
+) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 ON CONFLICT(session_id, instance_name) DO UPDATE SET
     task_id = excluded.task_id,
     scope = excluded.scope,
@@ -2670,7 +2680,8 @@ ON CONFLICT(session_id, instance_name) DO UPDATE SET
     setup_at = excluded.setup_at,
     failed_at = excluded.failed_at,
     cleaned_at = excluded.cleaned_at,
-    finalized_at = excluded.finalized_at
+    finalized_at = excluded.finalized_at,
+    process_json = excluded.process_json
 RETURNING id
 `
 
@@ -2695,6 +2706,7 @@ type UpsertTaskInstanceParams struct {
 	FailedAt                sql.NullString
 	CleanedAt               sql.NullString
 	FinalizedAt             sql.NullString
+	ProcessJson             sql.NullString
 }
 
 func (q *Queries) UpsertTaskInstance(ctx context.Context, arg UpsertTaskInstanceParams) (string, error) {
@@ -2719,6 +2731,7 @@ func (q *Queries) UpsertTaskInstance(ctx context.Context, arg UpsertTaskInstance
 		arg.FailedAt,
 		arg.CleanedAt,
 		arg.FinalizedAt,
+		arg.ProcessJson,
 	)
 	var id string
 	err := row.Scan(&id)

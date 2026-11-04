@@ -8,6 +8,7 @@ import (
 	"github.com/kecbigmt/plecture/app/internal/config"
 	"github.com/kecbigmt/plecture/app/internal/effect"
 	"github.com/kecbigmt/plecture/app/internal/lang"
+	"github.com/kecbigmt/plecture/app/internal/procid"
 	contract "github.com/kecbigmt/plecture/contracts/state"
 )
 
@@ -31,7 +32,11 @@ func setupRoots(ctx RenderContext) lang.Roots {
 
 func cleanupRoots(ctx RenderContext) lang.Roots {
 	env := sessionRoots(ctx)
-	env["self"] = map[string]any{"outputs": orEmpty(normalizeOutputs(ctx.Self))}
+	self := map[string]any{"outputs": orEmpty(normalizeOutputs(ctx.Self))}
+	if ctx.Process != nil {
+		self["process"] = map[string]any{"identity": procid.Encode(*ctx.Process)}
+	}
+	env["self"] = self
 	env["inputs"] = normalizeOutputs(ctx.Inputs)
 	env["nodes"] = nodeRoots(ctx.Tasks)
 	env["workflow"] = map[string]any{"outputs": orEmpty(normalizeOutputs(ctx.Workflow))}

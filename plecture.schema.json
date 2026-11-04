@@ -427,20 +427,125 @@
         }
       }
     },
+    "processReference": {
+      "type": "string",
+      "pattern": "^self\\.outputs\\.[^.]+$",
+      "description": "The effect's own output holding the pid of the process its setup started, written self.outputs.<key>. Core records that process's identity (pid and start time) when setup produces it, and the probe passes only while the pid still belongs to it."
+    },
+    "processAction": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "process"
+      ],
+      "description": "A liveness check core evaluates itself: the pid named by process must still belong to the process whose identity setup recorded. Legal only under [health.alive].",
+      "properties": {
+        "process": {
+          "$ref": "#/$defs/processReference"
+        }
+      }
+    },
+    "aliveExecAction": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "type"
+      ],
+      "properties": {
+        "type": {
+          "const": "exec"
+        },
+        "bin": {
+          "$ref": "#/$defs/executableName"
+        },
+        "command": {
+          "type": "string",
+          "description": "A literal OS command name or path, resolved through the process environment. Never dynamic."
+        },
+        "args": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/bindingValue"
+          }
+        },
+        "stdin": {
+          "$ref": "#/$defs/bindingValue",
+          "description": "A value written to the process's standard input instead of its argv, for data that must not be visible in the process table."
+        },
+        "process": {
+          "$ref": "#/$defs/processReference"
+        }
+      },
+      "oneOf": [
+        {
+          "required": [
+            "bin"
+          ],
+          "not": {
+            "required": [
+              "command"
+            ]
+          }
+        },
+        {
+          "required": [
+            "command"
+          ],
+          "not": {
+            "required": [
+              "bin"
+            ]
+          }
+        }
+      ],
+      "$comment": "PLECTURE-CFG-ACTION-BIN-AND-COMMAND when both are set or neither is.",
+      "description": "An exec action that runs after core's own process check passes. Legal only under [health.alive]."
+    },
+    "aliveShellAction": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "type",
+        "script"
+      ],
+      "properties": {
+        "type": {
+          "const": "shell"
+        },
+        "script": {
+          "$comment": "PLECTURE-CFG-SHELL-INTERPOLATION.",
+          "type": "string",
+          "description": "Literal shell source. Plecture and CEL interpolation do not occur inside it.",
+          "not": {
+            "pattern": "\\{\\{"
+          }
+        },
+        "bind": {
+          "$ref": "#/$defs/bindTable"
+        },
+        "process": {
+          "$ref": "#/$defs/processReference"
+        }
+      },
+      "description": "An shell action that runs after core's own process check passes. Legal only under [health.alive]."
+    },
     "aliveAction": {
       "type": "object",
       "oneOf": [
         {
-          "$ref": "#/$defs/execAction"
+          "$ref": "#/$defs/aliveExecAction"
         },
         {
-          "$ref": "#/$defs/shellAction"
+          "$ref": "#/$defs/aliveShellAction"
         },
         {
           "$ref": "#/$defs/noopAction"
+        },
+        {
+          "$ref": "#/$defs/processAction"
         }
       ],
-      "$comment": "PLECTURE-CFG-ACTION-TYPE-UNKNOWN for an unknown type; PLECTURE-CFG-ACTION-VARIANT when a field of the other variant is present. The only site admitting the noop variant alongside exec and shell."
+      "$comment": "PLECTURE-CFG-ACTION-TYPE-UNKNOWN for an unknown type; PLECTURE-CFG-ACTION-VARIANT when a field of the other variant is present; PLECTURE-CFG-FROM-ROOT when process names anything but self.outputs.<key>. The only site admitting the noop and process variants alongside exec and shell."
     },
     "schemaDocument": {
       "type": "object",
@@ -968,6 +1073,9 @@
             "auto_repair_attempts": {
               "type": "integer",
               "minimum": 0
+            },
+            "resume_instruction": {
+              "type": "string"
             }
           }
         }

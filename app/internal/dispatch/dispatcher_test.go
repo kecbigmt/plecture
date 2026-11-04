@@ -310,6 +310,17 @@ func TestDispatcher_IncludeFilters(t *testing.T) {
 	}
 }
 
+func TestDispatcher_ResumeInstructionUsesRuntimeInstructionChannel(t *testing.T) {
+	log := eventlog.NewStore(t.TempDir())
+	sock, recv := startFakeSocket(t)
+	d, s := runtimeDispatcher(t, "o/r-1", log, sock, event.TypeInstruction)
+	log.Append(event.Event{SessionName: "o/r-1", Type: event.TypeSessionResumed, Body: "Check prior work.", Direction: event.Inbound})
+	drainOnce(d, s)
+	if typ := recvType(t, recv); typ != event.TypeSessionResumed {
+		t.Fatalf("delivered type = %q", typ)
+	}
+}
+
 // TestDispatcher_DeliversNodeResult pins the literal plect.node.result type
 // string against the general include mechanism TestDispatcher_DeliversIncludedEvents
 // already covers with an arbitrary type — a typo in either string would

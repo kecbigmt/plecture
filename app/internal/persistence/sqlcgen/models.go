@@ -56,6 +56,7 @@ type NodeExecution struct {
 	FailedAt                sql.NullString
 	CleanedAt               sql.NullString
 	FinalizedAt             sql.NullString
+	ProcessJson             sql.NullString
 }
 
 type NodeExecutionDependency struct {
@@ -217,6 +218,7 @@ type TaskInstance struct {
 	FailedAt                sql.NullString
 	CleanedAt               sql.NullString
 	FinalizedAt             sql.NullString
+	ProcessJson             sql.NullString
 }
 
 type TaskInstanceLayer struct {

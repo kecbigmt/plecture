@@ -889,6 +889,10 @@ func TestUp_ForceRecreateResetsRuntimeWithoutPrev(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Up: %v", err)
 	}
+	resumed, _, _, err := eventlog.NewStore(store.Dir()).List(sessionName, 0, event.Filter{Types: []string{event.TypeSessionResumed}})
+	if err != nil || len(resumed) != 0 {
+		t.Fatalf("force recreate without prev should publish no resume instruction: %+v, %v", resumed, err)
+	}
 
 	workflow := result.Tasks[contract.WorkflowPseudoNodeID]
 	if workflow == nil || workflow.Outputs[contract.OutputKeyWorkspaceDir] != newWorkdirPath || workflow.Outputs["prev"] != "" {

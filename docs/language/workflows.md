@@ -114,6 +114,11 @@ the same roots node inputs use, evaluated at delivery. `name` identifies the
 binding within the workflow; two bindings may select the same channel under
 different names and includes.
 
+An `include` entry matching `plect.instruction` also selects
+`plect.session.resumed`, even when the entry does not match that event's type.
+This applies to every channel binding with that include, regardless of its
+delivery target.
+
 ## Node lifecycle
 
 `plect.node.result` is appended to a session's log whenever a node's setup,
@@ -247,15 +252,60 @@ not individual keys.
 
 `[<id>.health]` optionally permits automatic repair with
 `auto_repair_attempts`, a required non-negative integer when the table is
-declared. The default is `0`, which disables repair. A later workflow table
-replaces an inherited `[health]` table as a whole; setting the value to `0`
-disables inherited permission. The health cycle may run plain `up` only while
-the session's recorded status is `up`, after a non-zero `alive` exit, a failed
+declared. The default is `0`, which disables repair. `resume_instruction` is an
+optional string. Its default instructs the agent to check the worktree and
+related PRs and threads before continuing after an interrupted runtime.
+An empty string disables the instruction. A later workflow table replaces an
+inherited `[health]` table as a whole; setting `auto_repair_attempts` to `0`
+disables inherited permission, while omitting `resume_instruction` selects the
+default text. For example:
+
+```toml
+# plect-fixture: result=valid entry=definitions
+
+[review_workflow]
+kind = "workflow"
+
+[review_workflow.health]
+auto_repair_attempts = 2
+resume_instruction = "Check the worktree and the review thread before continuing."
+```
+
+When `Up` re-sets up at least one run-scoped node whose setup receives `prev`,
+core publishes one inbound `plect.session.resumed` event even if only a sidecar
+is rebuilt while the agent runtime is reused. Its body is the effective
+instruction, and `trigger` metadata is `repair`, `up`, or `wake`. A first
+launch and an `up` that reuses every run-scoped node publish no event. The
+event is delivered through any channel whose `include` matches
+`plect.instruction`.
+The [event reference](events.md#session-resume-instructions) defines each trigger.
+
+The health cycle may run plain `up` only while
+the session's recorded status is `up`, after a non-zero `alive` exit (a
+`process` probe that finds its pid gone or reused counts as one), a failed
 or missing current-plan node, or a down run state. Probe errors that prevent
 evaluation do not permit repair. Each started repair consumes one attempt until
 a healthy observation or successful human `up` resets the budget. Exhaustion
 reports `repair_suspended`; three consecutive cycles with an unevaluable
 `alive` probe report `repair_undecidable` without consuming an attempt.
+
+An agent runtime whose worker can stay up while every turn fails composes
+core's process check with a script that reads the turn outcome. The script runs
+only while the pid is still the recorded process:
+
+```toml
+[headless_runtime.health.alive]
+process = "self.outputs.pid"
+type    = "shell"
+script  = '''
+HEALTH="$state_dir/health.json"
+[ -f "$HEALTH" ] || exit 0
+jq -e ".last_exit_code == 0" "$HEALTH" >/dev/null
+'''
+
+[headless_runtime.health.alive.bind]
+state_dir = { from = "self.outputs.state_dir" }
+```
 
 ## Concurrency
 

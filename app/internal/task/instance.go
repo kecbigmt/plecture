@@ -71,6 +71,7 @@ func NextInstanceNumber(taskID string, tasks map[string]*contract.TaskState) int
 // so the caller persists it either way.
 type InstanceSetup struct {
 	Outputs map[string]any
+	Process *contract.ProcessIdentity
 	Layers  []contract.LayerState
 	Stderr  []byte
 }
@@ -134,5 +135,9 @@ func ExecuteTaskSetup(goCtx context.Context, r Resolved, inputs map[string]any, 
 			return InstanceSetup{Stderr: stderr}, fmt.Errorf("setup: outputs schema: %w", vErr)
 		}
 	}
-	return InstanceSetup{Outputs: outputs, Stderr: stderr}, nil
+	process, err := CaptureProcess(r.Health, outputs)
+	if err != nil {
+		return InstanceSetup{Stderr: stderr}, fmt.Errorf("setup: %w", err)
+	}
+	return InstanceSetup{Outputs: outputs, Process: process, Stderr: stderr}, nil
 }

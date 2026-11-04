@@ -1,0 +1,8 @@
+# plect-fixture: result=valid entry=definitions
+
+[review_workflow]
+kind = "workflow"
+
+[review_workflow.health]
+auto_repair_attempts = 2
+resume_instruction = "Check the worktree and the review thread before continuing."

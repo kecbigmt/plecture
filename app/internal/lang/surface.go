@@ -136,7 +136,7 @@ var (
 		"inputs.<key>", "prev.<key>", "nodes.<id>.outputs.<key>", "workflow.outputs.<key>",
 		"session.*", "session.inputs.<key>", "workspace.*", "resource.id")
 	surfaceEffectCleanup = newSurface("effect.cleanup", LayerSemantic,
-		"self.outputs.<key>", "inputs.<key>", "nodes.<id>.outputs.<key>",
+		"self.outputs.<key>", "self.process.identity", "inputs.<key>", "nodes.<id>.outputs.<key>",
 		"workflow.outputs.<key>", "session.*", "workspace.*")
 	surfaceEffectHealth = newSurface("effect.health", LayerSemantic,
 		"self.outputs.<key>", "inputs.<key>", "session.*", "workspace.*")
