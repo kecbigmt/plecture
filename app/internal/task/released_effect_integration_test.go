@@ -8,6 +8,7 @@ import (
 	"path/filepath"
 	"strconv"
 	"strings"
+	"syscall"
 	"testing"
 	"time"
 )
@@ -65,10 +66,11 @@ func TestKillLaunchedWorkers_OnlySignalsWorkersOfThisSandbox(t *testing.T) {
 	stateDir := t.TempDir()
 	start := func(marker string) *exec.Cmd {
 		cmd := exec.Command("sh", "-c", "sleep 600; :", marker)
+		cmd.SysProcAttr = &syscall.SysProcAttr{Setpgid: true}
 		if err := cmd.Start(); err != nil {
 			t.Fatal(err)
 		}
-		t.Cleanup(func() { _ = cmd.Process.Kill(); _, _ = cmd.Process.Wait() })
+		t.Cleanup(func() { _ = syscall.Kill(-cmd.Process.Pid, syscall.SIGKILL); _, _ = cmd.Process.Wait() })
 		return cmd
 	}
 	owned := start(filepath.Join(stateDir, "queue-worker"))
