@@ -883,8 +883,8 @@ newer executables, and the plugin must work in that pairing:
   dropped.
 - A declaration that reads an output added after a release treats it as
   optional and judges a record without it as it was judged before the output
-  existed. The runtime effects' alive probes read `pid_started` this way: a
-  record without it is judged by its pid alone.
+  existed. A process alive probe judges an instance recorded without a process
+  identity by its pid alone.
 
 Each official plugin that ships runtime effects holds, under
 `testdata/compat/<tag>/`, the task declarations of the latest tagged release
@@ -892,7 +892,7 @@ Each official plugin that ships runtime effects holds, under
 sets each effect up as that release did and runs its alive probe and cleanup
 against the outputs that release recorded. The integration suite runs these
 scenarios under both the released and the current declarations against the
-current checked-in scripts, and any action that declines fails it. The plugin's
+current executables, and any action that declines fails it. The plugin's
 README states how the fixtures are refreshed.
 
 ## Walkthrough examples

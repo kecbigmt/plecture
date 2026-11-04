@@ -372,8 +372,8 @@ func restoreScriptExecutables(t *testing.T, source string, mounted plugins.Mount
 	}
 }
 
-// The command line is checked as well as the pid file so a recycled pid is
-// never signalled.
+// A pid is signalled only while its command line names this sandbox, so a
+// recycled pid or another session's worker is never touched.
 func killLaunchedWorkers(stateDir string) {
 	_ = filepath.WalkDir(stateDir, func(path string, d os.DirEntry, err error) error {
 		if err != nil || d.IsDir() || d.Name() != "worker.pid" {
@@ -385,7 +385,7 @@ func killLaunchedWorkers(stateDir string) {
 			return nil
 		}
 		args, _ := exec.Command("ps", "-o", "args=", "-p", strconv.Itoa(pid)).Output()
-		if strings.Contains(string(args), "-worker") {
+		if strings.Contains(string(args), stateDir) {
 			_ = syscall.Kill(pid, syscall.SIGTERM)
 		}
 		return nil

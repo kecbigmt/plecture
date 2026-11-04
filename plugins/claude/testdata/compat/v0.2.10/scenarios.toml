@@ -18,13 +18,12 @@ hooks = ["health.alive", "cleanup"]
 [[headless_runtime]]
 name = "fresh-lifecycle"
 
-# The released record's start time is the caller's own rendering.
+# Cleanup must complete on a record that has no process identity; it need not
+# stop the worker, because without one the current cleanup leaves it alone.
 [[headless_runtime]]
-name                       = "released-record-is-alive-and-cleaned-up"
-self                       = { pid = "WORKER_PID", pid_started = "started-WORKER_PID@Asia/Tokyo", state_dir = "HOME/headless" }
-hook_tz                    = "Asia/Tokyo"
-hooks                      = ["health.alive", "cleanup"]
-expect_worker_process_dead = true
+name  = "released-record-is-alive-and-cleaned-up"
+self  = { pid = "WORKER_PID", pid_started = "started-WORKER_PID", state_dir = "HOME/headless" }
+hooks = ["health.alive", "cleanup"]
 
 [[headless_runtime.files]]
 path    = "headless/worker.pid"

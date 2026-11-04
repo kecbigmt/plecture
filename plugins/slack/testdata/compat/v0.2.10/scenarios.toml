@@ -14,10 +14,10 @@ hooks  = ["health.alive"]
 
 [[slack_subscribe]]
 name   = "fresh-lifecycle"
-inputs = { base_url = "http://127.0.0.1:7890", thread_ts = "1234.5678", channel_id = "C-review", socket_path = "/run/claude-channel/aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee.sock" }
+inputs = { base_url = "http://127.0.0.1:7890", thread_ts = "1700000010.100000", channel_id = "C-review", socket_path = "/run/claude-channel/aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee.sock" }
 
 [[slack_subscribe]]
 name   = "released-record-is-alive-and-cleaned-up"
-inputs = { base_url = "http://127.0.0.1:7890", thread_ts = "1234.5678", channel_id = "C-review", socket_path = "/run/claude-channel/aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee.sock" }
-self   = { thread_ts = "1234.5678" }
+inputs = { base_url = "http://127.0.0.1:7890", thread_ts = "1700000010.100000", channel_id = "C-review", socket_path = "/run/claude-channel/aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee.sock" }
+self   = { thread_ts = "1700000010.100000" }
 hooks  = ["health.alive", "cleanup"]

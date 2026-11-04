@@ -227,12 +227,18 @@ observer always sets `expire_after` rather than `poll_every`.
 latest tagged release (`config/tasks/`) and a `scenarios.toml` in the
 effect-scenario format. `TestShippedEffects_ReleasedDeclarationsAndRecordsStillRun`
 (`go test -tags integration ./app/internal/task`) runs it under both the
-released and the current declarations against the plugin's current checked-in
-scripts, so updating the plugin cannot break a session created under that
-release. Executables built from source are replaced by the stand-ins under
-`testdata/effects/`, so a change to one of those is covered only as far as its
-stand-in's answer.
-The scenarios cover the thread effect.
+released and the current declarations against the plugin's current
+executables, so updating the plugin cannot break a session created under that
+release. Scripts run as checked in and the other executables are built with their
+manifest `build` command; the programs a declaration launches in a terminal
+(the `claude`/`codex` CLI itself) and the system tools stay stand-ins under
+`testdata/effects/`.
+The scenarios cover the thread and subscription effects. The adapter needs a
+Slack connection to run, so `subscribe_request.json` holds the request the
+released subscription declaration sends and
+`TestReleasedSubscribeWireShapesAreAccepted` in `src/slack-adapter` drives the
+adapter's own handlers with it, then lists and deletes the subscription as the
+released alive probe and cleanup do.
 
 Refresh the fixtures when a release is tagged:
 

@@ -3,8 +3,12 @@
 package task
 
 import (
+	"os"
+	"os/exec"
 	"path/filepath"
+	"strconv"
 	"strings"
+	"syscall"
 	"testing"
 )
 
@@ -55,4 +59,37 @@ func declinedSections(produced string) []string {
 		}
 	}
 	return out
+}
+
+func TestKillLaunchedWorkers_OnlySignalsWorkersOfThisSandbox(t *testing.T) {
+	stateDir := t.TempDir()
+	start := func(arg string) *exec.Cmd {
+		cmd := exec.Command("sleep", "600", arg)
+		if err := cmd.Start(); err != nil {
+			t.Fatal(err)
+		}
+		t.Cleanup(func() { _ = cmd.Process.Kill(); _, _ = cmd.Process.Wait() })
+		return cmd
+	}
+	owned := start(filepath.Join(stateDir, "queue-worker"))
+	foreign := start("another-session-worker")
+	for name, cmd := range map[string]*exec.Cmd{"owned": owned, "foreign": foreign} {
+		dir := filepath.Join(stateDir, name)
+		if err := os.MkdirAll(dir, 0o755); err != nil {
+			t.Fatal(err)
+		}
+		pid := []byte(strconv.Itoa(cmd.Process.Pid))
+		if err := os.WriteFile(filepath.Join(dir, "worker.pid"), pid, 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	killLaunchedWorkers(stateDir)
+
+	if _, err := owned.Process.Wait(); err != nil {
+		t.Fatalf("the sandbox's own worker should have been terminated and reaped: %v", err)
+	}
+	if err := foreign.Process.Signal(syscall.Signal(0)); err != nil {
+		t.Errorf("a worker outside this sandbox must be left running: %v", err)
+	}
 }

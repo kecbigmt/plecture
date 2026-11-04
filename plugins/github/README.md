@@ -344,11 +344,12 @@ What stays in your own config after enabling this plugin:
 latest tagged release (`config/tasks/`) and a `scenarios.toml` in the
 effect-scenario format. `TestShippedEffects_ReleasedDeclarationsAndRecordsStillRun`
 (`go test -tags integration ./app/internal/task`) runs it under both the
-released and the current declarations against the plugin's current checked-in
-scripts, so updating the plugin cannot break a session created under that
-release. Executables built from source are replaced by the stand-ins under
-`testdata/effects/`, so a change to one of those is covered only as far as its
-stand-in's answer.
+released and the current declarations against the plugin's current
+executables, so updating the plugin cannot break a session created under that
+release. Scripts run as checked in and the other executables are built with their
+manifest `build` command; the programs a declaration launches in a terminal
+(the `claude`/`codex` CLI itself) and the system tools stay stand-ins under
+`testdata/effects/`.
 The scenarios cover the two CLI guard effects.
 
 Refresh the fixtures when a release is tagged:
