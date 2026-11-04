@@ -8,8 +8,8 @@ import (
 	"path/filepath"
 	"strconv"
 	"strings"
-	"syscall"
 	"testing"
+	"time"
 )
 
 // A session keeps the declarations and recorded outputs it was created with
@@ -63,8 +63,8 @@ func declinedSections(produced string) []string {
 
 func TestKillLaunchedWorkers_OnlySignalsWorkersOfThisSandbox(t *testing.T) {
 	stateDir := t.TempDir()
-	start := func(arg string) *exec.Cmd {
-		cmd := exec.Command("sleep", "600", arg)
+	start := func(marker string) *exec.Cmd {
+		cmd := exec.Command("sh", "-c", "sleep 600; :", marker)
 		if err := cmd.Start(); err != nil {
 			t.Fatal(err)
 		}
@@ -86,10 +86,20 @@ func TestKillLaunchedWorkers_OnlySignalsWorkersOfThisSandbox(t *testing.T) {
 
 	killLaunchedWorkers(stateDir)
 
-	if _, err := owned.Process.Wait(); err != nil {
-		t.Fatalf("the sandbox's own worker should have been terminated and reaped: %v", err)
+	exited := func(cmd *exec.Cmd, within time.Duration) bool {
+		done := make(chan struct{})
+		go func() { _, _ = cmd.Process.Wait(); close(done) }()
+		select {
+		case <-done:
+			return true
+		case <-time.After(within):
+			return false
+		}
 	}
-	if err := foreign.Process.Signal(syscall.Signal(0)); err != nil {
-		t.Errorf("a worker outside this sandbox must be left running: %v", err)
+	if !exited(owned, 5*time.Second) {
+		t.Error("the sandbox's own worker should have been terminated")
+	}
+	if exited(foreign, time.Second) {
+		t.Error("a worker outside this sandbox must be left running")
 	}
 }

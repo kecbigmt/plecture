@@ -276,14 +276,14 @@ Refresh the fixtures when a release is tagged:
 tag=$(git describe --tags --abbrev=0)
 dir=plugins/claude/testdata/compat
 old=$(ls "$dir")
+[ "$old" = "$tag" ] || git mv "$dir/$old" "$dir/$tag"
+git rm -rqf "$dir/$tag/config"
 mkdir -p "$dir/$tag/config"
-git mv "$dir/$old/scenarios.toml" "$dir/$tag/scenarios.toml"
-git rm -rq "$dir/$old"
 git archive "$tag" plugins/claude/config/tasks | tar -x -C "$dir/$tag/config" --strip-components=3
 git show "$tag:plugins/claude/testdata/effect-invocations.txt" | grep -E '^(==|outputs)'
 ```
 
-Then set each `self` in the moved `scenarios.toml` to the `outputs:` line the
+The rest of the directory carries over to the new tag. Set each `self` in its `scenarios.toml` to the `outputs:` line the
 last command prints for that effect, so the scenarios carry the shape that
 release recorded. When a stand-in under `testdata/effects/`
 changes how an executable answers, the released declarations run against the

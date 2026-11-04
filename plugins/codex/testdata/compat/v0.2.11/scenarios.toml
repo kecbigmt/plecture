@@ -10,10 +10,9 @@ capture = "› "
 path    = ".codex/sessions/rollout.jsonl"
 content = '{"type":"session_meta","payload":{"cwd":"WORKSPACE","session_id":"11111111-2222-3333-4444-555555555555"}}'
 
-# The released record carries no pid_started.
 [[codex]]
 name                       = "released-record-is-alive-and-cleaned-up"
-self                       = { pid = "WORKER_PID", profile_path = "HOME/.codex/plect-aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee.config.toml", session_id = "11111111-2222-3333-4444-555555555555" }
+self                       = { pid = "WORKER_PID", pid_started = "started-WORKER_PID", profile_path = "HOME/.codex/plect-aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee.config.toml", session_id = "11111111-2222-3333-4444-555555555555" }
 hooks                      = ["health.alive", "cleanup"]
 expect_worker_process_dead = true
 

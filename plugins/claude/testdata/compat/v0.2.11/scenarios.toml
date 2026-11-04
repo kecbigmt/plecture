@@ -9,10 +9,9 @@ name = "fresh-lifecycle"
 path    = ".claude/sessions/aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee.json"
 content = '{"sessionId":"aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee","pid":PID}'
 
-# The released record carries no pid_started.
 [[runtime]]
 name  = "released-record-is-alive-and-cleaned-up"
-self  = { pid = "PID", session_id = "aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee", socket_path = "STATE/claude-channel/aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee.sock", mcp_config = "STATE/mcp.json", hooks_settings = "STATE/hooks.json" }
+self  = { pid = "PID", pid_started = "started-PID", session_id = "aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee", socket_path = "STATE/claude-channel/aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee.sock", mcp_config = "STATE/mcp.json", hooks_settings = "STATE/hooks.json" }
 hooks = ["health.alive", "cleanup"]
 
 [[headless_runtime]]
