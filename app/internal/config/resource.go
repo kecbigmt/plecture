@@ -7,22 +7,8 @@ import (
 	"github.com/kecbigmt/plecture/app/internal/lang"
 )
 
-// ResourceDef is one `kind = "resource_observer"` declaration from the
-// trusted base layers (plugin dirs + global config) — the same non-cascading
-// rule as WorkspaceProviderConfig (ADR "goal-as-task" D6: an observation
-// runs whatever executable it names, so only user/machine-owned layers may
-// supply it, never a cloned workspace dir's `.plect/`).
-//
-// A ResourceDef is deliberately a different, narrower concept than
-// WorkspaceProviderConfig. WorkspaceProviderConfig resolves a *session's*
-// resource identifier (the argument to `create`/`up`) to a session id and a
-// workspace. ResourceDef instead gives a *task-instance-bound* resource id (the
-// `--resource` an instance carries, independent of the session it lives in)
-// an id syntax and an observation contract: which ids it recognizes (Match),
-// how to read its current state (Observe), and the shape that state must
-// have (StateSchema). Both may recognize overlapping id spaces (one url may
-// be both a session resource identifier and an instance resource) without
-// being the same declaration — they answer different questions.
+// ResourceDef is loaded only from trusted layers because its actions run
+// executables, including when no workspace exists to supply local config.
 type ResourceDef struct {
 	ID string
 	// Definition is the declaration this observer was read from, kept so a
@@ -44,6 +30,9 @@ type ResourceDef struct {
 	// straight to `plect task cleanup` (ADR D4: cleanup itself never gains
 	// completion semantics).
 	Finalize        *lang.Action
+	Subscribe       *lang.Action
+	Unsubscribe     *lang.Action
+	InputsSchema    map[string]any
 	Query           *ResourceQuery
 	StateSchema     map[string]any
 	StateSchemaFile string
@@ -137,6 +126,19 @@ func resourceDefFrom(def *lang.Definition, path string, fromPlugin bool) (Resour
 	r.Observe = observe
 	if r.Finalize, err = actionField(def, path, "finalize"); err != nil {
 		return r, err
+	}
+	if r.Subscribe, err = actionField(def, path, "subscribe"); err != nil {
+		return r, err
+	}
+	if r.Unsubscribe, err = actionField(def, path, "unsubscribe"); err != nil {
+		return r, err
+	}
+	if raw, ok := def.Body["inputs_schema"]; ok {
+		schema, ok := raw.(map[string]any)
+		if !ok {
+			return r, fmt.Errorf("`inputs_schema` is a JSON Schema document")
+		}
+		r.InputsSchema = schema
 	}
 	if raw, ok := def.Body["query"]; ok {
 		query := raw.(map[string]any)

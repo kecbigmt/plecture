@@ -10,6 +10,7 @@ import (
 	"github.com/kecbigmt/plecture/app/internal/config"
 	"github.com/kecbigmt/plecture/app/internal/domain"
 	"github.com/kecbigmt/plecture/app/internal/effect"
+	"github.com/kecbigmt/plecture/app/internal/lang"
 	"github.com/kecbigmt/plecture/app/internal/state"
 )
 
@@ -21,20 +22,10 @@ import (
 type SubscribeParams struct {
 	ResourceID  string
 	SessionName string
+	Inputs      map[string]any
 }
 
-// Subscribe binds the current session to an opaque resource so the session
-// starts receiving that resource's events. It is the runtime counterpart to
-// the dispatch-time auto-subscribe task: additive, never
-// replacing — subscribing a resource another session already watches does not
-// take it over.
-//
-// core stays workspace-provider-agnostic: it matches the resource against
-// each workspace provider's resolver to pick the owning workspace provider,
-// fills in the current session from the ambient env, and runs that workspace
-// provider's `subscribe` hook. Everything resource-specific (registering with
-// a resident watcher, say) lives in the hook — core never parses the
-// resource.
+// Subscribe binds a session to a resource through its declaration's hook.
 func Subscribe(cfg *config.Config, store *state.Store, params SubscribeParams) error {
 	if strings.TrimSpace(params.ResourceID) == "" {
 		return &Error{Code: ErrInvalidInput, Message: "resource id is required"}
@@ -62,16 +53,20 @@ func Subscribe(cfg *config.Config, store *state.Store, params SubscribeParams) e
 		return &Error{Code: ErrSessionNotFound, Message: fmt.Sprintf("session %q does not exist", sessionName)}
 	}
 
-	prov, err := workspaceProviderForResource(cfg, params.ResourceID)
+	def, err := resourceDefForSubscription(cfg, params.ResourceID)
 	if err != nil {
 		return err
 	}
+	if err := validateSubscriptionInputs(def, params.Inputs); err != nil {
+		return &Error{Code: ErrInvalidInput, Message: err.Error()}
+	}
 
-	if hookErr := effect.RunWorkspaceProviderSubscribe(prov, effect.SubscribeHookVars{
+	if hookErr := effect.RunResourceSubscribe(def, effect.SubscribeHookVars{
 		ResourceID:  params.ResourceID,
+		Inputs:      params.Inputs,
 		SessionName: sessionName,
 		Plugins:     cfg.Plugins,
-		SourcePath:  prov.SourcePath,
+		SourcePath:  def.SourcePath,
 		Branch:      domain.SessionBranch(session),
 	}); hookErr != nil {
 		return &Error{Code: ErrExecutionFailed, Message: hookErr.Error()}
@@ -79,65 +74,74 @@ func Subscribe(cfg *config.Config, store *state.Store, params SubscribeParams) e
 	return nil
 }
 
-// matchWorkspaceProviders returns every workspace provider whose resolver
-// matches the resource, in deterministic (id-sorted) order. It does not
-// check which hooks a match declares — callers that need a particular hook
-// (subscribe, unsubscribe) check that themselves, since a resource with no
-// match, or an unhooked match, means different things to different callers
-// (an explicit `plect subscribe` fails outright; the implicit wiring a
-// dynamic task instance's `--resource` gets is left unwired instead).
-func matchWorkspaceProviders(cfg *config.Config, resource string) ([]config.WorkspaceProviderConfig, error) {
-	workspaceProviders, err := cfg.LoadWorkspaceProviders()
-	if err != nil {
-		return nil, &Error{Code: ErrExecutionFailed, Message: fmt.Sprintf("load workspace providers: %v", err)}
+func validateSubscriptionInputs(def config.ResourceDef, inputs map[string]any) error {
+	if inputs == nil {
+		inputs = map[string]any{}
 	}
-	ids := make([]string, 0, len(workspaceProviders))
-	for id := range workspaceProviders {
+	if def.InputsSchema == nil {
+		if len(inputs) > 0 {
+			return fmt.Errorf("resource %q declares no inputs_schema", def.ID)
+		}
+		return nil
+	}
+	schema, err := lang.CompileSchema(def.InputsSchema, "", "plect:resource:"+def.ID+":inputs")
+	if err != nil {
+		return fmt.Errorf("resource %q inputs_schema: %w", def.ID, err)
+	}
+	if err := schema.Validate(inputs); err != nil {
+		return fmt.Errorf("resource %q inputs: %w", def.ID, err)
+	}
+	return nil
+}
+
+// matchResourceDefs keeps all matches, including declarations without hooks,
+// so a missing hook cannot hide an ambiguous resource type.
+func matchResourceDefs(cfg *config.Config, resource string) ([]config.ResourceDef, error) {
+	defs, err := cfg.LoadResourceDefs()
+	if err != nil {
+		return nil, &Error{Code: ErrExecutionFailed, Message: fmt.Sprintf("load resources: %v", err)}
+	}
+	ids := make([]string, 0, len(defs))
+	for id := range defs {
 		ids = append(ids, id)
 	}
 	sort.Strings(ids)
 
-	var matched []config.WorkspaceProviderConfig
+	var matched []config.ResourceDef
 	for _, id := range ids {
-		prov := workspaceProviders[id]
-		if !prov.HasResolver() {
-			continue
-		}
-		re, reErr := regexp.Compile(prov.Match)
+		def := defs[id]
+		re, reErr := regexp.Compile(def.Match)
 		if reErr != nil {
-			return nil, &Error{Code: ErrExecutionFailed, Message: fmt.Sprintf("workspace provider %q resolver match: %v", prov.ID, reErr)}
+			return nil, &Error{Code: ErrExecutionFailed, Message: fmt.Sprintf("resource %q match: %v", def.ID, reErr)}
 		}
 		if re.MatchString(resource) {
-			matched = append(matched, prov)
+			matched = append(matched, def)
 		}
 	}
 	return matched, nil
 }
 
-// workspaceProviderForResource selects the single workspace provider whose
-// resolver matches the resource. Mirrors dispatchResource's no-flag branch
-// but keys on the workspace provider's `match` directly (subscribe has no
-// workflow): zero matches is an "unknown resource" error, several is
-// ambiguity. The chosen workspace provider must declare a `subscribe` hook.
-func workspaceProviderForResource(cfg *config.Config, resource string) (config.WorkspaceProviderConfig, error) {
-	matched, err := matchWorkspaceProviders(cfg, resource)
+// resourceDefForSubscription requires exactly one matching declaration with
+// a subscribe hook.
+func resourceDefForSubscription(cfg *config.Config, resource string) (config.ResourceDef, error) {
+	matched, err := matchResourceDefs(cfg, resource)
 	if err != nil {
-		return config.WorkspaceProviderConfig{}, err
+		return config.ResourceDef{}, err
 	}
 	switch len(matched) {
 	case 0:
-		return config.WorkspaceProviderConfig{}, &Error{Code: ErrInvalidInput, Message: fmt.Sprintf("no workspace provider matches resource %q", resource)}
+		return config.ResourceDef{}, &Error{Code: ErrInvalidInput, Message: fmt.Sprintf("no resource declaration matches %q", resource)}
 	case 1:
-		prov := matched[0]
-		if prov.Subscribe == nil {
-			return config.WorkspaceProviderConfig{}, &Error{Code: ErrInvalidInput, Message: fmt.Sprintf("workspace provider %q does not support subscribe", prov.ID)}
+		def := matched[0]
+		if def.Subscribe == nil {
+			return config.ResourceDef{}, &Error{Code: ErrInvalidInput, Message: fmt.Sprintf("resource %q does not support subscribe", def.ID)}
 		}
-		return prov, nil
+		return def, nil
 	default:
 		names := make([]string, len(matched))
 		for i, p := range matched {
 			names[i] = p.ID
 		}
-		return config.WorkspaceProviderConfig{}, &Error{Code: ErrInvalidInput, Message: fmt.Sprintf("resource %q matches multiple workspace providers (%s)", resource, strings.Join(names, ", "))}
+		return config.ResourceDef{}, &Error{Code: ErrInvalidInput, Message: fmt.Sprintf("resource %q matches multiple resource declarations (%s)", resource, strings.Join(names, ", "))}
 	}
 }

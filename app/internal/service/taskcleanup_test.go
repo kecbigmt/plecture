@@ -443,14 +443,13 @@ func TestTaskCleanup_UnsubscribeHookFailureDoesNotFailCleanup(t *testing.T) {
 	)
 	body := `
 [github]
-kind  = "workspace_provider"
+kind  = "resource_observer"
 match = '` + ghMatch + `'
-name  = { expr = "match.owner + '/' + match.repo + '-' + match.number" }
 
-[github.setup]
+[github.observe]
 type    = "exec"
 command = "printf"
-args    = ['{"workdir":"/tmp/x"}']
+args    = ['{}']
 
 [github.subscribe]
 type    = "exec"
@@ -461,10 +460,10 @@ type    = "exec"
 command = "sh"
 args    = ["-c", "echo boom >&2; exit 3"]
 `
-	if err := os.MkdirAll(filepath.Join(cfg.BaseDir, "workspaces"), 0o755); err != nil {
+	if err := os.MkdirAll(filepath.Join(cfg.BaseDir, "resources"), 0o755); err != nil {
 		t.Fatal(err)
 	}
-	if err := os.WriteFile(filepath.Join(cfg.BaseDir, "workspaces", "github.toml"), []byte(body), 0o644); err != nil {
+	if err := os.WriteFile(filepath.Join(cfg.BaseDir, "resources", "github.toml"), []byte(body), 0o644); err != nil {
 		t.Fatal(err)
 	}
 	store := testStore(t)
@@ -538,12 +537,12 @@ func TestShouldUnsubscribe(t *testing.T) {
 // about the other.
 func mergeWorkspacesDir(t *testing.T, from, to *config.Config) {
 	t.Helper()
-	srcDir := filepath.Join(from.BaseDir, "workspaces")
+	srcDir := filepath.Join(from.BaseDir, "resources")
 	entries, err := os.ReadDir(srcDir)
 	if err != nil {
 		t.Fatal(err)
 	}
-	dstDir := filepath.Join(to.BaseDir, "workspaces")
+	dstDir := filepath.Join(to.BaseDir, "resources")
 	if err := os.MkdirAll(dstDir, 0o755); err != nil {
 		t.Fatal(err)
 	}

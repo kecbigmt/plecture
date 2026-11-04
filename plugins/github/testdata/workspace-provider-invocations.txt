@@ -4,6 +4,3 @@ call[0]: "github-worktree" "setup" "--resource" "example://acme/widget/1" "--ses
 == worktree / cleanup
 call[0]: "github-worktree" "cleanup" "--workspace-dir" "/spy/workspace" "--branch" "spy-branch" "--workspace-dirs-root" "/spy/workspace_dirs" "--workspace-layout-root" "stand-in-workspace_layout_root" "--force=true" "--delete-branch=true" "--delete-branch-default=stand-in-delete_branch_default"
 call[1]: "github-watcher" "unsubscribe" "--session" "acme/widget-1"
-
-== worktree / subscribe
-call[0]: "github-watcher" "subscribe" "--session" "acme/widget-1" "--resource" "example://acme/widget/1" "--branch" ""

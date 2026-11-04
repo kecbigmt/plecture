@@ -106,15 +106,14 @@ var (
 	surfaceProviderCleanup = newSurface("workspace_provider.cleanup", LayerSemantic,
 		"self.outputs.<key>", "inputs.<key>", "cleanup.inputs.<key>", "session.name",
 		"config.workspace_dirs_root", "force")
-	surfaceProviderSubscribe = newSurface("workspace_provider.subscribe", LayerSemantic,
-		"session.name", "session.branch", "resource.id")
-	surfaceProviderUnsubscribe = newSurface("workspace_provider.unsubscribe", LayerSemantic,
-		"session.name", "resource.id")
-
 	surfaceObserverObserve = newSurface("resource_observer.observe", LayerSemantic,
 		"resource.id", "workspace.dir", "workspace.branch")
 	surfaceObserverFinalize = newSurface("resource_observer.finalize", LayerSemantic,
 		"resource.id", "session.name", "resource.revision", "judges")
+	surfaceObserverSubscribe = newSurface("resource_observer.subscribe", LayerSemantic,
+		"resource.id", "resource.inputs.<key>", "session.name", "session.branch")
+	surfaceObserverUnsubscribe = newSurface("resource_observer.unsubscribe", LayerSemantic,
+		"resource.id", "resource.inputs.<key>", "session.name", "session.branch")
 	surfaceObserverQuery = newSurface("resource_observer.query", LayerSemantic,
 		"inputs.<key>")
 

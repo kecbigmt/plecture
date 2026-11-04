@@ -150,9 +150,27 @@ func attachGithubWorkspaceProvider(t *testing.T, cfg *config.Config, wfID string
 	if err := os.WriteFile(filepath.Join(workspacesDir, provID+".toml"), []byte(body), 0o644); err != nil {
 		t.Fatal(err)
 	}
+	copyShippedGithubResources(t, pluginDir)
 	// The provider is declared inside a mounted plugin, so the workflow — which
 	// the user owns — names it by that plugin's catalog address.
 	addWorkflowFields(t, cfg, wfID, "workspace_provider = \"official.github."+provID+"\"\n")
+}
+
+func copyShippedGithubResources(t *testing.T, pluginDir string) {
+	t.Helper()
+	dir := filepath.Join(pluginDir, "config", "resources")
+	if err := os.MkdirAll(dir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	for _, name := range []string{"issue", "pull_request"} {
+		data, err := os.ReadFile(filepath.Join(repoRoot(t), "plugins", "github", "config", "resources", name+".toml"))
+		if err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(filepath.Join(dir, name+".toml"), data, 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
 }
 
 // shippedGithubWorkspaceProviderTOML reads the workspace provider config the
