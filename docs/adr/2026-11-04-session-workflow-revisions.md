@@ -38,12 +38,12 @@ escaping, and contains no insignificant whitespace. The workflow address is
 part of the body, so distinct workflow identities cannot share one row. Equal
 expanded definitions share a revision row.
 
-Each session references one revision. Lifecycle planning and run-state
-evaluation use that revision for setup, repair, health, tick, delivery, and
-cleanup, including when the original workflow file is gone. A configuration
-edit does not replace the session's revision. To repair a cleanup declaration,
-the operator edits trusted configuration and explicitly rebases the session
-before cleanup; until rebase is available, destroying and recreating the
+Each session with a workflow references one revision. Lifecycle planning and
+run-state evaluation use that revision for setup, repair, health, tick,
+delivery, and cleanup, including when the original workflow file is gone. A
+configuration edit does not replace the session's revision. To repair a cleanup
+declaration, the operator edits trusted configuration and explicitly rebases
+the session before cleanup; until rebase is available, destroying and recreating the
 session is the transition path. Lifecycle operations do not compare current
 configuration with the stored revision or update a notification baseline; the
 revision shown in session inspection identifies the declarations they execute.
@@ -53,8 +53,10 @@ configuration tree expanded by serve or the CLI may write a revision; runtime
 inputs, untrusted messages, and stored execution results cannot author one.
 Plugin executable contents, executable lookup through `PATH`, and population
 definitions are outside the revision. Population continues to use current
-configuration. Executable references resolve against the mounted plugins when
-an operation runs. A plugin-owned declaration records its catalog-qualified
+configuration. A session without a workflow has no revision; its dynamic task
+declarations and channels resolve from current trusted configuration.
+Executable references resolve against the mounted plugins when an operation
+runs. A plugin-owned declaration records its catalog-qualified
 plugin ID and path relative to the plugin mount. A change in the mount's cache
 directory does not change the revision or break a bare executable reference.
 
