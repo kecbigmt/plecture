@@ -30,7 +30,7 @@ as `inputs.*`, not `resource.inputs.*`.
 
 ```toml
 [issue]
-kind  = "resource_observer"
+kind  = "resource"
 match = '^https://forge\.example/(?P<project>[^/]+)/issues/(?P<number>\d+)$'
 name  = { expr = "match.project + '-issue-' + match.number" }
 
@@ -67,9 +67,10 @@ action input object. A resource does not own a task's state or judge evidence.
 `plect subscribe <resource-id>` selects exactly one matching resource
 declaration. It accepts `--inputs` or `--inputs-file` for the action input
 object. Session creation and task binding subscribe automatically when that
-declaration has a `subscribe` action; teardown runs `unsubscribe` when the
-resource is no longer needed. A resource declaration needs no workspace
-provider to bind delivery. Workspace providers declare neither action.
+declaration has a `subscribe` action and the empty input object satisfies its
+schema. Teardown runs `unsubscribe` under the same condition when the resource
+is no longer needed. A resource declaration needs no workspace provider to
+bind delivery. Workspace providers declare neither action.
 
 ## Query
 

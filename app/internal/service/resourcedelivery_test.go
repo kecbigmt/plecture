@@ -69,6 +69,48 @@ func TestSubscribeIfWired_RunsSubscribeHookAndReportsWired(t *testing.T) {
 	}
 }
 
+func TestAutomaticDeliverySkipsHooksWhenEmptyInputsFailSchema(t *testing.T) {
+	baseDir := t.TempDir()
+	record := filepath.Join(baseDir, "called")
+	writeProviderDoc(t, baseDir, "fixture", fixtureResourceMatch, `
+[fixture.inputs_schema]
+type = "object"
+required = ["token"]
+
+[fixture.inputs_schema.properties]
+token = { type = "string" }
+
+[fixture.subscribe]
+type = "exec"
+command = "touch"
+args = ["`+record+`"]
+
+[fixture.unsubscribe]
+type = "exec"
+command = "touch"
+args = ["`+record+`"]
+`)
+	cfg := &config.Config{BaseDir: baseDir}
+	resource := "resource://org/repo/pull/1"
+	for _, tc := range []struct {
+		name string
+		run  func() (bool, error)
+	}{
+		{"subscribe", func() (bool, error) { return subscribeIfWired(cfg, "s", resource, "") }},
+		{"unsubscribe", func() (bool, error) { return unsubscribeIfWired(cfg, "s", resource, "") }},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			ran, err := tc.run()
+			if err != nil || ran {
+				t.Fatalf("ran=%v err=%v, want false, nil", ran, err)
+			}
+			if _, err := os.Stat(record); !os.IsNotExist(err) {
+				t.Fatalf("hook ran with invalid inputs: stat err=%v", err)
+			}
+		})
+	}
+}
+
 func TestSubscribeIfWired_IdempotentOnRepeatedCall(t *testing.T) {
 	rec := filepath.Join(t.TempDir(), "rec")
 	cfg := writeSubscribeProvider(t, "fixture", fixtureResourceMatch, rec)

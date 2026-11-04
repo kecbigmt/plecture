@@ -68,6 +68,9 @@ func subscribeIfWired(cfg *config.Config, sessionName, resourceID, branch string
 		if def.Subscribe == nil {
 			return false, nil
 		}
+		if validateSubscriptionInputs(def, nil) != nil {
+			return false, nil
+		}
 		if hookErr := effect.RunResourceSubscribe(def, effect.SubscribeHookVars{
 			ResourceID:  resourceID,
 			SessionName: sessionName,
@@ -107,6 +110,9 @@ func unsubscribeIfWired(cfg *config.Config, sessionName, resourceID, branch stri
 	}
 	def := matched[0]
 	if def.Unsubscribe == nil {
+		return false, nil
+	}
+	if validateSubscriptionInputs(def, nil) != nil {
 		return false, nil
 	}
 	if hookErr := effect.RunResourceUnsubscribe(def, effect.SubscribeHookVars{
