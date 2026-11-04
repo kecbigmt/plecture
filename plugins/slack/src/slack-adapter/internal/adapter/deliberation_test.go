@@ -132,7 +132,7 @@ func TestHandleAppMentionDeliversBoundThreadTranscript(t *testing.T) {
 	if !strings.Contains(ev.Body, "1970-01-01T00:16:40.000001Z") {
 		t.Fatalf("body should include Slack message times, got:\n%s", ev.Body)
 	}
-	sub, _ := a.broker.Find("1000.000001")
+	sub, _ := a.broker.Find("owner/repo-1", "1000.000001")
 	if sub.DeliveredThrough != "1000.000005" {
 		t.Fatalf("DeliveredThrough = %q, want mention timestamp", sub.DeliveredThrough)
 	}
@@ -340,7 +340,7 @@ func TestHandleAppMentionFetchFailureDoesNotPublishOrAdvanceWatermark(t *testing
 	if len(publisher.events) != 0 {
 		t.Fatalf("published events = %d, want 0", len(publisher.events))
 	}
-	sub, _ := a.broker.Find("1000.000001")
+	sub, _ := a.broker.Find("owner/repo-1", "1000.000001")
 	if sub.DeliveredThrough != "1000.000003" {
 		t.Fatalf("DeliveredThrough = %q, want unchanged watermark", sub.DeliveredThrough)
 	}
@@ -418,13 +418,13 @@ func TestCatchUpThreadFetchFailureLeavesWatermarkUntouched(t *testing.T) {
 		SessionName: "owner/repo-1",
 	})
 
-	sub, _ := a.broker.Find("1000.000001")
+	sub, _ := a.broker.Find("owner/repo-1", "1000.000001")
 	a.catchUpThread(sub, "1000.000003")
 
 	if len(publisher.events) != 0 {
 		t.Fatalf("published events = %d, want 0", len(publisher.events))
 	}
-	got, _ := a.broker.Find("1000.000001")
+	got, _ := a.broker.Find("owner/repo-1", "1000.000001")
 	if got.DeliveredThrough != "" {
 		t.Fatalf("DeliveredThrough = %q, want empty (fetch failed)", got.DeliveredThrough)
 	}

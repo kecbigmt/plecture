@@ -1,13 +1,8 @@
 # slack
 
-The Slack adapter service, thread binding, and the Slack delivery channel.
-Split out of the former `session/runtime` plugin per
-`docs/design/plugin-boundary-contracts.md`. Excludes agent runtimes and
-channel-server sockets: `slack-adapter` connects to a Unix socket only in
-its own test doubles (a protocol-conformant fake it owns —
-`src/slack-adapter/internal/adapter/fakesocket_test.go` — built on
-`contracts/channel-protocol`), never in production code or by importing
-another plugin's package.
+The Slack adapter service, thread subscriptions, and Slack delivery channels.
+The adapter publishes inbound thread messages to subscribed sessions' event
+logs. Runtime delivery uses the core dispatcher and workflow channels.
 
 ## Contents
 
@@ -17,17 +12,8 @@ another plugin's package.
   artifact standing in for the session. See "Workspace provider" below.
 - `config/tasks/slack_thread.toml` — creates one Slack root message through
   `slack-adapter`. Outputs: `thread_ts`, `channel_id`, and `permalink`.
-- `config/tasks/slack_subscribe.toml` — run-scoped effect that registers a
-  thread ↔ runtime binding with `slack-adapter` (`POST /subscribe`, undone
-  with `DELETE /subscribe` on cleanup), so an `app_mention` in the thread
-  reaches the session over Socket Mode. Inputs: `base_url`, `thread_ts`,
-  `channel_id`, and `socket_path` (an opaque string — wire it from whatever
-  runtime task exposes its channel-server socket). Run scope, not session
-  scope, because the socket path changes on every agent launch while the
-  thread does not. Because this task's cleanup runs `DELETE /subscribe` on
-  every `plect down`, `slack-adapter`'s own state directory (not this
-  plugin's config) must live on storage that survives a redeploy — see
-  "Persistence" in `src/slack-adapter/README.md`.
+- `config/resources/thread.toml` — declares inputs-free thread subscription
+  hooks and the query source for unbound mentions.
 - `config/channels/slack.toml` — delivers a session event to its Slack
   thread by posting to the `slack-adapter` service's HTTP API. Inputs:
   `base_url` (e.g. `http://127.0.0.1:7890` for its default `listen_addr`),
@@ -60,11 +46,6 @@ another plugin's package.
   `src/slack-adapter/README.md`'s `POST /stream` section for the
   chat.startStream/appendStream/stopStream sequencing and the
   fallback-to-a-single-post behavior when a workspace rejects streaming.
-- `config/resources/thread.toml` — declares the `thread` resource observer:
-  a `[thread.query]` face whose `subscribe` means is the workflow
-  population source for an unbound Slack mention (see "Query (population
-  source)" below). Distinct from the `thread_workspace` provider above —
-  same permalink, different responsibility.
 - `src/slack-adapter/` — Slack-specific message relay + subscription
   broker. See `src/slack-adapter/CLAUDE.md`.
 
@@ -96,15 +77,14 @@ either the root message's own permalink or a reply's permalink carrying
 thread's permalink resolve to the same session. `setup` creates a bare
 directory under `config.workspace_dirs_root` and reports the same
 `channel_id`, `thread_ts`, and `permalink` outputs `slack_thread` reports, so
-the shipped `slack`/`status` channels and `slack_subscribe` effect bind from
-a session this provider backs exactly as they would from one `slack_thread`
-created. `cleanup` removes the directory. Dependencies: `plect` and a POSIX
+the shipped `slack`/`status` channels bind from a session this provider
+backs exactly as they would from one `slack_thread` created. `cleanup` removes the directory. Dependencies: `plect` and a POSIX
 shell — no git, and no `slack-adapter` HTTP call, so a workflow that wants a
 repository checkout composes a separate effect for it.
 
-Unlike `official.github.worktree`, this provider declares no
-`subscribe`/`unsubscribe` hook: the slack plugin owns no watcher a session
-could bind to or drop a binding from for a thread resource.
+This workspace provider declares no subscription hook. The separate `thread`
+resource observer owns the subscription hooks, so a session whose entry
+resource is a thread subscribes on creation and unsubscribes on destroy.
 
 ## Thread contract
 
@@ -113,6 +93,11 @@ message and reports the adapter permalink, `thread_ts`, and `channel_id` as
 outputs. It carries no opinion about what the thread is for — review, or
 anything else — and no PR-specific inputs: how the root text is framed is
 the composing workflow's concern.
+
+Its session-scoped setup also calls `plect subscribe` for the new permalink.
+Cleanup unsubscribes that thread. A runtime restart or `plect down` leaves the
+subscription intact. Keep `slack_thread`'s `base_url` pointed at the same
+resident adapter whose `listen_addr` the resource hook reads.
 
 `examples/review-thread-workflow.toml` shows the review case: it composes
 `root_text` from a PR title, URL, and head sha, then wires `slack_thread`

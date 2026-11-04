@@ -12,11 +12,9 @@ import (
 	"github.com/slack-go/slack"
 	"github.com/slack-go/slack/slackevents"
 	"github.com/slack-go/slack/socketmode"
-
-	protocol "github.com/kecbigmt/plecture/contracts/channel-protocol"
 )
 
-// Adapter connects Slack (via Socket Mode) to channel server instances (via Unix socket).
+// Adapter receives Slack activity and publishes it to subscribed sessions.
 type Adapter struct {
 	cfg            *Config
 	api            *slack.Client
@@ -24,7 +22,7 @@ type Adapter struct {
 	sm             *socketmode.Client
 	workspace      string
 	teamID         string
-	socketPool     *SocketPool
+	botUserID      string
 	broker         *Broker
 	poster         ThreadPoster
 	threader       ThreadCreator
@@ -91,7 +89,6 @@ func New(cfg *Config, logger *slog.Logger) *Adapter {
 	a.mentionHook = cliMentionHookRunner{}
 	a.mentions = newMentionStream()
 	a.statusManager = NewStatusManager(a.poster, cfg.StatusTTLDuration(), logger)
-	a.socketPool = NewSocketPool(a.poster, logger, a.captureOutbound)
 	// Cache workspace name from Slack API
 	resp, err := api.AuthTest()
 	if err != nil {
@@ -105,16 +102,9 @@ func New(cfg *Config, logger *slog.Logger) *Adapter {
 			}
 		}
 		a.teamID = resp.TeamID
+		a.botUserID = resp.UserID
 	}
 	a.streamManager = NewStreamManagerWithStatePath(a, a.poster, logger, StreamStatePath())
-
-	// Pre-connect so restored subscribers can push replies immediately.
-	for _, sub := range a.broker.List() {
-		if err := a.socketPool.Connect(sub.SocketPath, sub.ChannelID, sub.ThreadTS); err != nil {
-			logger.Warn("pre-connect to restored subscriber failed",
-				"thread_ts", sub.ThreadTS, "socket_path", sub.SocketPath, "error", err)
-		}
-	}
 
 	return a
 }
@@ -198,7 +188,7 @@ func (a *Adapter) handleMessage(ev *slackevents.MessageEvent) {
 	}
 
 	// Sender gating
-	if !a.cfg.IsUserAllowed(ev.User) {
+	if !a.cfg.IsMentionUserAllowed(ev.User) {
 		a.logger.Debug("dropping message", "reason", "user_not_allowed", "user", ev.User)
 		return
 	}
@@ -208,6 +198,10 @@ func (a *Adapter) handleMessage(ev *slackevents.MessageEvent) {
 	if threadTS == "" {
 		a.logger.Debug("dropping message", "reason", "not_thread_reply")
 		return // not a thread reply, ignore
+	}
+
+	if a.isAppMentionMessage(ev.Text) {
+		return
 	}
 
 	// Resolve display name
@@ -220,40 +214,36 @@ func (a *Adapter) handleMessage(ev *slackevents.MessageEvent) {
 		}
 	}
 
-	// Source marks this as an authenticated interactive-user message (the user
-	// passed IsUserAllowed above). It is what lets channel-server accept a
-	// "y <id>" / "n <id>" reply as a permission verdict; content deliveries
-	// (notify/bus) leave Source empty and so can never forge one.
-	msg := protocol.MessagePayload{
-		User:     userName,
-		UserID:   ev.User,
-		Text:     ev.Text,
-		ThreadTS: threadTS,
-		Source:   "slack",
-	}
-
-	sub, ok := a.broker.Find(threadTS)
-	if !ok {
-		a.logger.Debug("dropping message", "reason", "no_subscriber", "thread_ts", threadTS)
-		return
-	}
-
-	if sub.ChannelID == "" {
-		sub.ChannelID = ev.Channel
-	}
-
-	if err := a.deliverToChannelServer(sub, msg); err != nil {
-		if _, perr := a.poster.PostToThread(ev.Channel, threadTS, ":warning: Failed to deliver the message. The session may have ended."); perr != nil {
-			a.logger.Error("failed to post error notification to Slack",
-				"component", "slack-adapter",
-				"event", "slack_post_error",
-				"error", perr,
-			)
+	delivered := false
+	for _, sub := range a.broker.ListThread(threadTS) {
+		if sub.SessionName == "" || sub.ChannelID != ev.Channel {
+			continue
 		}
-		return
+		if a.publishInboundReply(sub, userName, ev.User, ev.Text) == nil {
+			delivered = true
+		}
 	}
-	a.recordStreamRecipient(ev.Channel, threadTS, ev.User, ev.UserTeam)
-	a.captureInbound(sub, msg)
+	if delivered {
+		a.recordStreamRecipient(ev.Channel, threadTS, ev.User, ev.UserTeam)
+	}
+}
+
+func (a *Adapter) isAppMentionMessage(text string) bool {
+	if !strings.Contains(text, "<@") {
+		return false
+	}
+	if a.botUserID == "" {
+		if a.api == nil {
+			return true
+		}
+		auth, err := a.api.AuthTest()
+		if err != nil || auth.UserID == "" {
+			a.logger.Warn("cannot classify message with a mention without bot identity", "error", err)
+			return true
+		}
+		a.botUserID = auth.UserID
+	}
+	return strings.Contains(text, "<@"+a.botUserID+">")
 }
 
 // recordStreamRecipient makes the sender of an inbound message that actually
@@ -270,54 +260,6 @@ func (a *Adapter) recordStreamRecipient(channelID, threadTS, userID, userTeam st
 		userTeam = a.teamID
 	}
 	a.streamManager.RecordRecipient(channelID, threadTS, userID, userTeam)
-}
-
-// deliverToChannelServer sends msg over the subscriber's Unix socket,
-// evicting the subscriber if the socket is gone (lazy GC). Both call
-// sites — Slack-inbound and POST /notify — share this so eviction is
-// symmetric across delivery paths.
-func (a *Adapter) deliverToChannelServer(sub Subscriber, msg protocol.MessagePayload) error {
-	if _, err := os.Stat(sub.SocketPath); err != nil {
-		a.logger.Warn("subscriber socket missing, evicting", "thread_ts", sub.ThreadTS, "socket_path", sub.SocketPath)
-		a.broker.Unsubscribe(sub.ThreadTS)
-		return err
-	}
-	if err := a.socketPool.Send(sub.SocketPath, sub.ChannelID, msg); err != nil {
-		a.logger.Error("channel-server send failed",
-			"component", "slack-adapter",
-			"event", "message_send_error",
-			"thread_ts", sub.ThreadTS,
-			"socket_path", sub.SocketPath,
-			"error", err,
-		)
-		return err
-	}
-	return nil
-}
-
-// deliverFramed posts a GitHub-style change notification to a subscriber's
-// channel-server (with "[GitHub <type>] <url>: <summary>") and/or Slack thread
-// (with an emoji prefix). Shared by POST /notify and the bus github.* path so
-// both produce the same wire format. The bool returns report what was delivered
-// (for the /notify response).
-func (a *Adapter) deliverFramed(sub Subscriber, changeType, url, summary string, toChannel, toSlack bool) (channelDelivered, slackDelivered bool) {
-	if toChannel && sub.SocketPath != "" {
-		text := fmt.Sprintf("[GitHub %s] %s: %s", changeType, url, summary)
-		if err := a.deliverToChannelServer(sub, protocol.MessagePayload{Text: text, ThreadTS: sub.ThreadTS}); err == nil {
-			channelDelivered = true
-		}
-	}
-	if toSlack && sub.ThreadTS != "" && sub.ChannelID != "" {
-		text := fmt.Sprintf("%s %s", notifyEmoji(changeType, summary), summary)
-		if _, err := a.poster.PostToThread(sub.ChannelID, sub.ThreadTS, text); err != nil {
-			a.logger.Error("notify: slack post failed",
-				"component", "slack-adapter", "event", "slack_post_error",
-				"session_name", sub.SessionName, "error", err)
-		} else {
-			slackDelivered = true
-		}
-	}
-	return
 }
 
 // PostToThread posts a message to a Slack thread.
@@ -351,4 +293,13 @@ func (a *Adapter) CreateThread(channelID, text string) (string, string, error) {
 		return "", "", err
 	}
 	return ts, permalink, nil
+}
+
+type ThreadPoster interface {
+	PostToThread(channelID, threadTS, text string) (string, error)
+	ThreadStatusSetter
+}
+
+type ThreadCreator interface {
+	CreateThread(channelID, text string) (threadTS, permalink string, err error)
 }

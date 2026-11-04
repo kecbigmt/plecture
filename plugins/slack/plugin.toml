@@ -4,7 +4,7 @@ version = "0.1.0"
 # release/tagging process yet, so any higher floor would reject the plugin
 # against every build until real versioning exists.
 plect_min_version = "0.0.0"
-description = "Slack adapter service, thread binding, and the Slack delivery channel."
+description = "Slack adapter service, thread subscriptions, and Slack delivery channels."
 
 [[executables]]
 name = "slack-adapter"

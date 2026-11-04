@@ -5,8 +5,6 @@
 # is present in `match` as the empty string, not absent, which is what
 # makes that fallback safe rather than an unresolved-root error.
 #
-# No `subscribe`/`unsubscribe`: this plugin owns no watcher a session could
-# bind to or drop a binding from for a thread resource.
 [thread_workspace]
 kind  = "workspace_provider"
 match = '^https://[A-Za-z0-9.-]+\.slack\.com/archives/(?P<channel_id>[A-Z0-9]+)/p(?P<ts16>\d{16})(?:\?thread_ts=(?P<thread_ts>\d{10}\.\d{6})&cid=[A-Z0-9]+)?$'

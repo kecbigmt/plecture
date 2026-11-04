@@ -17,6 +17,8 @@ thread_ts=$(printf '%s' "$resp" | jq -er '.thread_ts')
 response_channel_id=$(printf '%s' "$resp" | jq -er '.channel_id')
 permalink=$(printf '%s' "$resp" | jq -er '.permalink')
 
+plect subscribe "$permalink" --session "$session_name"
+
 jq -nc \
   --arg thread_ts "$thread_ts" \
   --arg channel_id "$response_channel_id" \
@@ -28,12 +30,18 @@ jq -nc \
 base_url   = { from = "inputs.base_url" }
 channel_id = { from = "inputs.channel_id" }
 root_text  = { from = "inputs.root_text" }
+session_name = { from = "session.name" }
 
 # Deliberately never re-observed: a deleted or archived Slack thread must not
 # be silently recreated, because a replacement thread would split the
 # conversation the original one held.
 [slack_thread.health.alive]
 type = "noop"
+
+[slack_thread.cleanup]
+type = "exec"
+bin = "slack-adapter"
+args = ["resource", "unsubscribe", "--session", { from = "session.name" }, "--resource", { from = "self.outputs.permalink" }]
 
 [slack_thread.inputs_schema]
 type                 = "object"
