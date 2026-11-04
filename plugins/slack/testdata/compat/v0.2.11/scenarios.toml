@@ -1,0 +1,23 @@
+# Scenarios for the released declarations in config/ and for the current ones:
+# the effect set up as that release set it up, and its alive probe run against
+# the outputs that release recorded. Every action must succeed.
+
+[[slack_thread]]
+name   = "fresh-lifecycle"
+inputs = { base_url = "http://127.0.0.1:7890", channel_id = "C-review", root_text = "[AI review] Fix widgets — https://github.com/acme/widgets/pull/7\nsession acme/widget-1 · head abcdef123456" }
+
+[[slack_thread]]
+name   = "released-record-is-alive"
+inputs = { base_url = "http://127.0.0.1:7890", channel_id = "C-review", root_text = "[AI review] Fix widgets — https://github.com/acme/widgets/pull/7\nsession acme/widget-1 · head abcdef123456" }
+self   = { channel_id = "C-review", permalink = "https://example.slack.com/archives/C-review/p12345678", thread_ts = "1234.5678" }
+hooks  = ["health.alive"]
+
+[[slack_subscribe]]
+name   = "fresh-lifecycle"
+inputs = { base_url = "http://127.0.0.1:7890", thread_ts = "1700000010.100000", channel_id = "C-review", socket_path = "/run/claude-channel/aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee.sock" }
+
+[[slack_subscribe]]
+name   = "released-record-is-alive-and-cleaned-up"
+inputs = { base_url = "http://127.0.0.1:7890", thread_ts = "1700000010.100000", channel_id = "C-review", socket_path = "/run/claude-channel/aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee.sock" }
+self   = { thread_ts = "1700000010.100000" }
+hooks  = ["health.alive", "cleanup"]

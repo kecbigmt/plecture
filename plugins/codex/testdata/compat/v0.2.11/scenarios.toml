@@ -1,0 +1,30 @@
+# Scenarios for the released declarations in config/ and for the current ones:
+# each effect set up as that release set it up, and each probe or cleanup run
+# against the outputs that release recorded. Every action must succeed.
+
+[[codex]]
+name    = "fresh-lifecycle"
+capture = "› "
+
+[[codex.files]]
+path    = ".codex/sessions/rollout.jsonl"
+content = '{"type":"session_meta","payload":{"cwd":"WORKSPACE","session_id":"11111111-2222-3333-4444-555555555555"}}'
+
+[[codex]]
+name                       = "released-record-is-alive-and-cleaned-up"
+self                       = { pid = "WORKER_PID", pid_started = "started-WORKER_PID", profile_path = "HOME/.codex/plect-aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee.config.toml", session_id = "11111111-2222-3333-4444-555555555555" }
+hooks                      = ["health.alive", "cleanup"]
+expect_worker_process_dead = true
+
+[[exec_runtime]]
+name = "fresh-lifecycle"
+
+[[exec_runtime]]
+name                       = "released-record-is-alive-and-cleaned-up"
+self                       = { pid = "WORKER_PID", queue_dir = "HOME/exec/queue", state_dir = "HOME/exec" }
+hooks                      = ["health.alive", "cleanup"]
+expect_worker_process_dead = true
+
+[[codex_initial_prompt]]
+inputs  = { terminal_ready = "acme-widget-1", agent_session = "1234", prompt = "rendered instruction", repeat = "" }
+capture = "› "

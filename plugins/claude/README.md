@@ -255,3 +255,36 @@ process never has — see `plugin.toml`'s comment and
   a GitHub-specific switch.
 - A no-channel-server interactive Claude configuration is outside the
   supported surface — see `docs/migrations/` for the migration procedure.
+
+## Compatibility fixtures
+
+`testdata/compat/<tag>/` holds this plugin's task declarations as of the
+latest tagged release (`config/tasks/`) and a `scenarios.toml` in the
+effect-scenario format. `TestShippedEffects_ReleasedDeclarationsAndRecordsStillRun`
+(`go test -tags integration ./app/internal/task`) runs it under both the
+released and the current declarations against the plugin's current
+executables, so updating the plugin cannot break a session created under that
+release. Scripts run as checked in and the other executables are built with their
+manifest `build` command; the programs a declaration launches in a terminal
+(the `claude`/`codex` CLI itself) and the system tools stay stand-ins under
+`testdata/effects/`.
+The scenarios cover the TUI runtime, the headless runtime, and the initial-prompt effect.
+
+Refresh the fixtures when a release is tagged:
+
+```bash
+tag=$(git describe --tags --abbrev=0)
+dir=plugins/claude/testdata/compat
+old=$(ls "$dir")
+[ "$old" = "$tag" ] || git mv "$dir/$old" "$dir/$tag"
+git rm -rqf "$dir/$tag/config"
+mkdir -p "$dir/$tag/config"
+git archive "$tag" plugins/claude/config/tasks | tar -x -C "$dir/$tag/config" --strip-components=3
+git show "$tag:plugins/claude/testdata/effect-invocations.txt" | grep -E '^(==|outputs)'
+```
+
+The rest of the directory carries over to the new tag. Set each `self` in its `scenarios.toml` to the `outputs:` line the
+last command prints for that effect, so the scenarios carry the shape that
+release recorded. When a stand-in under `testdata/effects/`
+changes how an executable answers, the released declarations run against the
+new answer too; keep them passing rather than editing the fixture.

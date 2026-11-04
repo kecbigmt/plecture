@@ -220,3 +220,41 @@ observer always sets `expire_after` rather than `poll_every`.
   channel-server socket or imports an agent-runtime plugin's package.
 - slack-adapter's Slack App manifest, HTTP API surface, and subscription
   broker behavior — see `src/slack-adapter/CLAUDE.md`.
+
+## Compatibility fixtures
+
+`testdata/compat/<tag>/` holds this plugin's task declarations as of the
+latest tagged release (`config/tasks/`) and a `scenarios.toml` in the
+effect-scenario format. `TestShippedEffects_ReleasedDeclarationsAndRecordsStillRun`
+(`go test -tags integration ./app/internal/task`) runs it under both the
+released and the current declarations against the plugin's current
+executables, so updating the plugin cannot break a session created under that
+release. Scripts run as checked in and the other executables are built with their
+manifest `build` command; the programs a declaration launches in a terminal
+(the `claude`/`codex` CLI itself) and the system tools stay stand-ins under
+`testdata/effects/`.
+The scenarios cover the thread and subscription effects. The adapter needs a
+Slack connection to run, so `subscribe_request.json` holds the request the
+released subscription declaration sends and
+`TestReleasedSubscribeWireShapesAreAccepted` in `src/slack-adapter` drives the
+adapter's own handlers with it, then lists and deletes the subscription as the
+released alive probe and cleanup do.
+
+Refresh the fixtures when a release is tagged:
+
+```bash
+tag=$(git describe --tags --abbrev=0)
+dir=plugins/slack/testdata/compat
+old=$(ls "$dir")
+[ "$old" = "$tag" ] || git mv "$dir/$old" "$dir/$tag"
+git rm -rqf "$dir/$tag/config"
+mkdir -p "$dir/$tag/config"
+git archive "$tag" plugins/slack/config/tasks | tar -x -C "$dir/$tag/config" --strip-components=3
+git show "$tag:plugins/slack/testdata/effect-invocations.txt" | grep -E '^(==|outputs)'
+```
+
+The rest of the directory carries over to the new tag. Set each `self` in its `scenarios.toml` to the `outputs:` line the
+last command prints for that effect, so the scenarios carry the shape that
+release recorded. When a stand-in under `testdata/effects/`
+changes how an executable answers, the released declarations run against the
+new answer too; keep them passing rather than editing the fixture.

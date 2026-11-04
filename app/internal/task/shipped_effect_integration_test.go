@@ -77,7 +77,11 @@ func TestShippedEffects_InvocationsMatchTheirPluginsRecord(t *testing.T) {
 
 func loadEffectScenarios(t *testing.T, source string) map[string][]effectScenario {
 	t.Helper()
-	path := filepath.Join(source, "testdata", "effects", "scenarios.toml")
+	return loadScenarioFile(t, filepath.Join(source, "testdata", "effects", "scenarios.toml"))
+}
+
+func loadScenarioFile(t *testing.T, path string) map[string][]effectScenario {
+	t.Helper()
 	raw, err := os.ReadFile(path)
 	if err != nil {
 		if os.IsNotExist(err) {
@@ -121,13 +125,19 @@ type effectHarness struct {
 	// assert this one died without the endpoint dying too.
 	workerProcess int
 	workerCmd     *exec.Cmd
+	realWorker    bool
 	scrub         []struct{ from, to string }
 	expand        []struct{ from, to string }
 }
 
 func recordShippedEffects(t *testing.T, source string, scenarios map[string][]effectScenario) string {
 	t.Helper()
-	h := newEffectHarness(t, source)
+	return recordEffectsUnder(t, source, "", false, scenarios)
+}
+
+func recordEffectsUnder(t *testing.T, source, declarationsDir string, realScripts bool, scenarios map[string][]effectScenario) string {
+	t.Helper()
+	h := newEffectHarness(t, source, declarationsDir, realScripts)
 	cfg := &config.Config{PluginDirs: []string{h.mounted.Dir}, Plugins: []plugins.Mounted{h.mounted}}
 	defs, err := cfg.LoadTaskDefinitions("")
 	if err != nil {
@@ -182,9 +192,18 @@ func (h *effectHarness) removeAbsentExecutables(t *testing.T, names []string) {
 	}
 }
 
-func newEffectHarness(t *testing.T, source string) *effectHarness {
+func newEffectHarness(t *testing.T, source, declarationsDir string, realScripts bool) *effectHarness {
 	t.Helper()
 	root := t.TempDir()
+	if realScripts {
+		// A real worker listens on a unix socket under this root, and the
+		// test-named temp directory overflows the platform's socket path limit.
+		var err error
+		if root, err = os.MkdirTemp("/tmp", "pe"); err != nil {
+			t.Fatal(err)
+		}
+		t.Cleanup(func() { os.RemoveAll(root) })
+	}
 	h := &effectHarness{
 		spyDir:    filepath.Join(root, "bin"),
 		homeDir:   filepath.Join(root, "home"),
@@ -198,8 +217,22 @@ func newEffectHarness(t *testing.T, source string) *effectHarness {
 		}
 	}
 	h.mounted = spyPlugin(t, source, h.argvLog, effectSpyAnswer(t, source))
+	if declarationsDir != "" {
+		tasks := filepath.Join(h.mounted.Dir, "config", "tasks")
+		if err := os.RemoveAll(tasks); err != nil {
+			t.Fatal(err)
+		}
+		if out, err := exec.Command("cp", "-a", filepath.Join(declarationsDir, "tasks"), tasks).CombinedOutput(); err != nil {
+			t.Fatalf("copy declarations: %v: %s", err, out)
+		}
+	}
 	h.writeRecorders(t)
 	copyDirOver(t, filepath.Join(source, "testdata", "effects", "bin"), h.spyDir)
+	if realScripts {
+		restoreScriptExecutables(t, source, h.mounted)
+		h.realWorker = true
+		t.Cleanup(func() { killLaunchedWorkers(h.stateDir) })
+	}
 
 	// The sandbox is what makes a script's own discovery reproducible: it
 	// looks for its subject under HOME and writes its scratch files under
@@ -303,6 +336,7 @@ func (h *effectHarness) writeRecorders(t *testing.T) {
 		"PATH=$(printf '%s' \"$PATH\" | sed 's|^'\"$PLECT_EFFECT_BIN\"':||')\n"+
 		"export PATH\n"+
 		"exec \"$@\"\n")
+	h.writeSpy(t, "plect", "#!/usr/bin/env sh\nplect-effect-record plect \"$@\"\n")
 	for _, verb := range []string{"attach", "capture", "send_text", "send_keys", "pid"} {
 		body := "#!/usr/bin/env sh\n" +
 			"plect-effect-record terminal-" + verb + " \"$@\"\n"
@@ -316,6 +350,46 @@ func (h *effectHarness) writeRecorders(t *testing.T) {
 		}
 		h.writeSpy(t, "terminal-"+verb, body)
 	}
+}
+
+func restoreScriptExecutables(t *testing.T, source string, mounted plugins.Mounted) {
+	t.Helper()
+	for _, executable := range mounted.Manifest.Executables {
+		if executable.Build != "" {
+			build := exec.Command("sh", "-c", executable.Build)
+			build.Dir = source
+			if out, err := build.CombinedOutput(); err != nil {
+				t.Fatalf("build %s: %v: %s", executable.Name, err, out)
+			}
+		}
+		raw, err := os.ReadFile(filepath.Join(source, executable.Path))
+		if err != nil {
+			t.Fatalf("an executable must be checked in or buildable: %v", err)
+		}
+		if err := os.WriteFile(filepath.Join(mounted.Dir, executable.Path), raw, 0o755); err != nil {
+			t.Fatal(err)
+		}
+	}
+}
+
+// A pid is signalled only while its command line names this sandbox, so a
+// recycled pid or another session's worker is never touched.
+func killLaunchedWorkers(stateDir string) {
+	_ = filepath.WalkDir(stateDir, func(path string, d os.DirEntry, err error) error {
+		if err != nil || d.IsDir() || d.Name() != "worker.pid" {
+			return nil
+		}
+		raw, _ := os.ReadFile(path)
+		pid, convErr := strconv.Atoi(strings.TrimSpace(string(raw)))
+		if convErr != nil || pid <= 1 {
+			return nil
+		}
+		args, _ := exec.Command("ps", "-o", "args=", "-p", strconv.Itoa(pid)).Output()
+		if strings.Contains(string(args), stateDir) {
+			_ = syscall.Kill(pid, syscall.SIGTERM)
+		}
+		return nil
+	})
 }
 
 func (h *effectHarness) writeSpy(t *testing.T, name, body string) {
@@ -364,6 +438,11 @@ func (h *effectHarness) runScenario(t *testing.T, b *strings.Builder, def config
 	}
 	t.Setenv("PLECT_EFFECT_CAPTURE", scenario.Capture)
 	t.Setenv("PLECT_EFFECT_RETRY", "")
+	if h.realWorker {
+		t.Setenv("PLECT_EFFECT_REAL_WORKER", "1")
+	} else {
+		t.Setenv("PLECT_EFFECT_REAL_WORKER", "")
+	}
 	if scenario.NoTerminalPID {
 		t.Setenv("PLECT_EFFECT_NO_TERMINAL_PID", "1")
 	} else {

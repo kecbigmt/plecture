@@ -102,6 +102,19 @@ call[4]: "plect" "process" "verify"
 call[5]: "claude-agent-activity" "reset" "acme/widget-1"
 cleaned
 
+== headless_runtime:cleanup-kills-a-worker-recorded-without-an-identity / cleanup
+call[0]: "terminal-pid"
+call[1]: "ps" "-o" "ppid=" "-p" "<pid>"
+call[2]: "ps" "-o" "ppid=" "-p" "<pid>"
+call[3]: "claude-agent-activity" "reset" "acme/widget-1"
+cleaned
+
+== headless_runtime:cleanup-spares-an-identityless-pid-without-worker-pidfile / cleanup
+call[0]: "terminal-pid"
+call[1]: "ps" "-o" "ppid=" "-p" "<pid>"
+call[2]: "claude-agent-activity" "reset" "acme/widget-1"
+cleaned
+
 == headless_runtime:cleanup-spares-pid-without-worker-pidfile / cleanup
 call[0]: "terminal-pid"
 call[1]: "ps" "-o" "ppid=" "-p" "<pid>"

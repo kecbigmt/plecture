@@ -288,6 +288,24 @@ expect_worker_process_alive = true
 path    = "headless/worker.pid"
 content = "WORKER_PID"
 
+# An instance recorded before core captured identities is still stopped, by the
+# worker pidfile and parentage alone.
+[[headless_runtime]]
+name                       = "cleanup-kills-a-worker-recorded-without-an-identity"
+self                       = { pid = "WORKER_PID", state_dir = "HOME/headless" }
+hooks                      = ["cleanup"]
+expect_worker_process_dead = true
+
+[[headless_runtime.files]]
+path    = "headless/worker.pid"
+content = "WORKER_PID"
+
+[[headless_runtime]]
+name                        = "cleanup-spares-an-identityless-pid-without-worker-pidfile"
+self                        = { pid = "WORKER_PID", state_dir = "HOME/headless-other" }
+hooks                       = ["cleanup"]
+expect_worker_process_alive = true
+
 [[headless_runtime]]
 name                        = "cleanup-spares-pid-without-worker-pidfile"
 self                        = { pid = "WORKER_PID", state_dir = "HOME/headless-other" }
