@@ -344,9 +344,12 @@ The adapter writes a version 2 ledger to
 `$XDG_STATE_HOME/slack-adapter/subscribers.json` (default
 `~/.local/state/slack-adapter/subscribers.json`) with an atomic rename on
 each mutation. Startup reloads it, then `plect ls --json` sweeps entries for
-destroyed sessions. Down sessions remain subscribed. An unreadable or old
-ledger starts empty; convert it first using
-`docs/migrations/slack-thread-resource-subscriptions.md`.
+destroyed sessions. Down sessions remain subscribed. The adapter refuses to
+start if `subscribers.json` is unreadable, corrupt, or not version 2. Convert a
+version 1 ledger
+using `docs/migrations/slack-thread-resource-subscriptions.md` before starting
+the new adapter. For a corrupt ledger, restore a backup; remove the file only
+if discarding its subscriptions is acceptable.
 
 ## Setting up the Slack App
 
