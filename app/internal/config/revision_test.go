@@ -134,6 +134,16 @@ func TestSessionWithWorkflowRequiresStoredRevision(t *testing.T) {
 	}
 }
 
+func TestSessionWithoutWorkflowReadsCurrentTaskDeclarations(t *testing.T) {
+	base := t.TempDir()
+	writeFile(t, filepath.Join(base, "tasks", "work.toml"), "[work]\nkind = \"task\"\ndescription = \"work\"\ninstructions = [{ text = \"Do the work.\" }]\n")
+	cfg := &Config{BaseDir: base}
+	docs, _, err := cfg.TaskDeclarationsForSession(&domain.Session{Name: "ad-hoc"})
+	if err != nil || docs["work"].ID != "work" {
+		t.Fatalf("ad-hoc task declarations = %+v, %v", docs, err)
+	}
+}
+
 func TestWorkflowRevisionDigestIgnoresNonExecutableSourceLocations(t *testing.T) {
 	first := WorkflowRevision{
 		Workflow: WorkflowFile{ID: "work", Address: "work", SourcePath: "/workspace/one/work.toml", BaseDir: "/workspace/one", Display: map[string]*lang.Value{

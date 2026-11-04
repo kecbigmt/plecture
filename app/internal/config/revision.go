@@ -205,14 +205,14 @@ func (c *Config) TaskDefinitionsForSession(s *domain.Session) (map[string]TaskDe
 	if r, ok, err := RevisionForSession(s); ok || err != nil {
 		return r.Effects, err
 	}
-	return nil, nil
+	return c.LoadTaskDefinitions(s.WorkspaceDirPath)
 }
 
 func (c *Config) TaskDeclarationsForSession(s *domain.Session) (map[string]TaskDocument, map[string]TaskDefinition, error) {
 	if r, ok, err := RevisionForSession(s); ok || err != nil {
 		return r.Tasks, r.Effects, err
 	}
-	return nil, nil, nil
+	return c.LoadTaskDeclarations(s.WorkspaceDirPath)
 }
 
 func (c *Config) WorkspaceProviderForSession(s *domain.Session) (WorkspaceProviderConfig, error) {
@@ -232,7 +232,7 @@ func (c *Config) ChannelsForSession(s *domain.Session) (map[string]ChannelDefini
 	if r, ok, err := RevisionForSession(s); ok || err != nil {
 		return r.Channels, err
 	}
-	return nil, nil
+	return c.LoadChannels()
 }
 
 func (c *Config) CaptureWorkflowRevision(workspaceDirPath, name string) (WorkflowRevision, error) {
