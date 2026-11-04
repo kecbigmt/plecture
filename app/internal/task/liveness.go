@@ -6,8 +6,32 @@ import (
 	"time"
 
 	"github.com/kecbigmt/plecture/app/internal/effect"
+	"github.com/kecbigmt/plecture/app/internal/lang"
 	contract "github.com/kecbigmt/plecture/contracts/state"
 )
+
+func ValidateAliveBindings(action *lang.Action, self, inputs map[string]any, session SessionVars) error {
+	if action == nil {
+		return nil
+	}
+	eval := lang.Eval{Roots: healthRoots(RenderContext{Self: self, Inputs: inputs, Session: session})}
+	values := append([]*lang.Value(nil), action.Args...)
+	if action.Process != nil {
+		values = append(values, action.Process)
+	}
+	if action.Stdin != nil {
+		values = append(values, action.Stdin)
+	}
+	for _, value := range action.Bind {
+		values = append(values, value)
+	}
+	for _, value := range values {
+		if _, _, err := eval.Value(value); err != nil {
+			return err
+		}
+	}
+	return nil
+}
 
 // verifyLiveness composes a nesting chain's layers by AND, since liveness is
 // a chain of necessary resources, and treats a probe value that fails to

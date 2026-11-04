@@ -1,0 +1,388 @@
+package service
+
+import (
+	"context"
+	"encoding/json"
+	"fmt"
+	"reflect"
+	"sort"
+	"strings"
+	"time"
+
+	"github.com/kecbigmt/plecture/app/internal/config"
+	"github.com/kecbigmt/plecture/app/internal/domain"
+	"github.com/kecbigmt/plecture/app/internal/eventlog"
+	"github.com/kecbigmt/plecture/app/internal/state"
+	"github.com/kecbigmt/plecture/app/internal/task"
+	"github.com/kecbigmt/plecture/contracts/event"
+	contract "github.com/kecbigmt/plecture/contracts/state"
+)
+
+type RebaseClass string
+
+const (
+	RebaseCompatible RebaseClass = "compatible"
+	RebaseAutomatic  RebaseClass = "automatic"
+	RebaseRestart    RebaseClass = "restart"
+	RebaseRecreate   RebaseClass = "recreate"
+)
+
+type RebaseClassification struct {
+	Class         RebaseClass `json:"class"`
+	RecreateNodes []string    `json:"recreate_nodes,omitempty"`
+	Reasons       []string    `json:"reasons,omitempty"`
+}
+
+type RebaseParams struct {
+	Identifier  string
+	DryRun      bool
+	WithRestart bool
+	Observer    task.Observer
+}
+
+type RebaseResult struct {
+	SessionName string `json:"session_name"`
+	From        string `json:"from"`
+	To          string `json:"to"`
+	RebaseClassification
+}
+
+func WorkflowRebase(cfg *config.Config, store *state.Store, params RebaseParams) (*RebaseResult, error) {
+	name, err := resolveSessionName(cfg, store, params.Identifier)
+	if err != nil {
+		return nil, err
+	}
+	var result *RebaseResult
+	err = withLifecycleLock(store, name, func() error {
+		var rebaseErr error
+		result, rebaseErr = workflowRebaseUnlocked(cfg, store, name, params)
+		return rebaseErr
+	})
+	return result, err
+}
+
+func workflowRebaseUnlocked(cfg *config.Config, store *state.Store, name string, params RebaseParams) (*RebaseResult, error) {
+	session, err := store.GetE(name)
+	if err != nil {
+		return nil, err
+	}
+	if session == nil {
+		return nil, fmt.Errorf("session %q not found", name)
+	}
+	if session.Workflow == "" {
+		return nil, fmt.Errorf("session %q has no workflow", name)
+	}
+	if session.Status == contract.SessionStatusDestroyed {
+		return nil, fmt.Errorf("session %q is destroyed", name)
+	}
+	old, _, err := config.RevisionForSession(session)
+	if err != nil {
+		return nil, err
+	}
+	if old.WorkspaceCapturePending {
+		return nil, fmt.Errorf("session %q has pending workspace capture; retry create", name)
+	}
+	next, err := cfg.CaptureWorkflowRevision(session.WorkspaceDirPath, session.Workflow)
+	if err != nil {
+		return nil, err
+	}
+	body, digest, err := next.CanonicalBody()
+	if err != nil {
+		return nil, err
+	}
+	next, err = config.DecodeWorkflowRevision(body, digest)
+	if err != nil {
+		return nil, err
+	}
+	classification, err := ClassifyWorkflowRebase(old, next, session)
+	if err != nil {
+		return nil, err
+	}
+	result := &RebaseResult{SessionName: name, From: session.WorkflowRevision, To: digest, RebaseClassification: classification}
+	if params.DryRun {
+		return result, nil
+	}
+	logResult := func(outcome string) error {
+		_, _, _, logErr := eventlog.NewStore(store.Dir()).Append(event.Event{SessionName: name, Type: "plect.session.rebase", Source: event.SourcePlect, Direction: event.Internal, Summary: "workflow rebase " + outcome, Metadata: map[string]string{
+			"from": result.From, "to": result.To, "class": string(result.Class), "result": outcome, "reasons": strings.Join(result.Reasons, "; "),
+		}})
+		return logErr
+	}
+	if classification.Class == RebaseRecreate {
+		_ = logResult("rejected")
+		return result, fmt.Errorf("workflow rebase requires recreation: %s", strings.Join(classification.Reasons, "; "))
+	}
+	if classification.Class == RebaseRestart && !params.WithRestart {
+		_ = logResult("rejected")
+		return result, fmt.Errorf("workflow rebase requires down/up; pass --with-restart: %s", strings.Join(classification.Reasons, "; "))
+	}
+	if err := checkSessionGuard(cfg, name); err != nil {
+		return result, err
+	}
+	if err := checkLifecycleRelationGuard(store, name, "workflow rebase"); err != nil {
+		return result, err
+	}
+	if classification.Class == RebaseRestart {
+		if _, err := downUnlocked(cfg, store, DownParams{Identifier: name, Observer: params.Observer, preserveStatus: true}); err != nil {
+			_ = logResult("failed")
+			return result, err
+		}
+	} else if classification.Class == RebaseAutomatic {
+		if err := cleanupRebasedNodes(cfg, store, session, old, next, classification, params.Observer); err != nil {
+			_ = logResult("failed")
+			return result, err
+		}
+	}
+	if err := store.Update(name, func(current *domain.Session) error {
+		current.WorkflowRevision = digest
+		current.WorkflowRevisionBody = string(body)
+		current.UpdatedAt = time.Now()
+		return nil
+	}); err != nil {
+		_ = logResult("failed")
+		return result, err
+	}
+	if _, err := upUnlocked(cfg, store, UpParams{Identifier: name, Observer: params.Observer}); err != nil {
+		_ = logResult("failed")
+		return result, err
+	}
+	if err := logResult("succeeded"); err != nil {
+		return result, err
+	}
+	return result, nil
+}
+
+func cleanupRebasedNodes(cfg *config.Config, store *state.Store, session *domain.Session, old, next config.WorkflowRevision, classification RebaseClassification, observer task.Observer) error {
+	plan, err := task.CompileWorkflow(old.Workflow, old.Effects)
+	if err != nil {
+		return err
+	}
+	nextIDs := make(map[string]bool)
+	for _, node := range next.Workflow.Nodes {
+		nextIDs[node.ID] = true
+	}
+	selected := make(map[string]bool)
+	for _, id := range classification.RecreateNodes {
+		if !nextIDs[id] || session.Nodes[id] != nil {
+			selected[id] = true
+		}
+	}
+	for _, node := range old.Workflow.Nodes {
+		if !nextIDs[node.ID] {
+			selected[node.ID] = true
+		}
+	}
+	ordered := plan.UpOrder()
+	for changed := true; changed; {
+		changed = false
+		for _, node := range ordered {
+			for _, dep := range node.DependsOn {
+				if selected[dep] && !selected[node.NodeID] {
+					selected[node.NodeID], changed = true, true
+				}
+			}
+		}
+	}
+	var cleanup []task.Resolved
+	for i := len(ordered) - 1; i >= 0; i-- {
+		if selected[ordered[i].NodeID] && session.Nodes[ordered[i].NodeID] != nil {
+			cleanup = append(cleanup, ordered[i])
+		}
+	}
+	if len(cleanup) == 0 {
+		return nil
+	}
+	observer = withNodeResultRecording(store, session.Name, observer)
+	if err := runTaskCleanup(context.Background(), cleanup, sessionVars(cfg, session, plan), session, observer); err != nil {
+		return err
+	}
+	session.UpdatedAt = time.Now()
+	return persistStaleWorkflowCleanup(store, session.Name, session, cleanup)
+}
+
+func ClassifyWorkflowRebase(old, next config.WorkflowRevision, session *domain.Session) (RebaseClassification, error) {
+	result := RebaseClassification{Class: RebaseCompatible}
+	if session == nil {
+		return result, fmt.Errorf("session is nil")
+	}
+	oldPlan, err := task.CompileWorkflow(old.Workflow, old.Effects)
+	if err != nil {
+		return result, fmt.Errorf("old workflow: %w", err)
+	}
+	nextPlan, err := task.CompileWorkflow(next.Workflow, next.Effects)
+	if err != nil {
+		return result, fmt.Errorf("new workflow: %w", err)
+	}
+	if !equalRevisionPart(old.Provider, next.Provider) || old.Workflow.WorkspaceProvider != next.Workflow.WorkspaceProvider || !equalRevisionPart(old.Workflow.WorkspaceProviderInputs, next.Workflow.WorkspaceProviderInputs) {
+		result.raise(RebaseRecreate, "workspace provider changed; destroy and recreate the session")
+	}
+	oldNodes := make(map[string]config.WorkflowNode)
+	for _, node := range old.Workflow.Nodes {
+		oldNodes[node.ID] = node
+	}
+	nextNodes := make(map[string]config.WorkflowNode)
+	for _, node := range next.Workflow.Nodes {
+		nextNodes[node.ID] = node
+	}
+	nextResolved := make(map[string]task.Resolved)
+	for _, node := range nextPlan.UpOrder() {
+		nextResolved[node.NodeID] = node
+	}
+	for _, node := range oldPlan.UpOrder() {
+		current, exists := nextNodes[node.NodeID]
+		if !exists {
+			if _, defined := next.Effects[oldNodes[node.NodeID].Uses]; !defined {
+				result.raise(RebaseRecreate, fmt.Sprintf("removed node %q has no remaining definition for cleanup; restore it or destroy and recreate the session", node.NodeID))
+				continue
+			}
+			result.raise(RebaseAutomatic, fmt.Sprintf("node %q removed; its saved execution will be cleaned", node.NodeID))
+			continue
+		}
+		oldDef, nextDef := old.Effects[oldNodes[node.NodeID].Uses], next.Effects[current.Uses]
+		if equalRevisionPart(oldNodes[node.NodeID], current) && equalRevisionPart(oldDef, nextDef) {
+			continue
+		}
+		if equalRevisionPart(oldNodes[node.NodeID], current) && onlyAliveChanged(oldDef, nextDef) {
+			result.raise(RebaseAutomatic, fmt.Sprintf("alive probe changed for node %q", node.NodeID))
+			result.RecreateNodes = append(result.RecreateNodes, node.NodeID)
+			continue
+		}
+		if node.Scope != nextResolved[node.NodeID].Scope || node.Scope == config.TaskScopeSession {
+			result.raise(RebaseRecreate, fmt.Sprintf("session-scoped node %q changed; destroy and recreate the session", node.NodeID))
+			continue
+		}
+		result.raise(RebaseRestart, fmt.Sprintf("run-scoped node %q changed; pass --with-restart", node.NodeID))
+		result.RecreateNodes = append(result.RecreateNodes, node.NodeID)
+	}
+	for _, node := range nextPlan.UpOrder() {
+		if _, exists := oldNodes[node.NodeID]; !exists {
+			result.raise(RebaseAutomatic, fmt.Sprintf("node %q added", node.NodeID))
+			result.RecreateNodes = append(result.RecreateNodes, node.NodeID)
+		}
+	}
+	oldRun, nextRun, retainedRun := 0, 0, 0
+	for _, node := range oldPlan.Run {
+		oldRun++
+		if newer, ok := nextResolved[node.NodeID]; ok && newer.Scope == config.TaskScopeRun {
+			retainedRun++
+		}
+	}
+	for range nextPlan.Run {
+		nextRun++
+	}
+	if oldRun > 0 && nextRun > 0 && retainedRun == 0 {
+		result.raise(RebaseRestart, "all run-scoped nodes were replaced; pass --with-restart")
+	}
+	outputs := make(map[string]map[string]any)
+	for id, state := range session.Nodes {
+		if state != nil {
+			outputs[id] = state.Outputs
+		}
+	}
+	wfOutputs := outputs[contract.WorkflowPseudoNodeID]
+	vars := task.SessionVars{Name: session.Name, ResourceID: session.ResourceID, ParentSession: session.ParentSession, WorkspaceDirPath: session.WorkspaceDirPath, Branch: domain.SessionBranch(session), Inputs: session.Inputs}
+	for _, node := range nextPlan.UpOrder() {
+		if _, err := task.ResolveNodeInputs(node.Inputs, outputs, wfOutputs, vars); err != nil {
+			result.raise(RebaseRecreate, fmt.Sprintf("node %q inputs cannot resolve from saved outputs: %v; add a default or destroy and recreate the session", node.NodeID, err))
+		}
+		if state := session.Nodes[node.NodeID]; state != nil {
+			if len(node.Layers) == 0 {
+				if err := task.ValidateAliveBindings(node.Health.AliveProbe(), state.Outputs, state.Inputs, vars); err != nil {
+					result.raise(RebaseRecreate, fmt.Sprintf("node %q alive binding cannot resolve from saved outputs: %v; add a default or destroy and recreate the session", node.NodeID, err))
+				}
+			} else if len(state.Layers) != len(node.Layers) {
+				result.raise(RebaseRecreate, fmt.Sprintf("node %q nesting records do not match the new declaration; destroy and recreate the session", node.NodeID))
+			} else if views, err := task.ProjectLayerOutputs(node.Layers, state.Layers, vars); err != nil {
+				result.raise(RebaseRecreate, fmt.Sprintf("node %q layer outputs cannot resolve: %v; destroy and recreate the session", node.NodeID, err))
+			} else {
+				for i, layer := range node.Layers {
+					if err := task.ValidateAliveBindings(layer.Health.AliveProbe(), views[i], state.Layers[i].Inputs, vars); err != nil {
+						result.raise(RebaseRecreate, fmt.Sprintf("node %q layer %q alive binding cannot resolve: %v; add a default or destroy and recreate the session", node.NodeID, layer.EffectID, err))
+					}
+				}
+			}
+		}
+	}
+	for _, channel := range next.Workflow.Event.Channel {
+		if _, err := task.ResolveNodeInputs(channel.Inputs, outputs, wfOutputs, vars); err != nil {
+			result.raise(RebaseRecreate, fmt.Sprintf("event channel %q inputs cannot resolve from saved outputs: %v; add a default or destroy and recreate the session", channel.Name, err))
+		}
+	}
+	if result.Class == RebaseRecreate {
+		result.RecreateNodes = nil
+	} else {
+		if result.Class == RebaseRestart {
+			for _, node := range nextPlan.Run {
+				result.RecreateNodes = append(result.RecreateNodes, node.NodeID)
+			}
+		} else if result.Class == RebaseAutomatic {
+			selected := make(map[string]bool)
+			for _, id := range result.RecreateNodes {
+				selected[id] = true
+			}
+			for changed := true; changed; {
+				changed = false
+				for _, node := range nextPlan.UpOrder() {
+					for _, dep := range node.DependsOn {
+						if selected[dep] && !selected[node.NodeID] {
+							selected[node.NodeID], changed = true, true
+						}
+					}
+				}
+			}
+			for id := range selected {
+				result.RecreateNodes = append(result.RecreateNodes, id)
+			}
+		}
+		unique := make(map[string]bool)
+		nodes := result.RecreateNodes[:0]
+		for _, id := range result.RecreateNodes {
+			if !unique[id] {
+				nodes = append(nodes, id)
+				unique[id] = true
+			}
+		}
+		result.RecreateNodes = nodes
+		sort.Strings(result.RecreateNodes)
+	}
+	return result, nil
+}
+
+func (r *RebaseClassification) raise(class RebaseClass, reason string) {
+	priority := map[RebaseClass]int{RebaseCompatible: 0, RebaseAutomatic: 1, RebaseRestart: 2, RebaseRecreate: 3}
+	if priority[class] > priority[r.Class] {
+		r.Class = class
+	}
+	r.Reasons = append(r.Reasons, reason)
+}
+
+func equalRevisionPart(a, b any) bool {
+	left, leftErr := json.Marshal(a)
+	right, rightErr := json.Marshal(b)
+	return leftErr == nil && rightErr == nil && reflect.DeepEqual(left, right)
+}
+
+func onlyAliveChanged(a, b config.TaskDefinition) bool {
+	if equalRevisionPart(a, b) {
+		return false
+	}
+	return equalRevisionPart(withoutAlive(a), withoutAlive(b))
+}
+
+func withoutAlive(def config.TaskDefinition) config.TaskDefinition {
+	if def.Health == nil {
+		def.Health = &config.HealthConfig{}
+	} else {
+		h := *def.Health
+		h.Alive = nil
+		def.Health = &h
+	}
+	if len(def.InnerChain) > 0 {
+		chain := make([]config.TaskDefinition, len(def.InnerChain))
+		for i, inner := range def.InnerChain {
+			chain[i] = withoutAlive(inner)
+		}
+		def.InnerChain = chain
+	}
+	return def
+}

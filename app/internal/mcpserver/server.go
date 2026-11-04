@@ -35,6 +35,7 @@ func NewServer() *server.MCPServer {
 		server.ServerTool{Tool: listTool, Handler: wrap("plect_list", handleList)},
 		server.ServerTool{Tool: workflowListTool, Handler: wrap("plect_workflow_list", handleWorkflowList)},
 		server.ServerTool{Tool: workflowShowTool, Handler: wrap("plect_workflow_show", handleWorkflowShow)},
+		server.ServerTool{Tool: workflowRebaseTool, Handler: wrap("plect_workflow_rebase", handleWorkflowRebase)},
 		server.ServerTool{Tool: eventListTool, Handler: wrap("plect_event_list", handleEventList)},
 		server.ServerTool{Tool: eventShowTool, Handler: wrap("plect_event_show", handleEventShow)},
 		server.ServerTool{Tool: eventPublishTool, Handler: wrap("plect_event_publish", handleEventPublish)},
@@ -141,6 +142,31 @@ var workflowShowTool = mcp.NewTool("plect_workflow_show",
 		mcp.Description("Workflow id (matches the .toml filename stem)"),
 	),
 )
+
+var workflowRebaseTool = mcp.NewTool("plect_workflow_rebase",
+	mcp.WithDescription("Classify and apply the latest workflow revision to one session. A dry run reports compatibility and nodes to recreate without changing state. Run-scoped declaration changes require with_restart; session-scoped changes require recreation."),
+	mcp.WithString("session", mcp.Required(), mcp.Description("Existing session name or resource identifier")),
+	mcp.WithBoolean("dry_run", mcp.Description("Classify without changing the session")),
+	mcp.WithBoolean("with_restart", mcp.Description("Allow old-revision down followed by new-revision up")),
+)
+
+func handleWorkflowRebase(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+	name := request.GetString("session", "")
+	if name == "" {
+		return mcp.NewToolResultError("session is required"), nil
+	}
+	cfg, err := config.Load()
+	if err != nil {
+		return errorResult(err), nil
+	}
+	result, err := service.WorkflowRebase(cfg, state.NewStore(""), service.RebaseParams{
+		Identifier: name, DryRun: request.GetBool("dry_run", false), WithRestart: request.GetBool("with_restart", false),
+	})
+	if err != nil {
+		return errorResult(err), nil
+	}
+	return jsonResult(map[string]any{"ok": true, "session_name": result.SessionName, "from": result.From, "to": result.To, "class": result.Class, "recreate_nodes": result.RecreateNodes, "reasons": result.Reasons})
+}
 
 func handleWorkflowList(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
 	cfg, err := config.Load()

@@ -14,9 +14,10 @@ import (
 
 // DownParams holds parameters for Down.
 type DownParams struct {
-	Identifier string
-	Observer   task.Observer
-	Sleep      bool
+	Identifier     string
+	Observer       task.Observer
+	Sleep          bool
+	preserveStatus bool
 }
 
 // DownResult holds the outcome of Down.
@@ -60,7 +61,7 @@ func downUnlocked(cfg *config.Config, store *state.Store, params DownParams) (*D
 	if session.Tasks == nil {
 		session.Tasks = make(map[string]*contract.TaskState)
 	}
-	if !params.Sleep {
+	if !params.Sleep && !params.preserveStatus {
 		if err := appendStopEvent(store, sessionName); err != nil {
 			return nil, err
 		}
@@ -72,16 +73,18 @@ func downUnlocked(cfg *config.Config, store *state.Store, params DownParams) (*D
 			return nil, err
 		}
 	}
-	if err := store.Update(sessionName, func(current *domain.Session) error {
-		current.Status = contract.SessionStatusDown
-		current.SleepSince = time.Time{}
-		if params.Sleep {
-			current.SleepSince = transitionAt
+	if !params.preserveStatus {
+		if err := store.Update(sessionName, func(current *domain.Session) error {
+			current.Status = contract.SessionStatusDown
+			current.SleepSince = time.Time{}
+			if params.Sleep {
+				current.SleepSince = transitionAt
+			}
+			current.UpdatedAt = transitionAt
+			return nil
+		}); err != nil {
+			return nil, &Error{Code: ErrExecutionFailed, Message: fmt.Sprintf("failed to record session status: %v", err)}
 		}
-		current.UpdatedAt = transitionAt
-		return nil
-	}); err != nil {
-		return nil, &Error{Code: ErrExecutionFailed, Message: fmt.Sprintf("failed to record session status: %v", err)}
 	}
 	plan, err := buildPlanForSession(cfg, session.WorkspaceDirPath, session)
 	if err != nil {
@@ -98,11 +101,15 @@ func downUnlocked(cfg *config.Config, store *state.Store, params DownParams) (*D
 	}
 	cleanupErr := runTaskCleanup(context.Background(), teardown, sessionVars(cfg, session, plan), session, params.Observer)
 	session.UpdatedAt = time.Now()
-	session.Status = contract.SessionStatusDown
-	if params.Sleep {
-		session.SleepSince = transitionAt
-	} else {
-		session.SleepSince = time.Time{}
+	if !params.preserveStatus {
+		session.Status = contract.SessionStatusDown
+	}
+	if !params.preserveStatus {
+		if params.Sleep {
+			session.SleepSince = transitionAt
+		} else {
+			session.SleepSince = time.Time{}
+		}
 	}
 	if err := store.Put(session); err != nil {
 		return nil, &Error{Code: ErrExecutionFailed, Message: fmt.Sprintf("failed to save session state: %v", err)}
@@ -110,6 +117,8 @@ func downUnlocked(cfg *config.Config, store *state.Store, params DownParams) (*D
 	if cleanupErr != nil {
 		return nil, &Error{Code: ErrExecutionFailed, Message: cleanupErr.Error()}
 	}
-	recordLifecycle(store, sessionName, "down", "run-scoped tasks cleaned")
+	if !params.preserveStatus {
+		recordLifecycle(store, sessionName, "down", "run-scoped tasks cleaned")
+	}
 	return &DownResult{SessionName: sessionName, Tasks: domain.MergedTasks(session)}, nil
 }
