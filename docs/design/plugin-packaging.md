@@ -892,7 +892,7 @@ Each official plugin that ships runtime effects holds, under
 sets each effect up as that release did and runs its alive probe and cleanup
 against the outputs that release recorded. The integration suite runs these
 scenarios under both the released and the current declarations against the
-current executables, and any action that declines fails it. The plugin's
+current checked-in scripts, and any action that declines fails it. The plugin's
 README states how the fixtures are refreshed.
 
 ## Walkthrough examples

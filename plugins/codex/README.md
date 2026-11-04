@@ -169,8 +169,11 @@ never declare `[terminal]` themselves.
 latest tagged release (`config/tasks/`) and a `scenarios.toml` in the
 effect-scenario format. `TestShippedEffects_ReleasedDeclarationsAndRecordsStillRun`
 (`go test -tags integration ./app/internal/task`) runs it under both the
-released and the current declarations against the plugin's current executables,
-so updating the plugin cannot break a session created under that release.
+released and the current declarations against the plugin's current checked-in
+scripts, so updating the plugin cannot break a session created under that
+release. Executables built from source are replaced by the stand-ins under
+`testdata/effects/`, so a change to one of those is covered only as far as its
+stand-in's answer.
 The scenarios cover the TUI runtime, the exec runtime, and the initial-prompt effect.
 
 Refresh the fixtures when a release is tagged:

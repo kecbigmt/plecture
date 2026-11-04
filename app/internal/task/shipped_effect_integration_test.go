@@ -127,15 +127,16 @@ type effectHarness struct {
 
 func recordShippedEffects(t *testing.T, source string, scenarios map[string][]effectScenario) string {
 	t.Helper()
-	return recordEffectsUnder(t, source, "", scenarios)
+	return recordEffectsUnder(t, source, "", false, scenarios)
 }
 
-// recordEffectsUnder runs the scenarios against the plugin's executables as
-// they are now, with its task declarations taken from declarationsDir when
-// that is set.
-func recordEffectsUnder(t *testing.T, source, declarationsDir string, scenarios map[string][]effectScenario) string {
+// recordEffectsUnder takes the plugin's task declarations from declarationsDir
+// when that is set. With realScripts, each executable that is a checked-in
+// script runs as written instead of being replaced by a stand-in; one that is
+// built from source stays a stand-in.
+func recordEffectsUnder(t *testing.T, source, declarationsDir string, realScripts bool, scenarios map[string][]effectScenario) string {
 	t.Helper()
-	h := newEffectHarness(t, source, declarationsDir)
+	h := newEffectHarness(t, source, declarationsDir, realScripts)
 	cfg := &config.Config{PluginDirs: []string{h.mounted.Dir}, Plugins: []plugins.Mounted{h.mounted}}
 	defs, err := cfg.LoadTaskDefinitions("")
 	if err != nil {
@@ -190,7 +191,7 @@ func (h *effectHarness) removeAbsentExecutables(t *testing.T, names []string) {
 	}
 }
 
-func newEffectHarness(t *testing.T, source, declarationsDir string) *effectHarness {
+func newEffectHarness(t *testing.T, source, declarationsDir string, realScripts bool) *effectHarness {
 	t.Helper()
 	root := t.TempDir()
 	h := &effectHarness{
@@ -217,6 +218,9 @@ func newEffectHarness(t *testing.T, source, declarationsDir string) *effectHarne
 	}
 	h.writeRecorders(t)
 	copyDirOver(t, filepath.Join(source, "testdata", "effects", "bin"), h.spyDir)
+	if realScripts {
+		restoreScriptExecutables(t, source, h.mounted)
+	}
 
 	// The sandbox is what makes a script's own discovery reproducible: it
 	// looks for its subject under HOME and writes its scratch files under
@@ -317,6 +321,9 @@ func (h *effectHarness) writeRecorders(t *testing.T) {
 		"PATH=$(printf '%s' \"$PATH\" | sed 's|^'\"$PLECT_EFFECT_BIN\"':||')\n"+
 		"export PATH\n"+
 		"exec \"$@\"\n")
+	// A real script that calls plect must find this recorder and never the
+	// host's own, whose state is live.
+	h.writeSpy(t, "plect", "#!/usr/bin/env sh\nplect-effect-record plect \"$@\"\n")
 	for _, verb := range []string{"attach", "capture", "send_text", "send_keys", "pid"} {
 		body := "#!/usr/bin/env sh\n" +
 			"plect-effect-record terminal-" + verb + " \"$@\"\n"
@@ -329,6 +336,25 @@ func (h *effectHarness) writeRecorders(t *testing.T) {
 			body += "[ -n \"${PLECT_EFFECT_NO_TERMINAL_PID:-}\" ] || printf '%s\\n' \"$PLECT_EFFECT_PID\"\n"
 		}
 		h.writeSpy(t, "terminal-"+verb, body)
+	}
+}
+
+// restoreScriptExecutables puts back the checked-in script behind each
+// executable the manifest declares without a build step, which spyPlugin
+// replaced.
+func restoreScriptExecutables(t *testing.T, source string, mounted plugins.Mounted) {
+	t.Helper()
+	for _, executable := range mounted.Manifest.Executables {
+		if executable.Build != "" {
+			continue
+		}
+		raw, err := os.ReadFile(filepath.Join(source, executable.Path))
+		if err != nil {
+			t.Fatalf("a script executable must be checked in: %v", err)
+		}
+		if err := os.WriteFile(filepath.Join(mounted.Dir, executable.Path), raw, 0o755); err != nil {
+			t.Fatal(err)
+		}
 	}
 }
 

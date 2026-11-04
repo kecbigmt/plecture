@@ -11,8 +11,9 @@ import (
 // A session keeps the declarations and recorded outputs it was created with
 // while the executables are whatever is installed when an action runs, so a
 // plugin update must not break it. Each fixture under testdata/compat/<tag>/
-// runs under the released and the current declarations, and any action that
-// declines fails; no invocation record is kept because the pass is the contract.
+// runs under the released and the current declarations against the plugin's
+// checked-in scripts, and any action that declines fails; no invocation record
+// is kept because the pass is the contract.
 func TestShippedEffects_ReleasedDeclarationsAndRecordsStillRun(t *testing.T) {
 	for _, source := range repoPluginDirs(t) {
 		fixtures, err := filepath.Glob(filepath.Join(source, "testdata", "compat", "*", "scenarios.toml"))
@@ -32,7 +33,7 @@ func TestShippedEffects_ReleasedDeclarationsAndRecordsStillRun(t *testing.T) {
 					if len(scenarios) == 0 {
 						t.Fatalf("%s declares no scenarios", fixture)
 					}
-					produced := recordEffectsUnder(t, source, d.dir, scenarios)
+					produced := recordEffectsUnder(t, source, d.dir, true, scenarios)
 					for _, declined := range declinedSections(produced) {
 						t.Errorf("%s", declined)
 					}
