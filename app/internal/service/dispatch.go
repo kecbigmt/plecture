@@ -92,30 +92,11 @@ func resolveName(prov config.WorkspaceProviderConfig, resource string) (string, 
 // tryResolveName attempts the resolver match, reporting (name, matched, err).
 // Pure: a regex match and one value resolution, no I/O.
 func tryResolveName(prov config.WorkspaceProviderConfig, resource string) (string, bool, error) {
-	re, err := regexp.Compile(prov.Match)
+	name, matched, err := lang.MatchName(prov.Match, prov.Name, resource)
 	if err != nil {
-		return "", false, fmt.Errorf("workspace provider %q resolver match: %w", prov.ID, err)
+		return "", false, fmt.Errorf("workspace provider %q resolver %w", prov.ID, err)
 	}
-	m := re.FindStringSubmatch(resource)
-	if m == nil {
-		return "", false, nil
-	}
-	captures := map[string]any{}
-	for i, group := range re.SubexpNames() {
-		if group != "" && i < len(m) {
-			captures[group] = m[i]
-		}
-	}
-	eval := lang.Eval{Roots: lang.Roots{"match": captures}}
-	resolved, _, err := eval.Argument(prov.Name)
-	if err != nil {
-		return "", false, fmt.Errorf("workspace provider %q resolver name: %w", prov.ID, err)
-	}
-	name := strings.TrimSpace(resolved)
-	if name == "" {
-		return "", false, fmt.Errorf("workspace provider %q resolver produced an empty session id for %q", prov.ID, resource)
-	}
-	return name, true, nil
+	return name, matched, nil
 }
 
 // workspaceProviderFor resolves a workflow's workspace provider reference.
