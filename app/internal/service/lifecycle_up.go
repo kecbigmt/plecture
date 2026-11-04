@@ -10,8 +10,10 @@ import (
 	"github.com/kecbigmt/plecture/app/internal/config"
 	"github.com/kecbigmt/plecture/app/internal/domain"
 	"github.com/kecbigmt/plecture/app/internal/effect"
+	"github.com/kecbigmt/plecture/app/internal/eventlog"
 	"github.com/kecbigmt/plecture/app/internal/state"
 	"github.com/kecbigmt/plecture/app/internal/task"
+	"github.com/kecbigmt/plecture/contracts/event"
 	contract "github.com/kecbigmt/plecture/contracts/state"
 )
 
@@ -40,6 +42,7 @@ type UpResult struct {
 	Result        string                         `json:"result"`
 	QueuePosition int                            `json:"queue_position,omitempty"`
 	Tasks         map[string]*contract.TaskState `json:"tasks,omitempty"`
+	Woke          bool                           `json:"-"`
 }
 
 // Up runs run-scoped tasks for the given session.
@@ -278,8 +281,22 @@ func upUnlocked(cfg *config.Config, store *state.Store, params UpParams) (*UpRes
 		if err := appendWakeEvent(store, sessionName, "succeeded", "runtime started"); err != nil {
 			return nil, err
 		}
+		if session.Population != nil {
+			_, _, _, err := eventlog.NewStore(store.Dir()).Append(event.Event{
+				SessionName: sessionName, Type: event.TypeWorkflowPopulationUp,
+				Source: event.SourcePlect, Direction: event.Internal,
+				Summary: "population member is up",
+				Metadata: map[string]string{
+					"workflow": session.Population.Workflow, "population": session.Population.Name,
+					"resource": session.ResourceID, "reason": "up",
+				},
+			})
+			if err != nil {
+				return nil, err
+			}
+		}
 	}
-	return &UpResult{SessionName: sessionName, Result: "up", Tasks: domain.MergedTasks(session)}, nil
+	return &UpResult{SessionName: sessionName, Result: "up", Tasks: domain.MergedTasks(session), Woke: wasSleeping}, nil
 }
 
 func acceptSleepingUp(cfg *config.Config, store *state.Store, name string) (*UpResult, error) {

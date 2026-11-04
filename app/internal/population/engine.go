@@ -36,6 +36,7 @@ type UpOutcome struct {
 	SessionName string
 	AlreadyUp   bool
 	Sleeping    bool
+	Woke        bool
 }
 
 type Hooks struct {
@@ -333,7 +334,7 @@ func (e *Engine) admit(ctx context.Context, member *state.PopulationMember) erro
 	// initial-task setup runs against an already-up session, and its failure
 	// leaves a retry whose up hook reports no transition, so a record deferred
 	// past it would be lost for good instead of merely delayed.
-	if !outcome.AlreadyUp {
+	if !outcome.AlreadyUp && !outcome.Woke {
 		e.record(session, event.TypeWorkflowPopulationUp, "up", "population member is up", member.ResourceID)
 	}
 	if e.definition.Population.Session.Task != "" && e.hooks.EnsureInitial != nil {

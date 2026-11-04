@@ -409,6 +409,10 @@ type = "noop"
 	if err := service.WakeQueuedSessions(cfg, store); err != nil {
 		t.Fatalf("wake queued session: %v", err)
 	}
+	events, _, _, err = logStore.List(member.SessionName, 0, event.Filter{Types: []string{event.TypeWorkflowPopulationUp}})
+	if err != nil || len(events) != 1 {
+		t.Fatalf("population up events after wake = %v, %v; want one transition", events, err)
+	}
 	engine.now = func() time.Time { return member.AdmitRetryAt }
 	if err := engine.Reconcile(ctx); err != nil {
 		t.Fatalf("admit after wake: %v", err)
@@ -423,6 +427,21 @@ type = "noop"
 	session := store.Get(member.SessionName)
 	if session == nil || session.Tasks["initial"] == nil || session.Tasks["initial"].Status != contract.TaskStatusProduced {
 		t.Fatalf("initial task after wake = %+v, want produced", session)
+	}
+	events, _, _, err = logStore.List(member.SessionName, 0, event.Filter{Types: []string{event.TypeWorkflowPopulationUp}})
+	if err != nil || len(events) != 1 {
+		t.Fatalf("population up events after admission = %v, %v; want one transition", events, err)
+	}
+	if _, err := service.Down(cfg, store, service.DownParams{Identifier: member.SessionName, Sleep: true}); err != nil {
+		t.Fatalf("sleep admitted member: %v", err)
+	}
+	engine.hooks.EnsureInitial = nil
+	if err := engine.ApplyAppearance(ctx, map[string]any{"resource": resource}); err != nil {
+		t.Fatalf("re-admit sleeping member: %v", err)
+	}
+	events, _, _, err = logStore.List(member.SessionName, 0, event.Filter{Types: []string{event.TypeWorkflowPopulationUp}})
+	if err != nil || len(events) != 2 {
+		t.Fatalf("population up events after direct re-admission = %v, %v; want one per transition", events, err)
 	}
 }
 
