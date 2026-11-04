@@ -195,12 +195,15 @@ pid       = { type = "integer" }
 state_dir = { type = "string" }
 ```
 
-A cleanup script receives the recorded identity as an opaque token,
+For plugin authors: a cleanup script receives the recorded identity as an opaque token,
 `{ from = "self.process.identity" }`, absent for an instance recorded without
 one (bind it `optional = true`). The script hands the token to
 `plect process verify <token>`, which exits zero only while the recorded pid
 still belongs to the recorded process. Asking again before each signal is what
-keeps a pid recycled during a grace period from being signalled.
+keeps a pid recycled during a grace period from being signalled. The
+`plect process` command is hidden from `plect --help` because it is a contract
+with plugin scripts rather than an operator verb; `plect process verify --help`
+still works.
 
 The identity is recorded for a plain instance only: an effect that is a layer
 of a nesting chain cannot declare `process`, and resolving such a chain is an

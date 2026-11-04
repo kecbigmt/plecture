@@ -7,8 +7,9 @@ import (
 )
 
 var processCmd = &cobra.Command{
-	Use:   "process",
-	Short: "Inspect a process core recorded",
+	Use:    "process",
+	Short:  "Inspect a process core recorded",
+	Hidden: true,
 }
 
 var processVerifyCmd = &cobra.Command{

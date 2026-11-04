@@ -25,7 +25,7 @@ through `PATH` is intercepted this way.
 | Field | Meaning |
 |---|---|
 | `scope` | `run` or `session`, defaulting to `run`. |
-| `setup`, `cleanup` | The lifecycle actions. See [`actions.md`](actions.md). |
+| `setup`, `cleanup` | The lifecycle actions. See [`actions.md`](actions.md). A cleanup may bind `self.process.identity` and verify it before each signal; see [`actions.md`](actions.md#process). |
 | `[cleanup.inputs_schema]` | Optional JSON Schema for plugin-owned destruction inputs. |
 | `inputs_schema`, `outputs_schema` | The effect's contracts. |
 | `[health]` | The `alive` and `activity` probes. |

@@ -26,3 +26,9 @@ func TestVerifyProcessIdentity(t *testing.T) {
 		t.Error("a token that is not an identity was accepted")
 	}
 }
+
+func TestProcessCommandIsHiddenFromHelp(t *testing.T) {
+	if !processCmd.Hidden {
+		t.Error("plect process is a plugin-facing verb and must not appear in plect --help")
+	}
+}
