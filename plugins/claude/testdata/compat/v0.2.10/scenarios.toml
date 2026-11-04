@@ -21,7 +21,8 @@ name = "fresh-lifecycle"
 # The released record's start time is the caller's own rendering.
 [[headless_runtime]]
 name                       = "released-record-is-alive-and-cleaned-up"
-self                       = { pid = "WORKER_PID", pid_started = "started-WORKER_PID@UTC", state_dir = "HOME/headless" }
+self                       = { pid = "WORKER_PID", pid_started = "started-WORKER_PID@Asia/Tokyo", state_dir = "HOME/headless" }
+hook_tz                    = "Asia/Tokyo"
 hooks                      = ["health.alive", "cleanup"]
 expect_worker_process_dead = true
 

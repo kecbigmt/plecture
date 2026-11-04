@@ -9,6 +9,10 @@ plect-effect-record terminal-send_text "$@"
 state_dir=$(printf '%s' "$1" | sed -n "s/.*claude-headless-worker '[^']*' '\([^']*\)'.*/\1/p")
 [ -n "$state_dir" ] || exit 0
 mkdir -p "$state_dir"
+if [ -n "${PLECT_EFFECT_REAL_WORKER:-}" ]; then
+  sh -c "$1" >/dev/null 2>&1 </dev/null &
+  exit 0
+fi
 case "$1" in
   *PLECT_TEST_NO_PID_REPORT*) exit 0 ;;
   *PLECT_TEST_POISON_PID*) printf '%s' "$PLECT_EFFECT_PID" > "$state_dir/worker.pid"; exit 0 ;;

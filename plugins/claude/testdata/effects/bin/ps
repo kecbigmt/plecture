@@ -13,7 +13,8 @@ for arg in "$@"; do
 done
 case "$*" in
   *ppid=*)
-    if [ "$target" = "$PLECT_EFFECT_WORKER_PID" ]; then
+    # The stand-in pane process cannot be a real parent.
+    if [ "$target" = "$PLECT_EFFECT_WORKER_PID" ] || { [ -n "${PLECT_EFFECT_REAL_WORKER:-}" ] && PATH=$(printf '%s' "$PATH" | sed 's|^'"$PLECT_EFFECT_BIN"':||') ps -o args= -p "$target" 2>/dev/null | grep -q -- '-worker'; }; then
       printf '%s\n' "$PLECT_EFFECT_PID"
     else
       printf '%s\n' "1"
