@@ -11,6 +11,7 @@ type subscribeRequest struct {
 	ThreadTS       string `json:"thread_ts"`
 	ChannelID      string `json:"channel_id"`
 	SessionName    string `json:"session_name"`
+	TeamID         string `json:"team_id,omitempty"`
 	CatchUpThrough string `json:"catch_up_through,omitempty"`
 	// Released requests carry socket_path; ignore it until one release after v0.2.11.
 	SocketPath string `json:"socket_path,omitempty"`
@@ -279,7 +280,17 @@ func (a *Adapter) handleSubscribePost(w http.ResponseWriter, req *http.Request) 
 		http.Error(w, "invalid json: "+err.Error(), http.StatusBadRequest)
 		return
 	}
-	if body.ThreadTS == "" || body.ChannelID == "" || body.SessionName == "" {
+	if body.ThreadTS == mentionSubscriptionKey {
+		if body.SessionName == "" || body.TeamID == "" || body.TeamID != a.teamID || body.ChannelID != "" || body.CatchUpThrough != "" {
+			http.Error(w, "invalid mention subscription", http.StatusBadRequest)
+			return
+		}
+		sub := a.broker.Subscribe(Subscriber{ThreadTS: mentionSubscriptionKey, SessionName: body.SessionName})
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(sub)
+		return
+	}
+	if body.ThreadTS == "" || body.ChannelID == "" || body.SessionName == "" || body.TeamID != "" {
 		http.Error(w, "thread_ts, channel_id, and session_name are required", http.StatusBadRequest)
 		return
 	}

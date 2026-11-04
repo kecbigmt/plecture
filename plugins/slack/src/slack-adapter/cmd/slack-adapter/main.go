@@ -85,7 +85,7 @@ func runResourceCommand(args []string, out, errOut io.Writer) int {
 
 	fs := flag.NewFlagSet("resource "+args[0], flag.ContinueOnError)
 	fs.SetOutput(errOut)
-	resource := fs.String("resource", "", "resource identifier (a Slack thread permalink)")
+	resource := fs.String("resource", "", "Slack resource identifier")
 	session := fs.String("session", "", "subscriber session")
 	through := fs.String("catch-up-through", "", "publish history through this Slack timestamp")
 	if err := fs.Parse(args[1:]); err != nil {
@@ -102,7 +102,13 @@ func runResourceCommand(args []string, out, errOut io.Writer) int {
 	}
 	cfg := adapter.LoadConfig()
 	baseURL := "http://" + cfg.ListenAddr
-	if err := adapter.ThreadSubscription(context.Background(), nil, baseURL, args[0], *session, *resource, *through); err != nil {
+	var err error
+	if _, parseErr := adapter.ParseMentionResource(*resource); parseErr == nil {
+		err = adapter.MentionSubscription(context.Background(), nil, baseURL, args[0], *session, *resource)
+	} else {
+		err = adapter.ThreadSubscription(context.Background(), nil, baseURL, args[0], *session, *resource, *through)
+	}
+	if err != nil {
 		fmt.Fprintln(errOut, "slack-adapter resource:", err)
 		return 1
 	}
