@@ -4,7 +4,7 @@
 [work]
 kind              = "task"
 description       = "A task document naming its spawned session's resource from a private local"
-resource_observer = "issue_pr"
+resource          = "issue_pr"
 instructions      = [{ text = "Resolve the issue at {{ resource.id }}." }]
 
 [work.done_when]

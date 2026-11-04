@@ -1,0 +1,15 @@
+# plect-fixture: result=valid entry=definitions
+# reason: a resource derives its instance name from the captures of its own match, here by computing over two of them.
+
+[issue]
+kind  = "resource"
+match = '^https://forge\.example/(?P<project>[^/]+)/issues/(?P<number>\d+)$'
+name  = { expr = "match.project + '-issue-' + match.number" }
+
+[issue.observe]
+type = "exec"
+bin  = "github-issue-pr"
+args = ["observe", "--resource", { from = "resource.id" }]
+
+[issue.state_schema]
+type = "object"

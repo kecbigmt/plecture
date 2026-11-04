@@ -39,7 +39,7 @@ func (v Validation) validateObserverQuery(def *Definition, pos Position) error {
 		}
 	}
 	for _, means := range []string{"poll", "subscribe"} {
-		if err := v.action(query, means, surfaceObserverQuery, at); err != nil {
+		if err := v.action(query, means, surfaceResourceQuery, at); err != nil {
 			return err
 		}
 		if action, ok := query[means]; ok {
@@ -60,7 +60,7 @@ func validateQueryInputPaths(value any, schema map[string]any, pos Position) err
 			}
 		}
 		if expr, ok := node["expr"].(string); ok {
-			for _, path := range expressionPaths(expr, surfaceObserverQuery) {
+			for _, path := range expressionPaths(expr, surfaceResourceQuery) {
 				if err := validateQueryInputPath(path, schema, pos); err != nil {
 					return err
 				}
@@ -210,14 +210,14 @@ func (v Validation) ValidatePopulationContracts(workflow *Definition, registry *
 	for i, entry := range entries {
 		at := Position{File: workflow.File, Path: fmt.Sprintf("%s.populations.[%d]", workflow.ID, i)}
 		observerRef := entry["resource_observer"].(string)
-		observer, err := registry.ExpectKind(observerRef, v.From, KindResourceObserver, at.Path+".resource_observer")
+		observer, err := registry.ExpectKind(observerRef, v.From, KindResource, at.Path+".resource_observer")
 		if err != nil {
 			return err
 		}
 		query, ok := observer.Body["query"].(map[string]any)
 		if !ok {
 			return newDiag(CodePopulationContract, LayerSemantic, childPos(at, "resource_observer"),
-				fmt.Sprintf("resource observer %q declares no query face", observerRef))
+				fmt.Sprintf("resource %q declares no query face", observerRef))
 		}
 		inputSchema, err := CompileInlineSchema(query["inputs_schema"].(map[string]any), "plect:population-query-inputs")
 		if err != nil {
@@ -334,7 +334,7 @@ func validatePopulationUsesContract(entry, query map[string]any, at Position) er
 		means := item.(string)
 		if _, declared := query[means]; !declared {
 			return newDiag(CodePopulationContract, LayerSemantic, childPos(childPos(at, "uses"), fmt.Sprintf("[%d]", i)),
-				fmt.Sprintf("population %q selects %q, but its resource observer query declares no %s means", entry["name"], means, means))
+				fmt.Sprintf("population %q selects %q, but its resource query declares no %s means", entry["name"], means, means))
 		}
 	}
 	return nil
@@ -367,18 +367,18 @@ func (v Validation) validatePopulationSessionContracts(entry map[string]any, obs
 		if len(chain) > 0 {
 			root = chain[0]
 		}
-		taskObserverRef, ok := root.Body["resource_observer"].(string)
+		taskObserverRef, ok := root.Body["resource"].(string)
 		if !ok {
 			return newDiag(CodePopulationContract, LayerSemantic, childPos(at, "session.task"),
-				fmt.Sprintf("task %q declares no resource_observer", taskRef))
+				fmt.Sprintf("task %q declares no resource", taskRef))
 		}
-		taskObserver, err := registry.ExpectKind(taskObserverRef, registry.OwnerOf(root), KindResourceObserver, root.ID+".resource_observer")
+		taskObserver, err := registry.ExpectKind(taskObserverRef, registry.OwnerOf(root), KindResource, root.ID+".resource")
 		if err != nil {
 			return err
 		}
 		if taskObserver != observer {
 			return newDiag(CodePopulationContract, LayerSemantic, childPos(at, "session.task"),
-				"the initial task and population must resolve to the same resource observer")
+				"the initial task and population must resolve to the same resource")
 		}
 	}
 	itemSchema := query["item_schema"].(map[string]any)

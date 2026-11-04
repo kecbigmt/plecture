@@ -4,7 +4,7 @@
 [review]
 kind              = "task"
 description       = "A task document whose body still carries a transitional Go-template conditional"
-resource_observer = "issue_pr"
+resource          = "issue_pr"
 instructions      = [{ text = """
 Review {{ resource.id }}.
 {{- if get .Inputs "instruction" ""}}

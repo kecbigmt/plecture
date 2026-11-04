@@ -10,7 +10,7 @@
 [work]
 kind              = "task"
 description       = "Implement a fix or feature for an issue and create a PR"
-resource_observer = "issue"
+resource          = "issue"
 instructions      = [{ text = """
 Resolve the issue at {{ resource.id }}.
 

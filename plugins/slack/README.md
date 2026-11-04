@@ -85,10 +85,10 @@ shell — no git, and no `slack-adapter` HTTP call, so a workflow that wants a
 repository checkout composes a separate effect for it.
 
 This workspace provider declares no subscription hook. The separate `thread`
-resource observer owns the subscription hooks, so a session whose entry
+resource owns the subscription hooks, so a session whose entry
 resource is a thread subscribes on creation and unsubscribes on destroy.
 
-The `mentions` resource observer matches `slack://<team_id>/mentions`, where
+The `mentions` resource matches `slack://<team_id>/mentions`, where
 `team_id` is the Slack workspace ID returned by `auth.test`. Subscribe an
 existing session with `plect subscribe slack://T01234567/mentions --session
 <session-name>`. Every `app_mention` the bot receives then appends a
@@ -164,7 +164,7 @@ generalized.
 
 ## Standing sessions (population source)
 
-`config/resources/thread.toml` declares the `thread` resource observer's
+`config/resources/thread.toml` declares the `thread` resource's
 `[thread.query]` face
 (`docs/adr/2026-09-05-standing-session-dispatch.md`, "Subscribe-only
 observer sketch"): the item source a workflow's `[[workflow.populations]]`
@@ -214,7 +214,7 @@ hooks remain inputs-free.
 
   A workflow can record who asked with `{ from = "item.user_id" }`.
 - **`slack-adapter resource observe`** is `thread`'s `observe` action. The
-  language requires every `resource_observer` to declare one, but this
+  language requires every resource to declare one, but this
   observer's `state_schema` is empty — a mention appearance is already the
   only fact `query.subscribe` reports — so it prints `{}` rather than
   fabricating a state key the schema does not declare.

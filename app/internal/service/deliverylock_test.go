@@ -35,7 +35,8 @@ func TestDeliveryLock_ConcurrentSetupWaitsOutACleanupsUnsubscribe(t *testing.T) 
 	)
 	body := `
 [fixture]
-kind  = "resource_observer"
+kind  = "resource"
+name  = "fixture"
 match = '` + fixtureResourceMatch + `'
 
 [fixture.observe]
@@ -120,7 +121,8 @@ func TestTaskSetup_DeliveryLockAcquisitionFailureQueuesSubscribeRetry(t *testing
 	)
 	body := `
 [fixture]
-kind  = "resource_observer"
+kind  = "resource"
+name  = "fixture"
 match = '` + fixtureResourceMatch + `'
 
 [fixture.observe]
@@ -179,7 +181,8 @@ func TestTaskCleanup_DeliveryLockAcquisitionFailureQueuesUnsubscribeRetry(t *tes
 	)
 	body := `
 [fixture]
-kind  = "resource_observer"
+kind  = "resource"
+name  = "fixture"
 match = '` + fixtureResourceMatch + `'
 
 [fixture.observe]

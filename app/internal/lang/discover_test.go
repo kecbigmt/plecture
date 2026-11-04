@@ -76,7 +76,7 @@ func TestParseDefinitionDocumentTaskIsAnOrdinaryDeclaration(t *testing.T) {
 [review]
 kind              = "task"
 description       = "A task declared like any other kind"
-resource_observer = "issue_pr"
+resource          = "issue_pr"
 instructions      = [{ text = "Resolve the issue." }]
 `))
 	if err != nil {
@@ -98,7 +98,7 @@ func TestResolveTaskInstructionsInline(t *testing.T) {
 	defs, err := ParseDefinitionDocument("tasks/work.toml", []byte(`
 [work]
 kind              = "task"
-resource_observer = "issue_pr"
+resource          = "issue_pr"
 instructions      = [{ text = "Resolve the issue at {{ resource.id }}." }]
 `))
 	if err != nil {
@@ -117,7 +117,7 @@ func TestResolveTaskInstructionsJoinsElementsWithABlankLine(t *testing.T) {
 	defs, err := ParseDefinitionDocument("tasks/work.toml", []byte(`
 [work]
 kind              = "task"
-resource_observer = "issue_pr"
+resource          = "issue_pr"
 instructions      = [{ text = "First." }, { text = "Second." }]
 `))
 	if err != nil {
@@ -144,7 +144,7 @@ func TestResolveTaskInstructionsElementShapeViolations(t *testing.T) {
 			defs, err := ParseDefinitionDocument("tasks/work.toml", []byte(`
 [work]
 kind              = "task"
-resource_observer = "issue_pr"
+resource          = "issue_pr"
 instructions      = [`+tc.element+`]
 `))
 			if err != nil {
@@ -160,7 +160,7 @@ func TestResolveTaskInstructionsElementUnknownField(t *testing.T) {
 	defs, err := ParseDefinitionDocument("tasks/work.toml", []byte(`
 [work]
 kind              = "task"
-resource_observer = "issue_pr"
+resource          = "issue_pr"
 instructions      = [{ text = "Resolve the issue.", bogus = "x" }]
 `))
 	if err != nil {
@@ -174,7 +174,7 @@ func TestResolveTaskInstructionsFileCrossLayer(t *testing.T) {
 	defs, err := ParseDefinitionDocument(filepath.Join("layer", "tasks", "work.toml"), []byte(`
 [work]
 kind              = "task"
-resource_observer = "issue_pr"
+resource          = "issue_pr"
 instructions      = [{ file = "../../outside.md" }]
 `))
 	if err != nil {
@@ -201,7 +201,7 @@ func TestResolveTaskInstructionsFileAcceptsAValidSameLayerParentReference(t *tes
 	defs, err := ParseDefinitionDocument(path, []byte(`
 [work]
 kind              = "task"
-resource_observer = "issue_pr"
+resource          = "issue_pr"
 instructions      = [{ file = "../shared.md" }]
 `))
 	if err != nil {
@@ -231,7 +231,7 @@ func TestResolveTaskInstructionsFileRejectsAbsolutePath(t *testing.T) {
 	defs, err := ParseDefinitionDocument(path, []byte(`
 [work]
 kind              = "task"
-resource_observer = "issue_pr"
+resource          = "issue_pr"
 instructions      = [{ file = "/etc/passwd" }]
 `))
 	if err != nil {
@@ -257,7 +257,7 @@ func TestResolveTaskInstructionsFileEscapesViaSymlink(t *testing.T) {
 	defs, err := ParseDefinitionDocument(path, []byte(`
 [work]
 kind              = "task"
-resource_observer = "issue_pr"
+resource          = "issue_pr"
 instructions      = [{ file = "link/secret.md" }]
 `))
 	if err != nil {
@@ -273,7 +273,7 @@ func TestResolveTaskInstructionsFileMissing(t *testing.T) {
 	defs, err := ParseDefinitionDocument(path, []byte(`
 [work]
 kind              = "task"
-resource_observer = "issue_pr"
+resource          = "issue_pr"
 instructions      = [{ file = "work.md" }]
 `))
 	if err != nil {
@@ -292,7 +292,7 @@ func TestResolveTaskInstructionsFileRead(t *testing.T) {
 	defs, err := ParseDefinitionDocument(path, []byte(`
 [work]
 kind              = "task"
-resource_observer = "issue_pr"
+resource          = "issue_pr"
 instructions      = [{ file = "work.md" }]
 `))
 	if err != nil {

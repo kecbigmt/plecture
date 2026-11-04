@@ -2,7 +2,7 @@
 # reason: a query action may read only a parameter declared by its shared inputs_schema.
 
 [source]
-kind = "resource_observer"
+kind = "resource"
 
 [source.query.inputs_schema]
 type = "object"

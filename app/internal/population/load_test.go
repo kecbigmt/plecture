@@ -20,7 +20,8 @@ func populationConfig(t *testing.T, queryMeans, timing, sessionInputs string) *c
 	t.Helper()
 	dir := t.TempDir()
 	writeDefinition(t, dir, "observer", `[source]
-kind = "resource_observer"
+kind = "resource"
+name = "fixture"
 match = "^urn:case:"
 [source.observe]
 type = "exec"

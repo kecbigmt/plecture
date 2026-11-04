@@ -15,7 +15,8 @@ func TestLoadTaskDocuments_LoadsAndValidates(t *testing.T) {
 	base := t.TempDir()
 	writeFile(t, filepath.Join(base, "resources", "issue_pr.toml"), `
 [issue_pr]
-kind  = "resource_observer"
+kind  = "resource"
+name  = "fixture"
 match = '^https://github\.com/'
 
 [issue_pr.observe]
@@ -33,7 +34,7 @@ revision      = { type = "string" }
 [review]
 kind              = "task"
 description       = "Review a resource and record a verdict"
-resource_observer = "issue_pr"
+resource          = "issue_pr"
 instructions      = [{ text = "Review {{ resource.id }} and record a verdict against its current revision." }]
 
 [review.state_schema]
@@ -57,8 +58,8 @@ all = [
 	if !ok {
 		t.Fatalf("review not loaded: %+v", docs)
 	}
-	if doc.ResourceObserver != "issue_pr" {
-		t.Errorf("ResourceObserver = %q", doc.ResourceObserver)
+	if doc.Resource != "issue_pr" {
+		t.Errorf("Resource = %q", doc.Resource)
 	}
 	if !strings.HasPrefix(doc.Instruction, "Review {{ resource.id }}") {
 		t.Errorf("Instruction = %q, want the declared instruction", doc.Instruction)
@@ -84,7 +85,8 @@ func TestValidateTaskDocuments_UnpublishedKeyRejected(t *testing.T) {
 	base := t.TempDir()
 	writeFile(t, filepath.Join(base, "resources", "issue_pr.toml"), `
 [issue_pr]
-kind  = "resource_observer"
+kind  = "resource"
+name  = "fixture"
 match = '^https://github\.com/'
 
 [issue_pr.observe]
@@ -101,7 +103,7 @@ resource_kind = { type = "string" }
 [review]
 kind              = "task"
 description       = "Reads a key its observer never publishes"
-resource_observer = "issue_pr"
+resource          = "issue_pr"
 instructions      = [{ text = "Review it." }]
 
 [review.done_when]
@@ -134,7 +136,7 @@ func TestValidateTaskDocuments_UndeclaredSelfStateKeyRejected(t *testing.T) {
 [review]
 kind              = "task"
 description       = "Reads state it never declared"
-resource_observer = "issue_pr"
+resource          = "issue_pr"
 instructions      = [{ text = "Review it." }]
 
 [review.done_when]
@@ -158,7 +160,7 @@ func TestValidateTaskDocuments_UnknownObserverRejected(t *testing.T) {
 [review]
 kind              = "task"
 description       = "Written for an observer nothing declares"
-resource_observer = "no_such_observer"
+resource          = "no_such_observer"
 instructions      = [{ text = "Review it." }]
 
 [review.done_when]
@@ -207,7 +209,8 @@ func TestLoadTaskDocuments_RejectsWorkspaceDirLayer(t *testing.T) {
 
 const minimalObserver = `
 [issue_pr]
-kind  = "resource_observer"
+kind  = "resource"
+name  = "fixture"
 match = '^https://github\.com/'
 
 [issue_pr.observe]
@@ -225,7 +228,7 @@ const duplicateTaskDoc = `
 [review]
 kind              = "task"
 description       = "Review a resource"
-resource_observer = "issue_pr"
+resource          = "issue_pr"
 instructions      = [{ text = "Review it." }]
 `
 
@@ -257,7 +260,7 @@ description = "test plugin"
 [review]
 kind              = "task"
 description       = "A plugin-shipped document reading its own plugin's observer"
-resource_observer = "issue_pr"
+resource          = "issue_pr"
 instructions      = [{ text = "Review it." }]
 
 [review.done_when]
@@ -327,7 +330,7 @@ func TestLoadDeclarations_PluginDocumentAndUserWorkflowShareAnID(t *testing.T) {
 [goal_review]
 kind              = "task"
 description       = "Review a goal"
-resource_observer = "issue_pr"
+resource          = "issue_pr"
 instructions      = [{ text = "Review it." }]
 `)
 	writeFile(t, filepath.Join(base, "workflows", "goal_review.toml"), `
@@ -379,7 +382,7 @@ func TestValidateTaskDocuments_UserDocumentQualifiesACatalogObserver(t *testing.
 [review]
 kind              = "task"
 description       = "A user-owned document reading a catalog observer"
-resource_observer = "official.acme.issue_pr"
+resource          = "official.acme.issue_pr"
 instructions      = [{ text = "Review it." }]
 
 [review.done_when]
@@ -406,7 +409,7 @@ func TestValidateTaskDocuments_UserDocumentCannotReachACatalogObserverRelatively
 [review]
 kind              = "task"
 description       = "A user-owned document reaching catalog content without its alias"
-resource_observer = "issue_pr"
+resource          = "issue_pr"
 instructions      = [{ text = "Review it." }]
 
 [review.done_when]
@@ -489,7 +492,7 @@ func TestLoadTaskDocuments_RejectsChainWithNoTrigger(t *testing.T) {
 [pursue]
 kind              = "task"
 description       = "A document whose chain declares no trigger"
-resource_observer = "issue_pr"
+resource          = "issue_pr"
 instructions      = [{ text = "Pursue the goal." }]
 
 [[pursue.chains]]
@@ -506,7 +509,7 @@ const chainingTaskDoc = `
 [pursue]
 kind              = "task"
 description       = "Pursue one goal until an independent reviewer confirms it"
-resource_observer = "issue_pr"
+resource          = "issue_pr"
 instructions      = [{ text = "Pursue the goal at {{ resource.id }}." }]
 
 [pursue.done_when]
@@ -534,7 +537,7 @@ func TestLoadTaskDocuments_ParsesEveryCompletionLeafForm(t *testing.T) {
 [review]
 kind              = "task"
 description       = "Review a resource"
-resource_observer = "issue_pr"
+resource          = "issue_pr"
 instructions      = [{ text = "Review it." }]
 
 [[review.done_when.all]]
@@ -582,7 +585,7 @@ func TestLoadTaskDocuments_RejectsAmbiguousCompletionLeaf(t *testing.T) {
 [bad]
 kind              = "task"
 description       = "A document whose leaf is two leaves"
-resource_observer = "issue_pr"
+resource          = "issue_pr"
 instructions      = [{ text = "Do it." }]
 
 [[bad.done_when.all]]

@@ -2,7 +2,7 @@
 # reason: observe reads the resource, finalize records the judge evidence over stdin, and the state contract stays JSON Schema.
 
 [goal]
-kind  = "resource_observer"
+kind  = "resource"
 match = '^local-okf://[A-Za-z0-9][A-Za-z0-9-]*/goals/[A-Za-z0-9._/-]+\.md$'
 
 [goal.observe]

@@ -4,7 +4,7 @@
 [broken_observe]
 kind              = "task"
 description       = "A task document reaching for a node output"
-resource_observer = "issue_pr"
+resource          = "issue_pr"
 instructions      = [{ text = "Resolve the issue at {{ resource.id }}." }]
 
 [broken_observe.done_when]

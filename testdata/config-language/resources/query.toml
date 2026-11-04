@@ -2,7 +2,7 @@
 # reason: poll and subscribe share one literal parameter contract and one identity-plus-context item contract.
 
 [query_source]
-kind  = "resource_observer"
+kind  = "resource"
 match = '^urn:case:[A-Za-z0-9]+$'
 
 [query_source.observe]

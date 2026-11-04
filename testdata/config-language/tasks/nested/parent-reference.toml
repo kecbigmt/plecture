@@ -4,7 +4,7 @@
 [nested_work]
 kind              = "task"
 description       = "A task nested below tasks/, reaching a sidecar beside its parent directory"
-resource_observer = "issue_pr"
+resource          = "issue_pr"
 instructions      = [{ file = "../document.md" }]
 
 [nested_work.done_when]

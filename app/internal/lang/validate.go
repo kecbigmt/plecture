@@ -40,8 +40,8 @@ func (v Validation) ValidateDefinition(def *Definition) error {
 		return v.validateChannel(def, pos)
 	case KindWorkspaceProvider:
 		return v.validateProvider(def, pos)
-	case KindResourceObserver:
-		return v.validateObserver(def, pos)
+	case KindResource:
+		return v.validateResource(def, pos)
 	case KindWorkflow:
 		return v.validateWorkflow(def, pos)
 	case KindTask:
@@ -235,17 +235,25 @@ func (v Validation) validateProvider(def *Definition, pos Position) error {
 	return v.providerContracts(def, pos)
 }
 
-func (v Validation) validateObserver(def *Definition, pos Position) error {
-	if err := v.action(def.Body, "observe", surfaceObserverObserve, pos); err != nil {
+func (v Validation) validateResource(def *Definition, pos Position) error {
+	if name, ok := def.Body["name"]; ok {
+		if err := v.value(name, ClassData, surfaceResourceName, childPos(pos, "name")); err != nil {
+			return err
+		}
+	}
+	if err := nameContract(def, pos, surfaceResourceName); err != nil {
 		return err
 	}
-	if err := v.action(def.Body, "finalize", surfaceObserverFinalize, pos); err != nil {
+	if err := v.action(def.Body, "observe", surfaceResourceObserve, pos); err != nil {
 		return err
 	}
-	if err := v.action(def.Body, "subscribe", surfaceObserverSubscribe, pos); err != nil {
+	if err := v.action(def.Body, "finalize", surfaceResourceFinalize, pos); err != nil {
 		return err
 	}
-	if err := v.action(def.Body, "unsubscribe", surfaceObserverUnsubscribe, pos); err != nil {
+	if err := v.action(def.Body, "subscribe", surfaceResourceSubscribe, pos); err != nil {
+		return err
+	}
+	if err := v.action(def.Body, "unsubscribe", surfaceResourceUnsubscribe, pos); err != nil {
 		return err
 	}
 	return v.validateObserverQuery(def, pos)
@@ -351,9 +359,9 @@ func (v Validation) validateWorkflow(def *Definition, pos Position) error {
 
 func (v Validation) validateTask(def *Definition, pos Position) error {
 	if _, extends := def.Body["extends"]; extends {
-		if _, ok := def.Body["resource_observer"]; ok {
-			return newDiag(CodeExtendsInheritedField, LayerStructural, childPos(pos, "resource_observer"),
-				"resource_observer is inherited through extends and is not part of the extension surface")
+		if _, ok := def.Body["resource"]; ok {
+			return newDiag(CodeExtendsInheritedField, LayerStructural, childPos(pos, "resource"),
+				"resource is inherited through extends and is not part of the extension surface")
 		}
 		if err := checkExtendsSchemaShape(def, pos); err != nil {
 			return err

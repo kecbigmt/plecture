@@ -10,7 +10,7 @@ import (
 // shape.
 //
 // The per-workspace-dir ancestor cascade is deliberately excluded: a
-// workspace provider, a resource observer and a channel decide how a session's
+// workspace provider, a resource and a channel decide how a session's
 // identity is resolved and how a process is reached, and those belong to the
 // machine rather than to any directory a project owns. Such a declaration in
 // an ancestor overlay is skipped rather than refused, because a project's own

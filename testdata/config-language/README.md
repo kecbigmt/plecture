@@ -30,7 +30,7 @@ issue, and the residues it surfaced are owner calls on the specification PR.
 | `workflows/` | The workflow kind, including user-owned populations |
 | `channels/` | The channel kind |
 | `providers/` | The workspace provider kind |
-| `observers/` | The resource observer kind |
+| `resources/` | The resource kind |
 | `chains/` | Chains, a task-document construct |
 | `plugins/` | Plugin and catalog manifests |
 | `config/` | The reserved root files |

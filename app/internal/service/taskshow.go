@@ -17,11 +17,11 @@ type TaskDetail struct {
 	// Scope and Nesting are an effect's: a task document owns no lifecycle,
 	// so it has neither.
 	Scope string `json:"scope,omitempty"`
-	// ResourceObserver is the observer a task document is written for,
-	// resolved through extends when this document is an extension.
-	ResourceObserver string      `json:"resource_observer,omitempty"`
-	SourcePath       string      `json:"source_path,omitempty"`
-	Nesting          []TaskLayer `json:"nesting,omitempty"`
+	// Resource is the resource a task document is written for, resolved
+	// through extends when this document is an extension.
+	Resource   string      `json:"resource,omitempty"`
+	SourcePath string      `json:"source_path,omitempty"`
+	Nesting    []TaskLayer `json:"nesting,omitempty"`
 	// ExtendsChain is the composed extends chain, outermost (this document)
 	// first, each entry naming only what that declaration itself contributes
 	// — the per-element provenance every composed instruction element,
@@ -139,7 +139,7 @@ func TaskShow(cfg *config.Config, workspaceDirPath, id string) (*TaskDetail, err
 		// Instruction, Chains, and DoneWhen are already the composed ones.
 		observers, oerr := cfg.LoadResourceDefs()
 		if oerr != nil {
-			return nil, fmt.Errorf("load resource observers: %w", oerr)
+			return nil, fmt.Errorf("load resources: %w", oerr)
 		}
 		workflows, werr := cfg.LoadWorkflows(workspaceDirPath)
 		if werr != nil {
@@ -149,11 +149,11 @@ func TaskShow(cfg *config.Config, workspaceDirPath, id string) (*TaskDetail, err
 			return nil, verr
 		}
 		return &TaskDetail{
-			ID:               doc.ID,
-			Kind:             string(lang.KindTask),
-			ResourceObserver: doc.ResourceObserver,
-			SourcePath:       doc.SourcePath,
-			ExtendsChain:     taskExtendsChain(doc),
+			ID:           doc.ID,
+			Kind:         string(lang.KindTask),
+			Resource:     doc.Resource,
+			SourcePath:   doc.SourcePath,
+			ExtendsChain: taskExtendsChain(doc),
 		}, nil
 	}
 	def, ok := defs[id]

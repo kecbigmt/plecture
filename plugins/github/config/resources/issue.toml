@@ -19,8 +19,9 @@
 # rather than requiring the root.
 
 [issue]
-kind  = "resource_observer"
+kind  = "resource"
 match = '^https://github\.com/(?P<owner>[^/]+)/(?P<repo>[^/]+)/issues/(?P<number>\d+)'
+name  = { expr = "match.owner + '/' + match.repo + '-' + match.number" }
 
 [issue.observe]
 type = "exec"

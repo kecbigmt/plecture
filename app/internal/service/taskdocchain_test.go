@@ -17,7 +17,7 @@ import (
 const pursueDocument = `[pursue]
 kind              = "task"
 description       = "Pursue one goal until an independent reviewer confirms it"
-resource_observer = "issue_pr"
+resource          = "issue_pr"
 instructions      = [{ text = "Pursue the work at {{ resource.id }}." }]
 
 [pursue.state_schema]
@@ -157,7 +157,7 @@ func TestCheckSession_TaskDocumentChainBlockedOnAnUnreportedInput(t *testing.T) 
 	document := `[pursue]
 kind              = "task"
 description       = "A document whose chain waits on a key nothing reports yet"
-resource_observer = "issue_pr"
+resource          = "issue_pr"
 instructions      = [{ text = "Pursue the work at {{ resource.id }}." }]
 
 [pursue.done_when]
@@ -210,7 +210,7 @@ func TestCheckSession_TaskDocumentChainsAreNoLongerAnnouncedAsUnevaluated(t *tes
 const resourceChainDocument = `[pursue]
 kind              = "task"
 description       = "Hand a pull request to a reviewer bound to it"
-resource_observer = "issue_pr"
+resource          = "issue_pr"
 instructions      = [{ text = "Pursue the work at {{ resource.id }}." }]
 
 [pursue.done_when]

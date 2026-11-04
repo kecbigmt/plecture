@@ -89,7 +89,8 @@ func TestFinalizeTask_RunsResourceFinalizeAndLeavesInstance(t *testing.T) {
 	}
 	toml := fmt.Sprintf(`
 [local_okf]
-kind  = "resource_observer"
+kind  = "resource"
+name  = "fixture"
 match = '^local-okf://'
 
 [local_okf.observe]
@@ -153,7 +154,8 @@ func TestFinalizeTask_ResourceFinalizeFailureAbortsBeforeCleanup(t *testing.T) {
 	}
 	if err := os.WriteFile(filepath.Join(resourcesDir, "local-okf.toml"), []byte(`
 [local_okf]
-kind  = "resource_observer"
+kind  = "resource"
+name  = "fixture"
 match = '^local-okf://'
 
 [local_okf.observe]

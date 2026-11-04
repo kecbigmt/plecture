@@ -82,7 +82,8 @@ func TestTaskSetup_SubscribeFailureIsDurablyQueued(t *testing.T) {
 	)
 	body := `
 [fixture]
-kind  = "resource_observer"
+kind  = "resource"
+name  = "fixture"
 match = '` + fixtureResourceMatch + `'
 
 [fixture.observe]
@@ -124,7 +125,8 @@ func writeAlwaysFailingUnsubscribeProvider(t *testing.T, baseDir string) {
 	t.Helper()
 	body := `
 [fixture]
-kind  = "resource_observer"
+kind  = "resource"
+name  = "fixture"
 match = '` + fixtureResourceMatch + `'
 
 [fixture.observe]
@@ -157,7 +159,8 @@ func toggledUnsubscribeProvider(t *testing.T, baseDir, toggle, rec string) {
 	t.Helper()
 	body := `
 [fixture]
-kind  = "resource_observer"
+kind  = "resource"
+name  = "fixture"
 match = '` + fixtureResourceMatch + `'
 
 [fixture.observe]
@@ -365,7 +368,8 @@ func TestFlushPendingDelivery_RetriesSubscribeAndDrainsOnSuccess(t *testing.T) {
 	)
 	body := `
 [fixture]
-kind  = "resource_observer"
+kind  = "resource"
+name  = "fixture"
 match = '` + fixtureResourceMatch + `'
 
 [fixture.observe]
@@ -422,7 +426,8 @@ func TestFlushPendingDelivery_DropsSubscribeEntryOnceResourceIsNoLongerNeeded(t 
 	// A toggle that never appears: if the hook ran at all, the test fails.
 	body := `
 [fixture]
-kind  = "resource_observer"
+kind  = "resource"
+name  = "fixture"
 match = '` + fixtureResourceMatch + `'
 
 [fixture.observe]

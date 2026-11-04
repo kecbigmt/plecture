@@ -28,7 +28,8 @@ func TestLoadResourceDefs_TwoAddressablePluginsShareAnID(t *testing.T) {
 	observer := func(match string) string {
 		return `
 [github]
-kind  = "resource_observer"
+kind  = "resource"
+name  = "fixture"
 match = '` + match + `'
 
 [github.observe]
@@ -152,7 +153,8 @@ func TestLoadResourceDefs_UserOwnedDeclarationKeepsItsBareID(t *testing.T) {
 	base := t.TempDir()
 	writeFile(t, filepath.Join(base, "resources", "github.toml"), `
 [github]
-kind  = "resource_observer"
+kind  = "resource"
+name  = "fixture"
 match = '^x'
 
 [github.observe]

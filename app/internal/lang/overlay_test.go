@@ -45,7 +45,7 @@ func TestDiscoverWorkspaceOverlaySkipsOtherWholeDefinitionKinds(t *testing.T) {
 		file, body string
 	}{
 		{"workflows/provider.toml", "[worktree]\nkind = \"workspace_provider\"\n"},
-		{"workflows/observer.toml", "[issue_pr]\nkind = \"resource_observer\"\n"},
+		{"workflows/observer.toml", "[issue_pr]\nkind = \"resource\"\n"},
 		{"workflows/delivery.toml", "[delivery]\nkind = \"channel\"\ntype = \"exec\"\n"},
 	} {
 		dir := t.TempDir()

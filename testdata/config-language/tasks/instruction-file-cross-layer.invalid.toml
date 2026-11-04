@@ -4,7 +4,7 @@
 [work]
 kind              = "task"
 description       = "A task whose instructions element escapes its own layer"
-resource_observer = "issue_pr"
+resource          = "issue_pr"
 instructions      = [{ file = "../../outside.md" }]
 
 [work.done_when]

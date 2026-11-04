@@ -371,7 +371,7 @@ func taskDocumentFixtureDoc(d taskFixture) string {
 		return strings.HasPrefix(strings.TrimSpace(line), "requires ")
 	}), "\n")
 	var b strings.Builder
-	fmt.Fprintf(&b, "[%s]\nkind = \"task\"\ndescription = %q\nresource_observer = %q\ninstructions = [{ text = %q }]\n",
+	fmt.Fprintf(&b, "[%s]\nkind = \"task\"\ndescription = %q\nresource = %q\ninstructions = [{ text = %q }]\n",
 		d.id, d.id+" fixture", fixtureObserverID, "Carry out "+d.id+".")
 	b.WriteString(bare)
 	if keys := fixtureStateKeys(d.extra, "self"); len(keys) > 0 {
@@ -402,7 +402,7 @@ func fixtureObserverDoc(defs []taskFixture) string {
 	// The match claims a scheme no fixture resource uses, so a test that
 	// declares its own observer keeps it: what an instance observes with is
 	// the observer its document declares, not whichever pattern also fits.
-	fmt.Fprintf(&b, "[%s]\nkind = \"resource_observer\"\nmatch = '^fixture://'\n\n", fixtureObserverID)
+	fmt.Fprintf(&b, "[%s]\nkind = \"resource\"\nname = \"fixture\"\nmatch = '^fixture://'\n\n", fixtureObserverID)
 	// A fixture has no real resource to look at, so observing one fails and
 	// the last observation a test seeded stands — which is what lets a test
 	// state the facts its predicate reads instead of standing up a source of
@@ -432,7 +432,7 @@ func stubObservedFacts(t *testing.T, cfg *config.Config, match string, facts map
 	}
 	sort.Strings(keys)
 	var b strings.Builder
-	fmt.Fprintf(&b, "[%s]\nkind = \"resource_observer\"\nmatch = '%s'\n\n", fixtureObserverID, match)
+	fmt.Fprintf(&b, "[%s]\nkind = \"resource\"\nname = \"fixture\"\nmatch = '%s'\n\n", fixtureObserverID, match)
 	fmt.Fprintf(&b, "[%s.observe]\ntype = \"shell\"\nscript = %q\n\n", fixtureObserverID, "cat <<'JSON'\n"+string(encoded)+"\nJSON")
 	fmt.Fprintf(&b, "[%s.state_schema]\ntype = \"object\"\n\n[%s.state_schema.properties]\n", fixtureObserverID, fixtureObserverID)
 	for _, k := range keys {

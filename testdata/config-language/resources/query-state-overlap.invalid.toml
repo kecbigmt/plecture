@@ -2,7 +2,7 @@
 # reason: query items carry identity and appearance context while observe alone produces resource state.
 
 [source]
-kind = "resource_observer"
+kind = "resource"
 
 [source.state_schema]
 type = "object"

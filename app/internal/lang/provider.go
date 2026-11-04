@@ -20,20 +20,8 @@ import (
 // or its schema declares. It runs inside ValidateDefinition rather than as a
 // pass of its own so no consumer can load a provider without it.
 func (v Validation) providerContracts(def *Definition, pos Position) error {
-	captures, known, err := matchCaptures(def, pos)
-	if err != nil {
+	if err := nameContract(def, pos, surfaceProviderName); err != nil {
 		return err
-	}
-	if name, ok := def.Body["name"]; ok && known {
-		value, err := ParseValue(name, ClassData, childPos(pos, "name"))
-		if err != nil {
-			return err
-		}
-		for _, path := range valuePaths(value, surfaceProviderName) {
-			if err := resolveCapture(path, captures, childPos(pos, "name")); err != nil {
-				return err
-			}
-		}
 	}
 	if raw, ok := def.Body["cleanup"]; ok {
 		action, err := ParseAction(raw, childPos(pos, "cleanup"))
@@ -50,6 +38,30 @@ func (v Validation) providerContracts(def *Definition, pos Position) error {
 					return err
 				}
 			}
+		}
+	}
+	return nil
+}
+
+// nameContract checks that a `name` value reads only captures the same
+// declaration's `match` declares. A provider and a resource share the rule
+// because both derive a name from one identifier before any session exists.
+func nameContract(def *Definition, pos Position, surface *Surface) error {
+	captures, known, err := matchCaptures(def, pos)
+	if err != nil {
+		return err
+	}
+	name, ok := def.Body["name"]
+	if !ok || !known {
+		return nil
+	}
+	value, err := ParseValue(name, ClassData, childPos(pos, "name"))
+	if err != nil {
+		return err
+	}
+	for _, path := range valuePaths(value, surface) {
+		if err := resolveCapture(path, captures, childPos(pos, "name")); err != nil {
+			return err
 		}
 	}
 	return nil

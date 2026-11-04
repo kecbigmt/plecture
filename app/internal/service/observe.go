@@ -62,7 +62,7 @@ func observeResources(cfg *config.Config, store *state.Store, sessionName, only 
 	}
 	observers, err := cfg.LoadResourceDefs()
 	if err != nil {
-		return nil, &Error{Code: ErrExecutionFailed, Message: fmt.Sprintf("load resource observers: %v", err)}
+		return nil, &Error{Code: ErrExecutionFailed, Message: fmt.Sprintf("load resources: %v", err)}
 	}
 	var out []InstanceObservation
 	taken := map[string]*contract.ResourceObservation{}
@@ -94,10 +94,10 @@ func observeResources(cfg *config.Config, store *state.Store, sessionName, only 
 // with a reported error is the failed-reading case: the caller keeps whatever
 // was observed last rather than replacing it with nothing.
 func observeInstanceResource(cfg *config.Config, session *domain.Session, doc config.TaskDocument, observers map[string]config.ResourceDef, key string, st *contract.TaskState) (*contract.ResourceObservation, InstanceObservation) {
-	result := InstanceObservation{Instance: key, Observer: doc.ResourceObserver}
-	observer, ok := observers[doc.ResourceObserver]
+	result := InstanceObservation{Instance: key, Observer: doc.Resource}
+	observer, ok := observers[doc.Resource]
 	if !ok {
-		result.Error = fmt.Sprintf("task %s is written for resource observer %q, which no config layer declares", doc.ID, doc.ResourceObserver)
+		result.Error = fmt.Sprintf("task %s is written for resource %q, which no config layer declares", doc.ID, doc.Resource)
 		return nil, result
 	}
 	resourceID := st.Resource

@@ -4,7 +4,7 @@
 [work]
 kind              = "task"
 description       = "Implement a fix and hand it to review"
-resource_observer = "issue_pr"
+resource          = "issue_pr"
 instructions      = [{ text = "Resolve the issue at {{ resource.id }}." }]
 
 [work.done_when]

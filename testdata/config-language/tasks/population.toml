@@ -3,7 +3,7 @@
 
 [population_task]
 kind              = "task"
-resource_observer = "query_source"
+resource          = "query_source"
 instructions      = [{ text = "Handle {{ resource.id }}." }]
 
 [population_task.state_schema]

@@ -1,0 +1,6 @@
+# plect-fixture: result=invalid layer=structural diagnostic=PLECTURE-CFG-KIND-UNKNOWN entry=definitions
+# reason: the retired kind name is outside the vocabulary, so a pre-rename declaration fails to load rather than loading under a second name.
+
+[issue]
+kind  = "resource_observer"
+match = '^https://forge\.example/(?P<number>\d+)$'

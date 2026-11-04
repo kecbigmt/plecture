@@ -8,7 +8,7 @@ import (
 
 const goalTaskDocument = `[pursue_goal]
 kind              = "task"
-resource_observer = "goal"
+resource          = "goal"
 instructions      = [{ text = "Pursue the goal at {{ resource.id }}." }]
 
 [pursue_goal.done_when]
@@ -16,7 +16,7 @@ all = [{ check = "resource.state.goal_status", in = ["open"] }]
 `
 
 const goalObserverContext = `[goal]
-kind  = "resource_observer"
+kind  = "resource"
 match = '^local-okf://[A-Za-z0-9-]+/goals/[A-Za-z0-9._/-]+\.md$'
 
 [goal.observe]
