@@ -291,15 +291,45 @@ func TestClassifyWorkflowRebaseDynamicEffects(t *testing.T) {
 			}
 		})
 	}
-	t.Run("changed task document", func(t *testing.T) {
+	for _, tc := range []struct {
+		name string
+		edit func(*config.TaskDocument)
+		want RebaseClass
+	}{
+		{"instruction", func(d *config.TaskDocument) { d.Instruction = "new" }, RebaseCompatible},
+		{"description", func(d *config.TaskDocument) { d.Description = "new" }, RebaseCompatible},
+		{"done_when", func(d *config.TaskDocument) {
+			d.DoneWhen = &config.DoneWhen{All: []config.DoneWhenLeaf{{Judge: "approve", ID: "approval"}}}
+		}, RebaseRecreate},
+		{"inputs_schema", func(d *config.TaskDocument) { d.InputsSchema = map[string]any{"type": "object"} }, RebaseRecreate},
+		{"chains", func(d *config.TaskDocument) { d.Chains = []config.DocumentChain{{ID: "review", Workflow: "review"}} }, RebaseRecreate},
+	} {
+		t.Run("task document "+tc.name, func(t *testing.T) {
+			wf := config.WorkflowFile{Address: "work", Nodes: []config.WorkflowNode{{ID: "static", Uses: "static"}}}
+			defs := map[string]config.TaskDefinition{"static": {ID: "static", Scope: "run", Setup: &lang.Action{Type: lang.ActionNoop}}}
+			oldDoc := config.TaskDocument{ID: "review", Instruction: "old"}
+			nextDoc := oldDoc
+			tc.edit(&nextDoc)
+			old := config.WorkflowRevision{Workflow: wf, Effects: defs, Tasks: map[string]config.TaskDocument{"review": oldDoc}}
+			next := config.WorkflowRevision{Workflow: wf, Effects: defs, Tasks: map[string]config.TaskDocument{"review": nextDoc}}
+			session := &domain.Session{Tasks: map[string]*contract.TaskState{"review#1": {TaskID: "review", Scope: "session", Status: contract.TaskStatusProduced}}}
+			got, err := ClassifyWorkflowRebase(old, next, session)
+			if err != nil || got.Class != tc.want {
+				t.Fatalf("classification = %+v, %v; want %s", got, err, tc.want)
+			}
+		})
+	}
+	t.Run("task document inherited instruction", func(t *testing.T) {
 		wf := config.WorkflowFile{Address: "work", Nodes: []config.WorkflowNode{{ID: "static", Uses: "static"}}}
 		defs := map[string]config.TaskDefinition{"static": {ID: "static", Scope: "run", Setup: &lang.Action{Type: lang.ActionNoop}}}
-		old := config.WorkflowRevision{Workflow: wf, Effects: defs, Tasks: map[string]config.TaskDocument{"review": {ID: "review", Instruction: "old"}}}
-		next := config.WorkflowRevision{Workflow: wf, Effects: defs, Tasks: map[string]config.TaskDocument{"review": {ID: "review", Instruction: "new"}}}
+		oldDoc := config.TaskDocument{ID: "review", Instruction: "old", ExtendsLayers: []config.TaskDocument{{ID: "base", Instruction: "old"}}}
+		nextDoc := config.TaskDocument{ID: "review", Instruction: "new", ExtendsLayers: []config.TaskDocument{{ID: "base", Instruction: "new"}}}
+		old := config.WorkflowRevision{Workflow: wf, Effects: defs, Tasks: map[string]config.TaskDocument{"review": oldDoc}}
+		next := config.WorkflowRevision{Workflow: wf, Effects: defs, Tasks: map[string]config.TaskDocument{"review": nextDoc}}
 		session := &domain.Session{Tasks: map[string]*contract.TaskState{"review#1": {TaskID: "review", Scope: "session", Status: contract.TaskStatusProduced}}}
 		got, err := ClassifyWorkflowRebase(old, next, session)
-		if err != nil || got.Class != RebaseRecreate {
-			t.Fatalf("classification = %+v, %v; want recreate", got, err)
+		if err != nil || got.Class != RebaseCompatible {
+			t.Fatalf("classification = %+v, %v; want compatible", got, err)
 		}
 	})
 }

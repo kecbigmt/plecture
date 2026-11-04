@@ -291,7 +291,7 @@ func ClassifyWorkflowRebase(old, next config.WorkflowRevision, session *domain.S
 			if oldDoc, wasTask := old.Tasks[address]; wasTask {
 				if nextDoc, exists := next.Tasks[address]; !exists {
 					result.raise(RebaseRecreate, fmt.Sprintf("dynamic task %q definition %q removed; restore it or destroy and recreate the session", key, address))
-				} else if !equalRevisionPart(oldDoc, nextDoc) {
+				} else if !equalRevisionPart(withoutDocumentPresentation(oldDoc), withoutDocumentPresentation(nextDoc)) {
 					result.raise(RebaseRecreate, fmt.Sprintf("session-scoped dynamic task %q changed; destroy and recreate the session", key))
 				}
 				continue
@@ -460,6 +460,19 @@ func onlyAliveChanged(a, b config.TaskDefinition) bool {
 		return false
 	}
 	return equalRevisionPart(withoutAlive(a), withoutAlive(b))
+}
+
+func withoutDocumentPresentation(doc config.TaskDocument) config.TaskDocument {
+	doc.Description = ""
+	doc.Instruction = ""
+	if len(doc.ExtendsLayers) > 0 {
+		layers := make([]config.TaskDocument, len(doc.ExtendsLayers))
+		for i, layer := range doc.ExtendsLayers {
+			layers[i] = withoutDocumentPresentation(layer)
+		}
+		doc.ExtendsLayers = layers
+	}
+	return doc
 }
 
 func withoutAlive(def config.TaskDefinition) config.TaskDefinition {
