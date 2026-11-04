@@ -12,7 +12,9 @@ import (
 )
 
 var (
-	subscribeSession string
+	subscribeSession    string
+	subscribeInputsJSON string
+	subscribeInputsFile string
 )
 
 var subscribeCmd = &cobra.Command{
@@ -33,6 +35,10 @@ The subscriber session is taken from the ambient pane environment
 simply 'plect subscribe <url>'. --session overrides it.`,
 	Args: cobra.ExactArgs(1),
 	RunE: func(cmd *cobra.Command, args []string) error {
+		inputs, err := resolveInputsFlags(subscribeInputsJSON, subscribeInputsFile)
+		if err != nil {
+			return err
+		}
 		cfg, err := config.Load()
 		if err != nil {
 			return err
@@ -41,6 +47,7 @@ simply 'plect subscribe <url>'. --session overrides it.`,
 		if err := service.Subscribe(cfg, store, service.SubscribeParams{
 			ResourceID:  args[0],
 			SessionName: subscribeSession,
+			Inputs:      inputs,
 		}); err != nil {
 			return err
 		}
@@ -51,5 +58,7 @@ simply 'plect subscribe <url>'. --session overrides it.`,
 
 func init() {
 	subscribeCmd.Flags().StringVar(&subscribeSession, "session", "", "Subscriber session (defaults to $PLECT_SESSION_NAME)")
+	subscribeCmd.Flags().StringVar(&subscribeInputsJSON, "inputs", "", "Resource action inputs as a JSON object")
+	subscribeCmd.Flags().StringVar(&subscribeInputsFile, "inputs-file", "", "Read resource action inputs from a JSON file")
 	rootCmd.AddCommand(subscribeCmd)
 }

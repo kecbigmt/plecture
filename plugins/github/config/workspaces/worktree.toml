@@ -1,12 +1,11 @@
 # GitHub workspace provider — owns every piece of GitHub knowledge a
 # session needs, independent of any particular workflow: resolving an
 # issue/PR URL to a session id, acquiring and releasing the git worktree
-# that resource maps to, and binding a session to the shipped watcher's
-# subscription registry. Workflows compose on top via
+# that resource maps to. Workflows compose on top via
 # `workspace_provider = "official.github.worktree"` (substituting the alias
 # this plugin is enabled under).
 #
-# `setup`/`cleanup`/`subscribe` name github-worktree and github-watcher
+# `setup`/`cleanup` name github-worktree and github-watcher
 # (this plugin's bin/) through `bin`'s plugin-local bare-name reading, so
 # both are reachable purely from this plugin being enabled — no PATH setup
 # required, and no dependency on which alias the operator registered this
@@ -99,29 +98,6 @@ force                 = { from = "force" }
 delete_branch         = { from = "cleanup.inputs.delete_branch", default = "" }
 delete_branch_default = { from = "inputs.delete_branch_default", default = "" }
 
-# subscribe binds a session to a resource at runtime (the `plect subscribe`
-# verb, and the implicit binding a session's own resource or a dynamic task's
-# --resource gets) — the same watcher subscription registry `cleanup`
-# unsubscribes from on destroy, additive, never replacing. --branch forwards
-# the current session's own workspace branch, empty unless this same
-# provider's own setup hook is what produced it, so the watcher's issue
-# polling can discover the linked PR for an issue session that never ran an
-# explicit `plect subscribe` on it.
-[worktree.subscribe]
-type = "exec"
-bin  = "github-watcher"
-args = ["subscribe", "--session", { from = "session.name" }, "--resource", { from = "resource.id" }, "--branch", { from = "session.branch", default = "" }]
-
-# unsubscribe drops a single (session, resource) binding — the counterpart of
-# `subscribe`, run when a dynamic task instance bound to that resource is
-# reclaimed and nothing else in the session still needs it (`plect task
-# cleanup`). Distinct from `cleanup`'s own unconditional unsubscribe-all,
-# which drops every resource this session ever bound, on session destroy.
-[worktree.unsubscribe]
-type = "exec"
-bin  = "github-watcher"
-args = ["unsubscribe", "--session", { from = "session.name" }, "--resource", { from = "resource.id" }]
-
 # Author-declared parameters, set by a workflow's
 # `[workspace_provider_inputs]`. Every one is data — a path, a naming
 # template, a boolean — so wiring one can change where and under what name a
@@ -129,8 +105,6 @@ args = ["unsubscribe", "--session", { from = "session.name" }, "--resource", { f
 # single-brace placeholders (`{number}`, `{tag}`) rather than value
 # projections because these strings are expanded by github-worktree itself.
 #
-# `subscribe` deliberately reads none of them: it resolves this provider from
-# the resource alone, with no workflow in scope to have set one.
 [worktree.inputs_schema]
 type                 = "object"
 additionalProperties = false

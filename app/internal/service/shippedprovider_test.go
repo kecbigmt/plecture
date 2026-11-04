@@ -208,12 +208,6 @@ func TestShippedSlackThreadProvider_HasNoSubscriptionRegistry(t *testing.T) {
 	if prov.Cleanup == nil {
 		t.Error("the shipped workspace provider must declare cleanup")
 	}
-	if prov.Subscribe != nil {
-		t.Error("the shipped slack thread provider must declare no subscribe hook")
-	}
-	if prov.Unsubscribe != nil {
-		t.Error("the shipped slack thread provider must declare no unsubscribe hook")
-	}
 }
 
 // TestShippedSlackThreadProvider_SetupCreatesWorkspace runs the shipped

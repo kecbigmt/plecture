@@ -98,14 +98,13 @@ func TestTaskSetup_ResourceSubscribeCarriesSessionBranch(t *testing.T) {
 	subRec := filepath.Join(t.TempDir(), "sub-rec")
 	body := `
 [github]
-kind  = "workspace_provider"
+kind  = "resource_observer"
 match = '` + ghMatch + `'
-name  = { expr = "match.owner + '/' + match.repo + '-' + match.number" }
 
-[github.setup]
+[github.observe]
 type    = "exec"
 command = "printf"
-args    = ['{"workdir":"/tmp/x"}']
+args    = ['{}']
 
 [github.subscribe]
 type    = "exec"
@@ -116,10 +115,10 @@ args    = ["-c", 'printf "%s" "$1" > "$2"', "provider", { from = "session.branch
 		[]taskFixture{{id: "work", scope: "session", setup: `echo '{}'`}},
 		[]nodeFixture{{id: "work"}},
 	)
-	if err := os.MkdirAll(filepath.Join(cfg.BaseDir, "workspaces"), 0o755); err != nil {
+	if err := os.MkdirAll(filepath.Join(cfg.BaseDir, "resources"), 0o755); err != nil {
 		t.Fatal(err)
 	}
-	if err := os.WriteFile(filepath.Join(cfg.BaseDir, "workspaces", "github.toml"), []byte(body), 0o644); err != nil {
+	if err := os.WriteFile(filepath.Join(cfg.BaseDir, "resources", "github.toml"), []byte(body), 0o644); err != nil {
 		t.Fatal(err)
 	}
 	store := testStore(t)
@@ -234,24 +233,23 @@ func TestTaskSetup_SubscribeHookFailureDoesNotFailSetup(t *testing.T) {
 	)
 	body := `
 [github]
-kind  = "workspace_provider"
+kind  = "resource_observer"
 match = '` + ghMatch + `'
-name  = { expr = "match.owner + '/' + match.repo + '-' + match.number" }
 
-[github.setup]
+[github.observe]
 type    = "exec"
 command = "printf"
-args    = ['{"workdir":"/tmp/x"}']
+args    = ['{}']
 
 [github.subscribe]
 type    = "exec"
 command = "sh"
 args    = ["-c", "echo boom >&2; exit 3"]
 `
-	if err := os.MkdirAll(filepath.Join(cfg.BaseDir, "workspaces"), 0o755); err != nil {
+	if err := os.MkdirAll(filepath.Join(cfg.BaseDir, "resources"), 0o755); err != nil {
 		t.Fatal(err)
 	}
-	if err := os.WriteFile(filepath.Join(cfg.BaseDir, "workspaces", "github.toml"), []byte(body), 0o644); err != nil {
+	if err := os.WriteFile(filepath.Join(cfg.BaseDir, "resources", "github.toml"), []byte(body), 0o644); err != nil {
 		t.Fatal(err)
 	}
 	store := testStore(t)

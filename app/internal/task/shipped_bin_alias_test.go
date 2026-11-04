@@ -78,14 +78,14 @@ func TestShippedGithubOkf_BinReferencesResolveUnderArbitraryAlias(t *testing.T) 
 		bins := config.MountedBins{Mounted: mounted, SourcePath: observer.SourcePath}
 		eval := lang.Eval{
 			Roots: lang.Roots{
-				"resource":  map[string]any{"id": "owner:test", "revision": "abc123"},
+				"resource":  map[string]any{"id": "owner:test", "revision": "abc123", "inputs": map[string]any{}},
 				"workspace": map[string]any{"dir": "/tmp/wd", "branch": "b"},
-				"session":   map[string]any{"name": "test-session"},
+				"session":   map[string]any{"name": "test-session", "branch": "b"},
 				"judges":    []any{},
 			},
 			Bin: func(ref string) (string, error) { return bins.ResolveBin(ref, observer.Ownership()) },
 		}
-		for field, action := range map[string]*lang.Action{"observe": observer.Observe, "finalize": observer.Finalize} {
+		for field, action := range map[string]*lang.Action{"observe": observer.Observe, "finalize": observer.Finalize, "subscribe": observer.Subscribe, "unsubscribe": observer.Unsubscribe} {
 			if action == nil {
 				continue
 			}
@@ -117,9 +117,8 @@ func TestShippedGithubOkf_BinReferencesResolveUnderArbitraryAlias(t *testing.T) 
 			Bin: func(ref string) (string, error) { return bins.ResolveBin(ref, provider.Ownership()) },
 		}
 		for field, action := range map[string]*lang.Action{
-			"setup":     provider.Setup,
-			"cleanup":   provider.Cleanup,
-			"subscribe": provider.Subscribe,
+			"setup":   provider.Setup,
+			"cleanup": provider.Cleanup,
 		} {
 			if action == nil {
 				continue

@@ -17,7 +17,7 @@ func mustMount(id, dir string, executables ...plugins.Executable) plugins.Mounte
 
 func TestRunProviderSubscribe_ReadsItsSurfaceRoots(t *testing.T) {
 	marker := filepath.Join(t.TempDir(), "subscribe.out")
-	prov := config.WorkspaceProviderConfig{
+	prov := config.ResourceDef{
 		ID: "wf",
 		Subscribe: &lang.Action{
 			Type:    lang.ActionExec,
@@ -32,8 +32,8 @@ func TestRunProviderSubscribe_ReadsItsSurfaceRoots(t *testing.T) {
 			},
 		},
 	}
-	if err := RunWorkspaceProviderSubscribe(prov, SubscribeHookVars{ResourceID: "res-1", SessionName: "sess-1"}); err != nil {
-		t.Fatalf("RunWorkspaceProviderSubscribe: %v", err)
+	if err := RunResourceSubscribe(prov, SubscribeHookVars{ResourceID: "res-1", SessionName: "sess-1"}); err != nil {
+		t.Fatalf("RunResourceSubscribe: %v", err)
 	}
 	raw, err := os.ReadFile(marker)
 	if err != nil {
@@ -49,7 +49,7 @@ func TestRunProviderSubscribe_ReadsItsSurfaceRoots(t *testing.T) {
 // session's working branch) can forward it to its own delivery mechanism.
 func TestRunProviderSubscribe_ProjectsSessionBranch(t *testing.T) {
 	marker := filepath.Join(t.TempDir(), "branch.out")
-	prov := config.WorkspaceProviderConfig{
+	prov := config.ResourceDef{
 		ID: "wf",
 		Subscribe: &lang.Action{
 			Type:    lang.ActionExec,
@@ -63,8 +63,8 @@ func TestRunProviderSubscribe_ProjectsSessionBranch(t *testing.T) {
 			},
 		},
 	}
-	if err := RunWorkspaceProviderSubscribe(prov, SubscribeHookVars{ResourceID: "res-1", SessionName: "sess-1", Branch: "issue/1"}); err != nil {
-		t.Fatalf("RunWorkspaceProviderSubscribe: %v", err)
+	if err := RunResourceSubscribe(prov, SubscribeHookVars{ResourceID: "res-1", SessionName: "sess-1", Branch: "issue/1"}); err != nil {
+		t.Fatalf("RunResourceSubscribe: %v", err)
 	}
 	raw, err := os.ReadFile(marker)
 	if err != nil {
@@ -80,7 +80,7 @@ func TestRunProviderSubscribe_ProjectsSessionBranch(t *testing.T) {
 // to the empty string rather than failing the projection.
 func TestRunProviderSubscribe_EmptyBranchResolvesToEmptyString(t *testing.T) {
 	marker := filepath.Join(t.TempDir(), "branch.out")
-	prov := config.WorkspaceProviderConfig{
+	prov := config.ResourceDef{
 		ID: "wf",
 		Subscribe: &lang.Action{
 			Type:    lang.ActionExec,
@@ -94,8 +94,8 @@ func TestRunProviderSubscribe_EmptyBranchResolvesToEmptyString(t *testing.T) {
 			},
 		},
 	}
-	if err := RunWorkspaceProviderSubscribe(prov, SubscribeHookVars{ResourceID: "res-1", SessionName: "sess-1"}); err != nil {
-		t.Fatalf("RunWorkspaceProviderSubscribe: %v", err)
+	if err := RunResourceSubscribe(prov, SubscribeHookVars{ResourceID: "res-1", SessionName: "sess-1"}); err != nil {
+		t.Fatalf("RunResourceSubscribe: %v", err)
 	}
 	raw, err := os.ReadFile(marker)
 	if err != nil {
@@ -107,7 +107,7 @@ func TestRunProviderSubscribe_EmptyBranchResolvesToEmptyString(t *testing.T) {
 }
 
 func TestRunProviderSubscribe_NoSubscribeHookIsAnError(t *testing.T) {
-	err := RunWorkspaceProviderSubscribe(config.WorkspaceProviderConfig{ID: "wf"}, SubscribeHookVars{ResourceID: "r", SessionName: "s"})
+	err := RunResourceSubscribe(config.ResourceDef{ID: "wf"}, SubscribeHookVars{ResourceID: "r", SessionName: "s"})
 	if err == nil {
 		t.Fatal("expected an error when the provider declares no subscribe hook")
 	}
@@ -119,7 +119,7 @@ func TestRunProviderSubscribe_ResolvesBinReference(t *testing.T) {
 	marker := filepath.Join(t.TempDir(), "bin.out")
 	mounted := []plugins.Mounted{mustMount("official/github", "/mnt/github",
 		plugins.Executable{Name: "github-watcher", Path: "bin/github-watcher"})}
-	prov := config.WorkspaceProviderConfig{
+	prov := config.ResourceDef{
 		ID: "wf",
 		Subscribe: &lang.Action{
 			Type:    lang.ActionExec,
@@ -133,8 +133,8 @@ func TestRunProviderSubscribe_ResolvesBinReference(t *testing.T) {
 			},
 		},
 	}
-	if err := RunWorkspaceProviderSubscribe(prov, SubscribeHookVars{ResourceID: "r", SessionName: "s", Plugins: mounted}); err != nil {
-		t.Fatalf("RunWorkspaceProviderSubscribe: %v", err)
+	if err := RunResourceSubscribe(prov, SubscribeHookVars{ResourceID: "r", SessionName: "s", Plugins: mounted}); err != nil {
+		t.Fatalf("RunResourceSubscribe: %v", err)
 	}
 	raw, err := os.ReadFile(marker)
 	if err != nil {
@@ -146,37 +146,39 @@ func TestRunProviderSubscribe_ResolvesBinReference(t *testing.T) {
 	}
 }
 
-func TestRunProviderUnsubscribe_ReadsItsSurfaceRoots(t *testing.T) {
+func TestRunResourceUnsubscribe_ReadsItsSurfaceRoots(t *testing.T) {
 	marker := filepath.Join(t.TempDir(), "unsubscribe.out")
-	prov := config.WorkspaceProviderConfig{
+	prov := config.ResourceDef{
 		ID: "wf",
 		Unsubscribe: &lang.Action{
 			Type:    lang.ActionExec,
 			Command: "sh",
 			Args: []*lang.Value{
 				{Form: lang.FormLiteral, Literal: "-c"},
-				{Form: lang.FormLiteral, Literal: `printf '%s %s' "$1" "$2" > "$3"`},
+				{Form: lang.FormLiteral, Literal: `printf '%s %s %s %s' "$1" "$2" "$3" "$4" > "$5"`},
 				{Form: lang.FormLiteral, Literal: "unsubscribe"},
 				{Form: lang.FormFrom, From: "resource.id"},
 				{Form: lang.FormFrom, From: "session.name"},
+				{Form: lang.FormFrom, From: "session.branch"},
+				{Form: lang.FormFrom, From: "resource.inputs.token"},
 				{Form: lang.FormLiteral, Literal: marker},
 			},
 		},
 	}
-	if err := RunWorkspaceProviderUnsubscribe(prov, SubscribeHookVars{ResourceID: "res-1", SessionName: "sess-1"}); err != nil {
-		t.Fatalf("RunWorkspaceProviderUnsubscribe: %v", err)
+	if err := RunResourceUnsubscribe(prov, SubscribeHookVars{ResourceID: "res-1", SessionName: "sess-1", Branch: "branch-1", Inputs: map[string]any{"token": "secret"}}); err != nil {
+		t.Fatalf("RunResourceUnsubscribe: %v", err)
 	}
 	raw, err := os.ReadFile(marker)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if got := string(raw); got != "res-1 sess-1" {
+	if got := string(raw); got != "res-1 sess-1 branch-1 secret" {
 		t.Errorf("unsubscribe saw %q, want the resource and session", got)
 	}
 }
 
 func TestRunProviderUnsubscribe_NoUnsubscribeHookIsAnError(t *testing.T) {
-	err := RunWorkspaceProviderUnsubscribe(config.WorkspaceProviderConfig{ID: "wf"}, SubscribeHookVars{ResourceID: "r", SessionName: "s"})
+	err := RunResourceUnsubscribe(config.ResourceDef{ID: "wf"}, SubscribeHookVars{ResourceID: "r", SessionName: "s"})
 	if err == nil {
 		t.Fatal("expected an error when the provider declares no unsubscribe hook")
 	}

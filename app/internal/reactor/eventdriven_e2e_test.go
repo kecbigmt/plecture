@@ -355,6 +355,8 @@ func writeEventDrivenObserverDoc(t *testing.T, baseDir string, facts map[string]
 	script := fmt.Sprintf("%q", "cat <<'JSON'\n"+string(encoded)+"\nJSON")
 	doc := "[fixture]\nkind  = \"resource_observer\"\nmatch = '.'\n\n" +
 		"[fixture.observe]\ntype   = \"shell\"\nscript = " + script + "\n\n" +
+		fmt.Sprintf("[fixture.subscribe]\ntype = \"exec\"\nbin = %q\nargs = [\"subscribe\", \"--session\", { from = \"session.name\" }, \"--resource\", { from = \"resource.id\" }, \"--branch\", { from = \"session.branch\", default = \"\" }]\n\n", mountedID+"/"+watcherBin) +
+		fmt.Sprintf("[fixture.unsubscribe]\ntype = \"exec\"\nbin = %q\nargs = [\"unsubscribe\", \"--session\", { from = \"session.name\" }, \"--resource\", { from = \"resource.id\" }]\n\n", mountedID+"/"+watcherBin) +
 		"[fixture.state_schema]\ntype = \"object\"\n\n[fixture.state_schema.properties]\nchecks_status = {}\n"
 	writeFile(t, filepath.Join(baseDir, "resources", "fixture.toml"), doc)
 }

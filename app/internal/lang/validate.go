@@ -227,8 +227,6 @@ func (v Validation) validateProvider(def *Definition, pos Position) error {
 	}{
 		{"setup", surfaceProviderSetup},
 		{"cleanup", surfaceProviderCleanup},
-		{"subscribe", surfaceProviderSubscribe},
-		{"unsubscribe", surfaceProviderUnsubscribe},
 	} {
 		if err := v.action(def.Body, hook.field, hook.surface, pos); err != nil {
 			return err
@@ -242,6 +240,12 @@ func (v Validation) validateObserver(def *Definition, pos Position) error {
 		return err
 	}
 	if err := v.action(def.Body, "finalize", surfaceObserverFinalize, pos); err != nil {
+		return err
+	}
+	if err := v.action(def.Body, "subscribe", surfaceObserverSubscribe, pos); err != nil {
+		return err
+	}
+	if err := v.action(def.Body, "unsubscribe", surfaceObserverUnsubscribe, pos); err != nil {
 		return err
 	}
 	return v.validateObserverQuery(def, pos)

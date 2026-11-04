@@ -26,10 +26,9 @@ var kindFields = map[Kind]map[string]bool{
 		"nodes", "populations", "tick", "workspace_provider", "workspace_provider_inputs"),
 	KindWorkspaceProvider: fieldSet(
 		"cleanup", "inputs_schema", "inputs_schema_file", "match", "name",
-		"outputs_schema", "outputs_schema_file", "setup", "subscribe",
-		"unsubscribe"),
+		"outputs_schema", "outputs_schema_file", "setup"),
 	KindResourceObserver: fieldSet(
-		"finalize", "match", "observe", "query", "state_schema", "state_schema_file"),
+		"finalize", "match", "observe", "query", "state_schema", "state_schema_file", "subscribe", "unsubscribe", "inputs_schema"),
 }
 
 func fieldSet(names ...string) map[string]bool {

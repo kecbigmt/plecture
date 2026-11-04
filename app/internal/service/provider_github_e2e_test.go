@@ -11,11 +11,13 @@ import (
 	"testing"
 
 	"github.com/kecbigmt/plecture/app/internal/config"
+	"github.com/kecbigmt/plecture/app/internal/domain"
 	"github.com/kecbigmt/plecture/app/internal/effect"
 	"github.com/kecbigmt/plecture/app/internal/plugins"
 	"github.com/kecbigmt/plecture/app/internal/state"
 	"github.com/kecbigmt/plecture/app/internal/task"
 	contract "github.com/kecbigmt/plecture/contracts/state"
+	"time"
 )
 
 // shippedGithubWorkspaceProvider loads the workspace provider config that
@@ -85,6 +87,8 @@ var workspaceProviderBinaries = []struct{ moduleDir, pkg, name string }{
 	{"app", "./cmd/plect", "plect"},
 	{filepath.Join("plugins", "github", "src"), "./cmd/github-worktree", "github-worktree"},
 	{filepath.Join("plugins", "github", "src"), "./cmd/github-watcher", "github-watcher"},
+	{filepath.Join("plugins", "github", "src"), "./cmd/github-issue-pr", "github-issue-pr"},
+	{filepath.Join("plugins", "github", "src"), "./cmd/github-webhook-receiver", "github-webhook-receiver"},
 	{filepath.Join("plugins", "github", "src"), "./cmd/gh-app-token", "gh-app-token"},
 }
 
@@ -123,6 +127,8 @@ func buildWorkspaceProviderBinaries(t *testing.T, root string) []plugins.Mounted
 		Manifest: plugins.Manifest{Executables: []plugins.Executable{
 			{Name: "github-worktree", Path: "github-worktree"},
 			{Name: "github-watcher", Path: "github-watcher"},
+			{Name: "github-issue-pr", Path: "github-issue-pr"},
+			{Name: "github-webhook-receiver", Path: "github-webhook-receiver"},
 			{Name: "gh-app-token", Path: "gh-app-token"},
 		}},
 	}}
@@ -316,6 +322,7 @@ func TestE2E_GithubWorkspaceProviderWiresAndDropsEventDelivery(t *testing.T) {
 		t.Fatal(err)
 	}
 	cfg := &config.Config{PluginDirs: []string{mounted[0].Dir}, Plugins: mounted}
+	copyShippedGithubResources(t, mounted[0].Dir)
 
 	home := t.TempDir()
 	t.Setenv("HOME", home)
@@ -336,7 +343,7 @@ func TestE2E_GithubWorkspaceProviderWiresAndDropsEventDelivery(t *testing.T) {
 		t.Fatalf("subscriptions after subscribeIfWired = %v, want exactly one", subs)
 	}
 
-	unsubscribed, err := unsubscribeIfWired(cfg, session, resource)
+	unsubscribed, err := unsubscribeIfWired(cfg, session, resource, "")
 	if err != nil {
 		t.Fatalf("unsubscribeIfWired: %v", err)
 	}
@@ -369,6 +376,7 @@ func TestE2E_GithubWorkspaceProviderSubscribeForwardsBranch(t *testing.T) {
 		t.Fatal(err)
 	}
 	cfg := &config.Config{PluginDirs: []string{mounted[0].Dir}, Plugins: mounted}
+	copyShippedGithubResources(t, mounted[0].Dir)
 
 	home := t.TempDir()
 	t.Setenv("HOME", home)
@@ -398,6 +406,61 @@ func TestE2E_GithubWorkspaceProviderSubscribeForwardsBranch(t *testing.T) {
 	}
 }
 
+func TestIntegration_SubscribeCallsGithubWatcherForPullRequest(t *testing.T) {
+	root := repoRoot(t)
+	mounted := buildWorkspaceProviderBinaries(t, root)
+	copyShippedGithubResources(t, mounted[0].Dir)
+	cfg := &config.Config{PluginDirs: []string{mounted[0].Dir}, Plugins: mounted}
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	t.Setenv("XDG_DATA_HOME", "")
+	store := subscribeStore(t, "testowner/testrepo-57")
+	const resource = "https://github.com/testowner/testrepo/pull/57"
+	if err := Subscribe(cfg, store, SubscribeParams{ResourceID: resource, SessionName: "testowner/testrepo-57"}); err != nil {
+		t.Fatal(err)
+	}
+	if subs := watcherSubscriptions(t, home); len(subs) != 1 {
+		t.Fatalf("subscriptions after Subscribe = %v, want one", subs)
+	}
+}
+
+func TestIntegration_RetryCallsGithubWatcherAfterHookFailure(t *testing.T) {
+	root := repoRoot(t)
+	mounted := buildWorkspaceProviderBinaries(t, root)
+	copyShippedGithubResources(t, mounted[0].Dir)
+	cfg := &config.Config{PluginDirs: []string{mounted[0].Dir}, Plugins: mounted}
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	t.Setenv("XDG_DATA_HOME", "")
+	const resource = "https://github.com/testowner/testrepo/issues/58"
+	const name = "testowner/testrepo-58"
+	store := state.NewStore(t.TempDir())
+	now := time.Now()
+	if err := store.Put(&domain.Session{Name: name, ResourceID: resource, CreatedAt: now, UpdatedAt: now}); err != nil {
+		t.Fatal(err)
+	}
+	watcher := filepath.Join(mounted[0].Dir, "github-watcher")
+	if err := os.Rename(watcher, watcher+".held"); err != nil {
+		t.Fatal(err)
+	}
+	wired, msg := wireDeliveryOnSetup(cfg, store, name, resource, "issue/58")
+	if wired || msg == "" {
+		t.Fatalf("first attempt wired=%v error=%q", wired, msg)
+	}
+	if err := os.Rename(watcher+".held", watcher); err != nil {
+		t.Fatal(err)
+	}
+	if errs := flushPendingDelivery(cfg, store, name); len(errs) != 0 {
+		t.Fatalf("retry errors = %v", errs)
+	}
+	if subs := watcherSubscriptions(t, home); len(subs) != 1 {
+		t.Fatalf("subscriptions after retry = %v, want one", subs)
+	}
+	if n := subscriptionRetryCount(t, store, name, retrySubscribe, resource, false); n != 0 {
+		t.Fatalf("pending retries = %d", n)
+	}
+}
+
 // TestIntegration_CreateSubscribesToGithubWatcher exercises Create itself
 // against the real shipped github-watcher hooks, not subscribeIfWired
 // directly as above.
@@ -411,6 +474,7 @@ func TestIntegration_CreateSubscribesToGithubWatcher(t *testing.T) {
 		[]taskFixture{{id: "noop", scope: "session", setup: `echo '{}'`}},
 		[]nodeFixture{{id: "noop"}},
 	)
+	copyShippedGithubResources(t, cfg.PluginDirs[0])
 
 	url := "https://github.com/testowner/testrepo/issues/55"
 	if _, err := Create(cfg, store, CreateParams{URL: url}); err != nil {
@@ -435,6 +499,7 @@ func TestIntegration_DestroyUnsubscribesFromGithubWatcher(t *testing.T) {
 		[]taskFixture{{id: "noop", scope: "session", setup: `echo '{}'`}},
 		[]nodeFixture{{id: "noop"}},
 	)
+	copyShippedGithubResources(t, cfg.PluginDirs[0])
 
 	url := "https://github.com/testowner/testrepo/issues/56"
 	sessionName := "testowner/testrepo-56+default"

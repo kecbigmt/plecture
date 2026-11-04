@@ -35,14 +35,13 @@ func TestDeliveryLock_ConcurrentSetupWaitsOutACleanupsUnsubscribe(t *testing.T) 
 	)
 	body := `
 [fixture]
-kind  = "workspace_provider"
+kind  = "resource_observer"
 match = '` + fixtureResourceMatch + `'
-name  = { expr = "match.owner + '/' + match.repo + '-' + match.number" }
 
-[fixture.setup]
+[fixture.observe]
 type    = "exec"
 command = "printf"
-args    = ['{"workdir":"/tmp/x"}']
+args    = ['{}']
 
 [fixture.subscribe]
 type    = "exec"
@@ -54,10 +53,10 @@ type    = "exec"
 command = "sh"
 args    = ["-c", 'touch "$1"; sleep 0.3; printf unsubscribed > "$2"', "provider", "` + started + `", "` + state + `"]
 `
-	if err := os.MkdirAll(filepath.Join(cfg.BaseDir, "workspaces"), 0o755); err != nil {
+	if err := os.MkdirAll(filepath.Join(cfg.BaseDir, "resources"), 0o755); err != nil {
 		t.Fatal(err)
 	}
-	if err := os.WriteFile(filepath.Join(cfg.BaseDir, "workspaces", "fixture.toml"), []byte(body), 0o644); err != nil {
+	if err := os.WriteFile(filepath.Join(cfg.BaseDir, "resources", "fixture.toml"), []byte(body), 0o644); err != nil {
 		t.Fatal(err)
 	}
 	store := testStore(t)
@@ -121,24 +120,23 @@ func TestTaskSetup_DeliveryLockAcquisitionFailureQueuesSubscribeRetry(t *testing
 	)
 	body := `
 [fixture]
-kind  = "workspace_provider"
+kind  = "resource_observer"
 match = '` + fixtureResourceMatch + `'
-name  = { expr = "match.owner + '/' + match.repo + '-' + match.number" }
 
-[fixture.setup]
+[fixture.observe]
 type    = "exec"
 command = "printf"
-args    = ['{"workdir":"/tmp/x"}']
+args    = ['{}']
 
 [fixture.subscribe]
 type    = "exec"
 command = "sh"
 args    = ["-c", 'printf done > "$1"', "provider", "` + rec + `"]
 `
-	if err := os.MkdirAll(filepath.Join(cfg.BaseDir, "workspaces"), 0o755); err != nil {
+	if err := os.MkdirAll(filepath.Join(cfg.BaseDir, "resources"), 0o755); err != nil {
 		t.Fatal(err)
 	}
-	if err := os.WriteFile(filepath.Join(cfg.BaseDir, "workspaces", "fixture.toml"), []byte(body), 0o644); err != nil {
+	if err := os.WriteFile(filepath.Join(cfg.BaseDir, "resources", "fixture.toml"), []byte(body), 0o644); err != nil {
 		t.Fatal(err)
 	}
 	store := testStore(t)
@@ -181,14 +179,13 @@ func TestTaskCleanup_DeliveryLockAcquisitionFailureQueuesUnsubscribeRetry(t *tes
 	)
 	body := `
 [fixture]
-kind  = "workspace_provider"
+kind  = "resource_observer"
 match = '` + fixtureResourceMatch + `'
-name  = { expr = "match.owner + '/' + match.repo + '-' + match.number" }
 
-[fixture.setup]
+[fixture.observe]
 type    = "exec"
 command = "printf"
-args    = ['{"workdir":"/tmp/x"}']
+args    = ['{}']
 
 [fixture.subscribe]
 type    = "exec"
@@ -198,10 +195,10 @@ command = "true"
 type    = "exec"
 command = "true"
 `
-	if err := os.MkdirAll(filepath.Join(cfg.BaseDir, "workspaces"), 0o755); err != nil {
+	if err := os.MkdirAll(filepath.Join(cfg.BaseDir, "resources"), 0o755); err != nil {
 		t.Fatal(err)
 	}
-	if err := os.WriteFile(filepath.Join(cfg.BaseDir, "workspaces", "fixture.toml"), []byte(body), 0o644); err != nil {
+	if err := os.WriteFile(filepath.Join(cfg.BaseDir, "resources", "fixture.toml"), []byte(body), 0o644); err != nil {
 		t.Fatal(err)
 	}
 	store := testStore(t)

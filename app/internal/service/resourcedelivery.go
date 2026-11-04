@@ -50,20 +50,13 @@ func wireDeliveryOnSetup(cfg *config.Config, store *state.Store, sessionName, re
 // the runtime counterpart of `plect subscribe` a dynamic task instance's
 // explicit `--resource` triggers automatically (binding implies delivery).
 //
-// Unlike an explicit `plect subscribe` call, a bound resource is not
-// guaranteed to be one any workspace provider governs: no matching provider,
-// or a matched provider with no subscribe hook, returns (false, nil) rather
-// than an error, since neither means the caller did anything wrong. An
-// ambiguous match (the resource fits more than one provider) is a real
-// configuration defect and is still reported as an error — TaskSetup treats
-// it, like a hook execution failure, as non-fatal (see its own comment),
-// since the instance it would otherwise leave orphaned has already been
-// fully instantiated by the time this runs.
+// A bound resource can have no delivery hook. Ambiguous declarations still
+// report an error so the caller can queue a retry after configuration repair.
 func subscribeIfWired(cfg *config.Config, sessionName, resourceID, branch string) (bool, error) {
 	if strings.TrimSpace(resourceID) == "" {
 		return false, nil
 	}
-	matched, err := matchWorkspaceProviders(cfg, resourceID)
+	matched, err := matchResourceDefs(cfg, resourceID)
 	if err != nil {
 		return false, err
 	}
@@ -71,15 +64,18 @@ func subscribeIfWired(cfg *config.Config, sessionName, resourceID, branch string
 	case 0:
 		return false, nil
 	case 1:
-		prov := matched[0]
-		if prov.Subscribe == nil {
+		def := matched[0]
+		if def.Subscribe == nil {
 			return false, nil
 		}
-		if hookErr := effect.RunWorkspaceProviderSubscribe(prov, effect.SubscribeHookVars{
+		if validateSubscriptionInputs(def, nil) != nil {
+			return false, nil
+		}
+		if hookErr := effect.RunResourceSubscribe(def, effect.SubscribeHookVars{
 			ResourceID:  resourceID,
 			SessionName: sessionName,
 			Plugins:     cfg.Plugins,
-			SourcePath:  prov.SourcePath,
+			SourcePath:  def.SourcePath,
 			Branch:      branch,
 		}); hookErr != nil {
 			return false, &Error{Code: ErrExecutionFailed, Message: hookErr.Error()}
@@ -90,37 +86,41 @@ func subscribeIfWired(cfg *config.Config, sessionName, resourceID, branch string
 		for i, p := range matched {
 			names[i] = p.ID
 		}
-		return false, &Error{Code: ErrInvalidInput, Message: fmt.Sprintf("resource %q matches multiple workspace providers (%s)", resourceID, strings.Join(names, ", "))}
+		return false, &Error{Code: ErrInvalidInput, Message: fmt.Sprintf("resource %q matches multiple resource declarations (%s)", resourceID, strings.Join(names, ", "))}
 	}
 }
 
 // unsubscribeIfWired drops resourceID's event-delivery registration for
 // sessionName — subscribeIfWired's counterpart, which TaskCleanup runs once
 // the resource is no longer needed. The bool return distinguishes "ran the
-// unsubscribe hook" from "nothing to do" (no match, an unhooked provider, or
+// unsubscribe hook" from "nothing to do" (no match, an unhooked resource, or
 // an ambiguous match, which subscribeIfWired would itself have refused to
 // wire): both report (false, nil), so a caller cannot mistake silence for
 // having actually dropped a registration.
-func unsubscribeIfWired(cfg *config.Config, sessionName, resourceID string) (bool, error) {
+func unsubscribeIfWired(cfg *config.Config, sessionName, resourceID, branch string) (bool, error) {
 	if strings.TrimSpace(resourceID) == "" {
 		return false, nil
 	}
-	matched, err := matchWorkspaceProviders(cfg, resourceID)
+	matched, err := matchResourceDefs(cfg, resourceID)
 	if err != nil {
 		return false, err
 	}
 	if len(matched) != 1 {
 		return false, nil
 	}
-	prov := matched[0]
-	if prov.Unsubscribe == nil {
+	def := matched[0]
+	if def.Unsubscribe == nil {
 		return false, nil
 	}
-	if hookErr := effect.RunWorkspaceProviderUnsubscribe(prov, effect.SubscribeHookVars{
+	if validateSubscriptionInputs(def, nil) != nil {
+		return false, nil
+	}
+	if hookErr := effect.RunResourceUnsubscribe(def, effect.SubscribeHookVars{
 		ResourceID:  resourceID,
 		SessionName: sessionName,
 		Plugins:     cfg.Plugins,
-		SourcePath:  prov.SourcePath,
+		SourcePath:  def.SourcePath,
+		Branch:      branch,
 	}); hookErr != nil {
 		return false, &Error{Code: ErrExecutionFailed, Message: hookErr.Error()}
 	}
@@ -140,7 +140,7 @@ func unsubscribeIfWired(cfg *config.Config, sessionName, resourceID string) (boo
 // as a failure inside it. Never returns an error: both callers treat a
 // wiring failure as non-fatal to the teardown that already succeeded,
 // reporting it via the returned message instead.
-func unwireDeliveryOnTeardown(cfg *config.Config, store *state.Store, sessionName, resource, sessionID string) (bool, string) {
+func unwireDeliveryOnTeardown(cfg *config.Config, store *state.Store, sessionName, resource, sessionID, branch string) (bool, string) {
 	if strings.TrimSpace(resource) == "" {
 		return false, ""
 	}
@@ -153,7 +153,7 @@ func unwireDeliveryOnTeardown(cfg *config.Config, store *state.Store, sessionNam
 			errMsg = fmt.Sprintf("could not verify whether %s is still needed: %v", resource, freshErr)
 		case shouldUnsubscribe(fresh, resource):
 			var unsubErr error
-			unsubscribed, unsubErr = unsubscribeIfWired(cfg, sessionName, resource)
+			unsubscribed, unsubErr = unsubscribeIfWired(cfg, sessionName, resource, branch)
 			if unsubErr != nil {
 				errMsg = unsubErr.Error()
 			}
