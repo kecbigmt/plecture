@@ -359,6 +359,10 @@ func (h *effectHarness) runScenario(t *testing.T, b *strings.Builder, def config
 	} else {
 		t.Setenv("PLECT_EFFECT_FAIL_OUTPUT", "")
 	}
+	// Every scenario starts from the same zone: t.Setenv restores only when
+	// the shared plugin subtest ends, so a HookTZ set by one scenario would
+	// otherwise carry into the next one's setup.
+	t.Setenv("TZ", "UTC")
 	if scenario.EmptyStartTime {
 		t.Setenv("PLECT_EFFECT_EMPTY_LSTART", "1")
 	} else {

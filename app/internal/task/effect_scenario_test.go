@@ -88,7 +88,8 @@ type effectScenario struct {
 	EmptyStartTime bool `toml:"empty_start_time"`
 	// HookTZ is the time zone the process environment holds while every hook
 	// after setup runs, so a script that reads a rendered timestamp can be
-	// shown not to depend on the zone the instance was set up under.
+	// shown not to depend on the zone the instance was set up under, which
+	// is always UTC.
 	HookTZ string `toml:"hook_tz"`
 }
 
