@@ -12,6 +12,7 @@ import (
 
 	"github.com/kecbigmt/plecture/app/internal/config"
 	"github.com/kecbigmt/plecture/app/internal/domain"
+	"github.com/kecbigmt/plecture/app/internal/procid"
 	"github.com/kecbigmt/plecture/app/internal/state"
 	"github.com/kecbigmt/plecture/app/internal/task"
 	"github.com/kecbigmt/plecture/contracts/event"
@@ -90,7 +91,8 @@ func runAliveForHealth(probe task.Probe, vars task.SessionVars, timeout time.Dur
 		return nil, false
 	}
 	var exitErr *exec.ExitError
-	return aliveErr, errors.As(aliveErr, &exitErr)
+	observed := errors.As(aliveErr, &exitErr) || errors.Is(aliveErr, procid.ErrNotRunning) || errors.Is(aliveErr, procid.ErrReused)
+	return aliveErr, observed
 }
 
 // State projects the report to the four-value display fact `plect status`
