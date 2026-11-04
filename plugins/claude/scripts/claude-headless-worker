@@ -133,7 +133,17 @@ run_claude() {
 }
 
 while true; do
+    resumed_files=()
+    other_files=()
     for f in "$queue_dir"/*.json; do
+        [ -e "$f" ] || continue
+        if [ "$(jq -r '.type' "$f" 2>/dev/null || true)" = "plect.session.resumed" ]; then
+            resumed_files+=("$f")
+        else
+            other_files+=("$f")
+        fi
+    done
+    for f in "${resumed_files[@]}" "${other_files[@]}"; do
         [ -e "$f" ] || continue
 
         event_type="$(jq -r '.type' "$f" 2>/dev/null || true)"

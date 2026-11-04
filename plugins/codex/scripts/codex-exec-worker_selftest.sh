@@ -48,6 +48,7 @@ mkdir -p "$bin_dir"
 # thread_id bookkeeping without needing a real codex binary.
 cat > "$bin_dir/codex" <<'EOF'
 #!/usr/bin/env bash
+printf '%s\n' "$*" >> "$STUB_ARGV"
 out=""
 resume=false
 for i in "$@"; do
@@ -81,6 +82,8 @@ export XDG_STATE_HOME="$tmp/xdg-state"
 # to carry — fixed and exported before the worker forks, then each turn
 # below just overwrites the file at that path.
 export STUB_REPLY_FILE="$tmp/next-reply.txt"
+export STUB_ARGV="$tmp/argv"
+: > "$STUB_ARGV"
 : > "$PLECT_CALLS"
 "$activity" reset "$PLECT_SESSION_NAME"
 
@@ -93,7 +96,7 @@ worker_pid=$!
 
 wait_for_drain() {
   local file="$1"
-  for _ in $(seq 1 100); do
+  for _ in $(seq 1 200); do
     [ -e "$file" ] || return 0
     sleep 0.1
   done
@@ -153,6 +156,30 @@ case "$got" in
     fail=1 ;;
 esac
 
+kill "$worker_pid" 2>/dev/null || true
+wait "$worker_pid" 2>/dev/null || true
+worker_pid=""
+
+: > "$STUB_ARGV"
+priority_queue="$tmp/priority-queue"
+priority_state="$tmp/priority-state"
+mkdir -p "$priority_queue"
+echo '{"type":"user.emit","text":"leftover turn"}' > "$priority_queue/1-leftover.json"
+echo '{"type":"plect.session.resumed","text":"resume notice"}' > "$priority_queue/2-resumed.json"
+echo '{"type":"user.emit","text":"later turn"}' > "$priority_queue/3-later.json"
+"$worker" "$priority_queue" "$priority_state" &
+worker_pid=$!
+wait_for_drain "$priority_queue/3-later.json" || { echo "FAIL queued turns were never drained" >&2; fail=1; }
+mapfile -t ordered_turns < "$STUB_ARGV"
+if [ "${#ordered_turns[@]}" -eq 3 ] &&
+   [[ "${ordered_turns[0]}" == *"-- resume notice"* ]] &&
+   [[ "${ordered_turns[1]}" == *"-- leftover turn"* ]] &&
+   [[ "${ordered_turns[2]}" == *"-- later turn"* ]]; then
+  echo "ok   a resume notice precedes an interrupted turn; other turns keep queue order"
+else
+  printf 'FAIL queued turn order: %s\n' "${ordered_turns[*]}" >&2
+  fail=1
+fi
 kill "$worker_pid" 2>/dev/null || true
 wait "$worker_pid" 2>/dev/null || true
 worker_pid=""

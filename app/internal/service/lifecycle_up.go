@@ -11,6 +11,7 @@ import (
 	"github.com/kecbigmt/plecture/app/internal/domain"
 	"github.com/kecbigmt/plecture/app/internal/effect"
 	"github.com/kecbigmt/plecture/app/internal/eventlog"
+	"github.com/kecbigmt/plecture/app/internal/lang"
 	"github.com/kecbigmt/plecture/app/internal/state"
 	"github.com/kecbigmt/plecture/app/internal/task"
 	"github.com/kecbigmt/plecture/contracts/event"
@@ -240,7 +241,7 @@ func upUnlocked(cfg *config.Config, store *state.Store, params UpParams) (*UpRes
 	if wfErr != nil {
 		return nil, &Error{Code: ErrExecutionFailed, Message: wfErr.Error()}
 	}
-	previousRun := snapshotRunNodes(session)
+	agentNodeID, previousAgent := snapshotAgentRuntime(plan, wf, session)
 	if params.ForceRecreate && forceRecreateExisting {
 		var recreateErr error
 		plan, recreateErr = recreateSessionRuntime(cfg, store, sessionName, session, wf, plan, params.Observer)
@@ -278,12 +279,14 @@ func upUnlocked(cfg *config.Config, store *state.Store, params UpParams) (*UpRes
 	if err := setSessionStatus(store, sessionName, contract.SessionStatusUp); err != nil {
 		return nil, &Error{Code: ErrExecutionFailed, Message: fmt.Sprintf("failed to record session status: %v", err)}
 	}
-	if priorID, recreated := recreatedRun(previousRun, session); recreated && wf.Health.ResumeNotice != "" {
+	if priorID, recreated := recreatedAgentRuntime(agentNodeID, previousAgent, session); recreated && wf.Health.ResumeNotice != "" {
 		trigger := "up"
 		if params.repair {
 			trigger = "repair"
 		} else if params.ForceRecreate {
 			trigger = "recreate"
+		} else if wasSleeping {
+			trigger = "wake"
 		}
 		meta := map[string]string{"trigger": trigger}
 		if priorID != "" {
@@ -334,35 +337,62 @@ func acceptSleepingUp(cfg *config.Config, store *state.Store, name string) (*UpR
 	return &UpResult{SessionName: name, Result: "sleeping", QueuePosition: position}, nil
 }
 
-func snapshotRunNodes(session *domain.Session) map[string]*contract.TaskState {
-	previous := make(map[string]*contract.TaskState)
-	for id, node := range session.Nodes {
-		if node != nil && node.Scope == contract.TaskScopeRun && node.Outputs != nil {
-			previous[id] = node
+func snapshotAgentRuntime(plan *task.Plan, wf config.WorkflowFile, session *domain.Session) (string, *contract.TaskState) {
+	channelTargets := map[string]bool{}
+	for _, ch := range wf.Event.Channel {
+		for _, include := range ch.Include {
+			if !event.MatchType(include, event.TypeInstruction) {
+				continue
+			}
+			for _, id := range lang.NodeReads(ch.Inputs) {
+				channelTargets[id] = true
+			}
+			break
 		}
 	}
-	return previous
+	var conversationNode, channelNode string
+	conversationCount, channelCount := 0, 0
+	for _, node := range plan.Run {
+		old := session.Nodes[node.NodeID]
+		if old == nil || old.Scope != contract.TaskScopeRun || old.Outputs == nil {
+			continue
+		}
+		if id, _ := old.Outputs["session_id"].(string); id != "" {
+			conversationNode = node.NodeID
+			conversationCount++
+		}
+		if channelTargets[node.NodeID] && old.Outputs["pid"] != nil {
+			channelNode = node.NodeID
+			channelCount++
+		}
+	}
+	var agentNodeID string
+	// A mirrored instruction channel can reference a sidecar, so the agent's conversation ID wins when both exist.
+	switch {
+	case conversationCount == 1:
+		agentNodeID = conversationNode
+	case channelCount == 1:
+		agentNodeID = channelNode
+	case len(plan.Run) == 1:
+		agentNodeID = plan.Run[0].NodeID
+	}
+	old := session.Nodes[agentNodeID]
+	if old == nil || old.Scope != contract.TaskScopeRun || old.Outputs == nil {
+		return "", nil
+	}
+	return agentNodeID, old
 }
 
-func recreatedRun(previous map[string]*contract.TaskState, session *domain.Session) (string, bool) {
-	ids := make([]string, 0, len(previous))
-	for id := range previous {
-		ids = append(ids, id)
+func recreatedAgentRuntime(nodeID string, old *contract.TaskState, session *domain.Session) (string, bool) {
+	if old == nil {
+		return "", false
 	}
-	sort.Strings(ids)
-	recreated := false
-	priorID := ""
-	for _, id := range ids {
-		old := previous[id]
-		current := session.Nodes[id]
-		if current != nil && current.Status == contract.TaskStatusProduced && !current.SetupAt.Equal(old.SetupAt) {
-			recreated = true
-		}
-		if priorID == "" {
-			priorID, _ = old.Outputs["session_id"].(string)
-		}
+	current := session.Nodes[nodeID]
+	if current == nil || current.Status != contract.TaskStatusProduced || current.SetupAt.Equal(old.SetupAt) {
+		return "", false
 	}
-	return priorID, recreated
+	priorID, _ := old.Outputs["session_id"].(string)
+	return priorID, true
 }
 
 func cleanupStaleWorkflowNodes(cfg *config.Config, store *state.Store, sessionName string, session *domain.Session, plan *task.Plan, observer task.Observer) error {

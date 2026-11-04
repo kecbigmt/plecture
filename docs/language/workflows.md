@@ -271,12 +271,13 @@ auto_repair_attempts = 2
 resume_notice = "Check the worktree and the review thread before continuing."
 ```
 
-After a runtime is recreated from a previous run, core publishes one inbound
-`plect.session.resumed` event to the session's log. Its body is the effective
-notice; `trigger` metadata is `repair`, `up`, or `recreate`, and
+After the agent runtime is recreated from a previous run, core publishes one
+inbound `plect.session.resumed` event to the session's log. Its body is the
+effective notice; `trigger` metadata is `repair`, `up`, `wake`, or `recreate`, and
 `prev_session_id` identifies the previous runtime when available. A first
 launch and an `up` that reuses a live runtime publish no notice. The event is
 delivered through any channel whose `include` matches `plect.instruction`.
+The [event reference](events.md#session-resume-notices) defines each trigger.
 
 The health cycle may run plain `up` only while
 the session's recorded status is `up`, after a non-zero `alive` exit (a
