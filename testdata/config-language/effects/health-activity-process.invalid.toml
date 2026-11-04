@@ -1,0 +1,16 @@
+# plect-fixture: result=invalid layer=structural diagnostic=PLECTURE-CFG-FIELD-REQUIRED entry=definitions
+# reason: process is legal only under [health.alive]; the activity probe is an ordinary exec or shell action.
+
+[runtime]
+kind = "effect"
+
+[runtime.setup]
+type = "exec"
+bin  = "agent-runtime"
+args = ["launch"]
+
+[runtime.health.alive]
+process = "self.outputs.pid"
+
+[runtime.health.activity]
+process = "self.outputs.pid"

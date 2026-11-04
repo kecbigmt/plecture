@@ -25,7 +25,7 @@ through `PATH` is intercepted this way.
 | Field | Meaning |
 |---|---|
 | `scope` | `run` or `session`, defaulting to `run`. |
-| `setup`, `cleanup` | The lifecycle actions. See [`actions.md`](actions.md). |
+| `setup`, `cleanup` | The lifecycle actions. See [`actions.md`](actions.md). A cleanup may bind `self.process.identity` and verify it before each signal; see [`actions.md`](actions.md#process). |
 | `[cleanup.inputs_schema]` | Optional JSON Schema for plugin-owned destruction inputs. |
 | `inputs_schema`, `outputs_schema` | The effect's contracts. |
 | `[health]` | The `alive` and `activity` probes. |
@@ -174,7 +174,9 @@ checks_status = { type = "string" }
 probe and an `activity` probe, each an action. A setup-bearing effect declares
 `[health.alive]`: an executable probe, as below, or, when its produced record
 is deliberately never re-observed, `type = "noop"` (see
-[`actions.md`](actions.md#noop)). The rule applies independently to every
+[`actions.md`](actions.md#noop)); or, for an effect whose setup starts a
+process, `process = "self.outputs.<key>"`, which core checks against the
+identity it recorded for that process (see [`actions.md`](actions.md#process)). The rule applies independently to every
 layer of a nesting chain — a `noop` layer passes the liveness AND without
 suppressing an inner layer's own executable probe.
 

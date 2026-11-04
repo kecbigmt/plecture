@@ -141,6 +141,11 @@ type TaskState struct {
 	Resource string         `json:"resource,omitempty"` // bound --resource at instantiation
 	Name     string         `json:"name,omitempty"`     // --name instance identity (key == name when set)
 	Layers   []LayerState   `json:"layers,omitempty"`   // per-layer record for a nested task; empty for a plain one
+	// Process is the identity core recorded for the process named by this
+	// instance's `process` alive probe, captured when setup produced it. It is
+	// core's own record, not an output: nil for an instance whose effect
+	// declares no such probe and for one recorded before the probe existed.
+	Process *ProcessIdentity `json:"process,omitempty"`
 	// DependsOn is the node ids this attempt's setup resolved as
 	// prerequisites, snapshotted so release ordering survives a later
 	// config change; see docs/design/sqlite-persistence.md's "Node
@@ -178,6 +183,19 @@ type TaskState struct {
 	CleanedAt     time.Time            `json:"cleaned_at,omitzero"`
 	FinalizedAt   time.Time            `json:"finalized_at,omitzero"` // set by `plect task finalize`; instance still awaits `plect task cleanup`
 	Error         string               `json:"error,omitempty"`
+}
+
+// ProcessIdentity names one operating-system process across pid reuse: the pid
+// alone can be recycled by an unrelated process, so it is recorded with the
+// start time the platform reported when setup produced it. Start is numeric
+// and platform-defined (Linux: clock ticks since boot; darwin: microseconds
+// since the Unix epoch), so it is only comparable with a value captured on the
+// same platform. Boot is the boot identifier on a platform whose Start is
+// relative to boot, and empty elsewhere.
+type ProcessIdentity struct {
+	PID   int    `json:"pid"`
+	Start int64  `json:"start"`
+	Boot  string `json:"boot,omitempty"`
 }
 
 // ResourceObservation is one reading of a task instance's resource: what the

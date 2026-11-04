@@ -3,6 +3,8 @@ package persistence
 import (
 	"database/sql"
 	"encoding/json"
+
+	contract "github.com/kecbigmt/plecture/contracts/state"
 )
 
 // marshalJSONMap encodes m for a nullable _json column: a nil/empty map is
@@ -54,4 +56,22 @@ func unmarshalJSONValue(s sql.NullString, out any) error {
 // legitimate 0, not an absent fact worth a NULL.
 func nullInt(v int) sql.NullInt64 {
 	return sql.NullInt64{Int64: int64(v), Valid: true}
+}
+
+// processColumn stores a process identity as one JSON document, and a nil
+// identity as NULL rather than the JSON null a typed-nil pointer would
+// marshal to.
+func processColumn(p *contract.ProcessIdentity) (sql.NullString, error) {
+	if p == nil {
+		return sql.NullString{}, nil
+	}
+	return marshalJSONValue(p)
+}
+
+func processFromColumn(s sql.NullString) (*contract.ProcessIdentity, error) {
+	var p *contract.ProcessIdentity
+	if err := unmarshalJSONValue(s, &p); err != nil {
+		return nil, err
+	}
+	return p, nil
 }

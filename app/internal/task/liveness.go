@@ -25,6 +25,7 @@ func verifyLiveness(goCtx context.Context, r Resolved, session SessionVars, exis
 			Inputs:     existing.Inputs,
 			SourcePath: r.SourcePath,
 			From:       r.From,
+			Process:    existing.Process,
 		}, session)
 	}
 	if len(existing.Layers) != len(r.Layers) {

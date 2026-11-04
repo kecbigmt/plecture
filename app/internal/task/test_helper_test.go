@@ -21,6 +21,8 @@ type taskStub struct {
 	setup   string
 	cleanup string
 	alive   string
+	// aliveAction overrides alive with an action the test states itself.
+	aliveAction *lang.Action
 	// setupAction overrides setup with an action the test states itself.
 	setupAction *lang.Action
 	// attach/capture/sendText/sendKeys build a `[terminal]` table when any is
@@ -76,12 +78,16 @@ func tryBuildPlan(defs []taskStub, nodes []nodeStub) (*Plan, error) {
 		if setup == nil {
 			setup = shellStub(s.setup)
 		}
+		health := healthStub(s.alive)
+		if s.aliveAction != nil {
+			health = &config.HealthConfig{Alive: s.aliveAction}
+		}
 		defMap[s.id] = config.TaskDefinition{
 			ID:                s.id,
 			Scope:             s.scope,
 			Setup:             setup,
 			Cleanup:           shellStub(s.cleanup),
-			Health:            healthStub(s.alive),
+			Health:            health,
 			Terminal:          terminal,
 			OutputsSchema:     s.outputsSchema,
 			OutputsSchemaFile: s.outputsSchemaFile,

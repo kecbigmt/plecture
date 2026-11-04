@@ -117,6 +117,7 @@ CREATE TABLE node_executions (
     failed_at TEXT,
     cleaned_at TEXT,
     finalized_at TEXT,
+    process_json TEXT CHECK (process_json IS NULL OR json_valid(process_json)),
     FOREIGN KEY (session_id, node_id) REFERENCES node_instances(session_id, node_id) ON DELETE CASCADE
 );
 
@@ -173,7 +174,8 @@ CREATE TABLE task_instances (
     setup_at TEXT,
     failed_at TEXT,
     cleaned_at TEXT,
-    finalized_at TEXT
+    finalized_at TEXT,
+    process_json TEXT CHECK (process_json IS NULL OR json_valid(process_json))
 );
 
 CREATE UNIQUE INDEX task_instances_session_id_instance_name ON task_instances(session_id, instance_name);

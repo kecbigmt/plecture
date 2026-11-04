@@ -283,26 +283,13 @@ if [ -z "$PID" ]; then
   exit 1
 fi
 
-# The start time is what tells this process apart from an unrelated one that
-# reuses its pid after the container, and with it the pid namespace, is
-# replaced. LC_ALL=C TZ=UTC pins how every start time is rendered, which
-# otherwise follows the caller's locale and zone, so a setup and a later
-# probe run under different environments still compare equal.
-PID_STARTED=$(LC_ALL=C TZ=UTC ps -o lstart= -p "$PID" 2>/dev/null | sed 's/^ *//; s/ *$//')
-if [ -z "$PID_STARTED" ]; then
-  echo "could not read the start time of claude pid $PID" >&2
-  terminate_claude_children
-  exit 1
-fi
-
 OUTPUT=$(jq -nc \
   --argjson pid "$PID" \
-  --arg pid_started "$PID_STARTED" \
   --arg sid "$SID" \
   --arg sock "$SOCKET" \
   --arg mcp "$MCP" \
   --arg hooks "$HOOKS" \
-  '{pid:$pid, pid_started:$pid_started, session_id:$sid, socket_path:$sock, mcp_config:$mcp, hooks_settings:$hooks}') || {
+  '{pid:$pid, session_id:$sid, socket_path:$sock, mcp_config:$mcp, hooks_settings:$hooks}') || {
     terminate_claude_children
     exit 1
   }
@@ -383,20 +370,8 @@ session_id      = { from = "self.outputs.session_id", optional = true }
 activity_bin    = { bin = "claude-agent-activity" }
 terminal_pid    = { terminal = "pid" }
 
-# pid_started is optional because a record written before the field existed
-# has none; such a record is judged by the pid alone, as it always was.
 [runtime.health.alive]
-type   = "shell"
-script = '''
-kill -0 "$pid" 2>/dev/null || exit 1
-if [ -n "${pid_started-}" ]; then
-  [ "$(LC_ALL=C TZ=UTC ps -o lstart= -p "$pid" 2>/dev/null | sed 's/^ *//; s/ *$//')" = "$pid_started" ] || exit 1
-fi
-'''
-
-[runtime.health.alive.bind]
-pid         = { from = "self.outputs.pid", optional = true }
-pid_started = { from = "self.outputs.pid_started", optional = true }
+process = "self.outputs.pid"
 
 # activity: the turn-boundary hook this effect registers at setup is its
 # activity probe — the hook records each boundary and the probe reads the
@@ -450,7 +425,6 @@ required = ["pid", "session_id", "socket_path", "mcp_config"]
 
 [runtime.outputs_schema.properties]
 pid            = { type = "integer" }
-pid_started    = { type = "string" }
 session_id     = { type = "string" }
 socket_path    = { type = "string" }
 mcp_config     = { type = "string" }

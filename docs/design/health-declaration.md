@@ -13,7 +13,9 @@ An effect declares how its health is determined in one `[health]` table
 holding two probes:
 
 - **`alive`** — the liveness probe. Exit-code semantics: zero means the
-  execution surface this effect owns is present.
+  execution surface this effect owns is present. Core also evaluates one
+  probe kind itself, `process`, for an effect whose surface is an operating
+  system process.
 - **`activity`** — the activity probe. Fingerprint semantics: it writes a JSON
   activity envelope whose opaque fingerprint core compares across evaluations,
   and its exit code reports whether the probe itself is well.
@@ -51,14 +53,10 @@ session_name = { from = "self.outputs.session_name" }
 ```
 
 ```toml
-# An agent-runtime effect: liveness is a process check, and activity is the
-# turn-boundary record the same plugin's hook writes.
+# An agent-runtime effect: liveness is a process check core evaluates, and
+# activity is the turn-boundary record the same plugin's hook writes.
 [exec_runtime.health.alive]
-type   = "shell"
-script = 'kill -0 "$pid"'
-
-[exec_runtime.health.alive.bind]
-pid = { from = "self.outputs.pid" }
+process = "self.outputs.pid"
 
 [exec_runtime.health.activity]
 type = "exec"
@@ -83,9 +81,10 @@ one per implementation technique.
   readiness-style third probe is a non-goal: health answers "is this surface
   present and moving", not "may traffic be sent".
 - Each member is an action: exec, shell, or, for `alive` only, `noop` — a
-  declared non-observation, with its values declared in `bind` or in `args`
-  rather than interpolated into the script. `noop` is legal only under
-  `[health.alive]`; the rule applies independently to every layer of a nesting
+  declared non-observation — or `process`, a check core evaluates itself,
+  alone or beside an exec or shell action. Values are declared in `bind` or in
+  `args` rather than interpolated into the script. `noop` and `process` are
+  legal only under `[health.alive]`; the rule applies independently to every layer of a nesting
   chain, and a `noop` layer does not suppress an inner layer's own executable
   probe.
 - Both members observe the same roots `cleanup` does, minus the ones a probe
@@ -115,6 +114,22 @@ report.
 Exit zero means the surface is present. A non-zero exit, or a value that does
 not resolve, makes the session unhealthy, and the failing instance is named in
 the reported reason. The first failing probe ends the evaluation.
+
+A `process` probe names the effect's own output that holds a pid. When setup
+produces that output, core records the process's identity — the pid and the
+numeric start time the platform reports for it — alongside the instance's
+outputs; it is core's record, not an output. The probe passes only while the
+pid exists and its start time matches the record, so a pid recycled by an
+unrelated process is a failed probe rather than a passing one. A record with
+no stored identity is judged by pid existence alone. A dead or recycled pid is
+an observed failure, which is what permits automatic repair; a pid output that
+cannot be read is a probe that cannot answer, the unevaluable case above. A
+`process` probe may sit beside an exec or shell action, which runs only after
+the process check passes. The identity is recorded for a plain instance, not
+for a layer of a nesting chain. A cleanup that must confirm the same identity
+receives it as the opaque token `self.process.identity` and asks core again
+before each signal with `plect process verify <token>`, because a script
+cannot read the record and a verdict taken once goes stale.
 
 ### activity
 

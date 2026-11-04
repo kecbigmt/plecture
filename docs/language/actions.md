@@ -124,6 +124,91 @@ re-observed — a systemd `RemainAfterExit=`-style declaration, not the absence
 of one. See [`effects.md`](effects.md#health) for the load rule that makes
 `[health.alive]` mandatory.
 
+## process
+
+A process action is a liveness check core evaluates itself rather than a
+program it runs. It is written as a single key, `process`, naming the effect's
+own output that holds the pid of the process its setup started, and it is legal
+only under `[health.alive]`.
+
+<!-- fixture: effects/health-alive-process.toml -->
+```toml
+[runtime]
+kind  = "effect"
+scope = "run"
+
+[runtime.setup]
+type = "exec"
+bin  = "agent-runtime"
+args = ["launch"]
+
+[runtime.health.alive]
+process = "self.outputs.pid"
+
+[runtime.outputs_schema]
+type     = "object"
+required = ["pid"]
+
+[runtime.outputs_schema.properties]
+pid = { type = "integer" }
+```
+
+When setup produces the output, core records the process's identity — the pid
+and the numeric start time the operating system reports for it — alongside the
+instance's outputs. It is core's own record, not an output: it does not appear
+in `self.outputs` and no plugin writes it. The probe passes only while the pid
+exists and its start time matches the recorded one, so a pid recycled by an
+unrelated process fails. Where the platform rounds the start time, one tick of
+difference still matches.
+
+A setup whose pid output is absent, is not a process id, or names a process
+that is not running fails, since the effect declared that the output names a
+live process. An instance recorded without an identity — one set up before the
+probe was declared — is judged by pid existence alone.
+
+`process` may also sit beside an exec or shell action. Core's check runs first,
+and the action runs only when it passes:
+
+<!-- fixture: effects/health-alive-process-beside-action.toml -->
+```toml
+[runtime]
+kind  = "effect"
+scope = "run"
+
+[runtime.setup]
+type = "exec"
+bin  = "agent-runtime"
+args = ["launch"]
+
+[runtime.health.alive]
+process = "self.outputs.pid"
+type    = "exec"
+bin     = "agent-runtime"
+args    = ["probe", { from = "self.outputs.state_dir" }]
+
+[runtime.outputs_schema]
+type     = "object"
+required = ["pid", "state_dir"]
+
+[runtime.outputs_schema.properties]
+pid       = { type = "integer" }
+state_dir = { type = "string" }
+```
+
+For plugin authors: a cleanup script receives the recorded identity as an opaque token,
+`{ from = "self.process.identity" }`, absent for an instance recorded without
+one (bind it `optional = true`). The script hands the token to
+`plect process verify <token>`, which exits zero only while the recorded pid
+still belongs to the recorded process. Asking again before each signal is what
+keeps a pid recycled during a grace period from being signalled. The
+`plect process` command is hidden from `plect --help` because it is a contract
+with plugin scripts rather than an operator verb; `plect process verify --help`
+still works.
+
+The identity is recorded for a plain instance only: an effect that is a layer
+of a nesting chain cannot declare `process`, and resolving such a chain is an
+error.
+
 ## The binding transport
 
 Bindings reach the shell process through a private generated binding file, not
@@ -201,7 +286,10 @@ defined in [the lifecycle-configuration ADR](../adr/2026-09-08-minimum-cleanup-c
 ## Validation rules
 
 - An action's `type` is `exec` or `shell`, or, under `[health.alive]` only,
-  `noop`.
+  `noop`; `process` is a key rather than a type, legal under `[health.alive]`
+  only, alone or beside an exec or shell action.
+- `process` names one of the effect's own outputs as `self.outputs.<key>`, and
+  no other root.
 - An exec action declares exactly one of `bin` and `command`.
 - A shell action declares `script`, and no exec-variant field.
 - `script` contains no Plecture or CEL interpolation.
