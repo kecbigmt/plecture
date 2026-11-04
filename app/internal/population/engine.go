@@ -282,6 +282,21 @@ func (e *Engine) admit(ctx context.Context, member *state.PopulationMember) erro
 	if e.hooks.Up == nil {
 		return e.failAdmit(member, member.SessionName, "up", fmt.Errorf("population admission has no lifecycle hook"))
 	}
+	if member.SessionName != "" {
+		session, err := e.state.GetE(member.SessionName)
+		if err != nil {
+			return e.failAdmit(member, member.SessionName, "up", err)
+		}
+		if session != nil && !session.SleepSince.IsZero() {
+			reason, err := service.WakeSuspensionReason(e.state, member.SessionName)
+			if err != nil {
+				return e.failAdmit(member, member.SessionName, "up", err)
+			}
+			if reason != "" {
+				return e.failAdmit(member, member.SessionName, "wake_suspended", fmt.Errorf("automatic wake suspended: %s", reason))
+			}
+		}
+	}
 	outcome, err := e.hooks.Up(ctx, member.ResourceID, inputs)
 	if err != nil {
 		var serviceErr *service.Error

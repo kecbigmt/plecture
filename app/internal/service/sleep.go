@@ -303,3 +303,7 @@ func wakeSuspensionReason(store *state.Store, name string) (string, error) {
 	}
 	return "", nil
 }
+
+func WakeSuspensionReason(store *state.Store, name string) (string, error) {
+	return wakeSuspensionReason(store, name)
+}

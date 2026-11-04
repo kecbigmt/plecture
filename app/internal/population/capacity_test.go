@@ -445,6 +445,111 @@ type = "noop"
 	}
 }
 
+func TestAdmitDoesNotRearmWakeSuspendedMember(t *testing.T) {
+	t.Setenv("PLECT_SESSION_NAME", "")
+	cfg := populationConfig(t, `[source.query.poll]
+type = "exec"
+command = "true"
+`, "uses = [\"poll\"]\npoll_every = \"1m\"", `resource = { from = "resource.id" }`)
+	writeDefinition(t, cfg.BaseDir, "provider", fmt.Sprintf(`[provider]
+kind = "workspace_provider"
+match = "^urn:case:(?P<id>[A-Za-z0-9]+)$"
+name = { from = "match.id" }
+[provider.setup]
+type = "exec"
+command = "printf"
+args = ['{"workspace_dir":"%s","branch":"main"}']
+[provider.outputs_schema]
+type = "object"
+`, cfg.WorkspaceDirsRoot))
+	limit := 1
+	cfg.MaxUpChildren = &limit
+	definitions, err := Load(cfg)
+	if err != nil {
+		t.Fatal(err)
+	}
+	def := definitions[0]
+	store := state.NewStore(t.TempDir())
+	logStore := eventlog.NewStore(store.Dir())
+	coordinator := newCapacityCoordinator(func() *config.Config { return cfg }, store, logStore, admitstatus.NewCache(logStore))
+	coordinator.setDefinitions(definitions)
+	engine := NewEngine(def, store, logStore, coordinator.cache, serviceHooks(func() *config.Config { return cfg }, store, def, coordinator))
+	if err := store.Put(&contract.Session{Name: "manual", Tasks: map[string]*contract.TaskState{
+		"runtime": {Scope: contract.TaskScopeRun, Status: contract.TaskStatusProduced},
+	}}); err != nil {
+		t.Fatal(err)
+	}
+	earlier, err := service.Up(cfg, store, service.UpParams{Identifier: "urn:case:earlier", Workflow: def.Workflow.Address,
+		Inputs: map[string]any{"resource": "urn:case:earlier"}})
+	if err != nil || earlier.Result != "sleeping" || earlier.QueuePosition != 1 {
+		t.Fatalf("earlier up = %+v, %v; want first queued sleeper", earlier, err)
+	}
+	resource := "urn:case:later"
+	if err := engine.ApplyAppearance(context.Background(), map[string]any{"resource": resource}); err != nil {
+		t.Fatal(err)
+	}
+	population, err := store.Population(engine.key)
+	if err != nil {
+		t.Fatal(err)
+	}
+	member := population.Members[resource]
+	if member == nil || member.SessionName == "" || member.AdmitRetryAt.IsZero() {
+		t.Fatalf("pending member = %+v, want queued admission", member)
+	}
+	position, err := service.SleepQueuePosition(cfg, store, member.SessionName)
+	if err != nil || position != 2 {
+		t.Fatalf("member queue position = %d, %v; want behind earlier sleeper", position, err)
+	}
+	for i := 0; i < 3; i++ {
+		if _, _, _, err := logStore.Append(event.Event{SessionName: member.SessionName, Type: event.TypeSessionWake,
+			Direction: event.Internal, Metadata: map[string]string{"result": "failed"}}); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if _, _, _, err := logStore.Append(event.Event{SessionName: member.SessionName, Type: event.TypeSessionWake,
+		Direction: event.Internal, Summary: "wake attempts exhausted", Metadata: map[string]string{"result": "suspended"}}); err != nil {
+		t.Fatal(err)
+	}
+	sleepsBefore, _, _, err := logStore.List(member.SessionName, 0, event.Filter{Types: []string{event.TypeSessionSleep}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	engine.now = func() time.Time { return member.AdmitRetryAt }
+	if err := engine.Reconcile(context.Background()); err == nil {
+		t.Fatal("expected wake-suspended admission failure")
+	}
+	sleepsAfter, _, _, err := logStore.List(member.SessionName, 0, event.Filter{Types: []string{event.TypeSessionSleep}})
+	if err != nil || len(sleepsAfter) != len(sleepsBefore) {
+		t.Fatalf("sleep events after admission retry = %v, %v; want unchanged count %d", sleepsAfter, err, len(sleepsBefore))
+	}
+	status, err := service.Status(cfg, store, member.SessionName)
+	if err != nil || status.Runtime.WakeReason != "wake attempts exhausted" {
+		t.Fatalf("wake suspension after admission retry = %+v, %v", status, err)
+	}
+	for attempt := 1; attempt < admitFailureLimit; attempt++ {
+		population, err = store.Population(engine.key)
+		if err != nil {
+			t.Fatal(err)
+		}
+		retryAt := population.Members[resource].AdmitRetryAt
+		engine.now = func() time.Time { return retryAt }
+		if err := engine.Reconcile(context.Background()); err == nil {
+			t.Fatalf("admission retry %d unexpectedly succeeded", attempt+1)
+		}
+	}
+	population, err = store.Population(engine.key)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := population.Members[resource]; !got.AdmitSuspended || got.ConsecutiveAdmitFailures != admitFailureLimit || got.LastAdmitReason != "wake_suspended" {
+		t.Fatalf("member after suspended admission retries = %+v", got)
+	}
+	sleepsAfter, _, _, err = logStore.List(member.SessionName, 0, event.Filter{Types: []string{event.TypeSessionSleep}})
+	if err != nil || len(sleepsAfter) != len(sleepsBefore) {
+		t.Fatalf("sleep events after admission suspension = %v, %v; want unchanged count %d", sleepsAfter, err, len(sleepsBefore))
+	}
+}
+
 func addCapacityMember(t *testing.T, def Definition, store *state.Store, logStore *eventlog.Store, name, resource string, created, cleared time.Time) {
 	t.Helper()
 	// The population row must exist before a session can reference it

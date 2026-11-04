@@ -368,12 +368,12 @@ Population decisions are durable events:
 | `plect.workflow_population.destroy_deferred` | A task guard blocked destruction. |
 | `plect.workflow_population.destroy_dry_run` | Destruction was eligible but disabled. |
 | `plect.workflow_population.conflict` | Existing state has incompatible provenance. |
-| `plect.workflow_population.failure` | A query, admit, eviction, or destroy operation failed; `reason` metadata says which (`poll`, `poll_validation`, `subscribe`, `subscribe_item`, `down`, `destroy`, or an admit attempt's own `capacity`, `up`, `input`, `task_setup`). |
+| `plect.workflow_population.failure` | A query, admit, eviction, or destroy operation failed; `reason` metadata says which (`poll`, `poll_validation`, `subscribe`, `subscribe_item`, `down`, `destroy`, or an admit attempt's own `capacity`, `up`, `input`, `task_setup`, `wake_suspended`). |
 
 A member's admit history — carried only in the events above, not a
 separate persisted field — decides whether it keeps head-of-line priority
 at the capacity gate: only a member whose most recent outcome was
-`admit_ok`, or a `failure` whose `reason` is one of the four admit-attempt
+`admit_ok`, or a `failure` whose `reason` is one of the five admit-attempt
 values above and equals `capacity`, does. A `failure` with any other
 reason, or a `conflict`, disqualifies it, the same as any other admit
 failure. `plect workflow populations <workflow-id> <population-name>`
