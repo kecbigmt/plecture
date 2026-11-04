@@ -69,7 +69,7 @@ func TestSubscribeIfWired_RunsSubscribeHookAndReportsWired(t *testing.T) {
 	}
 }
 
-func TestAutomaticDeliveryReportsSubscribeWhenEmptyInputsFailSchema(t *testing.T) {
+func TestAutomaticDeliverySkipsHooksWhenEmptyInputsFailSchema(t *testing.T) {
 	baseDir := t.TempDir()
 	record := filepath.Join(baseDir, "called")
 	writeProviderDoc(t, baseDir, "fixture", fixtureResourceMatch, `
@@ -96,6 +96,7 @@ args = ["`+record+`"]
 		name string
 		run  func() (bool, error)
 	}{
+		{"subscribe", func() (bool, error) { return subscribeIfWired(cfg, "s", resource, "") }},
 		{"unsubscribe", func() (bool, error) { return unsubscribeIfWired(cfg, "s", resource, "") }},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
@@ -108,8 +109,13 @@ args = ["`+record+`"]
 			}
 		})
 	}
-	if ran, err := subscribeIfWired(cfg, "s", resource, ""); err == nil || ran {
-		t.Fatalf("subscribe ran=%v err=%v, want a reported input failure", ran, err)
+	store := testStore(t)
+	seedSessionWithNodes(t, store, "s", "org/repo", 1, "work", nil)
+	if subscribed, msg := wireDeliveryOnSetup(cfg, store, "s", resource, "", false); subscribed || msg != "" {
+		t.Fatalf("automatic delivery subscribed=%v message=%q, want a quiet skip", subscribed, msg)
+	}
+	if got := subscriptionRetryCount(t, store, "s", retrySubscribe, resource, false); got != 0 {
+		t.Fatalf("automatic delivery queued %d retries for invalid empty inputs", got)
 	}
 }
 

@@ -186,6 +186,12 @@ token = { type = "string" }
 	if got := subscriptionRetryCount(t, store, "one", retrySubscribe, "thread://one", false); got != 1 {
 		t.Fatalf("required inputs were silently skipped: pending subscribe count = %d", got)
 	}
+	if errs := flushPendingDelivery(cfg, store, "one"); len(errs) != 1 || !strings.Contains(errs[0].Error(), "inputs") {
+		t.Fatalf("retry errors = %v, want a reported input failure", errs)
+	}
+	if got := subscriptionRetryCount(t, store, "one", retrySubscribe, "thread://one", false); got != 1 {
+		t.Fatalf("invalid node subscription retry was removed: count = %d", got)
+	}
 }
 
 func TestNodeSubscriptionSharedWithEntryResourceSurvivesCleanup(t *testing.T) {

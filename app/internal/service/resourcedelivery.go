@@ -24,7 +24,7 @@ import (
 // a retry gets queued. Never returns an error: every caller treats a wiring
 // failure as non-fatal to the instantiation that already succeeded,
 // reporting it via the returned message instead.
-func wireDeliveryOnSetup(cfg *config.Config, store *state.Store, sessionName, resource, branch string) (bool, string) {
+func wireDeliveryOnSetup(cfg *config.Config, store *state.Store, sessionName, resource, branch string, reportInvalidInputs bool) (bool, string) {
 	if strings.TrimSpace(resource) == "" {
 		return false, ""
 	}
@@ -32,7 +32,7 @@ func wireDeliveryOnSetup(cfg *config.Config, store *state.Store, sessionName, re
 	var errMsg string
 	if lockErr := withDeliveryLock(store, sessionName, func() {
 		var subErr error
-		subscribed, subErr = subscribeIfWired(cfg, sessionName, resource, branch)
+		subscribed, subErr = subscribeIfWiredWithPolicy(cfg, sessionName, resource, branch, reportInvalidInputs)
 		if subErr != nil {
 			errMsg = subErr.Error()
 		}
@@ -54,6 +54,10 @@ func wireDeliveryOnSetup(cfg *config.Config, store *state.Store, sessionName, re
 // A bound resource can have no delivery hook. Ambiguous declarations still
 // report an error so the caller can queue a retry after configuration repair.
 func subscribeIfWired(cfg *config.Config, sessionName, resourceID, branch string) (bool, error) {
+	return subscribeIfWiredWithPolicy(cfg, sessionName, resourceID, branch, false)
+}
+
+func subscribeIfWiredWithPolicy(cfg *config.Config, sessionName, resourceID, branch string, reportInvalidInputs bool) (bool, error) {
 	if strings.TrimSpace(resourceID) == "" {
 		return false, nil
 	}
@@ -70,7 +74,10 @@ func subscribeIfWired(cfg *config.Config, sessionName, resourceID, branch string
 			return false, nil
 		}
 		if err := validateSubscriptionInputs(def, nil); err != nil {
-			return false, &Error{Code: ErrInvalidInput, Message: fmt.Sprintf("resource %q subscription inputs: %v", def.ID, err)}
+			if reportInvalidInputs {
+				return false, &Error{Code: ErrInvalidInput, Message: fmt.Sprintf("resource %q subscription inputs: %v", def.ID, err)}
+			}
+			return false, nil
 		}
 		if hookErr := effect.RunResourceSubscribe(def, effect.SubscribeHookVars{
 			ResourceID:  resourceID,
@@ -197,6 +204,10 @@ func resourceStillNeededBySession(s *domain.Session, resource string) bool {
 			return true
 		}
 	}
+	return nodeSubscriptionNeededBySession(s, resource)
+}
+
+func nodeSubscriptionNeededBySession(s *domain.Session, resource string) bool {
 	for _, node := range s.Nodes {
 		if node != nil && node.Status != contract.TaskStatusCleaned && node.Subscription == resource {
 			return true

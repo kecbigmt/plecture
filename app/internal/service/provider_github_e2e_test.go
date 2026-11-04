@@ -443,7 +443,7 @@ func TestIntegration_RetryCallsGithubWatcherAfterHookFailure(t *testing.T) {
 	if err := os.Rename(watcher, watcher+".held"); err != nil {
 		t.Fatal(err)
 	}
-	wired, msg := wireDeliveryOnSetup(cfg, store, name, resource, "issue/58")
+	wired, msg := wireDeliveryOnSetup(cfg, store, name, resource, "issue/58", false)
 	if wired || msg == "" {
 		t.Fatalf("first attempt wired=%v error=%q", wired, msg)
 	}

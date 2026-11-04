@@ -71,7 +71,7 @@ func wireProducedNodeSubscriptions(cfg *config.Config, store *state.Store, sessi
 		resources[resource] = true
 	}
 	for _, resource := range sortedResources(resources) {
-		if _, msg := wireDeliveryOnSetup(cfg, store, sessionName, resource, branch); msg != "" {
+		if _, msg := wireDeliveryOnSetup(cfg, store, sessionName, resource, branch, true); msg != "" {
 			slog.Warn("node subscription setup failed", "session", sessionName, "resource", resource, "error", msg)
 		}
 	}
