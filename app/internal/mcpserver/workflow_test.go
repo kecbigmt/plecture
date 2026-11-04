@@ -67,3 +67,19 @@ func TestHandleWorkflowShow_MissingIDArg(t *testing.T) {
 		t.Fatal("expected error result for missing id")
 	}
 }
+
+func TestHandleWorkflowRebaseDryRun(t *testing.T) {
+	setUpConfigHome(t)
+	name := createPlainSession(t, "one")
+	if _, ok := NewServer().ListTools()["plect_workflow_rebase"]; !ok {
+		t.Fatal("rebase tool is not registered")
+	}
+	result, err := handleWorkflowRebase(context.Background(), reqWith(map[string]any{"session": name, "dry_run": true}))
+	if err != nil {
+		t.Fatal(err)
+	}
+	out := decodeJSONResult(t, result)
+	if out["class"] != "compatible" || out["from"] != out["to"] {
+		t.Fatalf("dry run = %v", out)
+	}
+}

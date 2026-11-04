@@ -209,6 +209,28 @@ else
 fi
 inside sed -i 's/auto_repair_attempts = 0/auto_repair_attempts = 3/' /var/lib/plect/fault-config/workflows/fault.toml
 
+inside rm -f /var/lib/plect/home/fault/mute
+inside sed -i 's/auto_repair_attempts = 3/auto_repair_attempts = 4/' /var/lib/plect/fault-config/workflows/fault.toml
+if plect workflow rebase "$session" --dry-run | grep -q 'compatible' \
+  && [ "$(plect status "$session" --json --full | jq -r .identity.revision)" = "$original_revision" ] \
+  && plect workflow rebase "$session" >/dev/null \
+  && [ "$(plect status "$session" --json --full | jq -r .identity.revision)" != "$original_revision" ]; then
+  echo 'PASS: workflow rebase dry-run left the revision unchanged, then compatible rebase applied it'
+else
+  echo 'FAIL: compatible workflow rebase did not preserve dry-run state or apply the revision' >&2
+  failed=1
+fi
+inside sed -i '/uses = "official.claude.runtime"/a\[fault_recovery.nodes.inputs]\nmodel = "fault-model"' /var/lib/plect/fault-config/workflows/fault.toml
+if plect workflow rebase "$session" --dry-run | grep -q 'restart' \
+  && plect workflow rebase "$session" --with-restart >/dev/null \
+  && inside git -C "/var/lib/plect/workspace_dirs/$session" status --short | grep -q 'uncommitted-change' \
+  && inside sh -c 'tail -n 1 "$HOME/fault/launches"' | grep -q -- '--model fault-model'; then
+  echo 'PASS: workflow rebase restarted run-scoped nodes under the new revision and kept the worktree'
+else
+  echo 'FAIL: run-scoped workflow rebase did not restart under the new revision or lost the worktree' >&2
+  failed=1
+fi
+
 # S5: a deliberate stop survives a resident crash and a child terminal
 # notification, while a sleeping session resumes for its own resource event.
 plect down "$session" >/dev/null
