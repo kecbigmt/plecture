@@ -4,6 +4,25 @@
 # from the pane's own root (PLECT_EFFECT_PID), so a kill-on-failure
 # scenario can prove it left the pane alone.
 
+[[codex]]
+name    = "launch-then-alive"
+capture = "› "
+hooks   = ["setup", "health.alive"]
+
+[[codex.files]]
+path    = ".codex/sessions/rollout.jsonl"
+content = '{"type":"session_meta","payload":{"cwd":"WORKSPACE","session_id":"11111111-2222-3333-4444-555555555555"}}'
+
+[[codex]]
+name  = "pid-reused-by-unrelated-process-is-not-alive"
+self  = { pid = "WORKER_PID", pid_started = "started-before-reuse" }
+hooks = ["health.alive"]
+
+[[codex]]
+name  = "record-without-pid-started-is-judged-by-pid"
+self  = { pid = "WORKER_PID" }
+hooks = ["health.alive"]
+
 # This proves the timed-out launch's child is killed, the pane survives,
 # and a retry against that same pane succeeds.
 [[codex]]
@@ -26,6 +45,27 @@ content = '{"type":"session_meta","payload":{"cwd":"WORKSPACE","session_id":"111
 name                       = "launch-succeeds-then-output-fails-kills-worker"
 capture                    = "› "
 fail_output                = true
+expect_worker_process_dead = true
+hooks                      = ["setup"]
+
+[[codex.files]]
+path    = ".codex/sessions/rollout.jsonl"
+content = '{"type":"session_meta","payload":{"cwd":"WORKSPACE","session_id":"11111111-2222-3333-4444-555555555555"}}'
+
+[[codex]]
+name     = "alive-under-a-different-time-zone-than-setup"
+capture  = "› "
+hook_tz  = "Asia/Tokyo"
+hooks    = ["setup", "health.alive"]
+
+[[codex.files]]
+path    = ".codex/sessions/rollout.jsonl"
+content = '{"type":"session_meta","payload":{"cwd":"WORKSPACE","session_id":"11111111-2222-3333-4444-555555555555"}}'
+
+[[codex]]
+name                       = "unreadable-start-time-kills-worker"
+capture                    = "› "
+empty_start_time           = true
 expect_worker_process_dead = true
 hooks                      = ["setup"]
 

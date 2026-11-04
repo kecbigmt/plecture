@@ -83,6 +83,14 @@ type effectScenario struct {
 	// assembles is already validated by the time setup reaches it, so no
 	// scenario input can make it fail on its own.
 	FailOutput bool `toml:"fail_output"`
+	// EmptyStartTime makes each plugin's own ps stand-in report no start
+	// time for any pid, as when the process table cannot be read.
+	EmptyStartTime bool `toml:"empty_start_time"`
+	// HookTZ is the time zone the process environment holds while every hook
+	// after setup runs, so a script that reads a rendered timestamp can be
+	// shown not to depend on the zone the instance was set up under, which
+	// is always UTC.
+	HookTZ string `toml:"hook_tz"`
 }
 
 type effectScenarioFile struct {

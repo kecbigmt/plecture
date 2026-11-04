@@ -33,6 +33,16 @@ hooks   = ["health.alive"]
 path    = ".claude/sessions/live.json"
 content = '{"sessionId":"aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee","pid":PID}'
 
+[[runtime]]
+name  = "pid-reused-by-unrelated-process-is-not-alive"
+self  = { pid = "WORKER_PID", pid_started = "started-before-reuse" }
+hooks = ["health.alive"]
+
+[[runtime]]
+name  = "record-without-pid-started-is-judged-by-pid"
+self  = { pid = "WORKER_PID" }
+hooks = ["health.alive"]
+
 # Normal recovery may replace a matching Claude process left in the pane,
 # ensuring setup never types its launch line into that process's conversation.
 [[runtime]]
@@ -150,6 +160,28 @@ hooks                      = ["setup"]
 path    = ".claude/sessions/aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee.json"
 content = '{"sessionId":"aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee","pid":PID}'
 
+[[runtime]]
+name     = "alive-under-a-different-time-zone-than-setup"
+hook_tz  = "Asia/Tokyo"
+hooks    = ["setup", "health.alive"]
+
+[[runtime.files]]
+path    = ".claude/sessions/aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee.json"
+content = '{"sessionId":"aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee","pid":PID}'
+
+# This proves a start time that cannot be read declines setup rather than
+# recording a pid that alive could not later tell apart from a reused one,
+# and the launched child is killed while the pane survives.
+[[runtime]]
+name                       = "unreadable-start-time-kills-worker"
+empty_start_time           = true
+expect_worker_process_dead = true
+hooks                      = ["setup"]
+
+[[runtime.files]]
+path    = ".claude/sessions/aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee.json"
+content = '{"sessionId":"aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee","pid":PID}'
+
 [[claude_initial_prompt]]
 inputs  = { terminal_ready = "acme-widget-1", agent_session = "1234", prompt = "rendered instruction", repeat = "" }
 capture = "› "
@@ -181,6 +213,17 @@ hooks = ["setup"]
 name                       = "cleanup-kills-confirmed-worker"
 self                       = { pid = "WORKER_PID", pid_started = "started-WORKER_PID", state_dir = "HOME/headless" }
 hooks                      = ["cleanup"]
+expect_worker_process_dead = true
+
+[[headless_runtime.files]]
+path    = "headless/worker.pid"
+content = "WORKER_PID"
+
+[[headless_runtime]]
+name                       = "ambient-start-time-record-is-alive-and-cleaned-up"
+self                       = { pid = "WORKER_PID", pid_started = "started-WORKER_PID@Asia/Tokyo", state_dir = "HOME/headless" }
+hook_tz                    = "Asia/Tokyo"
+hooks                      = ["health.alive", "cleanup"]
 expect_worker_process_dead = true
 
 [[headless_runtime.files]]

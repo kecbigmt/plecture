@@ -359,6 +359,15 @@ func (h *effectHarness) runScenario(t *testing.T, b *strings.Builder, def config
 	} else {
 		t.Setenv("PLECT_EFFECT_FAIL_OUTPUT", "")
 	}
+	// Every scenario starts from the same zone: t.Setenv restores only when
+	// the shared plugin subtest ends, so a HookTZ set by one scenario would
+	// otherwise carry into the next one's setup.
+	t.Setenv("TZ", "UTC")
+	if scenario.EmptyStartTime {
+		t.Setenv("PLECT_EFFECT_EMPTY_LSTART", "1")
+	} else {
+		t.Setenv("PLECT_EFFECT_EMPTY_LSTART", "")
+	}
 	for _, file := range scenario.Files {
 		path := filepath.Join(h.homeDir, file.Path)
 		if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
@@ -414,6 +423,9 @@ func (h *effectHarness) runScenario(t *testing.T, b *strings.Builder, def config
 			currentInputs = scenario.RetryInputs
 			self = h.runOneHook(t, b, def, "setup", " (retry)", resolved, nodeID, label, session, tasks, self, currentInputs, scenario.Artifacts)
 			continue
+		}
+		if hook != "setup" && scenario.HookTZ != "" {
+			t.Setenv("TZ", scenario.HookTZ)
 		}
 		self = h.runOneHook(t, b, def, hook, "", resolved, nodeID, label, session, tasks, self, currentInputs, scenario.Artifacts)
 	}
