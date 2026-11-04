@@ -83,7 +83,11 @@ directory; it never treats the missing directory as release evidence.
 
 `[<id>.outputs]` is the workflow's explicit public projection record;
 `outputs_schema` declares it. Each binding is evaluable from node outputs as
-soon as its sources have been produced and is persisted on the session.
+soon as its sources have been produced and is persisted on the session. The
+record follows its sources: a binding is re-evaluated when a source node is
+recreated and is unset while any source is not produced. Once every binding has
+a value, the record must satisfy `outputs_schema`; a record that does not is
+not published.
 `workflow.outputs.*` is the only workflow-output root for display,
 instructions, node inputs, and channel delivery. It replaces the former
 provider output path without creating an `@workflow` pseudo-node.
