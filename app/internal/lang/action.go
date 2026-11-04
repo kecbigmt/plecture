@@ -29,10 +29,9 @@ type Action struct {
 // itself never recognizes: it exists only through ParseAliveAction, the one
 // site where a load rule (not the shared parser) decides it is legal.
 const (
-	ActionExec  = "exec"
-	ActionShell = "shell"
-	ActionNoop  = "noop"
-	// ActionProcess is the alive probe core evaluates itself.
+	ActionExec    = "exec"
+	ActionShell   = "shell"
+	ActionNoop    = "noop"
 	ActionProcess = "process"
 )
 

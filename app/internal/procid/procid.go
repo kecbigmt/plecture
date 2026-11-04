@@ -15,7 +15,6 @@ var (
 	ErrReused     = errors.New("pid is held by a different process than the one recorded")
 )
 
-// Capture reads the identity of the live process holding pid.
 func Capture(pid int) (contract.ProcessIdentity, error) {
 	if pid <= 0 {
 		return contract.ProcessIdentity{}, fmt.Errorf("pid %d is not a process id", pid)
@@ -23,8 +22,6 @@ func Capture(pid int) (contract.ProcessIdentity, error) {
 	return capture(pid)
 }
 
-// Verify returns ErrNotRunning or ErrReused when recorded is not the live
-// process holding its pid.
 func Verify(recorded contract.ProcessIdentity) error {
 	current, err := Capture(recorded.PID)
 	if err != nil {
@@ -55,7 +52,6 @@ func Encode(id contract.ProcessIdentity) string {
 	return string(raw)
 }
 
-// Decode reads a token Encode produced.
 func Decode(token string) (contract.ProcessIdentity, error) {
 	var id contract.ProcessIdentity
 	if err := json.Unmarshal([]byte(token), &id); err != nil {
