@@ -43,6 +43,9 @@ UPDATE sessions SET
     updated_at = ?
 WHERE id = ?;
 
+-- name: UpdateSessionPublicOutputs :exec
+UPDATE sessions SET public_outputs_json = ? WHERE id = ?;
+
 -- name: GetLiveSession :one
 SELECT id, name, status, sleep_since, destroyed_at, parent_session_id, root_session_id,
        resource_id, alias, workflow, workflow_revision, workspace_dir,

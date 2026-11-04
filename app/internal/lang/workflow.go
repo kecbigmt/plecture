@@ -223,6 +223,22 @@ func NodeReads(inputs, outputs map[string]*Value) []string {
 	return out
 }
 
+// PublicOutputReads lists the public output keys one node's input wiring
+// projects from, in key order.
+func PublicOutputReads(inputs map[string]*Value) []string {
+	var out []string
+	seen := map[string]bool{}
+	for _, key := range sortedValueKeys(inputs) {
+		valueReads(inputs[key], func(path string) {
+			if read, ok := publicOutputKey(path); ok && !seen[read] {
+				seen[read] = true
+				out = append(out, read)
+			}
+		})
+	}
+	return out
+}
+
 // valueReads walks one value for the projections it makes, descending into a
 // JSON operand's own leaves: a value surface accepts a whole document built
 // from projections, so an edge can be declared arbitrarily deep inside one

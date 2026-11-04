@@ -2604,6 +2604,20 @@ func (q *Queries) UpdateSessionByID(ctx context.Context, arg UpdateSessionByIDPa
 	return err
 }
 
+const updateSessionPublicOutputs = `-- name: UpdateSessionPublicOutputs :exec
+UPDATE sessions SET public_outputs_json = ? WHERE id = ?
+`
+
+type UpdateSessionPublicOutputsParams struct {
+	PublicOutputsJson sql.NullString
+	ID                string
+}
+
+func (q *Queries) UpdateSessionPublicOutputs(ctx context.Context, arg UpdateSessionPublicOutputsParams) error {
+	_, err := q.db.ExecContext(ctx, updateSessionPublicOutputs, arg.PublicOutputsJson, arg.ID)
+	return err
+}
+
 const upsertEventCursor = `-- name: UpsertEventCursor :exec
 INSERT INTO event_cursors (session_id, kind, next_sequence) VALUES (?, ?, ?)
 ON CONFLICT(session_id, kind) DO UPDATE SET next_sequence = excluded.next_sequence

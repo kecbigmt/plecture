@@ -791,3 +791,51 @@ func TestStore_PutSucceedsWhenTheRevisionCannotYieldPublicOutputs(t *testing.T) 
 		t.Fatal("session was not saved")
 	}
 }
+
+// The store keeps an unreleased node whose record a writer omits, so the
+// public outputs have to follow the nodes as stored, not as written.
+func TestStore_UpdateOmittingAProducedSourceKeepsItsPublicOutputs(t *testing.T) {
+	store := NewStore(t.TempDir())
+	if err := store.Put(publicOutputSession(t, "review-3")); err != nil {
+		t.Fatalf("Put: %v", err)
+	}
+	if err := store.Update("review-3", func(s *domain.Session) error {
+		s.Nodes = map[string]*contract.TaskState{}
+		return nil
+	}); err != nil {
+		t.Fatalf("Update: %v", err)
+	}
+	got := store.Get("review-3")
+	if got.Nodes["orchestrator"] == nil || got.PublicOutputs["endpoint"] != "e1" {
+		t.Fatalf("nodes = %v, public outputs = %v, want the retained produced source to keep its binding", got.Nodes, got.PublicOutputs)
+	}
+}
+
+func TestStore_PutOmittingAProducedSourceKeepsItsPublicOutputs(t *testing.T) {
+	store := NewStore(t.TempDir())
+	if err := store.Put(publicOutputSession(t, "review-4")); err != nil {
+		t.Fatalf("Put: %v", err)
+	}
+	omitting := publicOutputSession(t, "review-4")
+	omitting.Nodes = nil
+	if err := store.Put(omitting); err != nil {
+		t.Fatalf("Put omitting: %v", err)
+	}
+	if got := store.Get("review-4"); got.PublicOutputs["endpoint"] != "e1" {
+		t.Fatalf("public outputs = %v, want the retained source's binding", got.PublicOutputs)
+	}
+}
+
+func TestStore_ResetNodesClearsPublicOutputs(t *testing.T) {
+	store := NewStore(t.TempDir())
+	if err := store.Put(publicOutputSession(t, "review-5")); err != nil {
+		t.Fatalf("Put: %v", err)
+	}
+	if err := store.ResetNodes("review-5"); err != nil {
+		t.Fatalf("ResetNodes: %v", err)
+	}
+	got := store.Get("review-5")
+	if len(got.Nodes) != 0 || len(got.PublicOutputs) != 0 {
+		t.Fatalf("nodes = %v, public outputs = %v, want both cleared", got.Nodes, got.PublicOutputs)
+	}
+}

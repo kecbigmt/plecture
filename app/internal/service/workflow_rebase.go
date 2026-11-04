@@ -248,10 +248,11 @@ func ClassifyWorkflowRebase(old, next config.WorkflowRevision, session *domain.S
 			continue
 		}
 		oldDef, nextDef := old.Effects[oldNodes[node.NodeID].Uses], next.Effects[current.Uses]
-		if equalRevisionPart(oldNodes[node.NodeID], current) && equalRevisionPart(oldDef, nextDef) {
+		sameNode := equalRevisionPart(oldNodes[node.NodeID], current) && !readsChangedPublicOutput(current, old.Workflow.Outputs, next.Workflow.Outputs)
+		if sameNode && equalRevisionPart(oldDef, nextDef) {
 			continue
 		}
-		if equalRevisionPart(oldNodes[node.NodeID], current) && onlyAliveChanged(oldDef, nextDef) {
+		if sameNode && onlyAliveChanged(oldDef, nextDef) {
 			result.raise(RebaseAutomatic, fmt.Sprintf("alive probe changed for node %q", node.NodeID))
 			continue
 		}
@@ -453,6 +454,18 @@ func (r *RebaseClassification) raise(class RebaseClass, reason string) {
 		r.Class = class
 	}
 	r.Reasons = append(r.Reasons, reason)
+}
+
+// readsChangedPublicOutput reports whether node wires in a public output whose
+// binding differs between the two declarations: the node's own text is
+// unchanged, but the value it was set up with is not.
+func readsChangedPublicOutput(node config.WorkflowNode, old, next map[string]*lang.Value) bool {
+	for _, key := range lang.PublicOutputReads(node.Inputs) {
+		if !equalRevisionPart(old[key], next[key]) {
+			return true
+		}
+	}
+	return false
 }
 
 func equalRevisionPart(a, b any) bool {

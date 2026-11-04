@@ -50,11 +50,7 @@ type WorkflowFile struct {
 	// Display declares the values `plect ls` / `show` and the web UI render.
 	// They read persisted outputs and the session's inputs only — no network
 	// — so their freshness follows whatever cadence updates those outputs.
-	Display map[string]*lang.Value
-	// Outputs is the workflow's public output record: each value is evaluated
-	// from node outputs and session inputs, and `workflow.outputs.<key>` reads
-	// the result. OutputsSchema is the contract that record satisfies once
-	// every binding has a value.
+	Display       map[string]*lang.Value
 	Outputs       map[string]*lang.Value
 	OutputsSchema map[string]any
 	AutoSelect    *bool

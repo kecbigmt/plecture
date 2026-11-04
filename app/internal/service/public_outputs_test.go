@@ -38,6 +38,9 @@ func TestUp_PublicOutputsFollowTheNodesThatProduceThem(t *testing.T) {
 	if got.Nodes["relay"].Inputs["peer"] != "e1" {
 		t.Fatalf("relay input peer = %v, want the public output's value", got.Nodes["relay"].Inputs["peer"])
 	}
+	if deps := got.Nodes["relay"].DependsOn; len(deps) != 1 || deps[0] != "agent" {
+		t.Fatalf("relay DependsOn = %v, want the public output's producer", deps)
+	}
 
 	if _, err := Down(cfg, store, DownParams{Identifier: name}); err != nil {
 		t.Fatalf("Down: %v", err)

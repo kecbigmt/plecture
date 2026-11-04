@@ -13,11 +13,65 @@ import (
 	contract "github.com/kecbigmt/plecture/contracts/state"
 )
 
+// WriteOption adjusts how a session write completes.
+type WriteOption func(*writeOptions)
+
+type writeOptions struct {
+	derive func(*domain.Session) error
+}
+
+// WithDerivedState runs derive against the session as stored once the write
+// has reconciled its nodes, in the same transaction, and persists the
+// PublicOutputs it leaves behind. Reconciliation can retain a node the caller
+// omitted or drop one the caller held, so only the stored nodes can say what
+// a derived record must follow.
+func WithDerivedState(derive func(*domain.Session) error) WriteOption {
+	return func(o *writeOptions) { o.derive = derive }
+}
+
+func applyWriteOptions(opts []WriteOption) writeOptions {
+	var o writeOptions
+	for _, opt := range opts {
+		opt(&o)
+	}
+	return o
+}
+
+func (db *DB) deriveStoredState(ctx context.Context, tx *sql.Tx, name string, o writeOptions) error {
+	if o.derive == nil {
+		return nil
+	}
+	q := sqlcgen.New(tx)
+	row, err := q.GetLiveSession(ctx, name)
+	if err != nil {
+		return fmt.Errorf("reload session %q: %w", name, err)
+	}
+	stored, err := sessionFromRow(row)
+	if err != nil {
+		return err
+	}
+	if err := db.loadSessionExtras(ctx, tx, stored); err != nil {
+		return err
+	}
+	if err := o.derive(stored); err != nil {
+		return err
+	}
+	publicOutputsJSON, err := marshalJSONMap(stored.PublicOutputs)
+	if err != nil {
+		return fmt.Errorf("marshal session %q public outputs: %w", name, err)
+	}
+	return q.UpdateSessionPublicOutputs(ctx, sqlcgen.UpdateSessionPublicOutputsParams{PublicOutputsJson: publicOutputsJSON, ID: stored.ID})
+}
+
 // PutSession upserts one session and replaces its task, layer, and channel
 // health rows in one write transaction.
-func (db *DB) PutSession(ctx context.Context, s *domain.Session) error {
+func (db *DB) PutSession(ctx context.Context, s *domain.Session, opts ...WriteOption) error {
+	o := applyWriteOptions(opts)
 	return db.WithImmediateTx(ctx, func(tx *sql.Tx) error {
-		return db.writeSessionTx(ctx, tx, s)
+		if err := db.writeSessionTx(ctx, tx, s); err != nil {
+			return err
+		}
+		return db.deriveStoredState(ctx, tx, s.Name, o)
 	})
 }
 
@@ -117,7 +171,8 @@ func (db *DB) FindSessionsByAlias(ctx context.Context, alias string) ([]*domain.
 // UpdateSession reads the named session's live row, runs fn, and writes
 // the result back in one transaction. A session is destroyed the same
 // way: fn sets Status to SessionStatusDestroyed on the same row.
-func (db *DB) UpdateSession(ctx context.Context, name string, fn func(*domain.Session) error) error {
+func (db *DB) UpdateSession(ctx context.Context, name string, fn func(*domain.Session) error, opts ...WriteOption) error {
+	o := applyWriteOptions(opts)
 	return db.WithImmediateTx(ctx, func(tx *sql.Tx) error {
 		row, err := sqlcgen.New(tx).GetLiveSession(ctx, name)
 		if err != nil {
@@ -138,7 +193,10 @@ func (db *DB) UpdateSession(ctx context.Context, name string, fn func(*domain.Se
 			return err
 		}
 
-		return db.writeSessionTx(ctx, tx, s)
+		if err := db.writeSessionTx(ctx, tx, s); err != nil {
+			return err
+		}
+		return db.deriveStoredState(ctx, tx, name, o)
 	})
 }
 
@@ -217,7 +275,8 @@ func (db *DB) PruneReleasedNode(ctx context.Context, sessionName, nodeID string)
 // sessionName, unlike an ordinary PutSession/UpdateSession write, whose own
 // reconciliation retains a node still unreleased. For --force-recreate's
 // deliberate rebuild only; see service.recreateSessionRuntime.
-func (db *DB) ResetNodes(ctx context.Context, sessionName string) error {
+func (db *DB) ResetNodes(ctx context.Context, sessionName string, opts ...WriteOption) error {
+	o := applyWriteOptions(opts)
 	return db.WithImmediateTx(ctx, func(tx *sql.Tx) error {
 		q := sqlcgen.New(tx)
 		sessionID, err := q.SessionIDByLiveName(ctx, sessionName)
@@ -230,7 +289,7 @@ func (db *DB) ResetNodes(ctx context.Context, sessionName string) error {
 		if err := q.DeleteNodeInstancesForSession(ctx, sessionID); err != nil {
 			return fmt.Errorf("reset nodes for %q: %w", sessionName, err)
 		}
-		return nil
+		return db.deriveStoredState(ctx, tx, sessionName, o)
 	})
 }
 

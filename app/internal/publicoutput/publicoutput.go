@@ -81,10 +81,8 @@ func Evaluate(decl Declaration, nodes map[string]*contract.TaskState, sessionInp
 	return out, nil
 }
 
-// Refresh rewrites s.PublicOutputs from the workflow revision the session
-// froze at creation, so the record follows the nodes the session holds now.
-// A session with no revision keeps its record untouched: it has no workflow
-// to derive one from.
+// Refresh rewrites s.PublicOutputs from the session's frozen workflow
+// revision. A session with no revision keeps its record untouched.
 func Refresh(s *domain.Session) error {
 	if s.WorkflowRevision == "" {
 		return nil

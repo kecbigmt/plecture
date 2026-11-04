@@ -286,11 +286,8 @@ type Session struct {
 	// `--name` collision is checked against both).
 	Nodes map[string]*TaskState `json:"nodes,omitempty"`
 	Tasks map[string]*TaskState `json:"tasks,omitempty"`
-	// PublicOutputs is the record `workflow.outputs.*` reads: the workflow's
-	// declared public outputs evaluated from the produced nodes' outputs and
-	// the session's inputs. It is derived and rewritten whenever a node is
-	// produced, recreated or released, so a key whose sources are gone is
-	// absent rather than stale.
+	// PublicOutputs is the record `workflow.outputs.*` reads. It is derived
+	// from Nodes and never written by a caller.
 	PublicOutputs map[string]any `json:"public_outputs,omitempty"`
 	// Health is the last probe observation and activity fingerprint core
 	// recorded for this session. It is persisted so stall judgment and
