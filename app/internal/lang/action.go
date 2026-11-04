@@ -111,11 +111,9 @@ func ParseAliveAction(raw any, pos Position) (*Action, error) {
 	return action, nil
 }
 
-// parseProcessRef reads the reference a process probe names its pid by. It
-// is a bare string rather than a tagged value because the probe has exactly
-// one legal source, the effect's own output: core records the identity of the
-// process setup produced, and a pid read from anywhere else has no recorded
-// identity to compare against.
+// The reference is a bare string rather than a tagged value because the only
+// legal source is the effect's own output: a pid read from anywhere else has
+// no identity core recorded.
 func parseProcessRef(raw any, pos Position) (*Value, error) {
 	ref, ok := raw.(string)
 	if !ok {

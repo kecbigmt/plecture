@@ -10,10 +10,8 @@ import (
 )
 
 var (
-	// ErrNotRunning means no live process holds the pid; a zombie has exited
-	// and does not count.
 	ErrNotRunning = errors.New("process is not running")
-	ErrReused = errors.New("pid is held by a different process than the one recorded")
+	ErrReused     = errors.New("pid is held by a different process than the one recorded")
 )
 
 // Capture reads the identity of the live process holding pid.
@@ -24,8 +22,8 @@ func Capture(pid int) (contract.ProcessIdentity, error) {
 	return capture(pid)
 }
 
-// Verify returns ErrNotRunning when nothing live holds recorded.PID and
-// ErrReused when a different process does.
+// Verify returns ErrNotRunning or ErrReused when recorded is not the live
+// process holding its pid.
 func Verify(recorded contract.ProcessIdentity) error {
 	current, err := Capture(recorded.PID)
 	if err != nil {
@@ -37,7 +35,6 @@ func Verify(recorded contract.ProcessIdentity) error {
 	return nil
 }
 
-// VerifyPIDOnly judges a record that carries no start time.
 func VerifyPIDOnly(pid int) error {
 	_, err := Capture(pid)
 	return err
