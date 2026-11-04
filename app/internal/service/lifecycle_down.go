@@ -99,7 +99,7 @@ func downUnlocked(cfg *config.Config, store *state.Store, params DownParams) (*D
 	if teardownErr != nil {
 		return nil, &Error{Code: ErrExecutionFailed, Message: teardownErr.Error()}
 	}
-	cleanupErr := runTaskCleanup(context.Background(), teardown, sessionVars(cfg, session, plan), session, params.Observer)
+	cleanupErr := runTaskCleanup(context.Background(), cfg, store, teardown, sessionVars(cfg, session, plan), session, params.Observer)
 	session.UpdatedAt = time.Now()
 	if !params.preserveStatus {
 		session.Status = contract.SessionStatusDown

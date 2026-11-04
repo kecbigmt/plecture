@@ -94,9 +94,10 @@ func stubTerminalVerb(v string) string {
 // naming only `id` selects the effect of the same name, which is how most
 // cases read.
 type nodeFixture struct {
-	id     string
-	uses   string
-	inputs map[string]*lang.Value
+	id           string
+	uses         string
+	inputs       map[string]*lang.Value
+	subscription string
 }
 
 // effectFixtureDoc renders one effect declaration: the definition table, its
@@ -212,6 +213,9 @@ func writeWorkflowFixture(t *testing.T, workdirsRoot, wfID string, defs []taskFi
 			fmt.Fprintf(&w, "id = %q\n", n.id)
 		}
 		fmt.Fprintf(&w, "uses = %q\n", uses)
+		if n.subscription != "" {
+			fmt.Fprintf(&w, "subscription = { from = %q }\n", n.subscription)
+		}
 		if len(n.inputs) > 0 {
 			fmt.Fprintf(&w, "[%s.nodes.inputs]\n", wfID)
 			for _, k := range sortedInputKeys(n.inputs) {

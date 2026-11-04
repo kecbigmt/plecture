@@ -37,15 +37,22 @@ func runWorkflowSetup(prov config.WorkspaceProviderConfig, vars effect.WorkflowH
 // is ever produced (nameCollides only checks existing state), so runNodeSetup
 // excludes any such id from ordered before running or writing back setup
 // results — its merged entry is really that instance's record, not a node's.
-func runNodeSetup(ctx context.Context, ordered []task.Resolved, vars task.SessionVars, session *domain.Session, observer task.Observer) error {
+func runNodeSetup(ctx context.Context, cfg *config.Config, store *state.Store, ordered []task.Resolved, vars task.SessionVars, session *domain.Session, observer task.Observer) (map[string]string, error) {
 	nodesOnly := make([]task.Resolved, 0, len(ordered))
+	previous := make(map[string]time.Time, len(ordered))
 	for _, r := range ordered {
 		if session.Tasks[r.NodeID] == nil {
 			nodesOnly = append(nodesOnly, r)
+			if st := session.Nodes[r.NodeID]; st != nil && st.Status == contract.TaskStatusProduced {
+				previous[r.NodeID] = st.SetupAt
+			}
 		}
 	}
 	merged := domain.MergedTasks(session)
-	err := task.RunSetup(ctx, nodesOnly, vars, merged, observer)
+	if observer == nil {
+		observer = noopTaskObserver{}
+	}
+	err := task.RunSetup(ctx, nodesOnly, vars, merged, nodeSubscriptionReleaseObserver{Observer: observer, cfg: cfg, store: store, sessionName: session.Name, branch: vars.Branch})
 	if session.Nodes == nil {
 		session.Nodes = make(map[string]*contract.TaskState)
 	}
@@ -54,11 +61,44 @@ func runNodeSetup(ctx context.Context, ordered []task.Resolved, vars task.Sessio
 			session.Nodes[r.NodeID] = st
 		}
 	}
-	return err
+	wired := make(map[string]string)
+	for _, r := range nodesOnly {
+		st := session.Nodes[r.NodeID]
+		if st == nil || st.Status != contract.TaskStatusProduced || r.Subscription == "" {
+			continue
+		}
+		if st.Subscription == "" {
+			resource, ok := st.Outputs[r.Subscription].(string)
+			if !ok || strings.TrimSpace(resource) == "" {
+				return wired, fmt.Errorf("node %q subscription output %q must be a non-empty resource ID", r.NodeID, r.Subscription)
+			}
+			st.Subscription = resource
+		}
+		if st.SetupAt != previous[r.NodeID] {
+			wired[r.NodeID] = st.Subscription
+		}
+	}
+	return wired, err
 }
 
-func runTaskCleanup(ctx context.Context, ordered []task.Resolved, vars task.SessionVars, session *domain.Session, observer task.Observer) error {
-	return task.RunCleanup(ctx, ordered, vars, domain.MergedTasks(session), observer)
+func runTaskCleanup(ctx context.Context, cfg *config.Config, store *state.Store, ordered []task.Resolved, vars task.SessionVars, session *domain.Session, observer task.Observer) error {
+	before := make(map[string]bool)
+	for _, r := range ordered {
+		if st := session.Nodes[r.NodeID]; st != nil && st.Status != contract.TaskStatusCleaned {
+			before[r.NodeID] = true
+		}
+	}
+	err := task.RunCleanup(ctx, ordered, vars, domain.MergedTasks(session), observer)
+	released := make(map[string]*contract.TaskState)
+	for id := range before {
+		if st := session.Nodes[id]; st != nil && st.Status == contract.TaskStatusCleaned && st.Subscription != "" {
+			released[id] = st
+		}
+	}
+	if releaseErr := releaseNodeSubscriptions(cfg, store, session.Name, vars.Branch, released); releaseErr != nil && err == nil {
+		err = releaseErr
+	}
+	return err
 }
 
 // mergeTasks persists Nodes/Tasks by overlay under the state lock rather

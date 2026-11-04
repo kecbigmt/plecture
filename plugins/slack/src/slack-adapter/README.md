@@ -327,8 +327,8 @@ CLI client built on this feed.
 
 Removes one pair and returns `204` even if it was absent. With only
 `session_name`, it removes every registration for that session. A `plect
-down` leaves subscriptions intact; session destroy or `slack_thread` cleanup
-unsubscribes.
+down` leaves session-scoped node subscriptions intact; node cleanup or session
+destroy removes them through the resource's unsubscribe action.
 
 ### GET /subscribers
 

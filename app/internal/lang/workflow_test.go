@@ -49,6 +49,33 @@ literal      = "fixed"
 	}
 }
 
+func TestWorkflowNodes_SubscriptionReadsOnlyOwnOutput(t *testing.T) {
+	valid := workflowDef(t, `
+[session]
+kind = "workflow"
+[[session.nodes]]
+uses = "thread"
+subscription = { from = "self.outputs.permalink" }
+`)
+	if err := (Validation{}).ValidateDefinition(valid); err != nil {
+		t.Fatalf("valid subscription: %v", err)
+	}
+	for _, declaration := range []string{
+		`subscription = { from = "nodes.other.outputs.permalink" }`,
+		`subscription = { from = "self.outputs.permalink", default = "fallback" }`,
+		`subscription = { expr = "self.outputs.permalink" }`,
+		`subscription = "self.outputs.permalink"`,
+		`subscription = { from = "self.outputs.permalink", inputs = {} }`,
+	} {
+		t.Run(declaration, func(t *testing.T) {
+			def := workflowDef(t, "[session]\nkind = \"workflow\"\n[[session.nodes]]\nuses = \"thread\"\n"+declaration)
+			if err := (Validation{}).ValidateDefinition(def); err == nil {
+				t.Fatal("invalid subscription was accepted")
+			}
+		})
+	}
+}
+
 func TestWorkflowNodes_QualifiedUsesDefaultsToReferencedID(t *testing.T) {
 	def := workflowDef(t, `
 [session]

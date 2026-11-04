@@ -69,7 +69,7 @@ func TestSubscribeIfWired_RunsSubscribeHookAndReportsWired(t *testing.T) {
 	}
 }
 
-func TestAutomaticDeliverySkipsHooksWhenEmptyInputsFailSchema(t *testing.T) {
+func TestAutomaticDeliveryReportsSubscribeWhenEmptyInputsFailSchema(t *testing.T) {
 	baseDir := t.TempDir()
 	record := filepath.Join(baseDir, "called")
 	writeProviderDoc(t, baseDir, "fixture", fixtureResourceMatch, `
@@ -96,7 +96,6 @@ args = ["`+record+`"]
 		name string
 		run  func() (bool, error)
 	}{
-		{"subscribe", func() (bool, error) { return subscribeIfWired(cfg, "s", resource, "") }},
 		{"unsubscribe", func() (bool, error) { return unsubscribeIfWired(cfg, "s", resource, "") }},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
@@ -108,6 +107,9 @@ args = ["`+record+`"]
 				t.Fatalf("hook ran with invalid inputs: stat err=%v", err)
 			}
 		})
+	}
+	if ran, err := subscribeIfWired(cfg, "s", resource, ""); err == nil || ran {
+		t.Fatalf("subscribe ran=%v err=%v, want a reported input failure", ran, err)
 	}
 }
 

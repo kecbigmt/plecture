@@ -25,6 +25,7 @@ head_sha         = { type = "string" }
 [[pr_review_with_slack.nodes]]
 id   = "slack_thread"
 uses = "official.slack.slack_thread"
+subscription = { from = "self.outputs.permalink" }
 
 [pr_review_with_slack.nodes.inputs]
 base_url   = { from = "session.inputs.slack_base_url" }

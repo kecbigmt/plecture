@@ -20,6 +20,8 @@ object is supplied at the operation that needs it:
 - `plect up` supplies it for the entry resource;
 - adding a task supplies it for that task's concrete resource, including a
   resource of another type;
+- a workflow node's `subscription` supplies the empty object when it binds
+  one of that node's produced output identifiers;
 - a standalone observe, subscribe, unsubscribe, or finalize operation supplies
   it directly.
 
@@ -68,9 +70,13 @@ action input object. A resource does not own a task's state or judge evidence.
 declaration. It accepts `--inputs` or `--inputs-file` for the action input
 object. Session creation and task binding subscribe automatically when that
 declaration has a `subscribe` action and the empty input object satisfies its
-schema. Teardown runs `unsubscribe` under the same condition when the resource
-is no longer needed. A resource declaration needs no workspace provider to
-bind delivery. Workspace providers declare neither action.
+schema. A node's `subscription` uses the same empty-input rule after its setup
+produces an identifier. If required inputs prevent that binding, a known
+identifier fails loading and a runtime identifier reports a subscription
+failure for retry; neither is silently skipped. Teardown runs `unsubscribe`
+when the resource is no longer needed by the session entry, any task, or any
+live node. A resource declaration needs no workspace provider to bind
+delivery. Workspace providers declare neither action.
 
 ## Query
 

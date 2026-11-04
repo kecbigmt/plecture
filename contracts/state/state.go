@@ -133,14 +133,15 @@ type TaskState struct {
 	// referenced definition's own id, and omits it when that equals the node
 	// id; either way the workflow is what names the node's declaration, so a
 	// node's value is not an address and is not resolved as one.
-	TaskID   string         `json:"task_id,omitempty"`
-	Status   string         `json:"status"`             // "produced" | "failed" | "cleaned"
-	Inputs   map[string]any `json:"inputs,omitempty"`   // resolved node inputs (post-template), persisted for cleanup
-	Outputs  map[string]any `json:"outputs,omitempty"`  // parsed JSON from setup stdout
-	Seq      int            `json:"seq,omitempty"`      // instantiation order; 0 = legacy/unset
-	Resource string         `json:"resource,omitempty"` // bound --resource at instantiation
-	Name     string         `json:"name,omitempty"`     // --name instance identity (key == name when set)
-	Layers   []LayerState   `json:"layers,omitempty"`   // per-layer record for a nested task; empty for a plain one
+	TaskID       string         `json:"task_id,omitempty"`
+	Status       string         `json:"status"`                 // "produced" | "failed" | "cleaned"
+	Inputs       map[string]any `json:"inputs,omitempty"`       // resolved node inputs (post-template), persisted for cleanup
+	Outputs      map[string]any `json:"outputs,omitempty"`      // parsed JSON from setup stdout
+	Seq          int            `json:"seq,omitempty"`          // instantiation order; 0 = legacy/unset
+	Resource     string         `json:"resource,omitempty"`     // bound --resource at instantiation
+	Subscription string         `json:"subscription,omitempty"` // resource id bound by a workflow node's subscription
+	Name         string         `json:"name,omitempty"`         // --name instance identity (key == name when set)
+	Layers       []LayerState   `json:"layers,omitempty"`       // per-layer record for a nested task; empty for a plain one
 	// Process is the identity core recorded for the process named by this
 	// instance's `process` alive probe, captured when setup produced it. It is
 	// core's own record, not an output: nil for an instance whose effect

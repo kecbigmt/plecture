@@ -214,7 +214,7 @@ func createWithWorkflowSetup(cfg *config.Config, store *state.Store, params Crea
 	if err != nil {
 		return nil, &Error{Code: ErrExecutionFailed, Message: err.Error()}
 	}
-	tasksErr := runNodeSetup(context.Background(), plan.Session, sessionVars(cfg, session, plan), session, params.Observer)
+	wiredNodes, tasksErr := runNodeSetup(context.Background(), cfg, store, plan.Session, sessionVars(cfg, session, plan), session, params.Observer)
 	session.UpdatedAt = time.Now()
 	// A session node (the initial_task dispatcher) can shell out to a nested
 	// `plect task setup` subprocess that writes its instance straight to disk.
@@ -223,6 +223,7 @@ func createWithWorkflowSetup(cfg *config.Config, store *state.Store, params Crea
 	if err := mergeTasks(store, sessionName, session); err != nil {
 		return nil, &Error{Code: ErrExecutionFailed, Message: fmt.Sprintf("failed to save session state: %v", err)}
 	}
+	wireProducedNodeSubscriptions(cfg, store, sessionName, domain.SessionBranch(session), wiredNodes)
 	if tasksErr != nil {
 		return nil, &Error{Code: ErrExecutionFailed, Message: tasksErr.Error()}
 	}

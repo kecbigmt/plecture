@@ -44,7 +44,7 @@ func (q *Queries) CountLiveSessionsNamed(ctx context.Context, name string) (int6
 }
 
 const currentNodeExecution = `-- name: CurrentNodeExecution :one
-SELECT id, session_id, node_id, sequence, task_id, name, scope, status, resource,
+SELECT id, session_id, node_id, sequence, task_id, name, scope, status, resource, subscription,
        inputs_json, outputs_json, state_json,
        resource_observation_json, resource_observed_at, done_when_json,
        extra_done_when_json, error, setup_at,
@@ -70,6 +70,7 @@ func (q *Queries) CurrentNodeExecution(ctx context.Context, arg CurrentNodeExecu
 		&i.Scope,
 		&i.Status,
 		&i.Resource,
+		&i.Subscription,
 		&i.InputsJson,
 		&i.OutputsJson,
 		&i.StateJson,
@@ -449,12 +450,12 @@ func (q *Queries) InsertEvent(ctx context.Context, arg InsertEventParams) error 
 
 const insertNodeExecution = `-- name: InsertNodeExecution :one
 INSERT INTO node_executions (
-    id, session_id, node_id, sequence, task_id, name, scope, status, resource,
+    id, session_id, node_id, sequence, task_id, name, scope, status, resource, subscription,
     inputs_json, outputs_json, state_json,
     resource_observation_json, resource_observed_at, done_when_json,
     extra_done_when_json, error, setup_at,
     failed_at, cleaned_at, finalized_at, process_json
-) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 RETURNING id
 `
 
@@ -468,6 +469,7 @@ type InsertNodeExecutionParams struct {
 	Scope                   string
 	Status                  string
 	Resource                sql.NullString
+	Subscription            sql.NullString
 	InputsJson              sql.NullString
 	OutputsJson             sql.NullString
 	StateJson               sql.NullString
@@ -494,6 +496,7 @@ func (q *Queries) InsertNodeExecution(ctx context.Context, arg InsertNodeExecuti
 		arg.Scope,
 		arg.Status,
 		arg.Resource,
+		arg.Subscription,
 		arg.InputsJson,
 		arg.OutputsJson,
 		arg.StateJson,
@@ -954,7 +957,7 @@ func (q *Queries) LatestRepairStateChange(ctx context.Context, arg LatestRepairS
 
 const listCurrentNodeExecutions = `-- name: ListCurrentNodeExecutions :many
 SELECT ne.id, ne.session_id, ne.node_id, ne.sequence, ne.task_id, ne.name,
-       ne.scope, ne.status, ne.resource, ne.inputs_json,
+       ne.scope, ne.status, ne.resource, ne.subscription, ne.inputs_json,
        ne.outputs_json, ne.state_json, ne.resource_observation_json,
        ne.resource_observed_at, ne.done_when_json, ne.extra_done_when_json,
        ne.error, ne.setup_at, ne.failed_at,
@@ -988,6 +991,7 @@ func (q *Queries) ListCurrentNodeExecutions(ctx context.Context, sessionID strin
 			&i.Scope,
 			&i.Status,
 			&i.Resource,
+			&i.Subscription,
 			&i.InputsJson,
 			&i.OutputsJson,
 			&i.StateJson,
@@ -1017,7 +1021,7 @@ func (q *Queries) ListCurrentNodeExecutions(ctx context.Context, sessionID strin
 
 const listCurrentNodeExecutionsForSessions = `-- name: ListCurrentNodeExecutionsForSessions :many
 SELECT ne.id, ne.session_id, ne.node_id, ne.sequence, ne.task_id, ne.name,
-       ne.scope, ne.status, ne.resource, ne.inputs_json,
+       ne.scope, ne.status, ne.resource, ne.subscription, ne.inputs_json,
        ne.outputs_json, ne.state_json, ne.resource_observation_json,
        ne.resource_observed_at, ne.done_when_json, ne.extra_done_when_json,
        ne.error, ne.setup_at, ne.failed_at,
@@ -1061,6 +1065,7 @@ func (q *Queries) ListCurrentNodeExecutionsForSessions(ctx context.Context, sess
 			&i.Scope,
 			&i.Status,
 			&i.Resource,
+			&i.Subscription,
 			&i.InputsJson,
 			&i.OutputsJson,
 			&i.StateJson,
@@ -2325,7 +2330,7 @@ func (q *Queries) NextEventSequence(ctx context.Context, sessionID string) (int6
 }
 
 const nodeExecutionByID = `-- name: NodeExecutionByID :one
-SELECT id, session_id, node_id, sequence, task_id, name, scope, status, resource,
+SELECT id, session_id, node_id, sequence, task_id, name, scope, status, resource, subscription,
        inputs_json, outputs_json, state_json,
        resource_observation_json, resource_observed_at, done_when_json,
        extra_done_when_json, error, setup_at,
@@ -2346,6 +2351,7 @@ func (q *Queries) NodeExecutionByID(ctx context.Context, id string) (NodeExecuti
 		&i.Scope,
 		&i.Status,
 		&i.Resource,
+		&i.Subscription,
 		&i.InputsJson,
 		&i.OutputsJson,
 		&i.StateJson,
@@ -2444,7 +2450,7 @@ func (q *Queries) SessionNamesByIDs(ctx context.Context, ids []string) ([]Sessio
 
 const updateNodeExecution = `-- name: UpdateNodeExecution :exec
 UPDATE node_executions SET
-    sequence = ?, task_id = ?, name = ?, scope = ?, status = ?, resource = ?,
+    sequence = ?, task_id = ?, name = ?, scope = ?, status = ?, resource = ?, subscription = ?,
     inputs_json = ?, outputs_json = ?, state_json = ?,
     resource_observation_json = ?, resource_observed_at = ?, done_when_json = ?,
     extra_done_when_json = ?, error = ?,
@@ -2459,6 +2465,7 @@ type UpdateNodeExecutionParams struct {
 	Scope                   string
 	Status                  string
 	Resource                sql.NullString
+	Subscription            sql.NullString
 	InputsJson              sql.NullString
 	OutputsJson             sql.NullString
 	StateJson               sql.NullString
@@ -2483,6 +2490,7 @@ func (q *Queries) UpdateNodeExecution(ctx context.Context, arg UpdateNodeExecuti
 		arg.Scope,
 		arg.Status,
 		arg.Resource,
+		arg.Subscription,
 		arg.InputsJson,
 		arg.OutputsJson,
 		arg.StateJson,

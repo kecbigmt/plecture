@@ -16,6 +16,27 @@ import (
 	contract "github.com/kecbigmt/plecture/contracts/state"
 )
 
+func TestClassifyWorkflowRebaseSubscriptionOnlyChange(t *testing.T) {
+	for _, tc := range []struct {
+		scope string
+		want  RebaseClass
+	}{
+		{"session", RebaseRecreate},
+		{"run", RebaseRestart},
+	} {
+		t.Run(tc.scope, func(t *testing.T) {
+			def := config.TaskDefinition{ID: "thread", Scope: tc.scope, Setup: &lang.Action{Type: lang.ActionNoop}}
+			old := config.WorkflowRevision{Workflow: config.WorkflowFile{Address: "work", Nodes: []config.WorkflowNode{{ID: "thread", Uses: "thread"}}}, Effects: map[string]config.TaskDefinition{"thread": def}}
+			next := old
+			next.Workflow.Nodes = []config.WorkflowNode{{ID: "thread", Uses: "thread", Subscription: "permalink"}}
+			got, err := ClassifyWorkflowRebase(old, next, &domain.Session{Nodes: map[string]*contract.TaskState{"thread": {Scope: tc.scope, Status: contract.TaskStatusProduced}}})
+			if err != nil || got.Class != tc.want {
+				t.Fatalf("classification = %+v, %v; want %s", got, err, tc.want)
+			}
+		})
+	}
+}
+
 func TestWorkflowRebaseRestartPreservesSessionNodesAndRetriesNewRevision(t *testing.T) {
 	marker := filepath.Join(t.TempDir(), "retry")
 	cfg := writeWorkflowFixture(t, t.TempDir(), "work", []taskFixture{

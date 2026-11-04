@@ -107,13 +107,13 @@ outputs. It carries no opinion about what the thread is for — review, or
 anything else — and no PR-specific inputs: how the root text is framed is
 the composing workflow's concern.
 
-Its session-scoped setup also calls `plect subscribe` for the new permalink.
-Cleanup unsubscribes that thread. A runtime restart or `plect down` leaves the
-subscription intact. Keep `slack_thread`'s `base_url` pointed at the same
-resident adapter whose `listen_addr` the resource hook reads.
-If the adapter is unreachable at cleanup, the effect logs the failed
-unsubscribe and continues; the adapter's startup sweep removes the
-registration for the destroyed session when it returns.
+`slack_thread` only creates the thread. A workflow that needs replies adds
+`subscription = { from = "self.outputs.permalink" }` to its node. Core then
+binds the session through the `thread` resource's subscribe and unsubscribe
+actions, and retries a failed hook. A runtime restart or `plect down` leaves a
+session-scoped node's subscription intact. Keep `slack_thread`'s `base_url`
+pointed at the same resident adapter whose `listen_addr` the resource hook
+reads.
 
 `examples/review-thread-workflow.toml` shows the review case: it composes
 `root_text` from a PR title, URL, and head sha, then wires `slack_thread`

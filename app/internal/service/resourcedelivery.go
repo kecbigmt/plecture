@@ -8,6 +8,7 @@ import (
 	"github.com/kecbigmt/plecture/app/internal/domain"
 	"github.com/kecbigmt/plecture/app/internal/effect"
 	"github.com/kecbigmt/plecture/app/internal/state"
+	contract "github.com/kecbigmt/plecture/contracts/state"
 )
 
 // wireDeliveryOnSetup is TaskSetup's/setupTaskDocument's/
@@ -68,8 +69,8 @@ func subscribeIfWired(cfg *config.Config, sessionName, resourceID, branch string
 		if def.Subscribe == nil {
 			return false, nil
 		}
-		if validateSubscriptionInputs(def, nil) != nil {
-			return false, nil
+		if err := validateSubscriptionInputs(def, nil); err != nil {
+			return false, &Error{Code: ErrInvalidInput, Message: fmt.Sprintf("resource %q subscription inputs: %v", def.ID, err)}
 		}
 		if hookErr := effect.RunResourceSubscribe(def, effect.SubscribeHookVars{
 			ResourceID:  resourceID,
@@ -193,6 +194,11 @@ func resourceStillNeededBySession(s *domain.Session, resource string) bool {
 	}
 	for _, other := range s.Tasks {
 		if other != nil && other.Resource == resource {
+			return true
+		}
+	}
+	for _, node := range s.Nodes {
+		if node != nil && node.Status != contract.TaskStatusCleaned && node.Subscription == resource {
 			return true
 		}
 	}

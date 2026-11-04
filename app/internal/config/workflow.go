@@ -216,10 +216,11 @@ func NormalizeHealthcheckConfig(in *HealthcheckConfig) HealthcheckConfig {
 // of base nodes it cannot modify (e.g. a workspace-dir-process killer that
 // must clean up after the runtime and agent effects).
 type WorkflowNode struct {
-	ID     string
-	Uses   string
-	Inputs map[string]*lang.Value
-	Blocks []string
+	ID           string
+	Uses         string
+	Inputs       map[string]*lang.Value
+	Blocks       []string
+	Subscription string
 }
 
 // WorkflowPopulation declares one desired set of sessions owned by its
