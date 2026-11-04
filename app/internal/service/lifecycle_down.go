@@ -103,8 +103,6 @@ func downUnlocked(cfg *config.Config, store *state.Store, params DownParams) (*D
 	session.UpdatedAt = time.Now()
 	if !params.preserveStatus {
 		session.Status = contract.SessionStatusDown
-	}
-	if !params.preserveStatus {
 		if params.Sleep {
 			session.SleepSince = transitionAt
 		} else {

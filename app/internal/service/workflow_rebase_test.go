@@ -179,6 +179,131 @@ func TestWorkflowRebaseAliveProbeKeepsLiveSessionNode(t *testing.T) {
 	}
 }
 
+func TestWorkflowRebaseRestartCleansRemovedSessionNodeWithOldDefinition(t *testing.T) {
+	marker := filepath.Join(t.TempDir(), "cleanup")
+	cfg := writeWorkflowFixture(t, t.TempDir(), "work", []taskFixture{
+		{id: "workspace", scope: "session", setup: "echo '{}'", cleanup: "echo old > '" + marker + "'"},
+		{id: "runtime", scope: "run", setup: "echo '{}'", cleanup: "true"},
+	}, []nodeFixture{{id: "workspace"}, {id: "runtime"}})
+	store := testStore(t)
+	now := time.Now()
+	session := &domain.Session{Name: "one", Workflow: "work", Status: contract.SessionStatusDown, CreatedAt: now, UpdatedAt: now}
+	pinSessionRevision(t, cfg, session)
+	if err := store.Put(session); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := Up(cfg, store, UpParams{Identifier: "one"}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := Down(cfg, store, DownParams{Identifier: "one"}); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Remove(filepath.Join(cfg.BaseDir, "tasks", "workspace.toml")); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(cfg.BaseDir, "workflows", "work.toml"), []byte("[work]\nkind = \"workflow\"\n[[work.nodes]]\nuses = \"runtime\"\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(cfg.BaseDir, "tasks", "runtime.toml"), []byte(effectFixtureDoc(taskFixture{id: "runtime", scope: "run", setup: "echo '{\"new\":true}'", cleanup: "true"})), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	result, err := WorkflowRebase(cfg, store, RebaseParams{Identifier: "one", WithRestart: true})
+	if err != nil || result.Class != RebaseRestart {
+		t.Fatalf("rebase = %+v, %v", result, err)
+	}
+	if data, err := os.ReadFile(marker); err != nil || string(data) != "old\n" {
+		t.Fatalf("old cleanup = %q, %v", data, err)
+	}
+	after := store.Get("one")
+	if after.Nodes["workspace"] != nil || after.Status != contract.SessionStatusDown {
+		t.Fatalf("removed node/status = %+v/%s", after.Nodes["workspace"], after.Status)
+	}
+}
+
+func TestClassifyWorkflowRebaseDefersBindingsFromNewAndFailedNodes(t *testing.T) {
+	def := config.TaskDefinition{ID: "runtime", Scope: "run", Setup: &lang.Action{Type: lang.ActionNoop}}
+	base := config.WorkflowRevision{Workflow: config.WorkflowFile{Address: "work", Nodes: []config.WorkflowNode{{ID: "runtime", Uses: "runtime"}}}, Effects: map[string]config.TaskDefinition{"runtime": def}}
+	for _, tc := range []struct {
+		name string
+		old  config.WorkflowRevision
+		next config.WorkflowRevision
+		s    *domain.Session
+		want RebaseClass
+	}{
+		{"added dependent pair", base, config.WorkflowRevision{Workflow: config.WorkflowFile{Address: "work", Nodes: []config.WorkflowNode{{ID: "runtime", Uses: "runtime"}, {ID: "a", Uses: "runtime"}, {ID: "b", Uses: "runtime", Inputs: map[string]*lang.Value{"x": {Form: lang.FormFrom, From: "nodes.a.outputs.x"}}}}}, Effects: base.Effects}, &domain.Session{Nodes: map[string]*contract.TaskState{}}, RebaseAutomatic},
+		{"failed source and display edit", config.WorkflowRevision{Workflow: config.WorkflowFile{Address: "work", Nodes: []config.WorkflowNode{{ID: "runtime", Uses: "runtime"}, {ID: "consumer", Uses: "runtime", Inputs: map[string]*lang.Value{"x": {Form: lang.FormFrom, From: "nodes.runtime.outputs.x"}}}}}, Effects: base.Effects}, config.WorkflowRevision{Workflow: config.WorkflowFile{Address: "work", Name: "Updated", Nodes: []config.WorkflowNode{{ID: "runtime", Uses: "runtime"}, {ID: "consumer", Uses: "runtime", Inputs: map[string]*lang.Value{"x": {Form: lang.FormFrom, From: "nodes.runtime.outputs.x"}}}}}, Effects: base.Effects}, &domain.Session{Nodes: map[string]*contract.TaskState{"runtime": {Status: contract.TaskStatusFailed, Scope: "run"}}}, RebaseCompatible},
+		{"restart produces new input", config.WorkflowRevision{Workflow: config.WorkflowFile{Address: "work", Nodes: []config.WorkflowNode{{ID: "runtime", Uses: "runtime"}, {ID: "consumer", Uses: "runtime"}}}, Effects: base.Effects}, config.WorkflowRevision{Workflow: config.WorkflowFile{Address: "work", Nodes: []config.WorkflowNode{{ID: "runtime", Uses: "runtime"}, {ID: "consumer", Uses: "runtime", Inputs: map[string]*lang.Value{"x": {Form: lang.FormFrom, From: "nodes.runtime.outputs.new"}}}}}, Effects: map[string]config.TaskDefinition{"runtime": {ID: "runtime", Scope: "run", Setup: &lang.Action{Type: lang.ActionShell, Script: "true"}}}}, &domain.Session{Nodes: map[string]*contract.TaskState{"runtime": {Status: contract.TaskStatusProduced, Scope: "run", Outputs: map[string]any{}}}}, RebaseRestart},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			got, err := ClassifyWorkflowRebase(tc.old, tc.next, tc.s)
+			if err != nil || got.Class != tc.want {
+				t.Fatalf("classification = %+v, %v; want %s", got, err, tc.want)
+			}
+		})
+	}
+	t.Run("stable binding inside deferred JSON", func(t *testing.T) {
+		next := config.WorkflowRevision{Workflow: config.WorkflowFile{Address: "work", Nodes: []config.WorkflowNode{{ID: "runtime", Uses: "runtime"}, {ID: "a", Uses: "runtime"}, {ID: "b", Uses: "runtime", Inputs: map[string]*lang.Value{"payload": {Form: lang.FormJSON, JSON: &lang.JSONOperand{Object: map[string]*lang.JSONOperand{
+			"new":   {Leaf: &lang.Value{Form: lang.FormFrom, From: "nodes.a.outputs.x"}},
+			"saved": {Leaf: &lang.Value{Form: lang.FormFrom, From: "session.inputs.missing"}},
+		}}}}}}}, Effects: base.Effects}
+		got, err := ClassifyWorkflowRebase(base, next, &domain.Session{Nodes: map[string]*contract.TaskState{}})
+		if err != nil || got.Class != RebaseRecreate {
+			t.Fatalf("classification = %+v, %v; want recreate", got, err)
+		}
+	})
+}
+
+func TestClassifyWorkflowRebaseDynamicEffects(t *testing.T) {
+	for _, tc := range []struct {
+		name  string
+		scope string
+		edit  func(map[string]config.TaskDefinition)
+		want  RebaseClass
+	}{
+		{"missing", "run", func(defs map[string]config.TaskDefinition) { delete(defs, "dynamic") }, RebaseRecreate},
+		{"alive only", "session", func(defs map[string]config.TaskDefinition) {
+			d := defs["dynamic"]
+			d.Health = &config.HealthConfig{Alive: &lang.Action{Type: lang.ActionNoop}}
+			defs["dynamic"] = d
+		}, RebaseAutomatic},
+		{"run declaration", "run", func(defs map[string]config.TaskDefinition) {
+			d := defs["dynamic"]
+			d.Setup = &lang.Action{Type: lang.ActionShell, Script: "true"}
+			defs["dynamic"] = d
+		}, RebaseRestart},
+		{"session declaration", "session", func(defs map[string]config.TaskDefinition) {
+			d := defs["dynamic"]
+			d.Setup = &lang.Action{Type: lang.ActionShell, Script: "true"}
+			defs["dynamic"] = d
+		}, RebaseRecreate},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			oldDef := config.TaskDefinition{ID: "dynamic", Scope: tc.scope, Setup: &lang.Action{Type: lang.ActionNoop}}
+			wf := config.WorkflowFile{Address: "work", Nodes: []config.WorkflowNode{{ID: "static", Uses: "static"}}}
+			staticDef := config.TaskDefinition{ID: "static", Scope: "run", Setup: &lang.Action{Type: lang.ActionNoop}}
+			old := config.WorkflowRevision{Workflow: wf, Effects: map[string]config.TaskDefinition{"static": staticDef, "dynamic": oldDef}}
+			next := config.WorkflowRevision{Workflow: wf, Effects: map[string]config.TaskDefinition{"static": staticDef, "dynamic": oldDef}}
+			tc.edit(next.Effects)
+			session := &domain.Session{Tasks: map[string]*contract.TaskState{"instance": {TaskID: "dynamic", Scope: tc.scope, Status: contract.TaskStatusProduced}}}
+			got, err := ClassifyWorkflowRebase(old, next, session)
+			if err != nil || got.Class != tc.want {
+				t.Fatalf("classification = %+v, %v; want %s", got, err, tc.want)
+			}
+		})
+	}
+	t.Run("changed task document", func(t *testing.T) {
+		wf := config.WorkflowFile{Address: "work", Nodes: []config.WorkflowNode{{ID: "static", Uses: "static"}}}
+		defs := map[string]config.TaskDefinition{"static": {ID: "static", Scope: "run", Setup: &lang.Action{Type: lang.ActionNoop}}}
+		old := config.WorkflowRevision{Workflow: wf, Effects: defs, Tasks: map[string]config.TaskDocument{"review": {ID: "review", Instruction: "old"}}}
+		next := config.WorkflowRevision{Workflow: wf, Effects: defs, Tasks: map[string]config.TaskDocument{"review": {ID: "review", Instruction: "new"}}}
+		session := &domain.Session{Tasks: map[string]*contract.TaskState{"review#1": {TaskID: "review", Scope: "session", Status: contract.TaskStatusProduced}}}
+		got, err := ClassifyWorkflowRebase(old, next, session)
+		if err != nil || got.Class != RebaseRecreate {
+			t.Fatalf("classification = %+v, %v; want recreate", got, err)
+		}
+	})
+}
+
 func TestWorkflowRebaseRejectsSessionDeclarationChange(t *testing.T) {
 	cfg := writeWorkflowFixture(t, t.TempDir(), "work", []taskFixture{{id: "workspace", scope: "session", setup: "echo '{}'", cleanup: "true"}}, []nodeFixture{{id: "workspace"}})
 	store := testStore(t)
@@ -267,7 +392,7 @@ func TestClassifyWorkflowRebase(t *testing.T) {
 		{"removed definition", func(r *config.WorkflowRevision) {
 			r.Workflow.Nodes = r.Workflow.Nodes[:1]
 			delete(r.Effects, "runtime")
-		}, RebaseRecreate, nil},
+		}, RebaseAutomatic, nil},
 		{"replace run nodes", func(r *config.WorkflowRevision) {
 			r.Workflow.Nodes[1] = config.WorkflowNode{ID: "replacement", Uses: "runtime"}
 		}, RebaseRestart, []string{"replacement"}},
@@ -297,7 +422,7 @@ func TestClassifyWorkflowRebase(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			old, next := base(), base()
 			tc.edit(&next)
-			got, err := ClassifyWorkflowRebase(old, next, &domain.Session{Inputs: map[string]any{}, Nodes: map[string]*contract.TaskState{}})
+			got, err := ClassifyWorkflowRebase(old, next, &domain.Session{Inputs: map[string]any{}, Nodes: map[string]*contract.TaskState{"runtime": {Status: contract.TaskStatusProduced, Scope: "run"}}})
 			if err != nil {
 				t.Fatal(err)
 			}

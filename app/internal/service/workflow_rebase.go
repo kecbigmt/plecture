@@ -12,6 +12,7 @@ import (
 	"github.com/kecbigmt/plecture/app/internal/config"
 	"github.com/kecbigmt/plecture/app/internal/domain"
 	"github.com/kecbigmt/plecture/app/internal/eventlog"
+	"github.com/kecbigmt/plecture/app/internal/lang"
 	"github.com/kecbigmt/plecture/app/internal/state"
 	"github.com/kecbigmt/plecture/app/internal/task"
 	"github.com/kecbigmt/plecture/contracts/event"
@@ -127,6 +128,15 @@ func workflowRebaseUnlocked(cfg *config.Config, store *state.Store, name string,
 			_ = logResult("failed")
 			return result, err
 		}
+		session, err = store.GetE(name)
+		if err != nil {
+			_ = logResult("failed")
+			return result, err
+		}
+		if err := cleanupRebasedNodes(cfg, store, session, old, next, RebaseClassification{}, params.Observer); err != nil {
+			_ = logResult("failed")
+			return result, err
+		}
 	} else if classification.Class == RebaseAutomatic {
 		if err := cleanupRebasedNodes(cfg, store, session, old, next, classification, params.Observer); err != nil {
 			_ = logResult("failed")
@@ -233,10 +243,6 @@ func ClassifyWorkflowRebase(old, next config.WorkflowRevision, session *domain.S
 	for _, node := range oldPlan.UpOrder() {
 		current, exists := nextNodes[node.NodeID]
 		if !exists {
-			if _, defined := next.Effects[oldNodes[node.NodeID].Uses]; !defined {
-				result.raise(RebaseRecreate, fmt.Sprintf("removed node %q has no remaining definition for cleanup; restore it or destroy and recreate the session", node.NodeID))
-				continue
-			}
 			result.raise(RebaseAutomatic, fmt.Sprintf("node %q removed; its saved execution will be cleaned", node.NodeID))
 			continue
 		}
@@ -274,19 +280,79 @@ func ClassifyWorkflowRebase(old, next config.WorkflowRevision, session *domain.S
 	if oldRun > 0 && nextRun > 0 && retainedRun == 0 {
 		result.raise(RebaseRestart, "all run-scoped nodes were replaced; pass --with-restart")
 	}
+	for _, key := range sortedTaskKeys(session.Tasks) {
+		st := session.Tasks[key]
+		if st == nil || st.Status != contract.TaskStatusProduced {
+			continue
+		}
+		address := instanceDefinitionAddress(key, st, true, nil)
+		oldDef, wasEffect := old.Effects[address]
+		if !wasEffect {
+			if oldDoc, wasTask := old.Tasks[address]; wasTask {
+				if nextDoc, exists := next.Tasks[address]; !exists {
+					result.raise(RebaseRecreate, fmt.Sprintf("dynamic task %q definition %q removed; restore it or destroy and recreate the session", key, address))
+				} else if !equalRevisionPart(oldDoc, nextDoc) {
+					result.raise(RebaseRecreate, fmt.Sprintf("session-scoped dynamic task %q changed; destroy and recreate the session", key))
+				}
+				continue
+			}
+			result.raise(RebaseRecreate, fmt.Sprintf("dynamic instance %q has no saved definition %q; destroy and recreate the session", key, address))
+			continue
+		}
+		nextDef, exists := next.Effects[address]
+		if !exists {
+			result.raise(RebaseRecreate, fmt.Sprintf("dynamic instance %q definition %q removed; restore it or destroy and recreate the session", key, address))
+		} else if equalRevisionPart(oldDef, nextDef) {
+			continue
+		} else if onlyAliveChanged(oldDef, nextDef) {
+			result.raise(RebaseAutomatic, fmt.Sprintf("alive probe changed for dynamic instance %q", key))
+		} else if st.Scope != nextDef.EffectiveScope() || st.Scope == config.TaskScopeSession {
+			result.raise(RebaseRecreate, fmt.Sprintf("session-scoped dynamic instance %q changed; destroy and recreate the session", key))
+		} else {
+			result.raise(RebaseRestart, fmt.Sprintf("run-scoped dynamic instance %q changed; pass --with-restart", key))
+		}
+	}
+	deferred := make(map[string]bool)
+	for _, id := range result.RecreateNodes {
+		deferred[id] = true
+	}
+	if result.Class == RebaseRestart {
+		for _, node := range nextPlan.Run {
+			deferred[node.NodeID] = true
+		}
+	}
+	for _, node := range nextPlan.UpOrder() {
+		st := session.Nodes[node.NodeID]
+		if st == nil || st.Status != contract.TaskStatusProduced {
+			deferred[node.NodeID] = true
+		}
+	}
+	for changed := true; changed; {
+		changed = false
+		for _, node := range nextPlan.UpOrder() {
+			for _, dep := range node.DependsOn {
+				if deferred[dep] && !deferred[node.NodeID] {
+					deferred[node.NodeID], changed = true, true
+				}
+			}
+		}
+	}
 	outputs := make(map[string]map[string]any)
 	for id, state := range session.Nodes {
-		if state != nil {
+		if state != nil && state.Status == contract.TaskStatusProduced && !deferred[id] {
 			outputs[id] = state.Outputs
 		}
 	}
-	wfOutputs := outputs[contract.WorkflowPseudoNodeID]
+	wfOutputs := map[string]any(nil)
+	if state := session.Nodes[contract.WorkflowPseudoNodeID]; state != nil {
+		wfOutputs = state.Outputs
+	}
 	vars := task.SessionVars{Name: session.Name, ResourceID: session.ResourceID, ParentSession: session.ParentSession, WorkspaceDirPath: session.WorkspaceDirPath, Branch: domain.SessionBranch(session), Inputs: session.Inputs}
 	for _, node := range nextPlan.UpOrder() {
-		if _, err := task.ResolveNodeInputs(node.Inputs, outputs, wfOutputs, vars); err != nil {
+		if err := validateRebaseInputs(node.Inputs, outputs, wfOutputs, vars, deferred); err != nil {
 			result.raise(RebaseRecreate, fmt.Sprintf("node %q inputs cannot resolve from saved outputs: %v; add a default or destroy and recreate the session", node.NodeID, err))
 		}
-		if state := session.Nodes[node.NodeID]; state != nil {
+		if state := session.Nodes[node.NodeID]; state != nil && state.Status == contract.TaskStatusProduced && !deferred[node.NodeID] {
 			if len(node.Layers) == 0 {
 				if err := task.ValidateAliveBindings(node.Health.AliveProbe(), state.Outputs, state.Inputs, vars); err != nil {
 					result.raise(RebaseRecreate, fmt.Sprintf("node %q alive binding cannot resolve from saved outputs: %v; add a default or destroy and recreate the session", node.NodeID, err))
@@ -305,7 +371,7 @@ func ClassifyWorkflowRebase(old, next config.WorkflowRevision, session *domain.S
 		}
 	}
 	for _, channel := range next.Workflow.Event.Channel {
-		if _, err := task.ResolveNodeInputs(channel.Inputs, outputs, wfOutputs, vars); err != nil {
+		if err := validateRebaseInputs(channel.Inputs, outputs, wfOutputs, vars, deferred); err != nil {
 			result.raise(RebaseRecreate, fmt.Sprintf("event channel %q inputs cannot resolve from saved outputs: %v; add a default or destroy and recreate the session", channel.Name, err))
 		}
 	}
@@ -347,6 +413,32 @@ func ClassifyWorkflowRebase(old, next config.WorkflowRevision, session *domain.S
 		sort.Strings(result.RecreateNodes)
 	}
 	return result, nil
+}
+
+func validateRebaseInputs(inputs map[string]*lang.Value, outputs map[string]map[string]any, wfOutputs map[string]any, vars task.SessionVars, deferred map[string]bool) error {
+	keys := make([]string, 0, len(inputs))
+	for key := range inputs {
+		keys = append(keys, key)
+	}
+	sort.Strings(keys)
+	for _, key := range keys {
+		for _, leaf := range lang.ValueLeaves(inputs[key]) {
+			readsDeferred := false
+			for _, id := range lang.NodeReads(map[string]*lang.Value{key: leaf}) {
+				if deferred[id] {
+					readsDeferred = true
+					break
+				}
+			}
+			if readsDeferred {
+				continue
+			}
+			if _, err := task.ResolveNodeInputs(map[string]*lang.Value{key: leaf}, outputs, wfOutputs, vars); err != nil {
+				return err
+			}
+		}
+	}
+	return nil
 }
 
 func (r *RebaseClassification) raise(class RebaseClass, reason string) {
