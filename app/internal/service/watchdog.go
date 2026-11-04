@@ -154,12 +154,6 @@ func EvaluateHealth(cfg *config.Config, store *state.Store, name string) (Health
 	if err != nil {
 		return HealthReport{}, &Error{Code: ErrExecutionFailed, Message: fmt.Sprintf("load task declarations: %v", err)}
 	}
-	// A session's frozen workflow failing to resolve is this session's own
-	// plan-resolution failure, not a silent absence of a plan: unlike
-	// sessionWorkflowConfig (used where a best-effort address lookup is
-	// fine), a session naming a workflow that no longer exists must surface
-	// as an error here so one broken workflow reports as one session's
-	// health-evaluation failure rather than a falsely healthy verdict.
 	wf, wfErr := cfg.ResolveSessionWorkflow(s)
 	if wfErr != nil {
 		return HealthReport{}, &Error{Code: ErrExecutionFailed, Message: fmt.Sprintf("resolve workflow: %v", wfErr)}
@@ -183,18 +177,6 @@ func EvaluateHealth(cfg *config.Config, store *state.Store, name string) (Health
 	finalizeActivityObservation(&report, s.Health, healthCfg.StallThreshold.Duration, now)
 	persistHealthState(store, name, report, now)
 	return report, nil
-}
-
-func sessionWorkflowConfig(cfg *config.Config, workflowID, workspaceDirPath string) *config.WorkflowFile {
-	workflows, err := cfg.LoadWorkflows(workspaceDirPath)
-	if err != nil {
-		return nil
-	}
-	wf, ok := workflows[workflowID]
-	if !ok {
-		return nil
-	}
-	return &wf
 }
 
 // currentPlanRunScopedNodeIDs returns every run-scoped node the session's
