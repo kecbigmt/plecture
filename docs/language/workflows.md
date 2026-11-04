@@ -279,6 +279,12 @@ launch and an `up` that reuses a live runtime publish no notice. The event is
 delivered through any channel whose `include` matches `plect.instruction`.
 The [event reference](events.md#session-resume-notices) defines each trigger.
 
+Core identifies the agent among run-scoped nodes that have previous outputs.
+It selects the sole node with a non-empty `session_id` output; otherwise, the
+sole node with a `pid` output read by a channel whose `include` matches
+`plect.instruction`; otherwise, the only run-scoped node in the plan. If none
+of these rules selects a node with previous outputs, no notice is published.
+
 The health cycle may run plain `up` only while
 the session's recorded status is `up`, after a non-zero `alive` exit (a
 `process` probe that finds its pid gone or reused counts as one), a failed

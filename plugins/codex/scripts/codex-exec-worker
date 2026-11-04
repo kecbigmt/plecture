@@ -79,6 +79,16 @@ publish_reply() {
         | "${PLECT_AGENT_ACTIVITY_BIN:-codex-agent-activity}" reply >/dev/null 2>&1 || true
 }
 
+if compgen -G "$queue_dir/*.json" > /dev/null; then
+    for _ in $(seq 1 50); do
+        for f in "$queue_dir"/*.json; do
+            [ -e "$f" ] || continue
+            [ "$(jq -r '.type' "$f" 2>/dev/null || true)" = "plect.session.resumed" ] && break 2
+        done
+        sleep 0.1
+    done
+fi
+
 while true; do
     resumed_files=()
     other_files=()

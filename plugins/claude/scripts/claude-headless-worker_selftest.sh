@@ -164,10 +164,15 @@ priority_queue="$tmp/priority-queue"
 priority_state="$tmp/priority-state"
 mkdir -p "$priority_queue"
 echo '{"type":"user.emit","text":"leftover turn"}' > "$priority_queue/1-leftover.json"
-echo '{"type":"plect.session.resumed","text":"resume notice"}' > "$priority_queue/2-resumed.json"
-echo '{"type":"user.emit","text":"later turn"}' > "$priority_queue/3-later.json"
 "$worker" "$priority_queue" "$priority_state" "$sid" "$tmp/mcp.json" "$tmp/hooks.json" &
 worker_pid=$!
+for _ in $(seq 1 100); do
+  [ -e "$priority_state/ready" ] && break
+  sleep 0.01
+done
+[ -e "$priority_state/ready" ] || { echo "FAIL resumed worker was never ready" >&2; fail=1; }
+echo '{"type":"plect.session.resumed","text":"resume notice"}' > "$priority_queue/2-resumed.json"
+echo '{"type":"user.emit","text":"later turn"}' > "$priority_queue/3-later.json"
 wait_for_drain "$priority_queue/3-later.json" || { echo "FAIL queued turns were never drained" >&2; fail=1; }
 mapfile -t ordered_turns < "$STUB_ARGV"
 if [ "${#ordered_turns[@]}" -eq 3 ] &&

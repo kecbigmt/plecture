@@ -103,6 +103,17 @@ tick_session() {
     plect tick "$PLECT_SESSION_NAME" >/dev/null 2>&1 || true
 }
 
+if compgen -G "$queue_dir/*.json" > /dev/null; then
+    for _ in $(seq 1 50); do
+        for f in "$queue_dir"/*.json; do
+            [ -e "$f" ] || continue
+            [ "$(jq -r '.type' "$f" 2>/dev/null || true)" = "plect.session.resumed" ] && break 2
+        done
+        ensure_bridge
+        sleep 0.1
+    done
+fi
+
 # run_claude scopes ANTHROPIC_API_KEY to the claude process alone and reads
 # it from the file on every turn, so the key never crosses the pane's
 # keystrokes or scrollback, and a rotated key takes effect on the next turn
