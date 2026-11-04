@@ -69,6 +69,48 @@ func TestSubscribeIfWired_RunsSubscribeHookAndReportsWired(t *testing.T) {
 	}
 }
 
+func TestAutomaticDeliverySkipsHooksWhenEmptyInputsFailSchema(t *testing.T) {
+	baseDir := t.TempDir()
+	record := filepath.Join(baseDir, "called")
+	writeProviderDoc(t, baseDir, "fixture", fixtureResourceMatch, `
+[fixture.inputs_schema]
+type = "object"
+required = ["token"]
+
+[fixture.inputs_schema.properties]
+token = { type = "string" }
+
+[fixture.subscribe]
+type = "exec"
+command = "touch"
+args = ["`+record+`"]
+
+[fixture.unsubscribe]
+type = "exec"
+command = "touch"
+args = ["`+record+`"]
+`)
+	cfg := &config.Config{BaseDir: baseDir}
+	resource := "resource://org/repo/pull/1"
+	for _, tc := range []struct {
+		name string
+		run  func() (bool, error)
+	}{
+		{"subscribe", func() (bool, error) { return subscribeIfWired(cfg, "s", resource, "") }},
+		{"unsubscribe", func() (bool, error) { return unsubscribeIfWired(cfg, "s", resource, "") }},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			ran, err := tc.run()
+			if err != nil || ran {
+				t.Fatalf("ran=%v err=%v, want false, nil", ran, err)
+			}
+			if _, err := os.Stat(record); !os.IsNotExist(err) {
+				t.Fatalf("hook ran with invalid inputs: stat err=%v", err)
+			}
+		})
+	}
+}
+
 func TestSubscribeIfWired_IdempotentOnRepeatedCall(t *testing.T) {
 	rec := filepath.Join(t.TempDir(), "rec")
 	cfg := writeSubscribeProvider(t, "fixture", fixtureResourceMatch, rec)
@@ -94,21 +136,20 @@ func TestSubscribeIfWired_HookFailureSurfacesStderr(t *testing.T) {
 	baseDir := t.TempDir()
 	body := `
 [fixture]
-kind  = "workspace_provider"
+kind  = "resource_observer"
 match = '` + fixtureResourceMatch + `'
-name  = { expr = "match.owner + '/' + match.repo + '-' + match.number" }
 
-[fixture.setup]
+[fixture.observe]
 type    = "exec"
 command = "printf"
-args    = ['{"workdir":"/tmp/x"}']
+args    = ['{}']
 
 [fixture.subscribe]
 type    = "exec"
 command = "sh"
 args    = ["-c", "echo boom >&2; exit 3"]
 `
-	writeFileService(t, filepath.Join(baseDir, "workspaces", "fixture.toml"), body)
+	writeFileService(t, filepath.Join(baseDir, "resources", "fixture.toml"), body)
 	cfg := &config.Config{BaseDir: baseDir}
 
 	_, err := subscribeIfWired(cfg, "s", "resource://org/repo/pull/1", "")
@@ -117,7 +158,7 @@ args    = ["-c", "echo boom >&2; exit 3"]
 
 func TestUnsubscribeIfWired_EmptyResourceIsANoOp(t *testing.T) {
 	cfg := &config.Config{BaseDir: t.TempDir()}
-	unsubscribed, err := unsubscribeIfWired(cfg, "s", "")
+	unsubscribed, err := unsubscribeIfWired(cfg, "s", "", "")
 	if err != nil || unsubscribed {
 		t.Fatalf("unsubscribed=%v err=%v, want false, nil", unsubscribed, err)
 	}
@@ -125,7 +166,7 @@ func TestUnsubscribeIfWired_EmptyResourceIsANoOp(t *testing.T) {
 
 func TestUnsubscribeIfWired_NoProviderMatchIsSilentlySkipped(t *testing.T) {
 	cfg := &config.Config{BaseDir: t.TempDir()}
-	unsubscribed, err := unsubscribeIfWired(cfg, "s", "opaque-resource-no-provider-recognizes")
+	unsubscribed, err := unsubscribeIfWired(cfg, "s", "opaque-resource-no-provider-recognizes", "")
 	if err != nil || unsubscribed {
 		t.Fatalf("unsubscribed=%v err=%v, want false, nil", unsubscribed, err)
 	}
@@ -136,7 +177,7 @@ func TestUnsubscribeIfWired_ProviderWithoutUnsubscribeHookIsSilentlySkipped(t *t
 	writeProviderDoc(t, baseDir, "fixture", fixtureResourceMatch, "")
 	cfg := &config.Config{BaseDir: baseDir}
 
-	unsubscribed, err := unsubscribeIfWired(cfg, "s", "resource://org/repo/pull/1")
+	unsubscribed, err := unsubscribeIfWired(cfg, "s", "resource://org/repo/pull/1", "")
 	if err != nil || unsubscribed {
 		t.Fatalf("unsubscribed=%v err=%v, want false, nil", unsubscribed, err)
 	}
@@ -146,7 +187,7 @@ func TestUnsubscribeIfWired_RunsUnsubscribeHook(t *testing.T) {
 	rec := filepath.Join(t.TempDir(), "rec")
 	cfg := writeSubscribeUnsubscribeProvider(t, "fixture", fixtureResourceMatch, "", rec)
 
-	unsubscribed, err := unsubscribeIfWired(cfg, "sess-7", "resource://org/repo/pull/7")
+	unsubscribed, err := unsubscribeIfWired(cfg, "sess-7", "resource://org/repo/pull/7", "")
 	if err != nil {
 		t.Fatalf("unsubscribeIfWired: %v", err)
 	}
@@ -169,7 +210,7 @@ func TestUnsubscribeIfWired_AmbiguousMatchIsSilentlySkipped(t *testing.T) {
 	writeProviderDoc(t, baseDir, "b", fixtureResourceMatch, "")
 	cfg := &config.Config{BaseDir: baseDir}
 
-	unsubscribed, err := unsubscribeIfWired(cfg, "s", "resource://org/repo/pull/1")
+	unsubscribed, err := unsubscribeIfWired(cfg, "s", "resource://org/repo/pull/1", "")
 	if err != nil || unsubscribed {
 		t.Fatalf("unsubscribed=%v err=%v, want false, nil", unsubscribed, err)
 	}
@@ -179,24 +220,23 @@ func TestUnsubscribeIfWired_HookFailureSurfacesStderr(t *testing.T) {
 	baseDir := t.TempDir()
 	body := `
 [fixture]
-kind  = "workspace_provider"
+kind  = "resource_observer"
 match = '` + fixtureResourceMatch + `'
-name  = { expr = "match.owner + '/' + match.repo + '-' + match.number" }
 
-[fixture.setup]
+[fixture.observe]
 type    = "exec"
 command = "printf"
-args    = ['{"workdir":"/tmp/x"}']
+args    = ['{}']
 
 [fixture.unsubscribe]
 type    = "exec"
 command = "sh"
 args    = ["-c", "echo boom >&2; exit 3"]
 `
-	writeFileService(t, filepath.Join(baseDir, "workspaces", "fixture.toml"), body)
+	writeFileService(t, filepath.Join(baseDir, "resources", "fixture.toml"), body)
 	cfg := &config.Config{BaseDir: baseDir}
 
-	unsubscribed, err := unsubscribeIfWired(cfg, "s", "resource://org/repo/pull/1")
+	unsubscribed, err := unsubscribeIfWired(cfg, "s", "resource://org/repo/pull/1", "")
 	if unsubscribed {
 		t.Error("a failed hook must not be reported as unsubscribed")
 	}
@@ -210,16 +250,15 @@ func writeProviderDoc(t *testing.T, baseDir, id, match, extra string) {
 	t.Helper()
 	body := `
 [` + id + `]
-kind  = "workspace_provider"
+kind  = "resource_observer"
 match = '` + match + `'
-name  = { expr = "match.owner + '/' + match.repo + '-' + match.number" }
 
-[` + id + `.setup]
+[` + id + `.observe]
 type    = "exec"
 command = "printf"
-args    = ['{"workdir":"/tmp/x"}']
+args    = ['{}']
 ` + extra
-	writeFileService(t, filepath.Join(baseDir, "workspaces", id+".toml"), body)
+	writeFileService(t, filepath.Join(baseDir, "resources", id+".toml"), body)
 }
 
 // writeSubscribeUnsubscribeProvider drops a provider with a resolver plus

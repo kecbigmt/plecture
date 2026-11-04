@@ -82,24 +82,23 @@ func TestTaskSetup_SubscribeFailureIsDurablyQueued(t *testing.T) {
 	)
 	body := `
 [fixture]
-kind  = "workspace_provider"
+kind  = "resource_observer"
 match = '` + fixtureResourceMatch + `'
-name  = { expr = "match.owner + '/' + match.repo + '-' + match.number" }
 
-[fixture.setup]
+[fixture.observe]
 type    = "exec"
 command = "printf"
-args    = ['{"workdir":"/tmp/x"}']
+args    = ['{}']
 
 [fixture.subscribe]
 type    = "exec"
 command = "sh"
 args    = ["-c", "exit 3"]
 `
-	if err := os.MkdirAll(filepath.Join(cfg.BaseDir, "workspaces"), 0o755); err != nil {
+	if err := os.MkdirAll(filepath.Join(cfg.BaseDir, "resources"), 0o755); err != nil {
 		t.Fatal(err)
 	}
-	if err := os.WriteFile(filepath.Join(cfg.BaseDir, "workspaces", "fixture.toml"), []byte(body), 0o644); err != nil {
+	if err := os.WriteFile(filepath.Join(cfg.BaseDir, "resources", "fixture.toml"), []byte(body), 0o644); err != nil {
 		t.Fatal(err)
 	}
 	store := testStore(t)
@@ -125,14 +124,13 @@ func writeAlwaysFailingUnsubscribeProvider(t *testing.T, baseDir string) {
 	t.Helper()
 	body := `
 [fixture]
-kind  = "workspace_provider"
+kind  = "resource_observer"
 match = '` + fixtureResourceMatch + `'
-name  = { expr = "match.owner + '/' + match.repo + '-' + match.number" }
 
-[fixture.setup]
+[fixture.observe]
 type    = "exec"
 command = "printf"
-args    = ['{"workdir":"/tmp/x"}']
+args    = ['{}']
 
 [fixture.subscribe]
 type    = "exec"
@@ -143,10 +141,10 @@ type    = "exec"
 command = "sh"
 args    = ["-c", "exit 3"]
 `
-	if err := os.MkdirAll(filepath.Join(baseDir, "workspaces"), 0o755); err != nil {
+	if err := os.MkdirAll(filepath.Join(baseDir, "resources"), 0o755); err != nil {
 		t.Fatal(err)
 	}
-	if err := os.WriteFile(filepath.Join(baseDir, "workspaces", "fixture.toml"), []byte(body), 0o644); err != nil {
+	if err := os.WriteFile(filepath.Join(baseDir, "resources", "fixture.toml"), []byte(body), 0o644); err != nil {
 		t.Fatal(err)
 	}
 }
@@ -159,14 +157,13 @@ func toggledUnsubscribeProvider(t *testing.T, baseDir, toggle, rec string) {
 	t.Helper()
 	body := `
 [fixture]
-kind  = "workspace_provider"
+kind  = "resource_observer"
 match = '` + fixtureResourceMatch + `'
-name  = { expr = "match.owner + '/' + match.repo + '-' + match.number" }
 
-[fixture.setup]
+[fixture.observe]
 type    = "exec"
 command = "printf"
-args    = ['{"workdir":"/tmp/x"}']
+args    = ['{}']
 
 [fixture.subscribe]
 type    = "exec"
@@ -177,10 +174,10 @@ type    = "exec"
 command = "sh"
 args    = ["-c", 'test -e "$1" || exit 3; echo done > "$2"', "provider", "` + toggle + `", "` + rec + `"]
 `
-	if err := os.MkdirAll(filepath.Join(baseDir, "workspaces"), 0o755); err != nil {
+	if err := os.MkdirAll(filepath.Join(baseDir, "resources"), 0o755); err != nil {
 		t.Fatal(err)
 	}
-	if err := os.WriteFile(filepath.Join(baseDir, "workspaces", "fixture.toml"), []byte(body), 0o644); err != nil {
+	if err := os.WriteFile(filepath.Join(baseDir, "resources", "fixture.toml"), []byte(body), 0o644); err != nil {
 		t.Fatal(err)
 	}
 }
@@ -368,24 +365,23 @@ func TestFlushPendingDelivery_RetriesSubscribeAndDrainsOnSuccess(t *testing.T) {
 	)
 	body := `
 [fixture]
-kind  = "workspace_provider"
+kind  = "resource_observer"
 match = '` + fixtureResourceMatch + `'
-name  = { expr = "match.owner + '/' + match.repo + '-' + match.number" }
 
-[fixture.setup]
+[fixture.observe]
 type    = "exec"
 command = "printf"
-args    = ['{"workdir":"/tmp/x"}']
+args    = ['{}']
 
 [fixture.subscribe]
 type    = "exec"
 command = "sh"
 args    = ["-c", 'test -e "$1" || exit 3; echo done > "$2"', "provider", "` + toggle + `", "` + rec + `"]
 `
-	if err := os.MkdirAll(filepath.Join(cfg.BaseDir, "workspaces"), 0o755); err != nil {
+	if err := os.MkdirAll(filepath.Join(cfg.BaseDir, "resources"), 0o755); err != nil {
 		t.Fatal(err)
 	}
-	if err := os.WriteFile(filepath.Join(cfg.BaseDir, "workspaces", "fixture.toml"), []byte(body), 0o644); err != nil {
+	if err := os.WriteFile(filepath.Join(cfg.BaseDir, "resources", "fixture.toml"), []byte(body), 0o644); err != nil {
 		t.Fatal(err)
 	}
 	store := testStore(t)
@@ -426,24 +422,23 @@ func TestFlushPendingDelivery_DropsSubscribeEntryOnceResourceIsNoLongerNeeded(t 
 	// A toggle that never appears: if the hook ran at all, the test fails.
 	body := `
 [fixture]
-kind  = "workspace_provider"
+kind  = "resource_observer"
 match = '` + fixtureResourceMatch + `'
-name  = { expr = "match.owner + '/' + match.repo + '-' + match.number" }
 
-[fixture.setup]
+[fixture.observe]
 type    = "exec"
 command = "printf"
-args    = ['{"workdir":"/tmp/x"}']
+args    = ['{}']
 
 [fixture.subscribe]
 type    = "exec"
 command = "sh"
 args    = ["-c", 'test -e "$1" || exit 3; echo done > "$2"', "provider", "` + filepath.Join(t.TempDir(), "never") + `", "` + rec + `"]
 `
-	if err := os.MkdirAll(filepath.Join(cfg.BaseDir, "workspaces"), 0o755); err != nil {
+	if err := os.MkdirAll(filepath.Join(cfg.BaseDir, "resources"), 0o755); err != nil {
 		t.Fatal(err)
 	}
-	if err := os.WriteFile(filepath.Join(cfg.BaseDir, "workspaces", "fixture.toml"), []byte(body), 0o644); err != nil {
+	if err := os.WriteFile(filepath.Join(cfg.BaseDir, "resources", "fixture.toml"), []byte(body), 0o644); err != nil {
 		t.Fatal(err)
 	}
 	store := testStore(t)

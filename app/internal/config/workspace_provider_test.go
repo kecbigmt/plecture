@@ -177,9 +177,9 @@ func TestLoadWorkspaceProviders_RejectedDeclarations(t *testing.T) {
 			want: "self.outputs.workspace_dir",
 		},
 		{
-			name: "a subscribe reading a provider parameter",
+			name: "a provider subscription is rejected",
 			body: "[p]\nkind = \"workspace_provider\"\n\n[p.setup]\ntype = \"exec\"\ncommand = \"true\"\n\n[p.subscribe]\ntype = \"exec\"\ncommand = \"true\"\nargs = [{ from = \"inputs.x\" }]\n",
-			want: "inputs.x",
+			want: "subscribe",
 		},
 		{
 			name: "the reserved workspace_dir output declared mutable",

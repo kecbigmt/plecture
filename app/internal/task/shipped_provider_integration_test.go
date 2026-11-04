@@ -162,7 +162,7 @@ func TestShippedProviders_InvocationsMatchTheirPluginsRecord(t *testing.T) {
 			var b strings.Builder
 			for _, id := range ids {
 				prov := byID[id]
-				for _, hook := range []string{"setup", "cleanup", "subscribe"} {
+				for _, hook := range []string{"setup", "cleanup"} {
 					if err := os.Remove(argvLog); err != nil && !os.IsNotExist(err) {
 						t.Fatal(err)
 					}
@@ -233,12 +233,7 @@ func runProviderHook(t *testing.T, prov config.WorkspaceProviderConfig, hook str
 		}
 		return RunWorkflowCleanup(prov, vars, tasks, nil)
 	default:
-		return effect.RunWorkspaceProviderSubscribe(prov, effect.SubscribeHookVars{
-			ResourceID:  vars.ResourceID,
-			SessionName: vars.SessionName,
-			Plugins:     vars.Plugins,
-			SourcePath:  prov.SourcePath,
-		})
+		return fmt.Errorf("unsupported workspace provider hook %q", hook)
 	}
 }
 

@@ -94,7 +94,7 @@ func sweepOrphanedPendingDeliveries(cfg *config.Config, store *state.Store) {
 				sweepErr = dequeuePendingDelivery(store, retry)
 				return
 			}
-			unsubscribed, err := unsubscribeIfWired(cfg, retry.Session, retry.ResourceID)
+			unsubscribed, err := unsubscribeIfWired(cfg, retry.Session, retry.ResourceID, "")
 			if err != nil || !unsubscribed {
 				sweepErr = err
 				return
@@ -156,7 +156,7 @@ func flushOnePendingDelivery(cfg *config.Config, store *state.Store, retry persi
 		if fresh != nil && resourceStillNeededBySession(fresh, retry.ResourceID) {
 			return dequeuePendingDelivery(store, retry)
 		}
-		unsubscribed, err := unsubscribeIfWired(cfg, retry.Session, retry.ResourceID)
+		unsubscribed, err := unsubscribeIfWired(cfg, retry.Session, retry.ResourceID, domain.SessionBranch(fresh))
 		if err != nil || !unsubscribed {
 			return err
 		}
