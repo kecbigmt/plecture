@@ -243,6 +243,12 @@ neither does one whose activity probe emits no envelope. Each layer declares
 only its own probes and never replaces another layer's, so composition needs no
 conflict rule.
 
+A `process` alive probe works in any layer. Core reads the pid from the
+declaring layer's own contract, records one identity for the chain's instance,
+and judges it as it would a plain instance's; the identity reaches only that
+layer's cleanup. The instance carries one record, so two layers of a chain may
+not both declare the probe.
+
 A layer earns an activity probe only when its activity indicates session
 progress. A chatty sidecar layer with an activity probe would mask a stalled
 agent.
@@ -301,6 +307,7 @@ Loading nested effect definitions fails when:
 - `[inner].uses` forms a nesting cycle, including self-reference.
 - the outer effect declares a `scope` that differs from the inner effect's.
 - two layers of the nesting chain declare `[terminal]`.
+- two layers of the nesting chain declare a `process` alive probe.
 - `[outputs.bind]` reads a root other than `inner.outputs`, `locals`, or
   `inputs`.
 - `[outputs.bind]` declares a public key missing from `outputs_schema`.

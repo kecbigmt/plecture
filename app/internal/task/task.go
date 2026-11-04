@@ -825,12 +825,21 @@ func RunSetup(goCtx context.Context, ordered []Resolved, session SessionVars, ta
 				wrapped := fmt.Errorf("task %q: %w", r.NodeID, projErr)
 				return reportSetupFailure(obs, r, time.Since(now), wrapped, stderr)
 			}
+			process, captureErr := captureNestedProcess(r, layers, session)
+			if captureErr != nil {
+				st := failed(captureErr.Error(), resolvedInputs)
+				st.Layers = layers
+				tasks[r.NodeID] = st
+				wrapped := fmt.Errorf("task %q setup: %w", r.NodeID, captureErr)
+				return reportSetupFailure(obs, r, time.Since(now), wrapped, stderr)
+			}
 			tasks[r.NodeID] = &contract.TaskState{
 				Scope:        r.Scope,
 				TaskID:       taskIDFor(r),
 				Status:       contract.TaskStatusProduced,
 				Inputs:       resolvedInputs,
 				Outputs:      outputs,
+				Process:      process,
 				Layers:       layers,
 				DependsOn:    append([]string(nil), r.DependsOn...),
 				ExecutionID:  continuingExecID,
@@ -1062,6 +1071,7 @@ func RunCleanup(goCtx context.Context, ordered []Resolved, session SessionVars, 
 				sess.ResourceID = state.Resource
 			}
 			base := RenderContext{
+				Process:  state.Process,
 				Tasks:    dependencyOutputs(r.DependsOn, tasks),
 				Workflow: workflowOutputs(tasks),
 				Session:  sess,

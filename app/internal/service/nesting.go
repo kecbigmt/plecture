@@ -110,6 +110,7 @@ func probeTargets(instance string, def config.TaskDefinition, st *contract.TaskS
 			Env:        effect.EnclosingEnv(st.Layers, i),
 			SourcePath: layer.SourcePath,
 			From:       layer.From,
+			Process:    st.Process,
 		})
 	}
 	return targets

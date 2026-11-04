@@ -1736,3 +1736,88 @@ func TestEvaluateHealth_ProcessProbeClassification(t *testing.T) {
 		})
 	}
 }
+
+// A chain that nests a runtime to add a guard presents the same process
+// probe as the bare runtime: the verdicts are the plain instance's, judged
+// against the one identity recorded for the chain.
+func TestEvaluateHealth_NestedChainProcessProbeClassification(t *testing.T) {
+	self := os.Getpid()
+	identity, err := procid.Capture(self)
+	if err != nil {
+		t.Fatal(err)
+	}
+	reused := identity
+	reused.Start += 1000
+	gone := exec.Command("true")
+	if err := gone.Run(); err != nil {
+		t.Fatal(err)
+	}
+	deadPID := gone.Process.Pid
+	deadRecord := identity
+	deadRecord.PID = deadPID
+
+	tests := []struct {
+		name           string
+		pid            any
+		process        *contract.ProcessIdentity
+		wantHealthy    bool
+		wantRepairable bool
+		wantUnevaluate bool
+	}{
+		{"the recorded process", self, &identity, true, false, false},
+		{"a pid reused by another process", self, &reused, false, true, false},
+		{"a dead pid with a recorded identity", deadPID, &deadRecord, false, true, false},
+		{"a dead pid without a recorded identity", deadPID, nil, false, true, false},
+		{"a pid output that cannot be read", nil, &identity, false, false, true},
+	}
+	runtime := "[agent_runtime]\nkind = \"effect\"\nscope = \"run\"\n\n[agent_runtime.health.alive]\nprocess = \"self.outputs.pid\"\n"
+	guarded := `[agent]
+kind  = "effect"
+scope = "run"
+
+[agent.inner]
+uses = "agent_runtime"
+
+[agent.outputs.bind]
+pid = { from = "inner.outputs.pid" }
+
+[agent.outputs_schema]
+type = "object"
+
+[agent.outputs_schema.properties]
+pid = { type = "integer" }
+`
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			store := testStore(t)
+			cfg := currentPlanConfig(t, "true", "true")
+			for id, body := range map[string]string{"agent_runtime": runtime, "agent": guarded} {
+				if err := os.WriteFile(filepath.Join(cfg.BaseDir, "tasks", id+".toml"), []byte(body), 0o644); err != nil {
+					t.Fatal(err)
+				}
+			}
+			inner := map[string]any{}
+			if tc.pid != nil {
+				inner["pid"] = tc.pid
+			}
+			seedSessionWithNodes(t, store, "owner/repo-1", "owner/repo", 1, "default", map[string]*contract.TaskState{
+				"pane": {Scope: contract.TaskScopeRun, TaskID: "pane", Status: contract.TaskStatusProduced},
+				"agent": {
+					Scope: contract.TaskScopeRun, TaskID: "agent", Status: contract.TaskStatusProduced,
+					Outputs: inner, Process: tc.process,
+					Layers: []contract.LayerState{
+						{EffectID: "agent", Status: contract.TaskStatusProduced},
+						{EffectID: "agent_runtime", Status: contract.TaskStatusProduced, Outputs: inner},
+					},
+				},
+			})
+			report, err := EvaluateHealth(cfg, store, "owner/repo-1")
+			if err != nil {
+				t.Fatal(err)
+			}
+			if report.Healthy != tc.wantHealthy || report.Repairable != tc.wantRepairable || report.ProbeUnevaluable != tc.wantUnevaluate {
+				t.Fatalf("report = %+v, want healthy=%t repairable=%t unevaluable=%t", report, tc.wantHealthy, tc.wantRepairable, tc.wantUnevaluate)
+			}
+		})
+	}
+}

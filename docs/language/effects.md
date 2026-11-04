@@ -355,8 +355,8 @@ type     = "object"
 required = ["pid", "socket_path"]
 
 [guarded_runtime.outputs_schema.properties]
-pid         = { type = "integer", mutable = true }
-socket_path = { type = "string", mutable = true }
+pid         = { type = "integer" }
+socket_path = { type = "string" }
 guard_dir   = { type = "string" }
 
 [guarded_runtime.inputs_schema]
@@ -369,7 +369,8 @@ model        = { type = "string" }
 
 Write-through is a property of this joint: a direct projection of a mutable
 inner output carries later writes outward, and a computed binding does not.
-Nesting is an effect concept only — a task composes in document vocabulary,
+The shipped runtime publishes no mutable output, so the projections above carry
+values only. Nesting is an effect concept only — a task composes in document vocabulary,
 never through this joint.
 
 A structured record passes through the joint as data and is serialized by the
@@ -396,8 +397,8 @@ socket_path = { from = "inner.outputs.socket_path" }
 type = "object"
 
 [team_runtime.outputs_schema.properties]
-pid         = { type = "integer", mutable = true }
-socket_path = { type = "string", mutable = true }
+pid         = { type = "integer" }
+socket_path = { type = "string" }
 
 [team_runtime.inputs_schema]
 type                 = "object"
@@ -428,6 +429,7 @@ env     = { type = "object" }
 - A direct nested projection agrees with the inner output's type and
   mutability.
 - A computed nested output is not mutable.
+- At most one layer of a nesting chain declares a `process` alive probe.
 - At most one effect in a plan declares `[terminal]`.
 - A dynamic-instantiation target resolving to an effect is a kind mismatch:
   instantiation creates a task instance from a task document.

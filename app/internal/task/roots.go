@@ -226,6 +226,9 @@ func chainHost(base RenderContext, observer Observer, scope, nodeID string) effe
 			ctx.Self = self
 			ctx.Inputs = inputs
 			ctx.SourcePath = layer.SourcePath
+			if !layer.DeclaresProcess() {
+				ctx.Process = nil
+			}
 			return cleanupRoots(ctx)
 		},
 		InnerRoots: func(layer effect.Layer, inputs, locals map[string]any) lang.Roots {

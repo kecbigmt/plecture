@@ -596,27 +596,58 @@ func TestRunLayerCleanup_CarriesTheOutwardJointWithoutSchemas(t *testing.T) {
 	}
 }
 
-// A process probe needs the identity core records at setup, which it records
-// for a plain instance only; accepting it in a layer would silently judge the
-// layer by pid existence alone.
-func TestResolveLayers_RejectsAProcessProbeInAnyLayer(t *testing.T) {
+func processChain(t *testing.T, outerProcess, innerProcess bool) config.TaskDefinition {
+	t.Helper()
 	process := &config.HealthConfig{Alive: &lang.Action{Type: lang.ActionProcess, Process: fromValue("self.outputs.pid")}}
-	plain := config.TaskDefinition{ID: "plain", Health: &config.HealthConfig{Alive: &lang.Action{Type: lang.ActionNoop}}}
+	plain := &config.HealthConfig{Alive: &lang.Action{Type: lang.ActionNoop}}
+	outer := config.TaskDefinition{ID: "outer", Health: plain, Inner: "inner"}
+	inner := config.TaskDefinition{ID: "inner", Health: plain}
+	if outerProcess {
+		outer.Health = process
+	}
+	if innerProcess {
+		inner.Health = process
+	}
+	outer.InnerChain = []config.TaskDefinition{inner}
+	return outer
+}
 
-	for name, defs := range map[string][]config.TaskDefinition{
-		"outer layer": {{ID: "outer", Health: process}, plain},
-		"inner layer": {plain, {ID: "inner", Health: process}},
+func TestResolveLayers_AcceptsAProcessProbeInAnyLayer(t *testing.T) {
+	for name, tc := range map[string]struct{ outer, inner bool }{
+		"outer layer": {true, false},
+		"inner layer": {false, true},
 	} {
 		t.Run(name, func(t *testing.T) {
-			for i := range defs[:len(defs)-1] {
-				defs[i].Inner = defs[i+1].ID
+			layers, err := ResolveLayers(processChain(t, tc.outer, tc.inner))
+			if err != nil {
+				t.Fatalf("ResolveLayers: %v", err)
 			}
-			outer := defs[0]
-			outer.InnerChain = defs[1:]
-			_, err := ResolveLayers(outer)
-			if err == nil || !strings.Contains(err.Error(), "process") {
-				t.Fatalf("ResolveLayers error = %v, want a rejection naming the process probe", err)
+			want := 1
+			if tc.outer {
+				want = 0
+			}
+			if got := ProcessLayer(layers); got != want {
+				t.Fatalf("ProcessLayer = %d, want %d", got, want)
 			}
 		})
+	}
+}
+
+func TestProcessLayer_IsAbsentWhenNoLayerDeclaresAProcessProbe(t *testing.T) {
+	layers, err := ResolveLayers(processChain(t, false, false))
+	if err != nil {
+		t.Fatalf("ResolveLayers: %v", err)
+	}
+	if got := ProcessLayer(layers); got != -1 {
+		t.Fatalf("ProcessLayer = %d, want -1", got)
+	}
+}
+
+// Teardown rebuilds the chain without compiling schemas, yet still has to
+// know which layer owns the recorded process so its cleanup alone receives
+// the identity.
+func TestCleanupLayers_KeepWhichLayerDeclaresTheProcessProbe(t *testing.T) {
+	if got := ProcessLayer(CleanupLayers(processChain(t, false, true))); got != 1 {
+		t.Fatalf("ProcessLayer(CleanupLayers) = %d, want 1", got)
 	}
 }

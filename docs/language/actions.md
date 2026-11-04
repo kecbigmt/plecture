@@ -205,9 +205,11 @@ keeps a pid recycled during a grace period from being signalled. The
 with plugin scripts rather than an operator verb; `plect process verify --help`
 still works.
 
-The identity is recorded for a plain instance only: an effect that is a layer
-of a nesting chain cannot declare `process`, and resolving such a chain is an
-error.
+A layer of a nesting chain may declare `process`. Core reads the pid from that
+layer's own `self.outputs` — the contract its probes are written against, not
+the composed task's — and records one identity for the chain's instance. Only
+the declaring layer's cleanup receives `self.process.identity`. A chain in which
+two layers declare `process` is a load error.
 
 ## The binding transport
 

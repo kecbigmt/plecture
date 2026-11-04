@@ -125,8 +125,9 @@ no stored identity is judged by pid existence alone. A dead or recycled pid is
 an observed failure, which is what permits automatic repair; a pid output that
 cannot be read is a probe that cannot answer, the unevaluable case above. A
 `process` probe may sit beside an exec or shell action, which runs only after
-the process check passes. The identity is recorded for a plain instance, not
-for a layer of a nesting chain. A cleanup that must confirm the same identity
+the process check passes. A nesting chain records one identity for the
+instance, taken from the declaring layer's own contract; at most one layer of a
+chain declares the probe. A cleanup that must confirm the same identity
 receives it as the opaque token `self.process.identity` and asks core again
 before each signal with `plect process verify <token>`, because a script
 cannot read the record and a verdict taken once goes stale.

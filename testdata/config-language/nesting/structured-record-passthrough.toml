@@ -19,8 +19,8 @@ socket_path = { from = "inner.outputs.socket_path" }
 type = "object"
 
 [team_runtime.outputs_schema.properties]
-pid         = { type = "integer", mutable = true }
-socket_path = { type = "string", mutable = true }
+pid         = { type = "integer" }
+socket_path = { type = "string" }
 
 [team_runtime.inputs_schema]
 type                 = "object"

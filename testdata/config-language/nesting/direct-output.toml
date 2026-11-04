@@ -1,5 +1,5 @@
 # plect-fixture: result=valid entry=definitions
-# reason: a direct projection of an inner output keeps write-through semantics for a mutable output.
+# reason: a direct projection of an inner output of a shipped runtime carries its value under the same public key.
 
 [guarded_runtime]
 kind  = "effect"
@@ -42,8 +42,8 @@ type     = "object"
 required = ["pid", "socket_path"]
 
 [guarded_runtime.outputs_schema.properties]
-pid         = { type = "integer", mutable = true }
-socket_path = { type = "string", mutable = true }
+pid         = { type = "integer" }
+socket_path = { type = "string" }
 guard_dir   = { type = "string" }
 
 [guarded_runtime.inputs_schema]

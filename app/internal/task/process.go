@@ -7,6 +7,7 @@ import (
 	"strconv"
 
 	"github.com/kecbigmt/plecture/app/internal/config"
+	"github.com/kecbigmt/plecture/app/internal/effect"
 	"github.com/kecbigmt/plecture/app/internal/lang"
 	"github.com/kecbigmt/plecture/app/internal/procid"
 	contract "github.com/kecbigmt/plecture/contracts/state"
@@ -32,6 +33,22 @@ func CaptureProcess(health *config.HealthConfig, outputs map[string]any) (*contr
 		return nil, fmt.Errorf("process probe: %w", err)
 	}
 	return &identity, nil
+}
+
+// captureNestedProcess is CaptureProcess for a nesting chain: the declaring
+// layer's `self.outputs` is that layer's own contract, the same view its probe
+// reads later, so the pid is taken from there rather than from the composed
+// task's outputs, which may name the key differently or omit it.
+func captureNestedProcess(r Resolved, states []contract.LayerState, session SessionVars) (*contract.ProcessIdentity, error) {
+	i := effect.ProcessLayer(r.Layers)
+	if i < 0 {
+		return nil, nil
+	}
+	views, err := ProjectLayerOutputs(r.Layers, states, session)
+	if err != nil {
+		return nil, err
+	}
+	return CaptureProcess(r.Layers[i].Health, views[i])
 }
 
 // verifyProcess is the core-evaluated half of an alive probe. A record with
