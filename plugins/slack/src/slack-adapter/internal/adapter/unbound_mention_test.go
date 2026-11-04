@@ -2,15 +2,110 @@ package adapter
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
 	"errors"
 	"log/slog"
+	"net/http"
+	"net/http/httptest"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/slack-go/slack"
 	"github.com/slack-go/slack/slackevents"
 )
+
+func TestUnboundMentionIsCaughtUpOnceAfterAdapterRestart(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "subscribers.json")
+	first := newTestAdapter(&Config{})
+	first.broker = NewBroker(path, first.logger)
+	first.permalinkResolver = &fakePermalinkResolver{link: "https://example.slack.com/archives/C1/p1700000000000001"}
+	appearances, cancel := first.mentions.subscribe()
+	defer cancel()
+	first.handleAppMention(&slackevents.AppMentionEvent{
+		User: "U1", Text: "<@U-bot> start", Channel: "C1",
+		TimeStamp: "1700000001.000001", ThreadTimeStamp: "1700000000.000001",
+	})
+	item := <-appearances
+	if item.ChannelID != "C1" || item.ThreadTS != "1700000000.000001" || item.MentionTS != "1700000001.000001" {
+		t.Fatalf("population appearance = %+v", item)
+	}
+
+	a := newTestAdapter(&Config{})
+	a.broker = NewBroker(path, a.logger)
+	a.threadFetcher = &fakeThreadFetcher{messages: []slack.Message{
+		slackMessage("1700000000.000001", "U0", "root"),
+		slackMessage("1700000001.000001", "U1", "<@U-bot> start"),
+	}}
+	publisher := &recordingEventPublisher{}
+	a.eventPublisher = publisher
+	server := httptest.NewServer(http.HandlerFunc(a.HandleSubscribe))
+	defer server.Close()
+	for range 2 {
+		if err := ThreadSubscription(context.Background(), server.Client(), server.URL, "subscribe", "population-session", item.Resource, ""); err != nil {
+			t.Fatalf("resource subscription: %v", err)
+		}
+	}
+	if len(publisher.events) != 1 || publisher.events[0].Type != "user.emit" || publisher.events[0].SessionName != "population-session" || !strings.Contains(publisher.events[0].Body, "<@U-bot> start") {
+		t.Fatalf("events = %+v, want one triggering mention for the new session", publisher.events)
+	}
+}
+
+func TestPendingMentionRemainsAfterFailedCatchUp(t *testing.T) {
+	a := newTestAdapter(&Config{})
+	a.broker.RecordPendingMention("C1", "1700000000.000001", "1700000001.000001")
+	fetcher := &fakeThreadFetcher{err: errors.New("Slack unavailable")}
+	a.threadFetcher = fetcher
+	publisher := &recordingEventPublisher{}
+	a.eventPublisher = publisher
+	request := `{"session_name":"population-session","channel_id":"C1","thread_ts":"1700000000.000001"}`
+	subscribe := func() {
+		w := httptest.NewRecorder()
+		a.HandleSubscribe(w, httptest.NewRequest(http.MethodPost, "/subscribe", strings.NewReader(request)))
+		if w.Code != http.StatusOK {
+			t.Fatalf("subscribe: %d %s", w.Code, w.Body.String())
+		}
+	}
+	subscribe()
+	if got := a.broker.PendingMention("C1", "1700000000.000001"); got != "1700000001.000001" {
+		t.Fatalf("pending mention after failed fetch = %q", got)
+	}
+	fetcher.err = nil
+	fetcher.messages = []slack.Message{slackMessage("1700000001.000001", "U1", "<@U-bot> start")}
+	subscribe()
+	if len(publisher.events) != 1 || a.broker.PendingMention("C1", "1700000000.000001") != "" {
+		t.Fatalf("events = %+v, pending = %q", publisher.events, a.broker.PendingMention("C1", "1700000000.000001"))
+	}
+}
+
+func TestPendingMentionExpiresBeforeSubscription(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "subscribers.json")
+	first := NewBroker(path, nil)
+	first.RecordPendingMention("C1", "1700000000.000001", "1700000001.000001")
+	data, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var state persistedState
+	if err := json.Unmarshal(data, &state); err != nil {
+		t.Fatal(err)
+	}
+	state.PendingMentions[0].Recorded = time.Now().Add(-pendingMentionLifetime - time.Minute)
+	data, err = json.Marshal(state)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(path, data, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	reloaded := NewBroker(path, nil)
+	if got := reloaded.PendingMention("C1", "1700000000.000001"); got != "" {
+		t.Fatalf("expired pending mention = %q", got)
+	}
+}
 
 type fakePermalinkResolver struct {
 	link  string

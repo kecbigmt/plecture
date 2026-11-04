@@ -890,10 +890,11 @@ Each official plugin that ships runtime effects holds, under
 `testdata/compat/<tag>/`, the task declarations of the latest tagged release
 (`config/tasks/`) and a `scenarios.toml` in the effect-scenario format that
 sets each effect up as that release did and runs its alive probe and cleanup
-against the outputs that release recorded. The integration suite runs these
-scenarios under both the released and the current declarations against the
-current executables, and any action that declines fails it. The plugin's
-README states how the fixtures are refreshed.
+against the outputs that release recorded. The integration suite runs every
+scenario under the released declarations and scenarios whose effects remain
+declared under the current declarations, against current executables. Any
+action that declines fails. The plugin's README states how the fixtures are
+refreshed.
 
 ## Walkthrough examples
 

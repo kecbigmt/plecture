@@ -5,23 +5,15 @@ import (
 	"net/http"
 	"strconv"
 	"strings"
-	"time"
-)
-
-// /subscribe absorbs the gap between claude reporting alive and
-// channel-server actually binding the MCP socket. Defaults ≈ 5s. Tests
-// tighten these via the package-level vars.
-var (
-	subscribeConnectAttempts = 25
-	subscribeConnectInterval = 200 * time.Millisecond
 )
 
 type subscribeRequest struct {
 	ThreadTS       string `json:"thread_ts"`
 	ChannelID      string `json:"channel_id"`
-	SocketPath     string `json:"socket_path"`
 	SessionName    string `json:"session_name"`
 	CatchUpThrough string `json:"catch_up_through,omitempty"`
+	// Released requests carry socket_path; ignore it until one release after v0.2.11.
+	SocketPath string `json:"socket_path,omitempty"`
 }
 
 type notifyRequest struct {
@@ -281,12 +273,14 @@ func (a *Adapter) HandleSubscribe(w http.ResponseWriter, req *http.Request) {
 
 func (a *Adapter) handleSubscribePost(w http.ResponseWriter, req *http.Request) {
 	var body subscribeRequest
-	if err := json.NewDecoder(req.Body).Decode(&body); err != nil {
-		http.Error(w, "invalid json", http.StatusBadRequest)
+	decoder := json.NewDecoder(req.Body)
+	decoder.DisallowUnknownFields()
+	if err := decoder.Decode(&body); err != nil {
+		http.Error(w, "invalid json: "+err.Error(), http.StatusBadRequest)
 		return
 	}
-	if body.ThreadTS == "" || body.ChannelID == "" || body.SocketPath == "" {
-		http.Error(w, "thread_ts, channel_id, and socket_path are required", http.StatusBadRequest)
+	if body.ThreadTS == "" || body.ChannelID == "" || body.SessionName == "" {
+		http.Error(w, "thread_ts, channel_id, and session_name are required", http.StatusBadRequest)
 		return
 	}
 	if !isSlackTimestampShape(body.ThreadTS) {
@@ -298,70 +292,46 @@ func (a *Adapter) handleSubscribePost(w http.ResponseWriter, req *http.Request) 
 		return
 	}
 
-	// Connect before registering so a successful POST guarantees both
-	// directions of routing. Otherwise the subscription would silently
-	// drop channel-server → Slack replies.
-	if err := a.connectWithRetry(body.SocketPath, body.ChannelID, body.ThreadTS); err != nil {
-		a.logger.Warn("subscribe rejected: channel-server unreachable",
-			"thread_ts", body.ThreadTS, "socket_path", body.SocketPath, "error", err)
-		http.Error(w, "channel-server unreachable: "+err.Error(), http.StatusServiceUnavailable)
-		return
-	}
-
 	sub := a.broker.Subscribe(Subscriber{
 		ThreadTS:    body.ThreadTS,
 		ChannelID:   body.ChannelID,
-		SocketPath:  body.SocketPath,
 		SessionName: body.SessionName,
 	})
-	a.logger.Info("subscribed", "thread_ts", sub.ThreadTS, "socket_path", sub.SocketPath, "session_name", sub.SessionName)
+	a.logger.Info("subscribed", "thread_ts", sub.ThreadTS, "session_name", sub.SessionName)
 
-	sub = a.catchUpThread(sub, body.CatchUpThrough)
+	pending := a.broker.PendingMention(body.ChannelID, body.ThreadTS)
+	through := body.CatchUpThrough
+	if pending != "" && (through == "" || compareSlackTS(pending, through) > 0) {
+		through = pending
+	}
+	sub = a.catchUpThread(sub, through)
+	if pending != "" && sub.DeliveredThrough != "" && compareSlackTS(sub.DeliveredThrough, pending) >= 0 {
+		a.broker.ConsumePendingMention(body.ChannelID, body.ThreadTS, pending)
+	}
 
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(sub)
 }
 
-func (a *Adapter) connectWithRetry(socketPath, channelID, threadTS string) error {
-	var lastErr error
-	for i := range subscribeConnectAttempts {
-		err := a.socketPool.Connect(socketPath, channelID, threadTS)
-		if err == nil {
-			return nil
-		}
-		lastErr = err
-		if i == subscribeConnectAttempts-1 {
-			break
-		}
-		time.Sleep(subscribeConnectInterval)
-	}
-	return lastErr
-}
-
 func (a *Adapter) handleSubscribeDelete(w http.ResponseWriter, req *http.Request) {
-	// session_name drops every registration for a session regardless of what
-	// thread_ts each one carries — the operator escape hatch for a stale or
-	// malformed entry an exact thread_ts lookup can't reach.
-	if sessionName := req.URL.Query().Get("session_name"); sessionName != "" {
-		removed := a.broker.UnsubscribeBySession(sessionName)
-		if len(removed) == 0 {
-			a.logger.Debug("unsubscribe by session_name miss", "session_name", sessionName)
-		} else {
-			a.logger.Info("unsubscribed by session_name", "session_name", sessionName, "count", len(removed))
+	session := req.URL.Query().Get("session_name")
+	thread := req.URL.Query().Get("thread_ts")
+	if session == "" {
+		if thread == "" {
+			http.Error(w, "session_name or thread_ts is required", http.StatusBadRequest)
+			return
+		}
+		if ok := a.broker.UnsubscribeUniqueThread(thread); !ok {
+			http.Error(w, "thread has multiple subscribers", http.StatusConflict)
+			return
 		}
 		w.WriteHeader(http.StatusNoContent)
 		return
 	}
-
-	threadTS := req.URL.Query().Get("thread_ts")
-	if threadTS == "" {
-		http.Error(w, "thread_ts or session_name query parameter is required", http.StatusBadRequest)
-		return
-	}
-	if removed, ok := a.broker.Unsubscribe(threadTS); !ok {
-		a.logger.Debug("unsubscribe miss", "thread_ts", threadTS)
+	if thread == "" {
+		a.broker.UnsubscribeBySession(session)
 	} else {
-		a.logger.Info("unsubscribed", "thread_ts", removed.ThreadTS)
+		a.broker.Unsubscribe(session, thread)
 	}
 	w.WriteHeader(http.StatusNoContent)
 }
@@ -404,11 +374,7 @@ func (a *Adapter) HandleUnboundMentions(w http.ResponseWriter, req *http.Request
 	}
 }
 
-// HandleNotify handles POST /notify, routing a session-scoped notification
-// to Slack and/or channel-server based on the subscriber map. The body
-// carries session_name (the lookup key) plus the unformatted summary;
-// presentation (emoji prefix, "[GitHub …]" channel framing) lives here so
-// callers stay thin.
+// HandleNotify handles the legacy Slack notification endpoint.
 func (a *Adapter) HandleNotify(w http.ResponseWriter, req *http.Request) {
 	if req.Method != http.MethodPost {
 		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
@@ -428,15 +394,17 @@ func (a *Adapter) HandleNotify(w http.ResponseWriter, req *http.Request) {
 	resp := notifyResponse{}
 	sub, ok := a.broker.BySession(body.SessionName)
 	if !ok {
-		resp.Reason = "no subscriber for session_name"
+		resp.Reason = "no unique subscriber for session_name"
 		a.logger.Info("notify miss", "session_name", body.SessionName, "change_type", body.ChangeType)
 		w.Header().Set("Content-Type", "application/json")
 		json.NewEncoder(w).Encode(resp)
 		return
 	}
 
-	resp.ChannelServerDelivered, resp.SlackDelivered = a.deliverFramed(
-		sub, body.ChangeType, body.URL, body.Summary, body.NotifyChannelServer, body.NotifySlack)
+	if body.NotifySlack {
+		_, err := a.poster.PostToThread(sub.ChannelID, sub.ThreadTS, notifyEmoji(body.ChangeType, body.Summary)+" "+body.Summary)
+		resp.SlackDelivered = err == nil
+	}
 
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(resp)
@@ -469,7 +437,6 @@ func notifyEmoji(changeType, summary string) string {
 	}
 }
 
-// HandleSubscribers exposes the current subscription map for healthchecks.
 func (a *Adapter) HandleSubscribers(w http.ResponseWriter, req *http.Request) {
 	if req.Method != http.MethodGet {
 		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)

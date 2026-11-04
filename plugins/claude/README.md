@@ -202,11 +202,10 @@ queue_dir = { from = "nodes.agent.outputs.queue_dir" }
   otherwise load.
 - When `channel-server` is built, the worker also keeps a
   `channel-server queue` bridge listening on the per-session socket the
-  interactive runtime would use, and setup reports it as `socket_path`. An
-  adapter that speaks the channel-server protocol — the slack plugin's
-  `slack_subscribe`, wired to `nodes.agent.outputs.socket_path` — reaches
-  the queue unchanged. Each message becomes its own turn, wrapped in the
-  same `<channel source="channel-server" user="…" user_id="…" thread_ts="…">`
+  interactive runtime would use, and setup reports it as `socket_path`.
+  Adapters that speak the channel-server protocol can reach the queue.
+  Each message becomes its own turn, wrapped in the same
+  `<channel source="channel-server" user="…" user_id="…" thread_ts="…">`
   tag an interactive session shows. A bridge that exits is relaunched, and
   stopping the worker stops it.
 - A print-mode turn never raises a permission request, so nothing is relayed

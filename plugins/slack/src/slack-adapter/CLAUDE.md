@@ -2,70 +2,28 @@
 
 ## Responsibility
 
-Slack-specific message relay + subscription broker.
+The adapter receives Slack Socket Mode events, stores thread subscriptions, publishes inbound events to plect session event logs, and posts outbound messages through Slack's HTTP API. It does not connect to an agent runtime socket.
 
-- Receives messages via Slack Socket Mode when an app token is configured
-- Resolves `thread_ts → {channel_id, socket_path}` with an in-memory map (`Broker`)
-- Persists subscriptions (and unsubscribed threads' delivery-watermark tombstones) to `$XDG_STATE_HOME/slack-adapter/subscribers.json` via atomic write and reloads them at startup (makes broker restarts transparent to plect)
-- Forwards messages to channel-server; posts replies via the Slack API
-- Maps a bound thread's runtime status events to Slack agent session processing and active states, serialized with outbound delivery per thread
-- HTTP API: `/threads` (create a thread and return its permalink), `/messages` (post), `/status` (set processing or active), `/stream` (render a `plect.message_delta` chunk sequence as one live-updating thread reply), `/subscribe` (register/unregister a subscription), `/subscribers` (list subscriptions), `/unbound-mentions` (stream every unbound app mention)
-- The `subscribe unbound-mentions` CLI subcommand is a client of its own resident service's `/unbound-mentions` feed, not a separate integration: it never opens a second Socket Mode connection
-- The `resource observe` CLI subcommand is `thread`'s (the resource observer's) `observe` action (the config language requires one); it never contacts the resident service, since the observer's `state_schema` is empty and there is nothing live to fetch
+The ledger is `$XDG_STATE_HOME/slack-adapter/subscribers.json` (default `~/.local/state/slack-adapter/subscribers.json`). It records one entry per `(session_name, thread_ts)`. A startup sweep calls `plect ls --json` and removes entries for destroyed sessions, retaining entries for down sessions. Each successful `user.emit` publication advances that pair's `delivered_through`; `slack.message` does not.
 
-## Dependency rules
+## Boundaries
 
-- Must not import `plect/app` code
-- Imports the `plect/contracts/channel-protocol` module to share protocol types
-- Does not depend on plect's state schema (`plect/contracts/state`) — removed in Phase 2
-- Must not import channel-server's `server` package, in production or test
-  code (docs/adr/2026-08-17-plugin-boundary-contracts.md: chat-delivery
-  plugins do not import channel-server client packages). Tests that need a
-  Unix-socket server to talk to use `internal/adapter/fakesocket_test.go`,
-  a protocol-conformant fake owned by this module, built only on
-  `contracts/channel-protocol`.
-- Must not launch Claude Code directly
-
-## Boundary with channel-server
-
-- slack-adapter is channel-server's **client**: it connects to the Unix socket and sends messages
-- channel-server is the Unix socket's **server**: it listens and waits for connections
-- The protocol is defined in the `plect/contracts/channel-protocol` module, a shared contract owned by neither service
-
-## Config file path
-
-`~/.config/slack-adapter/config.toml`
+- Do not import `plect/app` or another plugin module. Invoke the installed `plect` CLI to publish events and list sessions.
+- The thread resource's `subscribe` and `unsubscribe` actions use this binary's `resource` CLI and the resident adapter's `/subscribe` endpoint.
+- `resource observe` prints `{}` because the observer has no live state beyond the query stream.
+- `subscribe unbound-mentions` consumes the resident adapter's `/unbound-mentions` feed. It does not open a second Socket Mode connection.
 
 ## HTTP API
 
-| Endpoint | Purpose | Caller |
-|---|---|---|
-| `GET /info` | Returns workspace name and default channel ID | plect task (`slack_thread`) |
-| `POST /threads` | Creates a Slack thread and returns its permalink | plect task (`slack_thread`) |
-| `POST /messages` | Posts a message to a thread | plect channel (`slack`), `claude-slack-notify.sh` |
-| `POST /status` | Maps a runtime status line to processing or active without posting | plect channel (`status`) |
-| `POST /stream` | Renders a `plect.message_delta` chunk as part of one live-updating thread reply | plect channel (`stream`) |
-| `POST /subscribe` / `DELETE /subscribe?thread_ts=...` / `DELETE /subscribe?session_name=...` | Register/unregister a subscription (one live registration per `socket_path`; the `session_name` form drops every registration for a session) | plect task (`slack_subscribe`) |
-| `GET /subscribers` | Lists subscriptions (for the `[health].alive` probe) | plect task (`slack_subscribe`) |
-| `GET /unbound-mentions` | Streams one JSON item per unbound app mention as it occurs | the `subscribe unbound-mentions` CLI subcommand (a separate process; see below) |
-| `POST /notify` | Notifies Slack + channel-server, keyed by `session_name` | deprecated rollback path (`github-watcher serve --allow-legacy-notify` only) |
-
-The `/notify` request body includes `change_type`; the broker inspects GitHub-derived `change_type` values (`ci_status`, `review_decision`, `state`, etc.) to build the emoji prefix and `[GitHub …]` framing. This is an exception to slack-adapter's source-agnostic principle, kept only as an explicit rollback path for when the current event bus / `[[event.channel]]` delivery isn't available.
+- `GET /info`: workspace and default channel.
+- `POST /threads`: create a root message and return its permalink.
+- `POST /messages`, `POST /status`, `POST /stream`: outbound delivery.
+- `POST /subscribe`: register `{session_name, thread_ts, channel_id, catch_up_through?}`.
+- `DELETE /subscribe?session_name=...&thread_ts=...`: remove one pair. `DELETE /subscribe?session_name=...` removes all pairs for a session.
+- `GET /subscribers`: list active subscriptions.
+- `GET /unbound-mentions`: stream mentions without a bound thread.
+- `POST /notify`: legacy Slack notification endpoint; it has no runtime socket delivery.
 
 ## Testing
 
-```bash
-go test ./...
-```
-
-socket_client_test and socket_router_test run integration tests against
-`internal/adapter/fakesocket_test.go`'s `newFakeSocketListener`, not the
-real channel-server.
-
-## Directory layout
-
-```
-cmd/slack-adapter/     entry point
-internal/adapter/      Slack Socket Mode, HTTP API, state.json lookup, connection pool, config
-slack-app-manifest.yml Slack App manifest (scopes, events)
-```
+Run `go test ./...` from this module. The Slack API is replaced with local test servers in tests.

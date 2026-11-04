@@ -78,14 +78,16 @@ func runSubscribeCommand(args []string, out, errOut io.Writer) int {
 // already flows through query.subscribe, so this prints "{}" rather than
 // fabricate a state key.
 func runResourceCommand(args []string, out, errOut io.Writer) int {
-	if len(args) == 0 || args[0] != "observe" {
-		fmt.Fprintln(errOut, "usage: slack-adapter resource observe --resource <url>")
+	if len(args) == 0 || (args[0] != "observe" && args[0] != "subscribe" && args[0] != "unsubscribe") {
+		fmt.Fprintln(errOut, "usage: slack-adapter resource <observe|subscribe|unsubscribe> --resource <url> [--session <name>]")
 		return 2
 	}
 
-	fs := flag.NewFlagSet("resource observe", flag.ContinueOnError)
+	fs := flag.NewFlagSet("resource "+args[0], flag.ContinueOnError)
 	fs.SetOutput(errOut)
 	resource := fs.String("resource", "", "resource identifier (a Slack thread permalink)")
+	session := fs.String("session", "", "subscriber session")
+	through := fs.String("catch-up-through", "", "publish history through this Slack timestamp")
 	if err := fs.Parse(args[1:]); err != nil {
 		return 2
 	}
@@ -94,7 +96,16 @@ func runResourceCommand(args []string, out, errOut io.Writer) int {
 		return 2
 	}
 
-	fmt.Fprintln(out, "{}")
+	if args[0] == "observe" {
+		fmt.Fprintln(out, "{}")
+		return 0
+	}
+	cfg := adapter.LoadConfig()
+	baseURL := "http://" + cfg.ListenAddr
+	if err := adapter.ThreadSubscription(context.Background(), nil, baseURL, args[0], *session, *resource, *through); err != nil {
+		fmt.Fprintln(errOut, "slack-adapter resource:", err)
+		return 1
+	}
 	return 0
 }
 
@@ -109,8 +120,13 @@ func runServer() {
 		os.Exit(1)
 	}
 
-	a := adapter.New(cfg, logger)
+	a, err := adapter.New(cfg, logger)
+	if err != nil {
+		logger.Error("load subscriber state", "error", err)
+		os.Exit(1)
+	}
 	defer a.Close()
+	a.SweepSubscriptions(context.Background(), adapter.LiveSessions)
 
 	mux := http.NewServeMux()
 	mux.HandleFunc("/info", a.HandleInfo)

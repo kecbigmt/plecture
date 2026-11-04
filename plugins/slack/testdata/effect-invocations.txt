@@ -1,6 +1,11 @@
 == slack_thread / setup
 call[0]: "curl" "-sf" "--max-time" "10" "-X" "POST" "http://127.0.0.1:7890/threads" "-H" "Content-Type: application/json" "-d" "{\"channel_id\":\"C-review\",\"text\":\"[AI review] Fix widgets — https://github.com/acme/widgets/pull/7\\nsession acme/widget-1 · head abcdef123456\"}"
+call[1]: "plect" "subscribe" "https://example.slack.com/archives/C-review/p12345678" "--session" "acme/widget-1"
 outputs: {"channel_id":"C-review","permalink":"https://example.slack.com/archives/C-review/p12345678","thread_ts":"1234.5678"}
 
 == slack_thread / health.alive
 alive
+
+== slack_thread / cleanup
+call[0]: "curl" "-sf" "--max-time" "10" "-G" "-X" "DELETE" "http://127.0.0.1:7890/subscribe" "--data-urlencode" "session_name=acme/widget-1" "--data-urlencode" "thread_ts=1234.5678"
+cleaned

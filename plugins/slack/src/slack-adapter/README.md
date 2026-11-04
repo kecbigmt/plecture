@@ -1,29 +1,16 @@
-# slack-adapter -- Slack adapter for channel-server
+# slack-adapter
 
-Creates and posts to Slack threads over HTTP. When an app token is configured
-it also keeps a Socket Mode connection to Slack and routes messages to/from
-Claude Code sessions (channel-server) over a Unix socket.
+The resident adapter receives Slack Socket Mode events, publishes inbound
+thread activity to subscribed Plecture sessions, and posts outbound messages
+through Slack's HTTP API.
 
 ## Architecture
 
-```
-plect up
-  ├─ POST slack-adapter:7890/threads         → create a Slack thread
-  ├─ tmux + claude (run-scoped tasks)      → start claude, resolve socket_path
-  └─ POST slack-adapter:7890/subscribe       → register thread_ts → socket_path with the broker
-
-       channel-server (MCP, one per session)
-            │ Unix socket (CHANNEL_SOCKET_PATH)
-            ▼
-       slack-adapter (long-running broker)
-            │ in-memory map: thread_ts → {channel_id, socket_path, session_name, since, delivered_through}
-            │ Slack Socket Mode (1 connection)
-            ▼
-          Slack
-```
-
-slack-adapter never reads plect's state.json. Every subscription is registered
-and torn down explicitly through the HTTP API.
+Thread subscriptions are keyed by `(session_name, thread_ts)`. Each bound
+reply publishes `slack.message` to every subscriber's event log; an app
+mention publishes a per-session `user.emit` transcript. The core dispatcher
+and workflow channel includes deliver those events to the runtime. The
+adapter does not connect to an agent socket.
 
 ## Configuration
 
@@ -80,13 +67,13 @@ subscribe to `agent_session_stopped`, so Slack may return a
 interactive stop button. This API migration does not switch `agent_view`.
 
 When Socket Mode is enabled, an `app_mention` in a subscribed thread publishes
-one inbound `user.emit` to the bound `session_name`. The event body is an
+one inbound `user.emit` per subscribed session. The event body is an
 ordered Slack transcript with display names, message times, and text. By
 default each delivery includes the root message plus only replies after the
 thread's last successful delivery watermark, followed by the mentioning
 message. Set `deliver_full_thread = true` to send the full thread on every
 mention. Empty `allowed_user_ids` allows any channel member to drive this
-mention path; setting it restricts app mentions to the listed Slack users.
+mention and reply paths; setting it restricts both to the listed Slack users.
 
 ### `on_unbound_mention` hook
 
@@ -109,10 +96,13 @@ slack-adapter does not wait for anything beyond the command's exit status
 which workflow to start, rate limits — is the command's job, not this
 plugin's: it is deployment policy, and the adapter stays a source-agnostic
 relay. A typical command runs
-`plect up <permalink> --workflow <wf> --inputs '{"mention_ts": "<ts>"}'`,
-and the workflow's `slack_subscribe` node (with `catch_up_through =
-mention_ts`) brings the thread's history, including the triggering mention,
-to the runtime.
+`plect up <permalink> --workflow <wf> --inputs '{"mention_ts": "<ts>"}'`.
+The thread resource subscribes the new session. Before handing off the
+mention, the adapter saves its timestamp by channel and thread in the
+subscriber ledger. The first subscription fetches history through that
+timestamp and publishes a `user.emit` containing the triggering mention.
+A failed catch-up can retry on the next subscription; success consumes the
+pending record. Pending mentions expire after 24 hours.
 
 ### `subscribe unbound-mentions` (query.subscribe action)
 
@@ -209,59 +199,22 @@ reason as the reply text.
 
 ### POST /subscribe
 
-Registers a `thread_ts` → `socket_path` subscription. slack-adapter keeps
-`{thread_ts, channel_id, socket_path, session_name, since, delivered_through}`
-in an internal map and routes incoming Slack messages to the right socket in
-O(1). Registration also pre-connects to channel-server, so claude's replies
-flow to Slack right away. `session_name` is required for app-mention
-deliberation delivery because it is the target for `plect event publish`.
+Registers `{session_name, thread_ts, channel_id}`. The
+pair `(session_name, thread_ts)` identifies one subscription; several sessions
+can subscribe to the same thread. A released request may carry `socket_path`;
+the adapter ignores it and never stores it. Both Slack
+timestamps must have the shape `<10 digits>.<6 digits>`.
 
-**One socket, one thread.** A `socket_path` holds at most one live
-registration. A `/subscribe` naming a `socket_path` that already has a
-registration under a different `thread_ts` replaces it outright (the
-replaced `thread_ts` is logged); the persisted registry applies the same
-rule on load, keeping whichever of two same-socket entries has the newer
-`since`. This is what keeps a socket from ever holding two thread
-destinations at once — otherwise a reply from that session can land in the
-wrong thread, or in the channel root, and a bad entry restored from disk on
-every restart would misroute silently forever.
+When an unbound mention started this thread's session, the adapter uses its
+pending timestamp to fetch history through that mention and publish it as
+`user.emit`. The watermark advances only after successful publication. A
+failed fetch or publish leaves the pending mention for a later subscription
+retry. The released request's optional `catch_up_through` field remains
+accepted for sessions running frozen declarations.
 
-`thread_ts` must have the shape Slack actually issues, `<10 digits>.<6
-digits>` (e.g. `1234567890.123456`); a `catch_up_through` is checked the
-same way. Either field failing the check is a `400`, not a persisted
-subscription — a malformed value can never match a real thread, so
-persisting it would trade a retriable delivery failure for a permanent
-misroute.
-
-An optional `catch_up_through` (a Slack message ts) delivers the thread's
-existing history once, on first binding: covers the escalation shape where
-people discuss something in a thread and then mention the bot, which
-otherwise drops both the triggering mention (no session exists yet to
-receive it) and everything said before it. When set, and the subscription's
-`delivered_through` is empty or older than it, slack-adapter fetches the
-thread, publishes root + every reply through `catch_up_through` as one
-inbound `user.emit`, and advances `delivered_through` to it — the same
-transcript format app-mention deliberation uses. Re-posting the same
-`catch_up_through` (e.g. a runtime restart re-running the run-scoped
-`slack_subscribe` task) is a no-op once the watermark already covers it.
-Omitting the field leaves behaviour unchanged.
-
-`delivered_through` also survives a clean unsubscribe: `DELETE /subscribe`
-tombstones it instead of dropping it, and a subsequent `/subscribe` for the
-same `thread_ts` **and** `session_name` restores it before evaluating
-`catch_up_through`. This is what keeps a `plect down` / `plect up` cycle (or
-an ECS task replacement doing the same) from redelivering the thread
-transcript on every deployment — see Persistence below. A different
-`session_name` binding the same thread later is a new subscription, not a
-resumed one, and gets no watermark.
-
-```json
-// Request
-{"thread_ts": "1234567890.123456", "channel_id": "C...", "socket_path": "/run/user/1000/claude-channel/<uuid>.sock", "session_name": "owner/repo-1", "catch_up_through": "1234567890.654321"}
-
-// Response
-{"thread_ts": "1234567890.123456", "channel_id": "C...", "socket_path": "...", "session_name": "owner/repo-1", "since": "2026-05-17T00:00:00Z", "delivered_through": "1234567890.654321"}
-```
+The inputs-free resource hooks call `slack-adapter resource subscribe` and
+`unsubscribe`. They parse the thread permalink in `resource.id`, read the
+resident service's `listen_addr`, and invoke this API.
 
 ### POST /status
 
@@ -370,64 +323,40 @@ unregistered; a mention that occurs while nothing is connected is simply
 lost, not queued — see `subscribe unbound-mentions` above for the supervised
 CLI client built on this feed.
 
-### DELETE /subscribe?thread_ts=... or ?session_name=...
+### DELETE /subscribe?session_name=...&thread_ts=...
 
-Unsubscribes. An unknown `thread_ts` is a no-op (`204`). Called from `plect
-down` / `destroy` cleanup. If the subscription had a non-empty
-`delivered_through`, it is preserved as a tombstone (see `POST /subscribe`
-above and Persistence below), not discarded.
-
-`?session_name=...` drops every registration for that session regardless of
-`thread_ts` — the operator escape hatch for a stale or malformed entry whose
-exact `thread_ts` string isn't known (an unknown `session_name` is likewise
-a no-op). `?thread_ts=...` still exists for the single-registration case;
-the two query parameters are mutually exclusive forms of the same request,
-not composable.
+Removes one pair and returns `204` even if it was absent. With only
+`session_name`, it removes every registration for that session. A `plect
+down` leaves subscriptions intact; session destroy or `slack_thread` cleanup
+unsubscribes.
 
 ### GET /subscribers
 
-Returns the current subscription list. Used by the task's `[health].alive`
-probe to determine whether its own `thread_ts` is still registered with the
-broker. If a broker restart dropped it, the probe goes non-zero and the next
-`plect up` re-runs setup.
-
-```json
-{"subscribers": [{"thread_ts": "...", "channel_id": "...", "socket_path": "...", "since": "..."}]}
-```
+Returns the active subscription list as a JSON array.
 
 ## Routing
 
-`thread_ts` → `socket_path` resolves through an in-memory map. Subscriptions
-are registered explicitly via `/subscribe`.
-
-On an incoming message, if the subscriber's `socket_path` no longer exists, it
-is lazily removed from the map and a failure notice is posted to the Slack
-thread.
+A nonmention human reply in a subscribed thread becomes `slack.message`.
+A mention of the app becomes `user.emit`, carrying the root and replies
+since that session's previous mention delivery. The `message` and
+`app_mention` Slack events for one bot mention do not create both event
+types. Both event types carry `channel_id` and `thread_ts` metadata.
+`slack.message` does not advance the transcript watermark.
 
 ## Persistence
 
-Subscriptions and unsubscribed threads' delivery tombstones are persisted to
+The adapter writes a version 2 ledger to
 `$XDG_STATE_HOME/slack-adapter/subscribers.json` (default
-`~/.local/state/slack-adapter/subscribers.json`) as
-`{"subscribers": [...], "tombstones": [...]}`, with an atomic write (tmp →
-rename) on every subscribe/unsubscribe. Restarting slack-adapter reads it
-back at startup, so subscriptions survive a restart and routing continues
-without any action on the plect side. A failed read-back (missing or corrupt
-file, including the bare-array shape this file held before tombstones
-existed — see `docs/migrations/slack-adapter-subscribers-envelope-migration.md`)
-logs a warning and starts with an empty state, which the next `/subscribe`
-repopulates.
-
-**Operational requirement:** this state directory must live on the same
-persistent storage as plect's own state. `official.slack.slack_subscribe` is
-run-scoped — its cleanup runs `DELETE /subscribe` on every `plect down`, and
-the following `plect up` re-subscribes — so the tombstoned `delivered_through`
-watermark is the only thing standing between a routine restart and
-redelivering the whole thread transcript to the resumed session. In a
-container, put `HOME` (or `XDG_STATE_HOME` directly) on the volume that
-survives a redeploy. A tombstone older than 30 days is dropped on load and on
-every persist, regardless of storage — it is assumed no session will resume
-against it by then.
+`~/.local/state/slack-adapter/subscribers.json`) with an atomic rename on
+each mutation. Startup reloads it, then `plect ls --json` sweeps entries for
+destroyed sessions. Down sessions remain subscribed. The adapter refuses to
+start if `subscribers.json` is unreadable, corrupt, or not version 2. Convert a
+version 1 ledger
+using `docs/migrations/slack-thread-resource-subscriptions.md` before starting
+the new adapter. For a corrupt ledger, restore a backup; remove the file only
+if discarding its subscriptions is acceptable.
+The ledger also stores pending unbound mentions by `(channel_id, thread_ts)`;
+each expires after 24 hours or is removed after successful catch-up.
 
 ## Setting up the Slack App
 
@@ -520,8 +449,5 @@ non-plect sessions).
 
 ## Running as a service
 
-slack-adapter is a long-running broker process; run it under whatever process
-supervisor your environment uses (systemd user service, launchd, a process
-manager, etc.), started as `slack-adapter` and left resident. channel-server
-is spawned per-session by Claude Code itself and doesn't need its own service
-entry.
+slack-adapter is a long-running process. The plugin declares it as a
+resident service; keep its state directory on storage that survives a restart.

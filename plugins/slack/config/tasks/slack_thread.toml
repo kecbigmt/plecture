@@ -17,6 +17,8 @@ thread_ts=$(printf '%s' "$resp" | jq -er '.thread_ts')
 response_channel_id=$(printf '%s' "$resp" | jq -er '.channel_id')
 permalink=$(printf '%s' "$resp" | jq -er '.permalink')
 
+plect subscribe "$permalink" --session "$session_name"
+
 jq -nc \
   --arg thread_ts "$thread_ts" \
   --arg channel_id "$response_channel_id" \
@@ -28,12 +30,38 @@ jq -nc \
 base_url   = { from = "inputs.base_url" }
 channel_id = { from = "inputs.channel_id" }
 root_text  = { from = "inputs.root_text" }
+session_name = { from = "session.name" }
 
 # Deliberately never re-observed: a deleted or archived Slack thread must not
 # be silently recreated, because a replacement thread would split the
 # conversation the original one held.
 [slack_thread.health.alive]
 type = "noop"
+
+[slack_thread.cleanup]
+type = "shell"
+script = '''
+set -eu
+if curl -sf --max-time 10 -G -X DELETE "$base_url/subscribe" \
+  --data-urlencode "session_name=$session_name" \
+  --data-urlencode "thread_ts=$thread_ts" >/dev/null; then
+  :
+else
+  status=$?
+  case "$status" in
+    6|7|28)
+      printf 'slack_thread cleanup: unsubscribe failed for %s/%s (adapter unreachable, curl exit %s); startup sweep will remove it\n' \
+        "$session_name" "$thread_ts" "$status" >&2
+      ;;
+    *) exit "$status" ;;
+  esac
+fi
+'''
+
+[slack_thread.cleanup.bind]
+base_url = { from = "inputs.base_url" }
+session_name = { from = "session.name" }
+thread_ts = { from = "self.outputs.thread_ts" }
 
 [slack_thread.inputs_schema]
 type                 = "object"

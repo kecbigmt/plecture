@@ -101,6 +101,7 @@ func TestShippedCatalog_EffectActionsResolve(t *testing.T) {
 		"session_name":   "test-session",
 		"dir":            "/tmp/plect-gh-guard.x",
 		"thread_ts":      "1234567890.123456",
+		"permalink":      "https://example.slack.com/archives/C123/p1234567890123456",
 	}
 	inputs := map[string]any{
 		"terminal_ready":   "test-session",

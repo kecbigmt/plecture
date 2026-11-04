@@ -52,60 +52,59 @@ func (a *Adapter) handleAppMention(ev *slackevents.AppMentionEvent) {
 		return
 	}
 
-	sub, ok := a.broker.Find(threadTS)
-	if !ok {
+	subs := a.broker.ListThread(threadTS)
+	if len(subs) == 0 {
 		a.logger.Info("app mention skipped: unbound thread", "thread_ts", threadTS, "channel_id", ev.Channel)
 		if a.dispatchUnboundMention(ev, threadTS) {
 			a.recordStreamRecipient(ev.Channel, threadTS, ev.User, ev.UserTeam)
 		}
 		return
 	}
-	if sub.ChannelID != "" && ev.Channel != "" && sub.ChannelID != ev.Channel {
-		a.logger.Info("app mention skipped: unbound channel",
-			"thread_ts", threadTS, "bound_channel_id", sub.ChannelID, "event_channel_id", ev.Channel)
+	valid := subs[:0]
+	for _, sub := range subs {
+		if sub.SessionName != "" && sub.ChannelID == ev.Channel {
+			valid = append(valid, sub)
+		}
+	}
+	subs = valid
+	if len(subs) == 0 {
 		return
 	}
-	if sub.SessionName == "" {
-		a.logger.Info("app mention skipped: subscription has no session_name", "thread_ts", threadTS, "channel_id", ev.Channel)
-		return
-	}
-	channelID := sub.ChannelID
-	if channelID == "" {
-		channelID = ev.Channel
-	}
-
+	channelID := ev.Channel
 	fetcher := a.threadFetcher
 	if fetcher == nil {
 		fetcher = a
 	}
 	replies, err := fetcher.fetchThreadReplies(channelID, threadTS)
 	if err != nil {
-		a.logger.Warn("app mention skipped: failed to fetch thread replies",
-			"thread_ts", threadTS, "channel_id", channelID, "error", err)
-		return
-	}
-
-	body, deliveredThrough := buildDeliberationTranscript(fetcher, replies, *ev, sub, a.cfg.DeliverFullThread)
-	if body == "" {
-		a.logger.Info("app mention skipped: empty transcript", "thread_ts", threadTS, "channel_id", channelID)
+		a.logger.Warn("app mention skipped: failed to fetch thread replies", "thread_ts", threadTS, "channel_id", channelID, "error", err)
 		return
 	}
 	mentionUser := fetcher.userDisplayName(ev.User)
 	if mentionUser == "" {
 		mentionUser = ev.User
 	}
-	if err := a.publishEvent(sub.SessionName, "user.emit", "slack", "inbound",
-		"Slack deliberation from "+mentionUser, body,
-		map[string]string{
-			"thread_ts":  threadTS,
-			"channel_id": channelID,
-			"user_id":    ev.User,
-			"user":       mentionUser,
-		}); err != nil {
-		return
+	delivered := false
+	for _, sub := range subs {
+		if sub.ChannelID != channelID {
+			continue
+		}
+		body, through := buildDeliberationTranscript(fetcher, replies, *ev, sub, a.cfg.DeliverFullThread)
+		if body == "" {
+			continue
+		}
+		if err := a.publishEvent(sub.SessionName, "user.emit", "slack", "inbound",
+			"Slack deliberation from "+mentionUser, body,
+			map[string]string{"thread_ts": threadTS, "channel_id": channelID, "user_id": ev.User, "user": mentionUser}); err != nil {
+			continue
+		}
+		a.broker.MarkDelivered(sub.SessionName, threadTS, through)
+		delivered = true
 	}
-	a.recordStreamRecipient(channelID, threadTS, ev.User, ev.UserTeam)
-	a.broker.MarkDelivered(threadTS, deliveredThrough)
+	if delivered {
+		a.recordStreamRecipient(channelID, threadTS, ev.User, ev.UserTeam)
+	}
+
 }
 
 func (a *Adapter) fetchThreadReplies(channelID, threadTS string) ([]slack.Message, error) {
@@ -176,10 +175,7 @@ func buildDeliberationTranscript(fetcher threadFetcher, replies []slack.Message,
 	return strings.Join(lines, "\n"), deliveredThrough
 }
 
-// catchUpThread never propagates a fetch or publish failure to the caller:
-// leaving DeliveredThrough untouched on failure means a later re-subscribe
-// (e.g. after a runtime restart re-runs the run-scoped slack_subscribe
-// task) retries instead of silently losing the history.
+// A failed catch-up keeps its watermark so a later registration can retry.
 func (a *Adapter) catchUpThread(sub Subscriber, through string) Subscriber {
 	if through == "" {
 		return sub
@@ -218,7 +214,7 @@ func (a *Adapter) catchUpThread(sub Subscriber, through string) Subscriber {
 		}); err != nil {
 		return sub
 	}
-	if updated, ok := a.broker.MarkDelivered(sub.ThreadTS, through); ok {
+	if updated, ok := a.broker.MarkDelivered(sub.SessionName, sub.ThreadTS, through); ok {
 		sub = updated
 	}
 	return sub
