@@ -30,12 +30,29 @@ type Supervisor struct {
 	hub    *sessionhub.Registry
 	logger *slog.Logger
 	poll   time.Duration
+	// repairWait is injected because the judgment lives in internal/service,
+	// which already imports this package. Nil disables holding.
+	repairWait func(*config.Config, *state.Store, string) (bool, error)
+}
+
+// SupervisorOption customizes a Supervisor at construction.
+type SupervisorOption func(*Supervisor)
+
+// WithRepairWait lets a dispatcher hold a failed delivery, without advancing
+// its cursor, while fn reports that automatic repair is expected to restore
+// the session's runtime.
+func WithRepairWait(fn func(*config.Config, *state.Store, string) (bool, error)) SupervisorOption {
+	return func(sup *Supervisor) { sup.repairWait = fn }
 }
 
 // NewSupervisor builds a supervisor over the same event log the bus serves, the
 // shared session state, and the shared per-session reader hub.
-func NewSupervisor(cfg func() *config.Config, st *state.Store, log *eventlog.Store, hub *sessionhub.Registry) *Supervisor {
-	return &Supervisor{cfg: cfg, state: st, log: log, hub: hub, logger: slog.Default(), poll: time.Second}
+func NewSupervisor(cfg func() *config.Config, st *state.Store, log *eventlog.Store, hub *sessionhub.Registry, opts ...SupervisorOption) *Supervisor {
+	sup := &Supervisor{cfg: cfg, state: st, log: log, hub: hub, logger: slog.Default(), poll: time.Second}
+	for _, opt := range opts {
+		opt(sup)
+	}
+	return sup
 }
 
 // Run polls session state and reconciles the running dispatchers until ctx ends,
@@ -139,6 +156,10 @@ func (sup *Supervisor) buildDispatcher(name string, s *domain.Session) (*session
 		recordValidationSuccess(sup.state, name)
 	}
 	terminal := resolveTerminalOwner(sup.logger, cfg, s, wf)
+	var awaitingRepair func(string) (bool, error)
+	if sup.repairWait != nil {
+		awaitingRepair = func(session string) (bool, error) { return sup.repairWait(sup.cfg(), sup.state, session) }
+	}
 	return &sessionDispatcher{
 		session:  name,
 		cfg:      cfg,
@@ -150,5 +171,7 @@ func (sup *Supervisor) buildDispatcher(name string, s *domain.Session) (*session
 		policy:   channel.DefaultRetryPolicy(),
 		plugins:  cfg.Plugins,
 		terminal: terminal,
+
+		awaitingRepair: awaitingRepair,
 	}, false
 }

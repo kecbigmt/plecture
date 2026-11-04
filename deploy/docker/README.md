@@ -113,7 +113,9 @@ PLECT_FAULT_SOURCE=local deploy/docker/fault/run.sh
 S1 (kill the agent process mid-turn) and S2 (kill and replace the container
 on the same volume) assert that the same session resumes the same Claude
 conversation ID, reports `.runtime.health` as `healthy`, and keeps its
-uncommitted change. Enable the recovery assertions locally with:
+uncommitted change. S1 also publishes an instruction right after the kill and
+asserts it reaches the resumed agent exactly once, with no
+`plect.channel.error`. Enable the recovery assertions locally with:
 
 ```bash
 PLECT_FAULT_RECOVERY=1 deploy/docker/fault/run.sh

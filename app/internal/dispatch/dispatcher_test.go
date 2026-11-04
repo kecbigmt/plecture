@@ -171,6 +171,13 @@ func startDispatcher(t *testing.T, d *sessionDispatcher) func() {
 func startFakeSocket(t *testing.T) (string, <-chan protocol.MessagePayload) {
 	t.Helper()
 	path := filepath.Join(sockettest.Dir(t), "c.sock")
+	return path, startFakeSocketAt(t, path)
+}
+
+// startFakeSocketAt is startFakeSocket on a caller-chosen path, so a test can
+// bring a runtime "back" at the address a dispatcher already failed against.
+func startFakeSocketAt(t *testing.T, path string) <-chan protocol.MessagePayload {
+	t.Helper()
 	ln, err := net.Listen("unix", path)
 	if err != nil {
 		t.Fatal(err)
@@ -204,7 +211,7 @@ func startFakeSocket(t *testing.T) (string, <-chan protocol.MessagePayload) {
 			}(conn)
 		}
 	}()
-	return path, recv
+	return recv
 }
 
 func runtimeDispatcher(t *testing.T, session string, log *eventlog.Store, socketPath string, include ...string) (*sessionDispatcher, *domain.Session) {

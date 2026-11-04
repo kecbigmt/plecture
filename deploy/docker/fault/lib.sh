@@ -28,3 +28,11 @@ assert_recovered() {
     && inside git -C "/var/lib/plect/workspace_dirs/$session" status --short | grep -q 'uncommitted-change' \
     && wait_for 'resume instruction recorded once' "$recovery_wait" resume_instruction_count 1
 }
+
+held_message_count() {
+  inside sh -c 'grep -c -F "sent while the agent was down" "$HOME/fault/prompts" || true'
+}
+
+held_message_channel_errors() {
+  plect event list "$session" --json | jq '[.events[] | select(.type == "plect.channel.error" and .metadata.event_type == "plect.instruction")] | length'
+}

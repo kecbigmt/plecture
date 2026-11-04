@@ -109,6 +109,31 @@ func RepairSession(cfg *config.Config, store *state.Store, name string, report *
 	return attempted, err
 }
 
+// AwaitingRepair reports whether automatic repair is expected to act on the
+// session next: the same eligibility RepairSession applies, evaluated against
+// a fresh health observation. The persisted verdict is not used because it
+// lags the failure by up to one health period, and a delivery that failed in
+// that window would be misread as unrelated to liveness.
+func AwaitingRepair(cfg *config.Config, store *state.Store, name string) (bool, error) {
+	s, err := store.GetE(name)
+	if err != nil || s == nil {
+		return false, err
+	}
+	limit, err := workflowRepairLimit(cfg, s)
+	if err != nil || limit <= 0 {
+		return false, err
+	}
+	if halt, _, err := repairHalt(store, name, s); err != nil || halt != "" {
+		return false, err
+	}
+	report, err := EvaluateHealth(cfg, store, name)
+	if err != nil {
+		return false, err
+	}
+	trigger, _ := repairCandidate(s, limit, sessionRunState(cfg, s), &report)
+	return trigger != "", nil
+}
+
 func workflowRepairLimit(cfg *config.Config, s *domain.Session) (int, error) {
 	if s == nil || s.Status != contract.SessionStatusUp || s.Workflow == "" {
 		return 0, nil

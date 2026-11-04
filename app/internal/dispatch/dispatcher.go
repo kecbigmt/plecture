@@ -3,6 +3,7 @@ package dispatch
 import (
 	"context"
 	"log/slog"
+	"slices"
 	"sync"
 	"time"
 
@@ -25,6 +26,12 @@ const dispatcherConsumer = "delivery"
 // fallbackDrain re-drains even if a wake was missed/coalesced — correctness rests
 // on the durable cursor, so this only bounds worst-case latency, not delivery.
 const fallbackDrain = 5 * time.Second
+
+// repairHoldLimit caps how long one event may wait, measured from its own
+// append time, for an automatic repair to bring the runtime back. Without a
+// cap a repair that never converges would stall every later event behind the
+// held one for as long as the session lives.
+const repairHoldLimit = 30 * time.Minute
 
 // sessionDispatcher follows one session's event log and fans each event out to
 // the matching workflow channels. Static config (channels/defs) is resolved
@@ -50,6 +57,20 @@ type sessionDispatcher struct {
 	// declares none; a channel that consumes no terminal verb is unaffected
 	// either way.
 	terminal *terminalOwner
+	// awaitingRepair reports whether automatic repair is expected to act on
+	// the session next. It is injected because that judgment lives in
+	// internal/service, which already imports this package. Nil means a
+	// failed delivery is never held.
+	awaitingRepair func(session string) (bool, error)
+	// held remembers which channels already delivered the event currently
+	// held, so a retry does not re-send to them. It is memory only: a restart
+	// redelivers once, which at-least-once delivery allows.
+	held heldEvent
+}
+
+type heldEvent struct {
+	id        string
+	delivered map[string]bool
 }
 
 func (d *sessionDispatcher) run(ctx context.Context) {
@@ -144,9 +165,12 @@ func (d *sessionDispatcher) drain(ctx context.Context, s *domain.Session, startG
 		if ctx.Err() != nil {
 			return
 		}
-		d.processEvent(ctx, s, ev)
+		held := d.processEvent(ctx, s, ev)
 		if ctx.Err() != nil {
 			return // cancelled mid-event; leave the cursor so it replays on restart
+		}
+		if held {
+			return // head-of-line: the next wake or fallback drain retries this event
 		}
 		commit := next
 		if i+1 < len(offs) {
@@ -163,6 +187,9 @@ func (d *sessionDispatcher) drain(ctx context.Context, s *domain.Session, startG
 
 // processEvent runs one worker per matching channel and returns once all are
 // terminal, so the cursor only advances after the event is fully processed.
+// It returns true when a failed delivery is held for automatic repair instead
+// of being recorded: nothing is written for a held event, so the caller must
+// leave the cursor where it is.
 // The delivery streak (Session.ChannelDeliveryHealth) is updated once per
 // event, from the workers' combined outcome, rather than once per channel:
 // a multi-channel workflow with one permanently broken channel and one
@@ -170,16 +197,21 @@ func (d *sessionDispatcher) drain(ctx context.Context, s *domain.Session, startG
 // session-level streak race each other, and the healthy channel's steady
 // stream of successes would starve the broken one's streak of ever reaching
 // the escalation threshold.
-func (d *sessionDispatcher) processEvent(ctx context.Context, s *domain.Session, ev event.Event) {
+func (d *sessionDispatcher) processEvent(ctx context.Context, s *domain.Session, ev event.Event) (held bool) {
 	if ev.Type == event.TypeChannelError && ev.Metadata["event_type"] == event.TypeChannelError {
-		return
+		return false
 	}
 	var wg sync.WaitGroup
 	var mu sync.Mutex
 	matched := false
-	var failedChannel string
-	var failedCause error
-	for _, ch := range d.channels {
+	failures := map[int]deliveryFailure{}
+	delivered := map[string]bool{}
+	if d.held.id == ev.ID {
+		for name := range d.held.delivered {
+			delivered[name] = true
+		}
+	}
+	for i, ch := range d.channels {
 		if !channelMatches(ch, ev) {
 			continue
 		}
@@ -191,14 +223,14 @@ func (d *sessionDispatcher) processEvent(ctx context.Context, s *domain.Session,
 			continue // resolution is validated at load; defensive
 		}
 		matched = true // set on the main goroutine, before any worker starts — no lock needed
+		if delivered[ch.Name] {
+			continue
+		}
 		wg.Go(func() {
 			inputs, err := channelInputs(s, ch, def)
 			if err != nil {
-				d.recordFailure(ctx, ev, ch.Name, 0, err)
 				mu.Lock()
-				if failedChannel == "" {
-					failedChannel, failedCause = ch.Name, err
-				}
+				failures[i] = deliveryFailure{channel: ch.Name, cause: err}
 				mu.Unlock()
 				return
 			}
@@ -215,26 +247,79 @@ func (d *sessionDispatcher) processEvent(ctx context.Context, s *domain.Session,
 				}),
 			}
 			attempts, derr := channel.DeliverWithRetryAndOptions(ctx, def, inputs, ev, d.policy, opts)
+			mu.Lock()
+			defer mu.Unlock()
 			if derr != nil {
-				d.recordFailure(ctx, ev, ch.Name, attempts, derr)
-				mu.Lock()
-				if failedChannel == "" {
-					failedChannel, failedCause = ch.Name, derr
-				}
-				mu.Unlock()
+				failures[i] = deliveryFailure{channel: ch.Name, attempts: attempts, cause: derr, attempted: true}
+				return
 			}
+			delivered[ch.Name] = true
 		})
 	}
 	wg.Wait()
 	if ctx.Err() != nil {
-		return // shutdown mid-event, not a delivery outcome either way
+		return false // shutdown mid-event, not a delivery outcome either way
 	}
-	switch {
-	case failedChannel != "":
-		recordDeliveryFailure(d.state, d.session, failedChannel, failedCause, time.Now())
-	case matched:
-		recordDeliverySuccess(d.state, d.session)
+	if len(failures) == 0 {
+		d.held = heldEvent{}
+		if matched {
+			recordDeliverySuccess(d.state, d.session)
+		}
+		return false
 	}
+	if d.shouldHold(ev, failures) {
+		if d.held.id != ev.ID {
+			slog.Default().Info("dispatcher: holding event until automatic repair finishes", "session", d.session, "event_id", ev.ID)
+		}
+		d.held = heldEvent{id: ev.ID, delivered: delivered}
+		return true
+	}
+	d.held = heldEvent{}
+	ordered := make([]int, 0, len(failures))
+	for i := range failures {
+		ordered = append(ordered, i)
+	}
+	slices.Sort(ordered)
+	for _, i := range ordered {
+		f := failures[i]
+		d.recordFailure(ctx, ev, f.channel, f.attempts, f.cause)
+	}
+	first := failures[ordered[0]]
+	recordDeliveryFailure(d.state, d.session, first.channel, first.cause, time.Now())
+	return false
+}
+
+// deliveryFailure is one channel's terminal failure for one event. attempted
+// is false when the channel never ran, because its inputs did not resolve.
+type deliveryFailure struct {
+	channel   string
+	attempts  int
+	cause     error
+	attempted bool
+}
+
+// shouldHold reports whether every failure of ev is a delivery that reached
+// its channel and failed, while automatic repair is still expected to restore
+// the runtime. A failure before delivery (an unresolvable input) says nothing
+// about liveness, so repair cannot fix it.
+func (d *sessionDispatcher) shouldHold(ev event.Event, failures map[int]deliveryFailure) bool {
+	if d.awaitingRepair == nil {
+		return false
+	}
+	for _, f := range failures {
+		if !f.attempted {
+			return false
+		}
+	}
+	if time.Since(ev.Time) > repairHoldLimit {
+		return false
+	}
+	awaiting, err := d.awaitingRepair(d.session)
+	if err != nil {
+		slog.Default().Warn("dispatcher: read repair state failed; recording the delivery failure instead of holding", "session", d.session, "error", err)
+		return false
+	}
+	return awaiting
 }
 
 func channelMatches(ch config.EventChannel, ev event.Event) bool {
