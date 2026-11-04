@@ -25,6 +25,7 @@ import (
 	"github.com/kecbigmt/plecture/app/internal/effect"
 	"github.com/kecbigmt/plecture/app/internal/lang"
 	"github.com/kecbigmt/plecture/app/internal/plugins"
+	"github.com/kecbigmt/plecture/app/internal/publicoutput"
 	"github.com/kecbigmt/plecture/contracts/event"
 	contract "github.com/kecbigmt/plecture/contracts/state"
 	"github.com/santhosh-tekuri/jsonschema/v6"
@@ -256,7 +257,7 @@ func resolveWorkflowNodes(wf config.WorkflowFile, defs map[string]config.TaskDef
 		resolved.Inputs = node.Inputs
 		out = append(out, resolved)
 	}
-	if err := deriveDependsOn(out); err != nil {
+	if err := deriveDependsOn(out, wf.Outputs); err != nil {
 		return nil, err
 	}
 	if err := applyBlocks(out, wf.Nodes); err != nil {
@@ -366,14 +367,21 @@ func hasDep(deps []string, id string) bool {
 // reads out of its input wiring, and validates that those nodes exist and that
 // scope ordering holds (a session-scoped node must not depend on a run-scoped
 // one, which would outlive it).
-func deriveDependsOn(nodes []Resolved) error {
+func deriveDependsOn(nodes []Resolved, outputs map[string]*lang.Value) error {
 	byID := make(map[string]*Resolved, len(nodes))
 	for i := range nodes {
 		byID[nodes[i].NodeID] = &nodes[i]
 	}
+	for key, binding := range outputs {
+		for _, ref := range lang.NodeReads(map[string]*lang.Value{key: binding}, nil) {
+			if _, ok := byID[ref]; !ok {
+				return fmt.Errorf("public output %q reads unknown node %q", key, ref)
+			}
+		}
+	}
 	for i := range nodes {
 		n := &nodes[i]
-		for _, ref := range lang.NodeReads(n.Inputs) {
+		for _, ref := range lang.NodeReads(n.Inputs, outputs) {
 			if ref == n.NodeID {
 				return fmt.Errorf("node %q reads its own outputs", n.NodeID)
 			}
@@ -555,7 +563,8 @@ type SessionVars struct {
 	// a separate parameter to every render-driving function, since a
 	// SessionVars is already built and passed at every one of those call
 	// sites.
-	Plugins []plugins.Mounted
+	Plugins       []plugins.Mounted
+	PublicOutputs publicoutput.Declaration
 	// Terminal is the session plan's [terminal]-declaring task, if any,
 	// supplying the terminal capability the same way Plugins supplies the
 	// executable one. Nil when the plan declares no such task, or the
@@ -589,13 +598,12 @@ func orEmpty(m map[string]any) map[string]any {
 	return m
 }
 
-// workflowOutputs extracts the workflow pseudo-node's outputs from the
-// persisted tasks map (empty when the workflow declares no setup hook).
-func workflowOutputs(tasks map[string]*contract.TaskState) map[string]any {
-	if st, ok := tasks[contract.WorkflowPseudoNodeID]; ok && st != nil {
-		return st.Outputs
-	}
-	return nil
+// workflowOutputs evaluates from tasks rather than reading the persisted
+// record, because a setup in the middle of a run must see the outputs of nodes
+// produced moments earlier, before anything is saved.
+func workflowOutputs(session SessionVars, tasks map[string]*contract.TaskState) map[string]any {
+	outputs, _ := publicoutput.Evaluate(session.PublicOutputs, tasks, session.Inputs)
+	return outputs
 }
 
 // dependencyOutputs builds the .Tasks.<id> / .Nodes.<id>.outputs map for the
@@ -784,7 +792,7 @@ func RunSetup(goCtx context.Context, ordered []Resolved, session SessionVars, ta
 			return st
 		}
 		deps := dependencyOutputs(r.DependsOn, tasks)
-		resolvedInputs, inputErr := ResolveNodeInputs(r.Inputs, deps, workflowOutputs(tasks), session)
+		resolvedInputs, inputErr := ResolveNodeInputs(r.Inputs, deps, workflowOutputs(session, tasks), session)
 		if inputErr != nil {
 			tasks[r.NodeID] = failed(inputErr.Error(), nil)
 			wrapped := fmt.Errorf("node %q input: %w", r.NodeID, inputErr)
@@ -802,7 +810,7 @@ func RunSetup(goCtx context.Context, ordered []Resolved, session SessionVars, ta
 			Prev:       prev,
 			Tasks:      deps,
 			Inputs:     resolvedInputs,
-			Workflow:   workflowOutputs(tasks),
+			Workflow:   workflowOutputs(session, tasks),
 			Session:    session,
 			SourcePath: r.SourcePath,
 		}
@@ -1073,7 +1081,7 @@ func RunCleanup(goCtx context.Context, ordered []Resolved, session SessionVars, 
 			base := RenderContext{
 				Process:  state.Process,
 				Tasks:    dependencyOutputs(r.DependsOn, tasks),
-				Workflow: workflowOutputs(tasks),
+				Workflow: workflowOutputs(session, tasks),
 				Session:  sess,
 			}
 			stderr, nestErr := effect.RunLayerCleanup(goCtx, r.Layers, state.Layers, chainHost(base, obs, r.Scope, r.NodeID), base.Session.WorkspaceDirPath)
@@ -1117,7 +1125,7 @@ func RunCleanup(goCtx context.Context, ordered []Resolved, session SessionVars, 
 			Process:    state.Process,
 			Tasks:      dependencyOutputs(r.DependsOn, tasks),
 			Inputs:     state.Inputs,
-			Workflow:   workflowOutputs(tasks),
+			Workflow:   workflowOutputs(session, tasks),
 			Session:    sess,
 			SourcePath: r.SourcePath,
 		}

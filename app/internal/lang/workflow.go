@@ -25,6 +25,8 @@ type WorkflowNode struct {
 // vocabulary.
 const nodeReadPrefix = "nodes."
 
+const publicOutputReadPrefix = "workflow.outputs."
+
 // WorkflowNodes reads one workflow definition's node array as the topology it
 // declares: each node's id (defaulted from the referenced definition's id),
 // the node ids its input values read, and whether those edges form a cycle.
@@ -38,11 +40,15 @@ func WorkflowNodes(def *Definition) ([]WorkflowNode, error) {
 	if err != nil {
 		return nil, err
 	}
+	outputs, err := WorkflowOutputValues(def)
+	if err != nil {
+		return nil, err
+	}
 	out := make([]WorkflowNode, 0, len(raw))
 	declared := make(map[string]int, len(raw))
 	for i, entry := range raw {
 		at := childPos(childPos(pos, "nodes"), fmt.Sprintf("[%d]", i))
-		node, err := workflowNode(entry, at)
+		node, err := workflowNode(entry, at, outputs)
 		if err != nil {
 			return nil, err
 		}
@@ -71,7 +77,7 @@ func WorkflowEventChannels(def *Definition) ([]map[string]any, error) {
 	return Validation{}.eventChannels(def, Position{File: def.File, Path: def.ID})
 }
 
-func workflowNode(entry map[string]any, pos Position) (WorkflowNode, error) {
+func workflowNode(entry map[string]any, pos Position, outputs map[string]*Value) (WorkflowNode, error) {
 	var node WorkflowNode
 	if err := rejectUnknownFields(entry, pos, "id", "uses", "inputs", "blocks"); err != nil {
 		return node, err
@@ -105,13 +111,34 @@ func workflowNode(entry map[string]any, pos Position) (WorkflowNode, error) {
 	if err != nil {
 		return node, err
 	}
-	node.Reads = NodeReads(inputs)
+	node.Reads = NodeReads(inputs, outputs)
 	blocks, err := nodeBlocks(entry, pos)
 	if err != nil {
 		return node, err
 	}
 	node.Blocks = blocks
 	return node, nil
+}
+
+func WorkflowOutputValues(def *Definition) (map[string]*Value, error) {
+	raw, ok := def.Body["outputs"]
+	if !ok {
+		return nil, nil
+	}
+	at := childPos(Position{File: def.File, Path: def.ID}, "outputs")
+	tbl, err := table(raw, at)
+	if err != nil {
+		return nil, err
+	}
+	out := make(map[string]*Value, len(tbl))
+	for _, key := range sortedKeys(tbl) {
+		value, err := ParseValue(tbl[key], ClassData, childPos(at, key))
+		if err != nil {
+			return nil, err
+		}
+		out[key] = value
+	}
+	return out, nil
 }
 
 func nodeInputValues(entry map[string]any, pos Position) (map[string]*Value, error) {
@@ -161,16 +188,34 @@ func nodeBlocks(entry map[string]any, pos Position) ([]string, error) {
 // the whole edge vocabulary of the workflow dependency graph: the load-time
 // cycle check and the runtime's execution order both derive their edges here,
 // so they cannot disagree about what a wiring declares.
-func NodeReads(inputs map[string]*Value) []string {
+//
+// A projection of `workflow.outputs.<key>` reads the nodes that public
+// output's own binding reads, looked up in outputs; a key outputs does not
+// declare reads nothing, since it names no producer.
+func NodeReads(inputs, outputs map[string]*Value) []string {
 	var out []string
 	seen := map[string]bool{}
-	add := func(path string) {
-		id, ok := nodeReadID(path)
-		if !ok || seen[id] {
+	addID := func(id string) {
+		if seen[id] {
 			return
 		}
 		seen[id] = true
 		out = append(out, id)
+	}
+	add := func(path string) {
+		if id, ok := nodeReadID(path); ok {
+			addID(id)
+			return
+		}
+		key, ok := publicOutputKey(path)
+		if !ok {
+			return
+		}
+		valueReads(outputs[key], func(path string) {
+			if id, ok := nodeReadID(path); ok {
+				addID(id)
+			}
+		})
 	}
 	for _, key := range sortedValueKeys(inputs) {
 		valueReads(inputs[key], add)
@@ -226,6 +271,15 @@ func nodeReadID(path string) (string, bool) {
 		return "", false
 	}
 	return segments[1], true
+}
+
+func publicOutputKey(path string) (string, bool) {
+	rest, ok := strings.CutPrefix(path, publicOutputReadPrefix)
+	if !ok || rest == "" {
+		return "", false
+	}
+	key, _, _ := strings.Cut(rest, ".")
+	return key, true
 }
 
 func sortedValueKeys(values map[string]*Value) []string {

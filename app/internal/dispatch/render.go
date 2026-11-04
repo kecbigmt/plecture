@@ -10,7 +10,6 @@ import (
 	"github.com/kecbigmt/plecture/app/internal/config"
 	"github.com/kecbigmt/plecture/app/internal/domain"
 	"github.com/kecbigmt/plecture/app/internal/task"
-	contract "github.com/kecbigmt/plecture/contracts/state"
 )
 
 // channelInputs resolves an [[event.channel]]'s input wiring against the
@@ -32,11 +31,7 @@ func channelInputs(s *domain.Session, ch config.EventChannel, def config.Channel
 		}
 		deps[id] = out
 	}
-	var wfOutputs map[string]any
-	if st := s.Nodes[contract.WorkflowPseudoNodeID]; st != nil {
-		wfOutputs = st.Outputs
-	}
-	resolved, err := task.ResolveNodeInputs(ch.Inputs, deps, wfOutputs, task.SessionVars{
+	resolved, err := task.ResolveNodeInputs(ch.Inputs, deps, s.PublicOutputs, task.SessionVars{
 		Name:             s.Name,
 		ResourceID:       s.ResourceID,
 		WorkspaceDirPath: s.WorkspaceDirPath,

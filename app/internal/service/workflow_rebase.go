@@ -13,6 +13,7 @@ import (
 	"github.com/kecbigmt/plecture/app/internal/domain"
 	"github.com/kecbigmt/plecture/app/internal/eventlog"
 	"github.com/kecbigmt/plecture/app/internal/lang"
+	"github.com/kecbigmt/plecture/app/internal/publicoutput"
 	"github.com/kecbigmt/plecture/app/internal/state"
 	"github.com/kecbigmt/plecture/app/internal/task"
 	"github.com/kecbigmt/plecture/contracts/event"
@@ -340,18 +341,21 @@ func ClassifyWorkflowRebase(old, next config.WorkflowRevision, session *domain.S
 		}
 	}
 	outputs := make(map[string]map[string]any)
+	retained := make(map[string]*contract.TaskState)
 	for id, state := range session.Nodes {
 		if state != nil && state.Status == contract.TaskStatusProduced && !deferred[id] {
 			outputs[id] = state.Outputs
+			retained[id] = state
 		}
 	}
-	wfOutputs := map[string]any(nil)
-	if state := session.Nodes[contract.WorkflowPseudoNodeID]; state != nil {
-		wfOutputs = state.Outputs
-	}
+	// The public outputs the new declaration would hold once only the
+	// retained nodes remain, so an input reading one resolves exactly as it
+	// would after the rebase rather than against the previous declaration.
+	publicOutputs := publicoutput.Declaration{Bindings: next.Workflow.Outputs, Schema: next.Workflow.OutputsSchema}
+	wfOutputs, _ := publicoutput.Evaluate(publicOutputs, retained, session.Inputs)
 	vars := task.SessionVars{Name: session.Name, ResourceID: session.ResourceID, ParentSession: session.ParentSession, WorkspaceDirPath: session.WorkspaceDirPath, Branch: domain.SessionBranch(session), Inputs: session.Inputs}
 	for _, node := range nextPlan.UpOrder() {
-		if err := validateRebaseInputs(node.Inputs, outputs, wfOutputs, vars, deferred); err != nil {
+		if err := validateRebaseInputs(node.Inputs, outputs, wfOutputs, next.Workflow.Outputs, vars, deferred); err != nil {
 			result.raise(RebaseRecreate, fmt.Sprintf("node %q inputs cannot resolve from saved outputs: %v; add a default or destroy and recreate the session", node.NodeID, err))
 		}
 		if state := session.Nodes[node.NodeID]; state != nil && state.Status == contract.TaskStatusProduced && !deferred[node.NodeID] {
@@ -373,7 +377,7 @@ func ClassifyWorkflowRebase(old, next config.WorkflowRevision, session *domain.S
 		}
 	}
 	for _, channel := range next.Workflow.Event.Channel {
-		if err := validateRebaseInputs(channel.Inputs, outputs, wfOutputs, vars, deferred); err != nil {
+		if err := validateRebaseInputs(channel.Inputs, outputs, wfOutputs, next.Workflow.Outputs, vars, deferred); err != nil {
 			result.raise(RebaseRecreate, fmt.Sprintf("event channel %q inputs cannot resolve from saved outputs: %v; add a default or destroy and recreate the session", channel.Name, err))
 		}
 	}
@@ -417,7 +421,7 @@ func ClassifyWorkflowRebase(old, next config.WorkflowRevision, session *domain.S
 	return result, nil
 }
 
-func validateRebaseInputs(inputs map[string]*lang.Value, outputs map[string]map[string]any, wfOutputs map[string]any, vars task.SessionVars, deferred map[string]bool) error {
+func validateRebaseInputs(inputs map[string]*lang.Value, outputs map[string]map[string]any, wfOutputs map[string]any, publicBindings map[string]*lang.Value, vars task.SessionVars, deferred map[string]bool) error {
 	keys := make([]string, 0, len(inputs))
 	for key := range inputs {
 		keys = append(keys, key)
@@ -426,7 +430,7 @@ func validateRebaseInputs(inputs map[string]*lang.Value, outputs map[string]map[
 	for _, key := range keys {
 		for _, leaf := range lang.ValueLeaves(inputs[key]) {
 			readsDeferred := false
-			for _, id := range lang.NodeReads(map[string]*lang.Value{key: leaf}) {
+			for _, id := range lang.NodeReads(map[string]*lang.Value{key: leaf}, publicBindings) {
 				if deferred[id] {
 					readsDeferred = true
 					break

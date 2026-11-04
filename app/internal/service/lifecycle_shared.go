@@ -11,6 +11,7 @@ import (
 	"github.com/kecbigmt/plecture/app/internal/domain"
 	"github.com/kecbigmt/plecture/app/internal/effect"
 	"github.com/kecbigmt/plecture/app/internal/lang"
+	"github.com/kecbigmt/plecture/app/internal/publicoutput"
 	"github.com/kecbigmt/plecture/app/internal/state"
 	"github.com/kecbigmt/plecture/app/internal/task"
 	contract "github.com/kecbigmt/plecture/contracts/state"
@@ -189,7 +190,11 @@ func resolveParentSession(store *state.Store, sessionName, explicit string) (str
 // scope, e.g. a dynamic instance's own cleanup) — it feeds the terminal
 // "..."}} helper binding; every other field is plan-independent.
 func sessionVars(cfg *config.Config, s *domain.Session, plan *task.Plan) task.SessionVars {
+	// An unreadable revision declares no public outputs; the store's refresh
+	// reports it where the session is saved.
+	publicOutputs, _ := publicoutput.Declare(s)
 	return task.SessionVars{
+		PublicOutputs:    publicOutputs,
 		Name:             s.Name,
 		ResourceID:       s.ResourceID,
 		ParentSession:    s.ParentSession,

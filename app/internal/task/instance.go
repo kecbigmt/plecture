@@ -85,8 +85,8 @@ type InstanceSetup struct {
 //
 // inputs are the already-bound input values (the caller applies the
 // --input > workspace-provider/workflow outputs > session vars precedence).
-// nodes is the session's Nodes map, read only to expose the @workflow
-// pseudo-node's outputs to the setup template.
+// nodes is the session's Nodes map, read only to evaluate the public outputs
+// the setup template sees as `workflow.outputs`.
 func ExecuteTaskSetup(goCtx context.Context, r Resolved, inputs map[string]any, session SessionVars, nodes map[string]*contract.TaskState) (InstanceSetup, error) {
 	if inputs == nil {
 		inputs = map[string]any{}
@@ -99,7 +99,7 @@ func ExecuteTaskSetup(goCtx context.Context, r Resolved, inputs map[string]any, 
 	ctx := RenderContext{
 		Self:       map[string]any{},
 		Inputs:     inputs,
-		Workflow:   workflowOutputs(nodes),
+		Workflow:   workflowOutputs(session, nodes),
 		Session:    session,
 		SourcePath: r.SourcePath,
 	}

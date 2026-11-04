@@ -16,6 +16,7 @@ import (
 	"github.com/kecbigmt/plecture/app/internal/datahome"
 	"github.com/kecbigmt/plecture/app/internal/domain"
 	"github.com/kecbigmt/plecture/app/internal/persistence"
+	"github.com/kecbigmt/plecture/app/internal/publicoutput"
 	contract "github.com/kecbigmt/plecture/contracts/state"
 )
 
@@ -130,6 +131,7 @@ func (s *Store) Put(session *domain.Session) error {
 	if err != nil {
 		return fmt.Errorf("state: put %q: %w", session.Name, err)
 	}
+	refreshPublicOutputs(session)
 	if err := db.PutSession(context.Background(), session); err != nil {
 		return fmt.Errorf("state: put %q: %w", session.Name, err)
 	}
@@ -150,7 +152,24 @@ func (s *Store) Update(name string, fn func(*domain.Session) error) error {
 	// or errors.Is against sentinel/typed errors fn returns (e.g. a service
 	// *Error), and this is the read-modify-write primitive they call
 	// through, so this seam must not obscure that type.
-	return db.UpdateSession(context.Background(), name, fn)
+	return db.UpdateSession(context.Background(), name, func(session *domain.Session) error {
+		if err := fn(session); err != nil {
+			return err
+		}
+		refreshPublicOutputs(session)
+		return nil
+	})
+}
+
+// refreshPublicOutputs keeps the public output record in step with the nodes
+// being written, at the one seam every node write passes through, so no
+// lifecycle path has to remember to refresh it. A failure is logged rather
+// than returned: teardown writes through here, and a session that cannot
+// record a node's release cannot be cleaned up.
+func refreshPublicOutputs(session *domain.Session) {
+	if err := publicoutput.Refresh(session); err != nil {
+		slog.Warn("public outputs not refreshed", "session", session.Name, "error", err)
+	}
 }
 
 // PruneReleasedNode reports whether name's node_id row was pruned; see

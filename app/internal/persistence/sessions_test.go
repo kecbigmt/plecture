@@ -1263,3 +1263,39 @@ func TestPurgeSessionByName_MissingNameIsANoOp(t *testing.T) {
 		t.Fatalf("PurgeSessionByName on a name with no row: %v", err)
 	}
 }
+
+func TestPutSession_PublicOutputsRoundTripAndClear(t *testing.T) {
+	db := migratedTestDB(t)
+	ctx := context.Background()
+	session := &domain.Session{
+		Name:          "public",
+		Workflow:      "review",
+		PublicOutputs: map[string]any{"endpoint": "unix:///run/o.sock", "count": float64(2)},
+		CreatedAt:     time.Now().UTC().Truncate(time.Second),
+		UpdatedAt:     time.Now().UTC().Truncate(time.Second),
+	}
+	if err := db.PutSession(ctx, session); err != nil {
+		t.Fatalf("PutSession: %v", err)
+	}
+	got, err := db.GetSession(ctx, "public")
+	if err != nil || got == nil {
+		t.Fatalf("GetSession = %v, %v", got, err)
+	}
+	if !reflect.DeepEqual(got.PublicOutputs, session.PublicOutputs) {
+		t.Fatalf("PublicOutputs = %v, want %v", got.PublicOutputs, session.PublicOutputs)
+	}
+
+	if err := db.UpdateSession(ctx, "public", func(s *domain.Session) error {
+		s.PublicOutputs = nil
+		return nil
+	}); err != nil {
+		t.Fatalf("UpdateSession: %v", err)
+	}
+	got, err = db.GetSession(ctx, "public")
+	if err != nil || got == nil {
+		t.Fatalf("GetSession after clear = %v, %v", got, err)
+	}
+	if len(got.PublicOutputs) != 0 {
+		t.Fatalf("PublicOutputs = %v, want cleared", got.PublicOutputs)
+	}
+}

@@ -511,11 +511,7 @@ func applyDisplay(s *domain.Session, cached *cachedInfo) {
 }
 
 func workflowDisplayOutputs(s *domain.Session) map[string]any {
-	out := map[string]any{}
-	if ws, ok := s.Nodes[contract.WorkflowPseudoNodeID]; ok && ws != nil {
-		maps.Copy(out, ws.Outputs)
-	}
-	return out
+	return maps.Clone(s.PublicOutputs)
 }
 
 // An empty report always appends because it is the only record of a fresh

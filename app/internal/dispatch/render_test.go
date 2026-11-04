@@ -60,3 +60,32 @@ func TestChannelInputs_FillsDeclaredDefaultsTheWorkflowLeftUnset(t *testing.T) {
 		t.Errorf("inputs = %v", got)
 	}
 }
+
+func TestChannelInputs_ReadsThePublicOutputRecordNotTheProviderPseudoNode(t *testing.T) {
+	s := &domain.Session{
+		Name:          "o/r-1",
+		PublicOutputs: map[string]any{"endpoint": "unix:///run/o.sock"},
+		Nodes: map[string]*contract.TaskState{
+			contract.WorkflowPseudoNodeID: {Outputs: map[string]any{"endpoint": "from-provider"}},
+		},
+	}
+	ch := config.EventChannel{
+		Name:   "runtime",
+		Inputs: map[string]*lang.Value{"path": fromValue("workflow.outputs.endpoint")},
+	}
+	got, err := channelInputs(s, ch, config.ChannelDefinition{})
+	if err != nil {
+		t.Fatalf("channelInputs: %v", err)
+	}
+	if got["path"] != "unix:///run/o.sock" {
+		t.Errorf("path = %v, want the public output's value", got["path"])
+	}
+}
+
+func TestChannelInputs_PublicOutputNotYetEvaluableIsAnError(t *testing.T) {
+	s := &domain.Session{Name: "o/r-1"}
+	ch := config.EventChannel{Name: "runtime", Inputs: map[string]*lang.Value{"path": fromValue("workflow.outputs.endpoint")}}
+	if _, err := channelInputs(s, ch, config.ChannelDefinition{}); err == nil {
+		t.Fatal("expected an error: the record holds no endpoint yet")
+	}
+}

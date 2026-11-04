@@ -312,8 +312,8 @@ func bindDocumentInputs(doc config.TaskDocument, cliInputs map[string]string, se
 // roots the instruction surface observes.
 func renderInstruction(cfg *config.Config, session *domain.Session, doc config.TaskDocument, inputs map[string]any, resourceID string, observed map[string]any) (string, *Error) {
 	workflowOutputs := map[string]any{}
-	if w := session.Nodes[contract.WorkflowPseudoNodeID]; w != nil && w.Outputs != nil {
-		workflowOutputs = w.Outputs
+	if session.PublicOutputs != nil {
+		workflowOutputs = session.PublicOutputs
 	}
 	env := lang.Roots{
 		"resource": map[string]any{"id": resourceID, "state": observed},

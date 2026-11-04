@@ -15,8 +15,18 @@ name                = "example GitHub work session (Claude Code)"
 description         = "Acquire a GitHub issue/PR worktree, launch Claude Code in a tmux pane under a GitHub App gh identity, and deliver session events to it."
 workspace_provider  = "official.github.worktree"
 
+[example_work.outputs]
+pane = { from = "nodes.pane.outputs.session_name" }
+
+[example_work.outputs_schema]
+type     = "object"
+required = ["pane"]
+
+[example_work.outputs_schema.properties]
+pane = { type = "string" }
+
 [example_work.display]
-title  = { from = "workflow.outputs.branch" }
+title  = { from = "workflow.outputs.pane" }
 status = "work"
 
 [example_work.inputs_schema]

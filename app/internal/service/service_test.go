@@ -916,7 +916,7 @@ func TestSetMessage_SessionGuardBlocksCrossOwner(t *testing.T) {
 	}
 }
 
-func TestApplyDisplay_OverridesFromOutputs(t *testing.T) {
+func TestApplyDisplay_ReadsThePublicOutputRecordNotTheProviderPseudoNode(t *testing.T) {
 	workflows := map[string]config.WorkflowFile{
 		"wf": {
 			ID: "wf",
@@ -927,12 +927,13 @@ func TestApplyDisplay_OverridesFromOutputs(t *testing.T) {
 		},
 	}
 	s := &domain.Session{
-		Name:     "org/repo-1",
-		Workflow: "wf",
+		Name:          "org/repo-1",
+		Workflow:      "wf",
+		PublicOutputs: map[string]any{"title": "Fix the bug", "pr_state": "open"},
 		Nodes: map[string]*contract.TaskState{
 			contract.WorkflowPseudoNodeID: {
 				Status:  contract.TaskStatusProduced,
-				Outputs: map[string]any{"title": "Fix the bug", "pr_state": "open"},
+				Outputs: map[string]any{"title": "provider title", "pr_state": "provider state"},
 			},
 		},
 	}
