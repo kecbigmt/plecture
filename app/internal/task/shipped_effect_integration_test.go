@@ -130,10 +130,8 @@ func recordShippedEffects(t *testing.T, source string, scenarios map[string][]ef
 	return recordEffectsUnder(t, source, "", false, scenarios)
 }
 
-// recordEffectsUnder takes the plugin's task declarations from declarationsDir
-// when that is set. With realScripts, each executable that is a checked-in
-// script runs as written instead of being replaced by a stand-in; one that is
-// built from source stays a stand-in.
+// With realScripts, an executable that has no build step runs as written
+// rather than as a stand-in.
 func recordEffectsUnder(t *testing.T, source, declarationsDir string, realScripts bool, scenarios map[string][]effectScenario) string {
 	t.Helper()
 	h := newEffectHarness(t, source, declarationsDir, realScripts)
@@ -321,8 +319,7 @@ func (h *effectHarness) writeRecorders(t *testing.T) {
 		"PATH=$(printf '%s' \"$PATH\" | sed 's|^'\"$PLECT_EFFECT_BIN\"':||')\n"+
 		"export PATH\n"+
 		"exec \"$@\"\n")
-	// A real script that calls plect must find this recorder and never the
-	// host's own, whose state is live.
+	// A real script that calls plect must never reach the host's own.
 	h.writeSpy(t, "plect", "#!/usr/bin/env sh\nplect-effect-record plect \"$@\"\n")
 	for _, verb := range []string{"attach", "capture", "send_text", "send_keys", "pid"} {
 		body := "#!/usr/bin/env sh\n" +
@@ -339,9 +336,6 @@ func (h *effectHarness) writeRecorders(t *testing.T) {
 	}
 }
 
-// restoreScriptExecutables puts back the checked-in script behind each
-// executable the manifest declares without a build step, which spyPlugin
-// replaced.
 func restoreScriptExecutables(t *testing.T, source string, mounted plugins.Mounted) {
 	t.Helper()
 	for _, executable := range mounted.Manifest.Executables {
