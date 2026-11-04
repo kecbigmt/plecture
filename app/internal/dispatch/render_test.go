@@ -61,19 +61,31 @@ func TestChannelInputs_FillsDeclaredDefaultsTheWorkflowLeftUnset(t *testing.T) {
 	}
 }
 
-func TestChannelInputs_ReadsThePublicOutputRecordNotTheProviderPseudoNode(t *testing.T) {
-	s := &domain.Session{
-		Name:          "o/r-1",
-		PublicOutputs: map[string]any{"endpoint": "unix:///run/o.sock"},
+func publicOutputSession(t *testing.T) *domain.Session {
+	t.Helper()
+	revision := config.WorkflowRevision{Workflow: config.WorkflowFile{
+		ID: "review", Address: "review",
+		Outputs: map[string]*lang.Value{"endpoint": fromValue("nodes.orchestrator.outputs.endpoint")},
+	}}
+	body, digest, err := revision.CanonicalBody()
+	if err != nil {
+		t.Fatal(err)
+	}
+	return &domain.Session{
+		Name: "o/r-1", Workflow: "review", WorkflowRevision: digest, WorkflowRevisionBody: string(body),
 		Nodes: map[string]*contract.TaskState{
+			"orchestrator":                {Status: contract.TaskStatusProduced, Outputs: map[string]any{"endpoint": "unix:///run/o.sock"}},
 			contract.WorkflowPseudoNodeID: {Outputs: map[string]any{"endpoint": "from-provider"}},
 		},
 	}
+}
+
+func TestChannelInputs_EvaluatesPublicOutputsNotTheProviderPseudoNode(t *testing.T) {
 	ch := config.EventChannel{
 		Name:   "runtime",
 		Inputs: map[string]*lang.Value{"path": fromValue("workflow.outputs.endpoint")},
 	}
-	got, err := channelInputs(s, ch, config.ChannelDefinition{})
+	got, err := channelInputs(publicOutputSession(t), ch, config.ChannelDefinition{})
 	if err != nil {
 		t.Fatalf("channelInputs: %v", err)
 	}
@@ -82,10 +94,11 @@ func TestChannelInputs_ReadsThePublicOutputRecordNotTheProviderPseudoNode(t *tes
 	}
 }
 
-func TestChannelInputs_PublicOutputNotYetEvaluableIsAnError(t *testing.T) {
-	s := &domain.Session{Name: "o/r-1"}
+func TestChannelInputs_PublicOutputWhoseSourceIsReleasedIsAnError(t *testing.T) {
+	s := publicOutputSession(t)
+	s.Nodes["orchestrator"].Status = contract.TaskStatusCleaned
 	ch := config.EventChannel{Name: "runtime", Inputs: map[string]*lang.Value{"path": fromValue("workflow.outputs.endpoint")}}
 	if _, err := channelInputs(s, ch, config.ChannelDefinition{}); err == nil {
-		t.Fatal("expected an error: the record holds no endpoint yet")
+		t.Fatal("expected an error: a released source's remembered output is not delivered")
 	}
 }

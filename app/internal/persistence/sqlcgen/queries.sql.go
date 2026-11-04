@@ -283,7 +283,7 @@ func (q *Queries) GetEventCursor(ctx context.Context, arg GetEventCursorParams) 
 const getLatestDestroyedSession = `-- name: GetLatestDestroyedSession :one
 SELECT id, name, status, sleep_since, destroyed_at, parent_session_id, root_session_id,
        resource_id, alias, workflow, workflow_revision, workspace_dir,
-       population_workflow, population_name, inputs_json, public_outputs_json,
+       population_workflow, population_name, inputs_json,
        health_last_checked_at, health_last_activity_at, health_last_fingerprint,
        health_last_state, health_last_reason, health_last_notified_at, health_notify_count,
        health_unevaluable_cycles,
@@ -314,7 +314,6 @@ func (q *Queries) GetLatestDestroyedSession(ctx context.Context, name string) (S
 		&i.PopulationWorkflow,
 		&i.PopulationName,
 		&i.InputsJson,
-		&i.PublicOutputsJson,
 		&i.HealthLastCheckedAt,
 		&i.HealthLastActivityAt,
 		&i.HealthLastFingerprint,
@@ -335,7 +334,7 @@ func (q *Queries) GetLatestDestroyedSession(ctx context.Context, name string) (S
 const getLiveSession = `-- name: GetLiveSession :one
 SELECT id, name, status, sleep_since, destroyed_at, parent_session_id, root_session_id,
        resource_id, alias, workflow, workflow_revision, workspace_dir,
-       population_workflow, population_name, inputs_json, public_outputs_json,
+       population_workflow, population_name, inputs_json,
        health_last_checked_at, health_last_activity_at, health_last_fingerprint,
        health_last_state, health_last_reason, health_last_notified_at, health_notify_count,
        health_unevaluable_cycles,
@@ -363,7 +362,6 @@ func (q *Queries) GetLiveSession(ctx context.Context, name string) (Session, err
 		&i.PopulationWorkflow,
 		&i.PopulationName,
 		&i.InputsJson,
-		&i.PublicOutputsJson,
 		&i.HealthLastCheckedAt,
 		&i.HealthLastActivityAt,
 		&i.HealthLastFingerprint,
@@ -659,13 +657,13 @@ const insertSession = `-- name: InsertSession :exec
 INSERT INTO sessions (
     id, name, status, sleep_since, destroyed_at, parent_session_id, root_session_id,
     resource_id, alias, workflow, workflow_revision, workspace_dir,
-    population_workflow, population_name, inputs_json, public_outputs_json,
+    population_workflow, population_name, inputs_json,
     health_last_checked_at, health_last_activity_at, health_last_fingerprint,
     health_last_state, health_last_reason, health_last_notified_at, health_notify_count,
     health_unevaluable_cycles,
     tick_consecutive_unchanged, tick_last_fingerprint, last_tick_at,
     created_at, updated_at
-) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 `
 
 type InsertSessionParams struct {
@@ -684,7 +682,6 @@ type InsertSessionParams struct {
 	PopulationWorkflow       sql.NullString
 	PopulationName           sql.NullString
 	InputsJson               sql.NullString
-	PublicOutputsJson        sql.NullString
 	HealthLastCheckedAt      sql.NullString
 	HealthLastActivityAt     sql.NullString
 	HealthLastFingerprint    sql.NullString
@@ -718,7 +715,6 @@ func (q *Queries) InsertSession(ctx context.Context, arg InsertSessionParams) er
 		arg.PopulationWorkflow,
 		arg.PopulationName,
 		arg.InputsJson,
-		arg.PublicOutputsJson,
 		arg.HealthLastCheckedAt,
 		arg.HealthLastActivityAt,
 		arg.HealthLastFingerprint,
@@ -1252,7 +1248,7 @@ func (q *Queries) ListLiveChildSessionNamesForSessions(ctx context.Context, pare
 const listLiveSessions = `-- name: ListLiveSessions :many
 SELECT id, name, status, sleep_since, destroyed_at, parent_session_id, root_session_id,
        resource_id, alias, workflow, workflow_revision, workspace_dir,
-       population_workflow, population_name, inputs_json, public_outputs_json,
+       population_workflow, population_name, inputs_json,
        health_last_checked_at, health_last_activity_at, health_last_fingerprint,
        health_last_state, health_last_reason, health_last_notified_at, health_notify_count,
        health_unevaluable_cycles,
@@ -1286,7 +1282,6 @@ func (q *Queries) ListLiveSessions(ctx context.Context) ([]Session, error) {
 			&i.PopulationWorkflow,
 			&i.PopulationName,
 			&i.InputsJson,
-			&i.PublicOutputsJson,
 			&i.HealthLastCheckedAt,
 			&i.HealthLastActivityAt,
 			&i.HealthLastFingerprint,
@@ -1317,7 +1312,7 @@ func (q *Queries) ListLiveSessions(ctx context.Context) ([]Session, error) {
 const listLiveSessionsByAlias = `-- name: ListLiveSessionsByAlias :many
 SELECT id, name, status, sleep_since, destroyed_at, parent_session_id, root_session_id,
        resource_id, alias, workflow, workflow_revision, workspace_dir,
-       population_workflow, population_name, inputs_json, public_outputs_json,
+       population_workflow, population_name, inputs_json,
        health_last_checked_at, health_last_activity_at, health_last_fingerprint,
        health_last_state, health_last_reason, health_last_notified_at, health_notify_count,
        health_unevaluable_cycles,
@@ -1351,7 +1346,6 @@ func (q *Queries) ListLiveSessionsByAlias(ctx context.Context, alias sql.NullStr
 			&i.PopulationWorkflow,
 			&i.PopulationName,
 			&i.InputsJson,
-			&i.PublicOutputsJson,
 			&i.HealthLastCheckedAt,
 			&i.HealthLastActivityAt,
 			&i.HealthLastFingerprint,
@@ -2523,7 +2517,6 @@ UPDATE sessions SET
     population_workflow = ?,
     population_name = ?,
     inputs_json = ?,
-    public_outputs_json = ?,
     health_last_checked_at = ?,
     health_last_activity_at = ?,
     health_last_fingerprint = ?,
@@ -2554,7 +2547,6 @@ type UpdateSessionByIDParams struct {
 	PopulationWorkflow       sql.NullString
 	PopulationName           sql.NullString
 	InputsJson               sql.NullString
-	PublicOutputsJson        sql.NullString
 	HealthLastCheckedAt      sql.NullString
 	HealthLastActivityAt     sql.NullString
 	HealthLastFingerprint    sql.NullString
@@ -2586,7 +2578,6 @@ func (q *Queries) UpdateSessionByID(ctx context.Context, arg UpdateSessionByIDPa
 		arg.PopulationWorkflow,
 		arg.PopulationName,
 		arg.InputsJson,
-		arg.PublicOutputsJson,
 		arg.HealthLastCheckedAt,
 		arg.HealthLastActivityAt,
 		arg.HealthLastFingerprint,
@@ -2601,20 +2592,6 @@ func (q *Queries) UpdateSessionByID(ctx context.Context, arg UpdateSessionByIDPa
 		arg.UpdatedAt,
 		arg.ID,
 	)
-	return err
-}
-
-const updateSessionPublicOutputs = `-- name: UpdateSessionPublicOutputs :exec
-UPDATE sessions SET public_outputs_json = ? WHERE id = ?
-`
-
-type UpdateSessionPublicOutputsParams struct {
-	PublicOutputsJson sql.NullString
-	ID                string
-}
-
-func (q *Queries) UpdateSessionPublicOutputs(ctx context.Context, arg UpdateSessionPublicOutputsParams) error {
-	_, err := q.db.ExecContext(ctx, updateSessionPublicOutputs, arg.PublicOutputsJson, arg.ID)
 	return err
 }
 

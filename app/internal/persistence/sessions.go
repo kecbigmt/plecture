@@ -13,65 +13,11 @@ import (
 	contract "github.com/kecbigmt/plecture/contracts/state"
 )
 
-// WriteOption adjusts how a session write completes.
-type WriteOption func(*writeOptions)
-
-type writeOptions struct {
-	derive func(*domain.Session) error
-}
-
-// WithDerivedState runs derive against the session as stored once the write
-// has reconciled its nodes, in the same transaction, and persists the
-// PublicOutputs it leaves behind. Reconciliation can retain a node the caller
-// omitted or drop one the caller held, so only the stored nodes can say what
-// a derived record must follow.
-func WithDerivedState(derive func(*domain.Session) error) WriteOption {
-	return func(o *writeOptions) { o.derive = derive }
-}
-
-func applyWriteOptions(opts []WriteOption) writeOptions {
-	var o writeOptions
-	for _, opt := range opts {
-		opt(&o)
-	}
-	return o
-}
-
-func (db *DB) deriveStoredState(ctx context.Context, tx *sql.Tx, name string, o writeOptions) error {
-	if o.derive == nil {
-		return nil
-	}
-	q := sqlcgen.New(tx)
-	row, err := q.GetLiveSession(ctx, name)
-	if err != nil {
-		return fmt.Errorf("reload session %q: %w", name, err)
-	}
-	stored, err := sessionFromRow(row)
-	if err != nil {
-		return err
-	}
-	if err := db.loadSessionExtras(ctx, tx, stored); err != nil {
-		return err
-	}
-	if err := o.derive(stored); err != nil {
-		return err
-	}
-	publicOutputsJSON, err := marshalJSONMap(stored.PublicOutputs)
-	if err != nil {
-		return fmt.Errorf("marshal session %q public outputs: %w", name, err)
-	}
-	return q.UpdateSessionPublicOutputs(ctx, sqlcgen.UpdateSessionPublicOutputsParams{PublicOutputsJson: publicOutputsJSON, ID: stored.ID})
-}
-
 // PutSession upserts one session and replaces its task, layer, and channel
 // health rows in one write transaction.
-func (db *DB) PutSession(ctx context.Context, s *domain.Session, opts ...WriteOption) error {
-	o := applyWriteOptions(opts)
+func (db *DB) PutSession(ctx context.Context, s *domain.Session) error {
 	return db.WithImmediateTx(ctx, func(tx *sql.Tx) error {
-		if err := db.writeSessionTx(ctx, tx, s); err != nil {
-			return err
-		}
-		return db.deriveStoredState(ctx, tx, s.Name, o)
+		return db.writeSessionTx(ctx, tx, s)
 	})
 }
 
@@ -171,8 +117,7 @@ func (db *DB) FindSessionsByAlias(ctx context.Context, alias string) ([]*domain.
 // UpdateSession reads the named session's live row, runs fn, and writes
 // the result back in one transaction. A session is destroyed the same
 // way: fn sets Status to SessionStatusDestroyed on the same row.
-func (db *DB) UpdateSession(ctx context.Context, name string, fn func(*domain.Session) error, opts ...WriteOption) error {
-	o := applyWriteOptions(opts)
+func (db *DB) UpdateSession(ctx context.Context, name string, fn func(*domain.Session) error) error {
 	return db.WithImmediateTx(ctx, func(tx *sql.Tx) error {
 		row, err := sqlcgen.New(tx).GetLiveSession(ctx, name)
 		if err != nil {
@@ -193,10 +138,7 @@ func (db *DB) UpdateSession(ctx context.Context, name string, fn func(*domain.Se
 			return err
 		}
 
-		if err := db.writeSessionTx(ctx, tx, s); err != nil {
-			return err
-		}
-		return db.deriveStoredState(ctx, tx, name, o)
+		return db.writeSessionTx(ctx, tx, s)
 	})
 }
 
@@ -275,8 +217,7 @@ func (db *DB) PruneReleasedNode(ctx context.Context, sessionName, nodeID string)
 // sessionName, unlike an ordinary PutSession/UpdateSession write, whose own
 // reconciliation retains a node still unreleased. For --force-recreate's
 // deliberate rebuild only; see service.recreateSessionRuntime.
-func (db *DB) ResetNodes(ctx context.Context, sessionName string, opts ...WriteOption) error {
-	o := applyWriteOptions(opts)
+func (db *DB) ResetNodes(ctx context.Context, sessionName string) error {
 	return db.WithImmediateTx(ctx, func(tx *sql.Tx) error {
 		q := sqlcgen.New(tx)
 		sessionID, err := q.SessionIDByLiveName(ctx, sessionName)
@@ -289,7 +230,7 @@ func (db *DB) ResetNodes(ctx context.Context, sessionName string, opts ...WriteO
 		if err := q.DeleteNodeInstancesForSession(ctx, sessionID); err != nil {
 			return fmt.Errorf("reset nodes for %q: %w", sessionName, err)
 		}
-		return db.deriveStoredState(ctx, tx, sessionName, o)
+		return nil
 	})
 }
 
@@ -400,13 +341,9 @@ func (db *DB) writeSessionTx(ctx context.Context, tx *sql.Tx, s *domain.Session)
 	if err != nil {
 		return fmt.Errorf("marshal session %q inputs: %w", s.Name, err)
 	}
-	publicOutputsJSON, err := marshalJSONMap(s.PublicOutputs)
-	if err != nil {
-		return fmt.Errorf("marshal session %q public outputs: %w", s.Name, err)
-	}
 
 	if existingID == "" {
-		params, err := insertSessionParams(candidateID, status, parentCol, rootCol, populationWorkflow, populationName, inputsJSON, publicOutputsJSON, health, tickConsecutiveUnchanged, tickLastFingerprint, s)
+		params, err := insertSessionParams(candidateID, status, parentCol, rootCol, populationWorkflow, populationName, inputsJSON, health, tickConsecutiveUnchanged, tickLastFingerprint, s)
 		if err != nil {
 			return err
 		}
@@ -429,7 +366,6 @@ func (db *DB) writeSessionTx(ctx context.Context, tx *sql.Tx, s *domain.Session)
 		PopulationWorkflow:       populationWorkflow,
 		PopulationName:           populationName,
 		InputsJson:               inputsJSON,
-		PublicOutputsJson:        publicOutputsJSON,
 		HealthLastCheckedAt:      health.lastCheckedAt,
 		HealthLastActivityAt:     health.lastActivityAt,
 		HealthLastFingerprint:    health.lastFingerprint,
@@ -455,7 +391,7 @@ func (db *DB) writeSessionTx(ctx context.Context, tx *sql.Tx, s *domain.Session)
 // insertSessionParams builds InsertSession's parameters from already-resolved
 // column values, shared by writeSessionTx's insert branch and ImportSession
 // so the two never disagree about which Go field feeds which column.
-func insertSessionParams(id, status string, parentCol, rootCol, populationWorkflow, populationName, inputsJSON, publicOutputsJSON sql.NullString, health healthColumns, tickConsecutiveUnchanged sql.NullInt64, tickLastFingerprint sql.NullString, s *domain.Session) (sqlcgen.InsertSessionParams, error) {
+func insertSessionParams(id, status string, parentCol, rootCol, populationWorkflow, populationName, inputsJSON sql.NullString, health healthColumns, tickConsecutiveUnchanged sql.NullInt64, tickLastFingerprint sql.NullString, s *domain.Session) (sqlcgen.InsertSessionParams, error) {
 	return sqlcgen.InsertSessionParams{
 		ID:                       id,
 		Name:                     s.Name,
@@ -472,7 +408,6 @@ func insertSessionParams(id, status string, parentCol, rootCol, populationWorkfl
 		PopulationWorkflow:       populationWorkflow,
 		PopulationName:           populationName,
 		InputsJson:               inputsJSON,
-		PublicOutputsJson:        publicOutputsJSON,
 		HealthLastCheckedAt:      health.lastCheckedAt,
 		HealthLastActivityAt:     health.lastActivityAt,
 		HealthLastFingerprint:    health.lastFingerprint,
@@ -514,11 +449,7 @@ func (db *DB) ImportSession(ctx context.Context, id string, s *domain.Session) e
 		if err != nil {
 			return fmt.Errorf("marshal session %q inputs: %w", s.Name, err)
 		}
-		publicOutputsJSON, err := marshalJSONMap(s.PublicOutputs)
-		if err != nil {
-			return fmt.Errorf("marshal session %q public outputs: %w", s.Name, err)
-		}
-		params, err := insertSessionParams(id, status, sql.NullString{}, sql.NullString{}, populationWorkflow, populationName, inputsJSON, publicOutputsJSON, health, tickConsecutiveUnchanged, tickLastFingerprint, s)
+		params, err := insertSessionParams(id, status, sql.NullString{}, sql.NullString{}, populationWorkflow, populationName, inputsJSON, health, tickConsecutiveUnchanged, tickLastFingerprint, s)
 		if err != nil {
 			return err
 		}
@@ -694,11 +625,6 @@ func sessionFromRow(row sqlcgen.Session) (*domain.Session, error) {
 		return nil, fmt.Errorf("parse session %q inputs_json: %w", row.Name, err)
 	}
 	s.Inputs = inputs
-	publicOutputs, err := unmarshalJSONMap(row.PublicOutputsJson)
-	if err != nil {
-		return nil, fmt.Errorf("parse session %q public_outputs_json: %w", row.Name, err)
-	}
-	s.PublicOutputs = publicOutputs
 
 	destroyedAt, err := parseTimeNull(row.DestroyedAt)
 	if err != nil {

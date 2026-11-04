@@ -45,8 +45,6 @@ CREATE TABLE sessions (
     population_workflow TEXT,
     population_name TEXT,
     inputs_json TEXT CHECK (inputs_json IS NULL OR json_valid(inputs_json)),
-    -- Derived from the produced nodes and rewritten with them; see Session.PublicOutputs.
-    public_outputs_json TEXT CHECK (public_outputs_json IS NULL OR json_valid(public_outputs_json)),
     -- health_* is a derived runtime observation, not a lifecycle status;
     -- see docs/design/sqlite-persistence.md.
     health_last_checked_at TEXT,

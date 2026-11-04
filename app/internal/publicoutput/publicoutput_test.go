@@ -27,7 +27,7 @@ func TestEvaluate_BindsNodeOutputsAndSessionInputs(t *testing.T) {
 		"orchestrator": produced(map[string]any{"endpoint": "unix:///run/o.sock"}),
 		"agent":        produced(map[string]any{"name": "a1"}),
 	}
-	got, err := Evaluate(Declaration{Bindings: bindings}, nodes, map[string]any{"number": "42"})
+	got, err := Evaluate(Declaration{Bindings: bindings}, nodes, map[string]any{"number": "42"}, ProducedOnly)
 	if err != nil {
 		t.Fatalf("Evaluate: %v", err)
 	}
@@ -46,7 +46,7 @@ func TestEvaluate_WaitsForEverySourceOfABinding(t *testing.T) {
 		"orchestrator": produced(map[string]any{"endpoint": "e"}),
 		"agent":        {Status: contract.TaskStatusFailed, Outputs: map[string]any{"name": "stale"}},
 	}
-	got, err := Evaluate(Declaration{Bindings: bindings}, nodes, nil)
+	got, err := Evaluate(Declaration{Bindings: bindings}, nodes, nil, ProducedOnly)
 	if err != nil {
 		t.Fatalf("Evaluate: %v", err)
 	}
@@ -60,7 +60,7 @@ func TestEvaluate_ReleasedNodeInvalidatesItsBindings(t *testing.T) {
 	nodes := map[string]*contract.TaskState{
 		"orchestrator": {Status: contract.TaskStatusCleaned, Outputs: map[string]any{"endpoint": "old"}},
 	}
-	got, err := Evaluate(Declaration{Bindings: bindings}, nodes, nil)
+	got, err := Evaluate(Declaration{Bindings: bindings}, nodes, nil, ProducedOnly)
 	if err != nil {
 		t.Fatalf("Evaluate: %v", err)
 	}
@@ -69,15 +69,15 @@ func TestEvaluate_ReleasedNodeInvalidatesItsBindings(t *testing.T) {
 	}
 }
 
-func TestEvaluate_ProducedNodeWithoutTheOutputLeavesTheKeyUnset(t *testing.T) {
+func TestEvaluate_ProducedNodeWithoutTheOutputLeavesTheKeyUnsetAndIsReported(t *testing.T) {
 	bindings := map[string]*lang.Value{"endpoint": from("nodes.orchestrator.outputs.endpoint")}
 	nodes := map[string]*contract.TaskState{"orchestrator": produced(map[string]any{"other": "x"})}
-	got, err := Evaluate(Declaration{Bindings: bindings}, nodes, nil)
-	if err != nil {
-		t.Fatalf("Evaluate: %v", err)
-	}
+	got, err := Evaluate(Declaration{Bindings: bindings}, nodes, nil, ProducedOnly)
 	if _, set := got["endpoint"]; set {
 		t.Fatalf("outputs = %v, want endpoint unset", got)
+	}
+	if err == nil || !strings.Contains(err.Error(), `"endpoint"`) {
+		t.Fatalf("error = %v, want it to name the binding", err)
 	}
 }
 
@@ -88,7 +88,7 @@ func TestEvaluate_CompleteRecordMustSatisfyItsSchema(t *testing.T) {
 		"properties": map[string]any{"count": map[string]any{"type": "string"}},
 	}
 	nodes := map[string]*contract.TaskState{"worker": produced(map[string]any{"count": float64(3)})}
-	got, err := Evaluate(Declaration{Bindings: bindings, Schema: schema}, nodes, nil)
+	got, err := Evaluate(Declaration{Bindings: bindings, Schema: schema}, nodes, nil, ProducedOnly)
 	if err == nil || !strings.Contains(err.Error(), "outputs_schema") {
 		t.Fatalf("Evaluate = %v, %v, want a schema violation", got, err)
 	}
@@ -104,7 +104,7 @@ func TestEvaluate_PartialRecordIsNotCheckedAgainstRequired(t *testing.T) {
 	}
 	schema := map[string]any{"type": "object", "required": []any{"a", "b"}}
 	nodes := map[string]*contract.TaskState{"first": produced(map[string]any{"a": "1"})}
-	got, err := Evaluate(Declaration{Bindings: bindings, Schema: schema}, nodes, nil)
+	got, err := Evaluate(Declaration{Bindings: bindings, Schema: schema}, nodes, nil, ProducedOnly)
 	if err != nil {
 		t.Fatalf("Evaluate: %v", err)
 	}
@@ -129,66 +129,87 @@ func sessionWithRevision(t *testing.T, wf config.WorkflowFile) *domain.Session {
 	}
 }
 
-func TestRefresh_RewritesTheRecordFromTheFrozenWorkflow(t *testing.T) {
+func TestOf_FollowsTheNodesTheSessionHoldsNow(t *testing.T) {
 	s := sessionWithRevision(t, config.WorkflowFile{ID: "review", Outputs: map[string]*lang.Value{
 		"endpoint": from("nodes.orchestrator.outputs.endpoint"),
 		"number":   from("session.inputs.number"),
 	}})
 	s.Nodes = map[string]*contract.TaskState{"orchestrator": produced(map[string]any{"endpoint": "e1"})}
-	if err := Refresh(s); err != nil {
-		t.Fatalf("Refresh: %v", err)
+	got, err := Of(s, ProducedOnly)
+	if err != nil {
+		t.Fatalf("Of: %v", err)
 	}
-	if want := map[string]any{"endpoint": "e1", "number": "7"}; !reflect.DeepEqual(s.PublicOutputs, want) {
-		t.Fatalf("PublicOutputs = %v, want %v", s.PublicOutputs, want)
+	if want := map[string]any{"endpoint": "e1", "number": "7"}; !reflect.DeepEqual(got, want) {
+		t.Fatalf("outputs = %v, want %v", got, want)
 	}
 
 	s.Nodes["orchestrator"] = produced(map[string]any{"endpoint": "e2"})
-	if err := Refresh(s); err != nil {
-		t.Fatalf("Refresh after recreation: %v", err)
-	}
-	if s.PublicOutputs["endpoint"] != "e2" {
-		t.Fatalf("PublicOutputs = %v, want the recreated node's output", s.PublicOutputs)
+	if got, _ := Of(s, ProducedOnly); got["endpoint"] != "e2" {
+		t.Fatalf("outputs = %v, want the recreated node's output", got)
 	}
 
 	s.Nodes["orchestrator"] = &contract.TaskState{Status: contract.TaskStatusCleaned, Outputs: map[string]any{"endpoint": "e2"}}
-	if err := Refresh(s); err != nil {
-		t.Fatalf("Refresh after release: %v", err)
+	got, _ = Of(s, ProducedOnly)
+	if _, stale := got["endpoint"]; stale {
+		t.Fatalf("outputs = %v, want the released node's binding unset", got)
 	}
-	if _, stale := s.PublicOutputs["endpoint"]; stale {
-		t.Fatalf("PublicOutputs = %v, want the released node's binding invalidated", s.PublicOutputs)
-	}
-	if s.PublicOutputs["number"] != "7" {
-		t.Fatalf("PublicOutputs = %v, want the session-input binding kept", s.PublicOutputs)
+	if got["number"] != "7" {
+		t.Fatalf("outputs = %v, want the session-input binding kept", got)
 	}
 }
 
-func TestRefresh_SessionWithoutRevisionKeepsItsRecord(t *testing.T) {
+func TestOf_SessionWithoutRevisionHasNoOutputs(t *testing.T) {
 	for _, workflow := range []string{"", "named-before-revisions-existed"} {
-		s := &domain.Session{Name: "bare", Workflow: workflow, PublicOutputs: map[string]any{"k": "v"}}
-		if err := Refresh(s); err != nil {
-			t.Fatalf("workflow %q: Refresh: %v", workflow, err)
-		}
-		if s.PublicOutputs["k"] != "v" {
-			t.Fatalf("workflow %q: PublicOutputs = %v, want it untouched", workflow, s.PublicOutputs)
+		got, err := Of(&domain.Session{Name: "bare", Workflow: workflow}, ProducedOnly)
+		if err != nil || len(got) != 0 {
+			t.Fatalf("workflow %q: Of = %v, %v, want nothing", workflow, got, err)
 		}
 	}
 }
 
-func TestRefresh_WorkflowDeclaringNoOutputsClearsTheRecord(t *testing.T) {
-	s := sessionWithRevision(t, config.WorkflowFile{ID: "plain"})
-	s.PublicOutputs = map[string]any{"stale": "x"}
-	if err := Refresh(s); err != nil {
-		t.Fatalf("Refresh: %v", err)
-	}
-	if len(s.PublicOutputs) != 0 {
-		t.Fatalf("PublicOutputs = %v, want none", s.PublicOutputs)
-	}
-}
-
-func TestRefresh_UndecodableRevisionIsAnError(t *testing.T) {
+func TestOf_UndecodableRevisionIsAnError(t *testing.T) {
 	s := &domain.Session{Name: "broken", Workflow: "w", WorkflowRevision: "digest", WorkflowRevisionBody: "not json"}
-	if err := Refresh(s); err == nil {
-		t.Fatal("Refresh accepted an undecodable revision")
+	if _, err := Of(s, ProducedOnly); err == nil {
+		t.Fatal("Of accepted an undecodable revision")
+	}
+}
+
+func TestEvaluate_LastRecordedCountsANodeWhateverItsStatus(t *testing.T) {
+	bindings := map[string]*lang.Value{"k": from("nodes.y.outputs.k")}
+	for _, status := range []string{contract.TaskStatusProduced, contract.TaskStatusFailed, contract.TaskStatusCleaned} {
+		nodes := map[string]*contract.TaskState{"y": {Status: status, Outputs: map[string]any{"k": "v1"}}}
+		got, err := Evaluate(Declaration{Bindings: bindings}, nodes, nil, LastRecorded)
+		if err != nil || got["k"] != "v1" {
+			t.Fatalf("status %s: outputs = %v, %v, want the recorded value", status, got, err)
+		}
+	}
+	got, _ := Evaluate(Declaration{Bindings: bindings}, map[string]*contract.TaskState{}, nil, LastRecorded)
+	if len(got) != 0 {
+		t.Fatalf("outputs = %v, want none for a node with no record", got)
+	}
+}
+
+func TestEvaluate_NamesABindingThatFailsAlthoughItsSourcesExist(t *testing.T) {
+	bindings := map[string]*lang.Value{
+		"good": from("nodes.y.outputs.k"),
+		"bad":  from("nodes.y.outputs.missing"),
+	}
+	nodes := map[string]*contract.TaskState{"y": produced(map[string]any{"k": "v1"})}
+	got, err := Evaluate(Declaration{Bindings: bindings}, nodes, nil, ProducedOnly)
+	if err == nil || !strings.Contains(err.Error(), `"bad"`) || strings.Contains(err.Error(), `"good"`) {
+		t.Fatalf("error = %v, want it to name only the failing binding", err)
+	}
+	if got["good"] != "v1" {
+		t.Fatalf("outputs = %v, want the evaluable binding kept", got)
+	}
+}
+
+func TestEvaluate_OptionalOutputTheNodeOmittedIsNotAComplaint(t *testing.T) {
+	bindings := map[string]*lang.Value{"k": {Form: lang.FormFrom, From: "nodes.y.outputs.k", Optional: true}}
+	nodes := map[string]*contract.TaskState{"y": produced(map[string]any{})}
+	got, err := Evaluate(Declaration{Bindings: bindings}, nodes, nil, ProducedOnly)
+	if err != nil || len(got) != 0 {
+		t.Fatalf("Evaluate = %v, %v, want an unset key and no error", got, err)
 	}
 }
 

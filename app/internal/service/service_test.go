@@ -924,13 +924,17 @@ func TestApplyDisplay_ReadsThePublicOutputRecordNotTheProviderPseudoNode(t *test
 				"title":  fromValue("workflow.outputs.title"),
 				"status": fromValue("workflow.outputs.pr_state"),
 			},
+			Outputs: map[string]*lang.Value{
+				"title":    fromValue("nodes.pr.outputs.title"),
+				"pr_state": fromValue("nodes.pr.outputs.state"),
+			},
 		},
 	}
 	s := &domain.Session{
-		Name:          "org/repo-1",
-		Workflow:      "wf",
-		PublicOutputs: map[string]any{"title": "Fix the bug", "pr_state": "open"},
+		Name:     "org/repo-1",
+		Workflow: "wf",
 		Nodes: map[string]*contract.TaskState{
+			"pr": {Status: contract.TaskStatusProduced, Outputs: map[string]any{"title": "Fix the bug", "state": "open"}},
 			contract.WorkflowPseudoNodeID: {
 				Status:  contract.TaskStatusProduced,
 				Outputs: map[string]any{"title": "provider title", "pr_state": "provider state"},

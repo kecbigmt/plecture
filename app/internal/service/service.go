@@ -2,7 +2,6 @@ package service
 
 import (
 	"fmt"
-	"maps"
 	"os"
 	"regexp"
 	"slices"
@@ -12,6 +11,7 @@ import (
 	"github.com/kecbigmt/plecture/app/internal/config"
 	"github.com/kecbigmt/plecture/app/internal/domain"
 	"github.com/kecbigmt/plecture/app/internal/eventlog"
+	"github.com/kecbigmt/plecture/app/internal/publicoutput"
 	"github.com/kecbigmt/plecture/app/internal/state"
 	"github.com/kecbigmt/plecture/app/internal/task"
 	"github.com/kecbigmt/plecture/contracts/event"
@@ -511,7 +511,8 @@ func applyDisplay(s *domain.Session, cached *cachedInfo) {
 }
 
 func workflowDisplayOutputs(s *domain.Session) map[string]any {
-	return maps.Clone(s.PublicOutputs)
+	outputs, _ := publicoutput.Of(s, publicoutput.ProducedOnly)
+	return outputs
 }
 
 // An empty report always appends because it is the only record of a fresh

@@ -15,12 +15,9 @@ import (
 	"testing"
 	"time"
 
-	"github.com/kecbigmt/plecture/app/internal/config"
 	"github.com/kecbigmt/plecture/app/internal/domain"
-	"github.com/kecbigmt/plecture/app/internal/lang"
 	"github.com/kecbigmt/plecture/app/internal/persistence"
 	"github.com/kecbigmt/plecture/app/internal/persistence/sqlcgen"
-	contract "github.com/kecbigmt/plecture/contracts/state"
 )
 
 func TestStore_PutAndGet(t *testing.T) {
@@ -716,126 +713,5 @@ func TestStore_RejectsDatabaseNewerThanBinarySupports(t *testing.T) {
 	}
 	if !strings.Contains(err.Error(), "newer than this binary supports") {
 		t.Fatalf("error = %q, want it to name the newer-than-supported condition", err.Error())
-	}
-}
-
-func publicOutputSession(t *testing.T, name string) *domain.Session {
-	t.Helper()
-	revision := config.WorkflowRevision{Workflow: config.WorkflowFile{
-		ID: "review", Address: "review",
-		Outputs: map[string]*lang.Value{"endpoint": {Form: lang.FormFrom, From: "nodes.orchestrator.outputs.endpoint"}},
-	}}
-	body, digest, err := revision.CanonicalBody()
-	if err != nil {
-		t.Fatal(err)
-	}
-	return &domain.Session{
-		Name: name, Workflow: "review", WorkflowRevision: digest, WorkflowRevisionBody: string(body),
-		Nodes: map[string]*contract.TaskState{
-			"orchestrator": {Scope: contract.TaskScopeSession, Status: contract.TaskStatusProduced, Outputs: map[string]any{"endpoint": "e1"}},
-		},
-		CreatedAt: time.Now(), UpdatedAt: time.Now(),
-	}
-}
-
-func TestStore_PutRecordsPublicOutputsFromProducedNodes(t *testing.T) {
-	store := NewStore(t.TempDir())
-	if err := store.Put(publicOutputSession(t, "review-1")); err != nil {
-		t.Fatalf("Put: %v", err)
-	}
-	got := store.Get("review-1")
-	if got == nil || got.PublicOutputs["endpoint"] != "e1" {
-		t.Fatalf("session = %+v, want public output endpoint e1", got)
-	}
-}
-
-func TestStore_UpdateFollowsARecreatedAndThenReleasedNode(t *testing.T) {
-	store := NewStore(t.TempDir())
-	if err := store.Put(publicOutputSession(t, "review-2")); err != nil {
-		t.Fatalf("Put: %v", err)
-	}
-	if err := store.Update("review-2", func(s *domain.Session) error {
-		s.Nodes["orchestrator"] = &contract.TaskState{Scope: contract.TaskScopeSession, Status: contract.TaskStatusProduced, Outputs: map[string]any{"endpoint": "e2"}}
-		return nil
-	}); err != nil {
-		t.Fatalf("Update (recreate): %v", err)
-	}
-	if got := store.Get("review-2"); got.PublicOutputs["endpoint"] != "e2" {
-		t.Fatalf("PublicOutputs = %v, want the recreated node's endpoint", got.PublicOutputs)
-	}
-	if err := store.Update("review-2", func(s *domain.Session) error {
-		s.Nodes["orchestrator"].Status = contract.TaskStatusCleaned
-		return nil
-	}); err != nil {
-		t.Fatalf("Update (release): %v", err)
-	}
-	if got := store.Get("review-2"); len(got.PublicOutputs) != 0 {
-		t.Fatalf("PublicOutputs = %v, want none once the source node is released", got.PublicOutputs)
-	}
-}
-
-// A revision that cannot be read must not stop the session from being saved:
-// teardown writes through this path, and a session that cannot record its own
-// release cannot be cleaned up.
-func TestStore_PutSucceedsWhenTheRevisionCannotYieldPublicOutputs(t *testing.T) {
-	store := NewStore(t.TempDir())
-	body := `{"workflow":{"ID":"work"}}`
-	sum := sha256.Sum256([]byte(body))
-	if err := store.Put(&domain.Session{
-		Name: "unreadable", Workflow: "work", WorkflowRevision: hex.EncodeToString(sum[:]),
-		WorkflowRevisionBody: body, CreatedAt: time.Now(), UpdatedAt: time.Now(),
-	}); err != nil {
-		t.Fatalf("Put: %v", err)
-	}
-	if store.Get("unreadable") == nil {
-		t.Fatal("session was not saved")
-	}
-}
-
-// The store keeps an unreleased node whose record a writer omits, so the
-// public outputs have to follow the nodes as stored, not as written.
-func TestStore_UpdateOmittingAProducedSourceKeepsItsPublicOutputs(t *testing.T) {
-	store := NewStore(t.TempDir())
-	if err := store.Put(publicOutputSession(t, "review-3")); err != nil {
-		t.Fatalf("Put: %v", err)
-	}
-	if err := store.Update("review-3", func(s *domain.Session) error {
-		s.Nodes = map[string]*contract.TaskState{}
-		return nil
-	}); err != nil {
-		t.Fatalf("Update: %v", err)
-	}
-	got := store.Get("review-3")
-	if got.Nodes["orchestrator"] == nil || got.PublicOutputs["endpoint"] != "e1" {
-		t.Fatalf("nodes = %v, public outputs = %v, want the retained produced source to keep its binding", got.Nodes, got.PublicOutputs)
-	}
-}
-
-func TestStore_PutOmittingAProducedSourceKeepsItsPublicOutputs(t *testing.T) {
-	store := NewStore(t.TempDir())
-	if err := store.Put(publicOutputSession(t, "review-4")); err != nil {
-		t.Fatalf("Put: %v", err)
-	}
-	omitting := publicOutputSession(t, "review-4")
-	omitting.Nodes = nil
-	if err := store.Put(omitting); err != nil {
-		t.Fatalf("Put omitting: %v", err)
-	}
-	if got := store.Get("review-4"); got.PublicOutputs["endpoint"] != "e1" {
-		t.Fatalf("public outputs = %v, want the retained source's binding", got.PublicOutputs)
-	}
-}
-
-func TestStore_ResetNodesClearsPublicOutputs(t *testing.T) {
-	store := NewStore(t.TempDir())
-	if err := store.Put(publicOutputSession(t, "review-5")); err != nil {
-		t.Fatalf("Put: %v", err)
-	}
-	if err := store.ResetNodes("review-5"); err != nil {
-		t.Fatalf("ResetNodes: %v", err)
-	}
-	got := store.Get("review-5")
-	if len(got.Nodes) != 0 || len(got.PublicOutputs) != 0 {
-		t.Fatalf("nodes = %v, public outputs = %v, want both cleared", got.Nodes, got.PublicOutputs)
 	}
 }

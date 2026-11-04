@@ -11,6 +11,7 @@ import (
 	"github.com/kecbigmt/plecture/app/internal/config"
 	"github.com/kecbigmt/plecture/app/internal/domain"
 	"github.com/kecbigmt/plecture/app/internal/lang"
+	"github.com/kecbigmt/plecture/app/internal/publicoutput"
 	"github.com/kecbigmt/plecture/app/internal/state"
 	"github.com/kecbigmt/plecture/app/internal/task"
 	contract "github.com/kecbigmt/plecture/contracts/state"
@@ -311,9 +312,9 @@ func bindDocumentInputs(doc config.TaskDocument, cliInputs map[string]string, se
 // renderInstruction resolves the document body's projections against the
 // roots the instruction surface observes.
 func renderInstruction(cfg *config.Config, session *domain.Session, doc config.TaskDocument, inputs map[string]any, resourceID string, observed map[string]any) (string, *Error) {
-	workflowOutputs := map[string]any{}
-	if session.PublicOutputs != nil {
-		workflowOutputs = session.PublicOutputs
+	workflowOutputs, _ := publicoutput.Of(session, publicoutput.ProducedOnly)
+	if workflowOutputs == nil {
+		workflowOutputs = map[string]any{}
 	}
 	env := lang.Roots{
 		"resource": map[string]any{"id": resourceID, "state": observed},

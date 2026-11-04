@@ -18,6 +18,7 @@ package task
 import (
 	"context"
 	"fmt"
+	"log/slog"
 	"strings"
 	"time"
 
@@ -598,12 +599,19 @@ func orEmpty(m map[string]any) map[string]any {
 	return m
 }
 
-// workflowOutputs evaluates from tasks rather than reading the persisted
-// record, because a setup in the middle of a run must see the outputs of nodes
-// produced moments earlier, before anything is saved.
+// workflowOutputs reads the last recorded outputs: a setup or cleanup in the
+// middle of a run can follow a failure recorded moments earlier.
 func workflowOutputs(session SessionVars, tasks map[string]*contract.TaskState) map[string]any {
-	outputs, _ := publicoutput.Evaluate(session.PublicOutputs, tasks, session.Inputs)
+	outputs, _ := publicoutput.Evaluate(session.PublicOutputs, tasks, session.Inputs, publicoutput.LastRecorded)
 	return outputs
+}
+
+// warnUnevaluablePublicOutputs names the cause a consumer would otherwise
+// report only as "resolved to nothing".
+func warnUnevaluablePublicOutputs(session SessionVars, tasks map[string]*contract.TaskState) {
+	if _, err := publicoutput.Evaluate(session.PublicOutputs, tasks, session.Inputs, publicoutput.LastRecorded); err != nil {
+		slog.Warn("public output binding failed", "session", session.Name, "error", err)
+	}
 }
 
 // dependencyOutputs builds the .Tasks.<id> / .Nodes.<id>.outputs map for the
@@ -740,6 +748,7 @@ func reportCleanupFailure(obs Observer, r Resolved, elapsed time.Duration, err e
 func RunSetup(goCtx context.Context, ordered []Resolved, session SessionVars, tasks map[string]*contract.TaskState, observer Observer) error {
 	obs := observerOr(observer)
 	terminalOwner := terminalOwnerIn(ordered)
+	defer warnUnevaluablePublicOutputs(session, tasks)
 	for _, r := range ordered {
 		session = withFreshTerminalOutputs(session, terminalOwner, tasks)
 		if existing, ok := tasks[r.NodeID]; ok && existing != nil && existing.Status != contract.TaskStatusCleaned && declarationChanged(r, existing) {

@@ -1,15 +1,29 @@
-// Package publicoutput derives the record `workflow.outputs.*` reads.
+// Package publicoutput evaluates the record `workflow.outputs.*` reads from a
+// session's frozen workflow revision, its nodes, and its inputs.
 package publicoutput
 
 import (
 	"encoding/json"
 	"fmt"
 	"sort"
+	"strings"
 
 	"github.com/kecbigmt/plecture/app/internal/config"
 	"github.com/kecbigmt/plecture/app/internal/domain"
 	"github.com/kecbigmt/plecture/app/internal/lang"
 	contract "github.com/kecbigmt/plecture/contracts/state"
+)
+
+// Sources selects which nodes count as a binding's source.
+type Sources int
+
+const (
+	// ProducedOnly keeps a display, instruction, or delivery from showing a
+	// value a released or failed node merely remembers.
+	ProducedOnly Sources = iota
+	// LastRecorded lets a cleanup release a dependent of a node whose failure
+	// is already recorded.
+	LastRecorded
 )
 
 // Declaration is a workflow's public output contract: the bindings that
@@ -19,11 +33,9 @@ type Declaration struct {
 	Schema   map[string]any
 }
 
-// Declare reads a session's declaration from the workflow revision it froze at
-// creation. A session with no revision declares nothing.
+// Declare reads a session's declaration from its frozen workflow revision. A
+// session with no revision declares nothing.
 func Declare(s *domain.Session) (Declaration, error) {
-	// A session predating revisions is backfilled by its own migration; until
-	// then it has nothing to derive from and is not a failure.
 	if s.WorkflowRevision == "" {
 		return Declaration{}, nil
 	}
@@ -37,38 +49,52 @@ func Declare(s *domain.Session) (Declaration, error) {
 	return Declaration{Bindings: revision.Workflow.Outputs, Schema: revision.Workflow.OutputsSchema}, nil
 }
 
-// Evaluate returns the bindings that can be evaluated now. A binding waits
-// until every node it reads is produced: a released or failed node keeps its
-// last outputs for the next setup's `prev`, and those are not a source.
-//
-// A complete record that violates the schema is withheld whole rather than
-// published half-valid.
-func Evaluate(decl Declaration, nodes map[string]*contract.TaskState, sessionInputs map[string]any) (map[string]any, error) {
+func Of(s *domain.Session, sources Sources) (map[string]any, error) {
+	decl, err := Declare(s)
+	if err != nil {
+		return nil, err
+	}
+	return Evaluate(decl, s.Nodes, s.Inputs, sources)
+}
+
+// Evaluate returns the bindings whose sources all count. One that still fails
+// is unset and named in the returned error beside the rest of the record; one
+// that resolves to nothing, such as an omitted optional output, is unset
+// silently. A complete record that violates the schema is withheld whole.
+func Evaluate(decl Declaration, nodes map[string]*contract.TaskState, sessionInputs map[string]any, sources Sources) (map[string]any, error) {
 	bindings := decl.Bindings
 	if len(bindings) == 0 {
 		return nil, nil
 	}
-	roots := lang.Roots{
-		"nodes":   producedNodeRoots(nodes),
+	eval := lang.Eval{Roots: lang.Roots{
+		"nodes":   nodeRoots(nodes, sources),
 		"session": map[string]any{"inputs": orEmpty(lang.NormalizeOutputs(sessionInputs))},
-	}
-	eval := lang.Eval{Roots: roots}
+	}}
 	keys := make([]string, 0, len(bindings))
 	for key := range bindings {
 		keys = append(keys, key)
 	}
 	sort.Strings(keys)
 	out := make(map[string]any, len(bindings))
+	var failed []string
 	for _, key := range keys {
 		binding := bindings[key]
-		if !sourcesProduced(key, binding, nodes) {
+		if !sourcesCount(key, binding, nodes, sources) {
 			continue
 		}
 		value, absent, err := eval.Value(binding)
-		if err != nil || absent {
+		if err != nil {
+			failed = append(failed, fmt.Sprintf("%q: %v", key, err))
+			continue
+		}
+		if absent {
 			continue
 		}
 		out[key] = value
+	}
+	var problem error
+	if len(failed) > 0 {
+		problem = fmt.Errorf("public outputs not evaluable although their sources exist: %s", strings.Join(failed, "; "))
 	}
 	if len(out) == len(bindings) && len(decl.Schema) > 0 {
 		if err := validate(out, decl.Schema); err != nil {
@@ -76,43 +102,31 @@ func Evaluate(decl Declaration, nodes map[string]*contract.TaskState, sessionInp
 		}
 	}
 	if len(out) == 0 {
-		return nil, nil
+		return nil, problem
 	}
-	return out, nil
+	return out, problem
 }
 
-// Refresh rewrites s.PublicOutputs from the session's frozen workflow
-// revision. A session with no revision keeps its record untouched.
-func Refresh(s *domain.Session) error {
-	if s.WorkflowRevision == "" {
-		return nil
+func counts(st *contract.TaskState, sources Sources) bool {
+	if st == nil {
+		return false
 	}
-	decl, err := Declare(s)
-	if err != nil {
-		return err
-	}
-	record, err := Evaluate(decl, s.Nodes, s.Inputs)
-	s.PublicOutputs = record
-	if err != nil {
-		return fmt.Errorf("session %q: %w", s.Name, err)
-	}
-	return nil
+	return sources == LastRecorded || st.Status == contract.TaskStatusProduced
 }
 
-func producedNodeRoots(nodes map[string]*contract.TaskState) map[string]any {
+func nodeRoots(nodes map[string]*contract.TaskState, sources Sources) map[string]any {
 	out := make(map[string]any, len(nodes))
 	for id, st := range nodes {
-		if st == nil || st.Status != contract.TaskStatusProduced {
-			continue
+		if counts(st, sources) {
+			out[id] = map[string]any{"outputs": orEmpty(lang.NormalizeOutputs(st.Outputs))}
 		}
-		out[id] = map[string]any{"outputs": orEmpty(lang.NormalizeOutputs(st.Outputs))}
 	}
 	return out
 }
 
-func sourcesProduced(key string, binding *lang.Value, nodes map[string]*contract.TaskState) bool {
+func sourcesCount(key string, binding *lang.Value, nodes map[string]*contract.TaskState, sources Sources) bool {
 	for _, id := range lang.NodeReads(map[string]*lang.Value{key: binding}, nil) {
-		if st := nodes[id]; st == nil || st.Status != contract.TaskStatusProduced {
+		if !counts(nodes[id], sources) {
 			return false
 		}
 	}

@@ -24,6 +24,12 @@ automatic repair may execute a new declaration against an old allocation.
 - `2026-09-08-minimum-cleanup-contract`, `### Migration`: the outcome that an
   unresolved legacy declaration remains a cleanup precondition failure while
   startup proceeds without a revision.
+- `2026-09-07-resource-and-workspace-effects`, `### Workflow public outputs`:
+  the decision to store the declaration-owned public projection as
+  session-owned JSON that is refreshed or invalidated when a source execution
+  changes.
+- `2026-09-07-resource-and-workspace-effects`, `## Decision`: the clause that
+  public outputs are persisted with the session.
 
 ## Decision
 
@@ -86,6 +92,15 @@ partial revision or reconstruct missing execution facts. A durable completion
 marker prevents an incomplete session created after migration from restarting
 the backfill. A session whose setup failed can retry or run cleanup using its
 stored revision. A session without a revision can be removed with force.
+
+Public outputs are not stored. With the revision frozen, the record
+`workflow.outputs.*` reads is a pure function of the revision's `outputs`
+declaration, the session's stored node outputs, and its inputs, so it is
+evaluated on each read and has no invalidation of its own. Display,
+instructions, and delivery count a source only while it is produced. A setup or
+cleanup inside a run counts the last recorded outputs of any node that has a
+record, because a dependent of a node whose liveness failed, or that was left
+failed, is released after that failure is recorded.
 
 ## Consequences
 

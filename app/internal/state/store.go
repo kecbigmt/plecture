@@ -16,7 +16,6 @@ import (
 	"github.com/kecbigmt/plecture/app/internal/datahome"
 	"github.com/kecbigmt/plecture/app/internal/domain"
 	"github.com/kecbigmt/plecture/app/internal/persistence"
-	"github.com/kecbigmt/plecture/app/internal/publicoutput"
 	contract "github.com/kecbigmt/plecture/contracts/state"
 )
 
@@ -131,7 +130,7 @@ func (s *Store) Put(session *domain.Session) error {
 	if err != nil {
 		return fmt.Errorf("state: put %q: %w", session.Name, err)
 	}
-	if err := db.PutSession(context.Background(), session, persistence.WithDerivedState(refreshPublicOutputs)); err != nil {
+	if err := db.PutSession(context.Background(), session); err != nil {
 		return fmt.Errorf("state: put %q: %w", session.Name, err)
 	}
 	return nil
@@ -151,16 +150,7 @@ func (s *Store) Update(name string, fn func(*domain.Session) error) error {
 	// or errors.Is against sentinel/typed errors fn returns (e.g. a service
 	// *Error), and this is the read-modify-write primitive they call
 	// through, so this seam must not obscure that type.
-	return db.UpdateSession(context.Background(), name, fn, persistence.WithDerivedState(refreshPublicOutputs))
-}
-
-// A refresh failure is logged rather than returned: teardown writes through
-// here, and a session that cannot record a node's release cannot be cleaned up.
-func refreshPublicOutputs(session *domain.Session) error {
-	if err := publicoutput.Refresh(session); err != nil {
-		slog.Warn("public outputs not refreshed", "session", session.Name, "error", err)
-	}
-	return nil
+	return db.UpdateSession(context.Background(), name, fn)
 }
 
 // PruneReleasedNode reports whether name's node_id row was pruned; see
@@ -185,7 +175,7 @@ func (s *Store) ResetNodes(name string) error {
 	if err != nil {
 		return fmt.Errorf("state: reset nodes %q: %w", name, err)
 	}
-	if err := db.ResetNodes(context.Background(), name, persistence.WithDerivedState(refreshPublicOutputs)); err != nil {
+	if err := db.ResetNodes(context.Background(), name); err != nil {
 		return fmt.Errorf("state: reset nodes %q: %w", name, err)
 	}
 	return nil

@@ -2,6 +2,9 @@ package task
 
 import (
 	"context"
+	"os"
+	"os/exec"
+	"path/filepath"
 	"strings"
 	"testing"
 
@@ -120,5 +123,73 @@ func TestExecuteTaskSetup_SeesPublicOutputsNotTheProviderPseudoNode(t *testing.T
 	}
 	if len(exec.bindings) != 1 || !strings.Contains(exec.bindings[0], "feat/x") || strings.Contains(exec.bindings[0], "from-provider") {
 		t.Fatalf("bindings = %v, want the public output's value and not the provider's", exec.bindings)
+	}
+}
+
+// cleanupReadingPublicOutput builds a workflow whose node x reads public output
+// k (bound to node y's output) and whose cleanup binds it, so x's release needs
+// the value y recorded even when y is no longer produced.
+func cleanupReadingPublicOutput(t *testing.T, marker string) (*Plan, SessionVars) {
+	t.Helper()
+	wf := config.WorkflowFile{
+		ID:      "release",
+		Outputs: map[string]*lang.Value{"k": fromValue("nodes.y.outputs.k")},
+		Nodes: []config.WorkflowNode{
+			{ID: "y", Uses: "y"},
+			{ID: "x", Uses: "x", Inputs: map[string]*lang.Value{"dep": fromValue("workflow.outputs.k")}},
+		},
+	}
+	defs := map[string]config.TaskDefinition{
+		"y": {ID: "y", Scope: "run", Setup: shellStub(`echo '{"k":"v1"}'`), Cleanup: shellStub("true"), Health: healthStub("exit 1")},
+		"x": {ID: "x", Scope: "run", Setup: shellStub("echo '{}'"), Cleanup: &lang.Action{
+			Type:   lang.ActionShell,
+			Script: `printf %s "$k" > ` + marker,
+			Bind:   map[string]*lang.Value{"k": fromValue("workflow.outputs.k")},
+		}},
+	}
+	plan, err := CompileWorkflow(wf, defs)
+	if err != nil {
+		t.Fatalf("CompileWorkflow: %v", err)
+	}
+	return plan, SessionVars{PublicOutputs: publicoutput.Declaration{Bindings: wf.Outputs}}
+}
+
+func TestRunSetup_DependentCleanedOnInvalidationReadsTheFailedSourcesOutput(t *testing.T) {
+	if _, err := exec.LookPath("bash"); err != nil {
+		t.Skip("bash not available")
+	}
+	marker := filepath.Join(t.TempDir(), "released")
+	plan, vars := cleanupReadingPublicOutput(t, marker)
+	tasks := map[string]*contract.TaskState{}
+	if err := RunSetup(context.Background(), plan.UpOrder(), vars, tasks, nil); err != nil {
+		t.Fatalf("first RunSetup: %v", err)
+	}
+	if err := RunSetup(context.Background(), plan.UpOrder(), vars, tasks, nil); err != nil {
+		t.Fatalf("RunSetup after y's alive probe failed: %v", err)
+	}
+	got, err := os.ReadFile(marker)
+	if err != nil || string(got) != "v1" {
+		t.Fatalf("x's cleanup marker = %q, %v; want x released with y's last recorded output", got, err)
+	}
+}
+
+func TestRunCleanup_DependentOfAFailedSourceReadsItsLastRecordedOutput(t *testing.T) {
+	if _, err := exec.LookPath("bash"); err != nil {
+		t.Skip("bash not available")
+	}
+	marker := filepath.Join(t.TempDir(), "released")
+	plan, vars := cleanupReadingPublicOutput(t, marker)
+	tasks := map[string]*contract.TaskState{
+		"y": {Scope: contract.TaskScopeRun, Status: contract.TaskStatusFailed, Outputs: map[string]any{"k": "v1"}},
+		"x": {Scope: contract.TaskScopeRun, Status: contract.TaskStatusProduced, DependsOn: []string{"y"}},
+	}
+	if err := RunCleanup(context.Background(), plan.UpOrder(), vars, tasks, nil); err != nil {
+		t.Fatalf("RunCleanup: %v", err)
+	}
+	if tasks["x"].Status != contract.TaskStatusCleaned {
+		t.Fatalf("x status = %s, want cleaned", tasks["x"].Status)
+	}
+	if got, err := os.ReadFile(marker); err != nil || string(got) != "v1" {
+		t.Fatalf("x's cleanup marker = %q, %v", got, err)
 	}
 }

@@ -136,7 +136,6 @@ type Session struct {
 	PopulationWorkflow       sql.NullString
 	PopulationName           sql.NullString
 	InputsJson               sql.NullString
-	PublicOutputsJson        sql.NullString
 	HealthLastCheckedAt      sql.NullString
 	HealthLastActivityAt     sql.NullString
 	HealthLastFingerprint    sql.NullString

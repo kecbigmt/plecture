@@ -9,6 +9,7 @@ package dispatch
 import (
 	"github.com/kecbigmt/plecture/app/internal/config"
 	"github.com/kecbigmt/plecture/app/internal/domain"
+	"github.com/kecbigmt/plecture/app/internal/publicoutput"
 	"github.com/kecbigmt/plecture/app/internal/task"
 )
 
@@ -31,7 +32,8 @@ func channelInputs(s *domain.Session, ch config.EventChannel, def config.Channel
 		}
 		deps[id] = out
 	}
-	resolved, err := task.ResolveNodeInputs(ch.Inputs, deps, s.PublicOutputs, task.SessionVars{
+	wfOutputs, _ := publicoutput.Of(s, publicoutput.ProducedOnly)
+	resolved, err := task.ResolveNodeInputs(ch.Inputs, deps, wfOutputs, task.SessionVars{
 		Name:             s.Name,
 		ResourceID:       s.ResourceID,
 		WorkspaceDirPath: s.WorkspaceDirPath,
