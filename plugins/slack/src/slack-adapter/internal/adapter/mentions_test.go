@@ -120,7 +120,7 @@ func TestMentionResourceAddsToThreadSubscriptionWithoutReceivingReplies(t *testi
 
 func TestMentionWatermarksExpireFromLedger(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "subscribers.json")
-	state := persistedState{Version: 2, MentionWatermarks: []mentionWatermark{
+	state := persistedState{Version: 2, Subscribers: []Subscriber{{ThreadTS: mentionSubscriptionKey, SessionName: "one"}}, MentionWatermarks: []mentionWatermark{
 		{SessionName: "one", ThreadTS: "1700000000.000001", Through: "1700000000.000005", UpdatedAt: time.Now().Add(-mentionWatermarkRetention - time.Hour)},
 		{SessionName: "one", ThreadTS: "1700000001.000001", Through: "1700000001.000005", UpdatedAt: time.Now()},
 	}}
@@ -144,6 +144,53 @@ func TestMentionPublishFailureLeavesWatermarkForRetry(t *testing.T) {
 	a.handleAppMention(&slackevents.AppMentionEvent{User: "U-person", Text: "<@U-bot> act", TimeStamp: "1700000000.000003", ThreadTimeStamp: "1700000000.000001", Channel: "C-one"})
 	if a.broker.MentionWatermark("one", "1700000000.000001") != "" || a.broker.MentionWatermark("two", "1700000000.000001") != "1700000000.000003" {
 		t.Fatalf("watermarks after failure = %+v", a.broker.mentions)
+	}
+}
+
+func TestMentionResubscribeAfterRemovalStartsFreshTranscript(t *testing.T) {
+	for _, tc := range []struct {
+		name   string
+		remove func(*Adapter)
+	}{
+		{"exact", func(a *Adapter) { a.broker.Unsubscribe("orchestrator", mentionSubscriptionKey) }},
+		{"session", func(a *Adapter) { a.broker.UnsubscribeBySession("orchestrator") }},
+		{"unique", func(a *Adapter) { a.broker.UnsubscribeUniqueThread(mentionSubscriptionKey) }},
+		{"sweep", func(a *Adapter) {
+			a.SweepSubscriptions(context.Background(), func(context.Context) (map[string]bool, error) {
+				return map[string]bool{}, nil
+			})
+		}},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			path := filepath.Join(t.TempDir(), "subscribers.json")
+			a := newTestAdapter(&Config{})
+			a.broker = NewBroker(path, nil)
+			a.broker.Subscribe(Subscriber{ThreadTS: mentionSubscriptionKey, SessionName: "orchestrator"})
+			a.threadFetcher = &fakeThreadFetcher{messages: []slack.Message{
+				slackMessage("1700000000.000001", "U-root", "root"),
+				slackMessage("1700000000.000002", "U-other", "earlier reply"),
+			}}
+			publisher := &recordingEventPublisher{}
+			a.eventPublisher = publisher
+			a.handleAppMention(&slackevents.AppMentionEvent{User: "U-person", Text: "<@U-bot> first", TimeStamp: "1700000000.000003", ThreadTimeStamp: "1700000000.000001", Channel: "C-one"})
+			if got := a.broker.MentionWatermark("orchestrator", "1700000000.000001"); got != "1700000000.000003" {
+				t.Fatalf("first watermark = %q", got)
+			}
+
+			tc.remove(a)
+			a.broker = NewBroker(path, nil)
+			a.broker.Subscribe(Subscriber{ThreadTS: mentionSubscriptionKey, SessionName: "orchestrator"})
+			a.threadFetcher = &fakeThreadFetcher{messages: []slack.Message{
+				slackMessage("1700000000.000001", "U-root", "root"),
+				slackMessage("1700000000.000002", "U-other", "earlier reply"),
+				slackMessage("1700000000.000003", "U-person", "<@U-bot> first"),
+			}}
+			a.handleAppMention(&slackevents.AppMentionEvent{User: "U-person", Text: "<@U-bot> second", TimeStamp: "1700000000.000004", ThreadTimeStamp: "1700000000.000001", Channel: "C-one"})
+			if len(publisher.events) != 2 {
+				t.Fatalf("events = %+v", publisher.events)
+			}
+			assertBodyContainsInOrder(t, publisher.events[1].Body, []string{"root", "earlier reply", "first", "second"})
+		})
 	}
 }
 

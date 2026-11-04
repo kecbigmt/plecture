@@ -136,6 +136,9 @@ func (b *Broker) Unsubscribe(session, thread string) (Subscriber, bool) {
 	s, ok := b.subs[key]
 	if ok {
 		delete(b.subs, key)
+		if thread == mentionSubscriptionKey {
+			b.removeMentionWatermarksLocked(session)
+		}
 		b.persistLocked()
 	}
 	return s, ok
@@ -161,6 +164,9 @@ func (b *Broker) UnsubscribeUniqueThread(thread string) bool {
 		return true
 	}
 	delete(b.subs, found)
+	if thread == mentionSubscriptionKey {
+		b.removeMentionWatermarksLocked(found.session)
+	}
 	b.persistLocked()
 	return true
 }
@@ -175,8 +181,20 @@ func (b *Broker) UnsubscribeBySession(session string) []Subscriber {
 			delete(b.subs, key)
 		}
 	}
-	if len(removed) != 0 {
+	watermarksRemoved := b.removeMentionWatermarksLocked(session)
+	if len(removed) != 0 || watermarksRemoved {
 		b.persistLocked()
+	}
+	return removed
+}
+
+func (b *Broker) removeMentionWatermarksLocked(session string) bool {
+	removed := false
+	for key := range b.mentions {
+		if key.session == session {
+			delete(b.mentions, key)
+			removed = true
+		}
 	}
 	return removed
 }
@@ -207,6 +225,9 @@ func (b *Broker) ListMentions() []Subscriber {
 func (b *Broker) MentionWatermark(session, thread string) string {
 	b.mu.RLock()
 	defer b.mu.RUnlock()
+	if _, ok := b.subs[subscriptionKey{session, mentionSubscriptionKey}]; !ok {
+		return ""
+	}
 	return b.mentions[subscriptionKey{session, thread}].Through
 }
 
@@ -311,7 +332,8 @@ func (b *Broker) load() error {
 	}
 	b.prunePendingLocked(time.Now())
 	for _, wm := range ps.MentionWatermarks {
-		if wm.SessionName != "" && isSlackTimestampShape(wm.ThreadTS) && isSlackTimestampShape(wm.Through) && time.Since(wm.UpdatedAt) < mentionWatermarkRetention {
+		_, subscribed := b.subs[subscriptionKey{wm.SessionName, mentionSubscriptionKey}]
+		if subscribed && isSlackTimestampShape(wm.ThreadTS) && isSlackTimestampShape(wm.Through) && time.Since(wm.UpdatedAt) < mentionWatermarkRetention {
 			b.mentions[subscriptionKey{wm.SessionName, wm.ThreadTS}] = wm
 		}
 	}
