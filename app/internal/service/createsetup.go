@@ -12,6 +12,7 @@ import (
 	"github.com/kecbigmt/plecture/app/internal/effect"
 	"github.com/kecbigmt/plecture/app/internal/eventlog"
 	"github.com/kecbigmt/plecture/app/internal/state"
+	"github.com/kecbigmt/plecture/app/internal/task"
 	contract "github.com/kecbigmt/plecture/contracts/state"
 )
 
@@ -23,9 +24,8 @@ import (
 // sessionName is the final id (tag already applied); resource is the
 // canonical resource identifier; alias is the user's original input.
 //
-// The state entry is recorded before setup runs so a failed setup leaves an
-// inspectable session (with the @workflow pseudo-node marked failed) that a
-// later create retries and a non-force destroy can immediately release.
+// The state entry and its provider declaration are recorded before setup so
+// cleanup can release a partially allocated workspace after setup fails.
 func createWithWorkflowSetup(cfg *config.Config, store *state.Store, params CreateParams, wf config.WorkflowFile, prov config.WorkspaceProviderConfig, sessionName, resource, alias string) (*CreateResult, error) {
 	if err := validateSessionName(sessionName); err != nil {
 		return nil, err
@@ -37,6 +37,7 @@ func createWithWorkflowSetup(cfg *config.Config, store *state.Store, params Crea
 
 	now := time.Now()
 	var session *domain.Session
+	revisionPending := false
 	existing, err := store.GetE(sessionName)
 	if err != nil {
 		return nil, &Error{Code: ErrExecutionFailed, Message: fmt.Sprintf("failed to check for an existing session %q: %v", sessionName, err)}
@@ -53,6 +54,18 @@ func createWithWorkflowSetup(cfg *config.Config, store *state.Store, params Crea
 		}
 		if existing.Workflow != "" && existing.Workflow != wf.Address {
 			return nil, &Error{Code: ErrInvalidInput, Message: fmt.Sprintf("resource dispatches to workflow %q but session %q is frozen to %q; destroy and recreate to switch", wf.Address, sessionName, existing.Workflow)}
+		}
+		if existing.WorkflowRevision != "" {
+			revision, _, revisionErr := config.RevisionForSession(existing)
+			if revisionErr != nil {
+				return nil, &Error{Code: ErrExecutionFailed, Message: revisionErr.Error()}
+			}
+			if revision.Provider == nil {
+				return nil, &Error{Code: ErrExecutionFailed, Message: fmt.Sprintf("workflow %q has no stored workspace provider", existing.Workflow)}
+			}
+			wf = revision.Workflow
+			prov = *revision.Provider
+			revisionPending = revision.WorkspaceCapturePending
 		}
 		session = existing
 		if session.Nodes == nil {
@@ -92,6 +105,18 @@ func createWithWorkflowSetup(cfg *config.Config, store *state.Store, params Crea
 	session.ResourceID = resource
 	session.Alias = alias
 	session.UpdatedAt = now
+	initialCapture := session.WorkflowRevision == ""
+	if initialCapture {
+		revision, err := cfg.CaptureWorkflowRevision("", session.Workflow)
+		if err != nil {
+			return nil, &Error{Code: ErrExecutionFailed, Message: fmt.Sprintf("capture workflow revision: %v", err)}
+		}
+		revision.WorkspaceCapturePending = true
+		if err := setSessionRevision(session, revision, false); err != nil {
+			return nil, &Error{Code: ErrExecutionFailed, Message: fmt.Sprintf("capture workflow revision: %v", err)}
+		}
+		revisionPending = true
+	}
 
 	existingBeforePut := existing != nil
 	// Record the session before setup so partial failures stay visible. A
@@ -151,6 +176,40 @@ func createWithWorkflowSetup(cfg *config.Config, store *state.Store, params Crea
 	// The workspace now exists: resolve the full cascade (incl. overlays
 	// above and the node-only layer inside the workspace dir) and run
 	// session tasks.
+	if revisionPending {
+		stored, _, err := config.RevisionForSession(session)
+		if err != nil {
+			return nil, &Error{Code: ErrExecutionFailed, Message: err.Error()}
+		}
+		stored.WorkspaceCapturePending = false
+		base, baseErr := cfg.CaptureWorkflowRevision("", session.Workflow)
+		if baseErr != nil {
+			return nil, &Error{Code: ErrExecutionFailed, Message: fmt.Sprintf("capture workflow revision: %v", baseErr)}
+		}
+		full, fullErr := cfg.CaptureWorkflowRevision(session.WorkspaceDirPath, session.Workflow)
+		if fullErr != nil {
+			return nil, &Error{Code: ErrExecutionFailed, Message: fmt.Sprintf("capture workflow revision: %v", fullErr)}
+		}
+		_, storedDigest, storedErr := stored.CanonicalBody()
+		_, baseDigest, baseErr := base.CanonicalBody()
+		_, fullDigest, fullErr := full.CanonicalBody()
+		if storedErr != nil || baseErr != nil || fullErr != nil {
+			return nil, &Error{Code: ErrExecutionFailed, Message: fmt.Sprintf("encode workflow revision: %v, %v, %v", storedErr, baseErr, fullErr)}
+		}
+		final := stored
+		if baseDigest != fullDigest {
+			if baseDigest != storedDigest {
+				return nil, &Error{Code: ErrExecutionFailed, Message: fmt.Sprintf("trusted configuration changed since session %q was created; restore it before retrying, or destroy the session", session.Name)}
+			}
+			final = full
+		}
+		if err := setSessionRevision(session, final, true); err != nil {
+			return nil, &Error{Code: ErrExecutionFailed, Message: fmt.Sprintf("capture workflow revision: %v", err)}
+		}
+		if err := store.Put(session); err != nil {
+			return nil, &Error{Code: ErrExecutionFailed, Message: fmt.Sprintf("save workflow revision: %v", err)}
+		}
+	}
 	plan, err := buildPlanForSession(cfg, session.WorkspaceDirPath, session)
 	if err != nil {
 		return nil, &Error{Code: ErrExecutionFailed, Message: err.Error()}
@@ -192,4 +251,19 @@ func createWithWorkflowSetup(cfg *config.Config, store *state.Store, params Crea
 		ReusedWorkspaceDir: reused,
 		Tasks:              domain.MergedTasks(session),
 	}, nil
+}
+
+func setSessionRevision(session *domain.Session, revision config.WorkflowRevision, compile bool) error {
+	if compile {
+		if _, err := task.CompileWorkflow(revision.Workflow, revision.Effects); err != nil {
+			return fmt.Errorf("compile workflow revision: %w", err)
+		}
+	}
+	body, digest, err := revision.CanonicalBody()
+	if err != nil {
+		return err
+	}
+	session.WorkflowRevision = digest
+	session.WorkflowRevisionBody = string(body)
+	return nil
 }

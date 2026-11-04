@@ -74,16 +74,20 @@ on = ["resource.*"]
 	st := state.NewStore(t.TempDir())
 	// Parent: up throughout, so it both passes resolveLiveAncestor's health
 	// check and has its own sessionReactor running to tick off a forward.
-	if err := st.Put(&domain.Session{
+	parent := &domain.Session{
 		Name: "parent", Workflow: "reactive",
 		Nodes: map[string]*contract.TaskState{"runner": {Scope: contract.TaskScopeRun, Status: contract.TaskStatusProduced}},
-	}); err != nil {
+	}
+	pinRevision(t, cfg, parent)
+	if err := st.Put(parent); err != nil {
 		t.Fatal(err)
 	}
 	// Child: down (no produced run-scoped node) but not destroyed.
-	if err := st.Put(&domain.Session{
+	child := &domain.Session{
 		Name: "child", Workflow: "reactive", ParentSession: "parent", ResourceID: "https://example.test/resource/1",
-	}); err != nil {
+	}
+	pinRevision(t, cfg, child)
+	if err := st.Put(child); err != nil {
 		t.Fatal(err)
 	}
 
@@ -138,9 +142,11 @@ on = ["resource.*"]
 	// destroyed. It starts with no run-scoped node at all, not a cleaned one
 	// flipped back to produced: persistence refuses reviving a cleaned
 	// execution, so a real down->up cycle mints a fresh one instead.
-	if err := st.Put(&domain.Session{
+	child2 := &domain.Session{
 		Name: "child2", Workflow: "reactive", ParentSession: "parent",
-	}); err != nil {
+	}
+	pinRevision(t, cfg, child2)
+	if err := st.Put(child2); err != nil {
 		t.Fatal(err)
 	}
 	waitForwarderStarted(t, sup, "child2")

@@ -175,7 +175,6 @@ judge_ids    = { from = "task.done_when.pending_judge_ids" }
 // target and its contract are both declarations, so nothing has to run for
 // the mismatch to be known.
 func TestLoadTaskDeclarations_ChainInputsMustSatisfyTheTargetContract(t *testing.T) {
-	store := testStore(t)
 	cfg := writeWorkflowFixture(t, t.TempDir(), "wf",
 		[]taskFixture{workTaskWithChain(`
 [[chains]]
@@ -194,9 +193,7 @@ revision = { from = "resource.state.revision" }
 type = "object"
 additionalProperties = false
 `)
-	seedReviewWork(t, store, "owner/repo-1", map[string]any{"checks_status": "SUCCESS", "revision": "sha1"})
-
-	_, err := CheckSession(cfg, store, CheckParams{SessionName: "owner/repo-1"})
+	_, err := cfg.CaptureWorkflowRevision("", "wf")
 	if err == nil || !strings.Contains(err.Error(), `declares no input "revision"`) {
 		t.Fatalf("err = %v, want the target workflow's contract to reject the wired input at load", err)
 	}
@@ -460,7 +457,6 @@ all = [ { judge_pending = "ac-met" } ]
 // declaration, rather than reported as a blocked fire every tick: the target
 // is a static reference, so its resolution needs nothing to run.
 func TestLoadTaskDeclarations_ChainWorkflowMustResolve(t *testing.T) {
-	store := testStore(t)
 	cfg := writeWorkflowFixture(t, t.TempDir(), "wf",
 		[]taskFixture{workTaskWithChain(`
 [[chains]]
@@ -470,9 +466,7 @@ workflow = "missing-workflow"
 all = [ { judge_pending = "ac-met" } ]
 `)},
 		[]nodeFixture{{id: "work"}})
-	seedReviewWork(t, store, "owner/repo-1", map[string]any{"checks_status": "SUCCESS", "revision": "sha1"})
-
-	_, err := TickSession(cfg, store, TickParams{SessionName: "owner/repo-1", SkipRefresh: true})
+	_, err := cfg.CaptureWorkflowRevision("", "wf")
 	if err == nil || !strings.Contains(err.Error(), "missing-workflow") {
 		t.Fatalf("err = %v, want the unresolved workflow named at load", err)
 	}
@@ -480,7 +474,9 @@ all = [ { judge_pending = "ac-met" } ]
 
 func TestCheckSession_NoChainsIsEmpty(t *testing.T) {
 	store := testStore(t)
-	cfg := &config.Config{BaseDir: t.TempDir(), WorkspaceDirsRoot: t.TempDir()}
+	cfg := writeWorkflowFixture(t, t.TempDir(), "wf",
+		[]taskFixture{{id: "work", scope: "session", setup: "echo '{}'"}},
+		[]nodeFixture{{id: "work"}})
 	seedReviewWork(t, store, "owner/repo-1", map[string]any{"checks_status": "SUCCESS", "revision": "sha1"})
 	res, err := CheckSession(cfg, store, CheckParams{SessionName: "owner/repo-1"})
 	if err != nil {
@@ -603,7 +599,6 @@ all = [ { judge = "ac met", id = "ac-met" } ]
 // (config.LegacyChainsDirNotice) so a straggler file isn't silently inert
 // with zero signal.
 func TestCheckSession_LegacyChainsDirIsRefused(t *testing.T) {
-	store := testStore(t)
 	cfg := writeWorkflowFixture(t, t.TempDir(), "wf",
 		[]taskFixture{
 			{id: "a", scope: "session", setup: "echo '{}'", extra: "[done_when]\nall = [ { judge = \"ac met\", id = \"ac-met\" } ]\n"},
@@ -622,11 +617,7 @@ all = [ { judge_pending = "ac-met" } ]
 `), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	seedSessionWithNodes(t, store, "owner/repo-1", "owner/repo", 1, "wf", map[string]*contract.TaskState{
-		"a": {Scope: contract.TaskScopeSession, TaskID: "a", Status: contract.TaskStatusProduced, Outputs: map[string]any{}},
-	})
-
-	_, err := CheckSession(cfg, store, CheckParams{SessionName: "owner/repo-1"})
+	_, err := cfg.CaptureWorkflowRevision("", "wf")
 	if err == nil || !strings.Contains(err.Error(), "review.toml") {
 		t.Fatalf("err = %v, want the load to refuse the leftover chains/*.toml by name", err)
 	}

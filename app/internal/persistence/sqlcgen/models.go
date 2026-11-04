@@ -131,6 +131,7 @@ type Session struct {
 	ResourceID               sql.NullString
 	Alias                    sql.NullString
 	Workflow                 string
+	WorkflowRevision         sql.NullString
 	WorkspaceDir             sql.NullString
 	PopulationWorkflow       sql.NullString
 	PopulationName           sql.NullString
@@ -244,4 +245,16 @@ type UpReservation struct {
 	VirtualRoot       bool
 	Pid               int64
 	ReservedAt        string
+}
+
+type WorkflowRevision struct {
+	Digest    string
+	Workflow  string
+	Body      string
+	CreatedAt string
+}
+
+type WorkflowRevisionMigration struct {
+	ID        int64
+	Completed int64
 }

@@ -98,6 +98,11 @@ func seedSessionSplit(t *testing.T, store interface {
 		CreatedAt:  now,
 		UpdatedAt:  now,
 	}
+	if workflow != "" {
+		if cfg := fixtureConfig(t); cfg != nil {
+			pinSessionRevision(t, cfg, session)
+		}
+	}
 	if err := store.Put(session); err != nil {
 		t.Fatalf("seed: %v", err)
 	}
@@ -770,22 +775,16 @@ func TestUp_StaleNodeCleanupFailurePreservesInspectableState(t *testing.T) {
 	})), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	result, err := Up(cfg, store, UpParams{Identifier: sessionName})
-	if err != nil {
-		t.Fatalf("retry Up: %v", err)
-	}
-	if st := result.Tasks["retired"]; st != nil {
-		t.Fatalf("retired task after retry = %+v, want dropped after successful cleanup", st)
-	}
-	if st := result.Tasks["kept"]; st == nil || st.Status != contract.TaskStatusProduced {
-		t.Fatalf("kept task after retry = %+v, want setup after stale cleanup succeeds", st)
+	_, err = Up(cfg, store, UpParams{Identifier: sessionName})
+	if err == nil {
+		t.Fatal("edited cleanup unexpectedly replaced the stored revision")
 	}
 	data, err = os.ReadFile(cleanupLog)
 	if err != nil {
 		t.Fatalf("read cleanup log after retry: %v", err)
 	}
-	if !strings.Contains(string(data), "retired-again=old-token\n") {
-		t.Fatalf("cleanup log = %q, want retry cleanup to receive recorded output", string(data))
+	if strings.Contains(string(data), "retired-again=old-token\n") {
+		t.Fatalf("cleanup log = %q, edited cleanup ran for an existing session", string(data))
 	}
 }
 
@@ -1230,9 +1229,6 @@ func TestRecreateSessionRuntimeTeardownListFailurePreservesRuntimeFieldsButMarks
 		[]taskFixture{{id: "runtime", scope: "run", cleanup: "true"}},
 		[]nodeFixture{{id: "runtime"}},
 	)
-	if err := os.WriteFile(filepath.Join(cfg.BaseDir, "tasks", "broken.toml"), []byte("scope = \n"), 0o644); err != nil {
-		t.Fatal(err)
-	}
 	sessionName := "org/repo-20"
 	seedSessionWithNodes(t, store, sessionName, "org/repo", 20, "default", map[string]*contract.TaskState{
 		contract.WorkflowPseudoNodeID: {Scope: contract.TaskScopeSession, Status: contract.TaskStatusProduced},
@@ -1251,6 +1247,7 @@ func TestRecreateSessionRuntimeTeardownListFailurePreservesRuntimeFieldsButMarks
 	}
 	session := store.Get(sessionName)
 	session.WorkspaceDirPath = oldWorkdirPath
+	session.WorkflowRevision, session.WorkflowRevisionBody = "", ""
 	session.Nodes[contract.WorkflowPseudoNodeID].Outputs["branch"] = "old-branch"
 
 	_, err := recreateSessionRuntime(cfg, store, sessionName, session, config.WorkflowFile{ID: "default"}, &taskpkg.Plan{
@@ -1326,54 +1323,6 @@ func TestUp_ForceRecreateFailureStagesPersistInspectableState(t *testing.T) {
 						"runtime":                     contract.TaskStatusCleaned,
 						"channel":                     contract.TaskStatusCleaned,
 					},
-				}
-			},
-		},
-		{
-			name:       "workflow reload failure persists reset session state",
-			sessionNum: 23,
-			configure: func(t *testing.T, cfg *config.Config, oldWorkdirPath, newWorkdirPath, cleanupLog string) {
-				wfPath := filepath.Join(cfg.BaseDir, "workflows", "default.toml")
-				writeForceRecreateProvider(t, cfg,
-					fmt.Sprintf(`mkdir -p %s && rm -f %s && printf '{"workspace_dir":%q,"branch":"new-branch"}'`, newWorkdirPath, wfPath, newWorkdirPath),
-					fmt.Sprintf(`printf 'workflow=%%s\n' "$1" >> %s; rm -rf "$1"`, cleanupLog),
-				)
-				prependForceRecreateWorkflow(t, cfg, "workspace_provider = \"default_provider\"\n")
-			},
-			want: func(oldWorkdirPath, newWorkdirPath string) expectations {
-				return expectations{
-					workdirPath: newWorkdirPath,
-					branch:      "new-branch",
-					oldExists:   false,
-					newExists:   true,
-					tasks: map[string]string{
-						contract.WorkflowPseudoNodeID: contract.TaskStatusProduced,
-					},
-					absentTasks: []string{"runtime", "channel"},
-				}
-			},
-		},
-		{
-			name:       "plan build failure persists reset session state",
-			sessionNum: 24,
-			configure: func(t *testing.T, cfg *config.Config, oldWorkdirPath, newWorkdirPath, cleanupLog string) {
-				taskPath := filepath.Join(cfg.BaseDir, "tasks", "runtime.toml")
-				writeForceRecreateProvider(t, cfg,
-					fmt.Sprintf(`mkdir -p %s && rm -f %s && printf '{"workspace_dir":%q,"branch":"new-branch"}'`, newWorkdirPath, taskPath, newWorkdirPath),
-					fmt.Sprintf(`printf 'workflow=%%s\n' "$1" >> %s; rm -rf "$1"`, cleanupLog),
-				)
-				prependForceRecreateWorkflow(t, cfg, "workspace_provider = \"default_provider\"\n")
-			},
-			want: func(oldWorkdirPath, newWorkdirPath string) expectations {
-				return expectations{
-					workdirPath: newWorkdirPath,
-					branch:      "new-branch",
-					oldExists:   false,
-					newExists:   true,
-					tasks: map[string]string{
-						contract.WorkflowPseudoNodeID: contract.TaskStatusProduced,
-					},
-					absentTasks: []string{"runtime", "channel"},
 				}
 			},
 		},

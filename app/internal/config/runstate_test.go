@@ -72,6 +72,8 @@ func TestConfig_RunScopeUp_StaleProducedNodeAloneIsDown(t *testing.T) {
 			"removed_node": {Scope: contract.TaskScopeRun, TaskID: "removed_node", Status: contract.TaskStatusProduced},
 		},
 	}
+	frozen := sessionWithCapturedRevision(t, cfg, "")
+	s.WorkflowRevision, s.WorkflowRevisionBody = frozen.WorkflowRevision, frozen.WorkflowRevisionBody
 	if cfg.RunScopeUp(s) {
 		t.Fatal("RunScopeUp = true, want false (the only produced entry is for a node the workflow no longer declares)")
 	}
@@ -86,6 +88,8 @@ func TestConfig_RunScopeUp_ProducedCurrentPlanNodeIsUp(t *testing.T) {
 			"pane": {Scope: contract.TaskScopeRun, TaskID: "pane", Status: contract.TaskStatusProduced},
 		},
 	}
+	frozen := sessionWithCapturedRevision(t, cfg, "")
+	s.WorkflowRevision, s.WorkflowRevisionBody = frozen.WorkflowRevision, frozen.WorkflowRevisionBody
 	if !cfg.RunScopeUp(s) {
 		t.Fatal("RunScopeUp = false, want true (pane is a current-plan run-scoped node and is produced)")
 	}

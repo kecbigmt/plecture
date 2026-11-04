@@ -203,6 +203,7 @@ func TestUnifiedTeardownList_ReleasesNodeRemovedFromCurrentWorkflow(t *testing.T
 			"kept":    {Scope: contract.TaskScopeSession, Status: contract.TaskStatusProduced, TaskID: "kept"},
 		},
 	}
+	pinSessionRevision(t, cfg, session)
 	items, err := unifiedTeardownList(cfg, session, false)
 	if err != nil {
 		t.Fatalf("unifiedTeardownList: %v", err)
@@ -224,10 +225,8 @@ func TestUnifiedTeardownList_ReleasesNodeRemovedFromCurrentWorkflow(t *testing.T
 	}
 }
 
-// Cleanup code is never read back from the database and replayed: when a
-// node's current task definition can no longer be resolved, it is marked
-// Unresolved (RunCleanup then reports it and leaves it unreleased) instead
-// of running whatever it once resolved to at setup time.
+// A node with no matching definition in its session revision remains
+// unresolved even when its execution is recorded.
 func TestUnifiedTeardownList_MarksNodeUnresolvedWhenCurrentDefinitionIsGone(t *testing.T) {
 	cfg := writeWorkflowFixture(t, t.TempDir(), "wf", nil, nil)
 	session := &domain.Session{
@@ -236,6 +235,7 @@ func TestUnifiedTeardownList_MarksNodeUnresolvedWhenCurrentDefinitionIsGone(t *t
 			"retired": {Scope: contract.TaskScopeSession, Status: contract.TaskStatusProduced, TaskID: "retired"},
 		},
 	}
+	pinSessionRevision(t, cfg, session)
 	items, err := unifiedTeardownList(cfg, session, false)
 	if err != nil {
 		t.Fatalf("unifiedTeardownList: %v", err)
@@ -256,6 +256,7 @@ func TestUnifiedTeardownList_OrdersByRecordedDependencyNotSeqAlone(t *testing.T)
 			"b": {Scope: contract.TaskScopeSession, Status: contract.TaskStatusProduced, TaskID: "b", Seq: 2, DependsOn: []string{"a"}},
 		},
 	}
+	pinSessionRevision(t, cfg, session)
 	items, err := unifiedTeardownList(cfg, session, false)
 	if err != nil {
 		t.Fatalf("unifiedTeardownList: %v", err)

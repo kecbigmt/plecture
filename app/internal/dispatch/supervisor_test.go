@@ -4,6 +4,7 @@ import (
 	"context"
 	"os"
 	"path/filepath"
+	"strings"
 	"sync"
 	"testing"
 	"time"
@@ -24,6 +25,22 @@ func writeFile(t *testing.T, path, content string) {
 		t.Fatal(err)
 	}
 	if err := os.WriteFile(path, []byte(content), 0o644); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func putRevisionSession(t *testing.T, cfg *config.Config, store *state.Store, session *domain.Session) {
+	t.Helper()
+	revision, err := cfg.CaptureWorkflowRevision(session.WorkspaceDirPath, session.Workflow)
+	if err != nil {
+		t.Fatal(err)
+	}
+	body, digest, err := revision.CanonicalBody()
+	if err != nil {
+		t.Fatal(err)
+	}
+	session.WorkflowRevision, session.WorkflowRevisionBody = digest, string(body)
+	if err := store.Put(session); err != nil {
 		t.Fatal(err)
 	}
 }
@@ -81,14 +98,12 @@ include     = ["plect.instruction"]
 
 	stateStore := state.NewStore(t.TempDir())
 	sock, _ := startFakeSocket(t)
-	if err := stateStore.Put(&domain.Session{
+	putRevisionSession(t, cfg, stateStore, &domain.Session{
 		Name: "o/r-1", Workflow: "coding", WorkspaceDirPath: t.TempDir(),
 		Nodes: map[string]*contract.TaskState{
 			"claude": {Scope: contract.TaskScopeRun, Status: contract.TaskStatusProduced, Outputs: map[string]any{"socket_path": sock}},
 		},
-	}); err != nil {
-		t.Fatal(err)
-	}
+	})
 
 	log := eventlog.NewStore(t.TempDir())
 	hub := sessionhub.NewRegistry(log)
@@ -176,14 +191,12 @@ include     = ["plect.instruction"]
 
 	stateStore := state.NewStore(t.TempDir())
 	sock, _ := startFakeSocket(t)
-	if err := stateStore.Put(&domain.Session{
+	putRevisionSession(t, cfg, stateStore, &domain.Session{
 		Name: "o/r-1", Workflow: "coding", WorkspaceDirPath: t.TempDir(),
 		Nodes: map[string]*contract.TaskState{
 			"claude": {Scope: contract.TaskScopeRun, Status: contract.TaskStatusProduced, Outputs: map[string]any{"socket_path": sock}},
 		},
-	}); err != nil {
-		t.Fatal(err)
-	}
+	})
 
 	log := eventlog.NewStore(t.TempDir())
 	hub := sessionhub.NewRegistry(log)
@@ -235,7 +248,15 @@ func TestSupervisor_ValidationFailureRecordsChannelErrorAndStreak(t *testing.T) 
 		t.Fatal(err)
 	}
 	writeClaudeRunTask(t, globalDir)
-	// No channels/claude_channel.toml: `uses` below resolves to nothing.
+	writeFile(t, filepath.Join(globalDir, "channels", "claude_channel.toml"), `
+[claude_channel]
+kind = "channel"
+type = "unix_socket"
+path = { from = "inputs.path" }
+body = { json = { from = "event" } }
+[claude_channel.input_schema]
+path = { type = "string", required = true }
+`)
 	writeFile(t, filepath.Join(globalDir, "workflows", "coding.toml"), `
 [coding]
 kind = "workflow"
@@ -245,7 +266,6 @@ uses = "claude"
 [[coding.event.channel]]
 name        = "runtime"
 uses        = "claude_channel"
-inputs.path = { from = "nodes.claude.outputs.socket_path" }
 include     = ["plect.instruction"]
 `)
 	cfg, err := config.Load()
@@ -254,14 +274,12 @@ include     = ["plect.instruction"]
 	}
 
 	stateStore := state.NewStore(t.TempDir())
-	if err := stateStore.Put(&domain.Session{
+	putRevisionSession(t, cfg, stateStore, &domain.Session{
 		Name: "o/r-1", Workflow: "coding", WorkspaceDirPath: t.TempDir(),
 		Nodes: map[string]*contract.TaskState{
 			"claude": {Scope: contract.TaskScopeRun, Status: contract.TaskStatusProduced},
 		},
-	}); err != nil {
-		t.Fatal(err)
-	}
+	})
 
 	log := eventlog.NewStore(t.TempDir())
 	hub := sessionhub.NewRegistry(log)
@@ -315,6 +333,15 @@ func TestSupervisor_ValidationRecoveryOnNextUpClearsStreak(t *testing.T) {
 		t.Fatal(err)
 	}
 	writeClaudeRunTask(t, globalDir)
+	writeFile(t, filepath.Join(globalDir, "channels", "claude_channel.toml"), `
+[claude_channel]
+kind = "channel"
+type = "unix_socket"
+path = { from = "inputs.path" }
+body = { json = { from = "event" } }
+[claude_channel.input_schema]
+path = { type = "string", required = true }
+`)
 	writeFile(t, filepath.Join(globalDir, "workflows", "coding.toml"), `
 [coding]
 kind = "workflow"
@@ -324,7 +351,6 @@ uses = "claude"
 [[coding.event.channel]]
 name        = "runtime"
 uses        = "claude_channel"
-inputs.path = { from = "nodes.claude.outputs.socket_path" }
 include     = ["plect.instruction"]
 `)
 	cfg, err := config.Load()
@@ -333,14 +359,12 @@ include     = ["plect.instruction"]
 	}
 
 	stateStore := state.NewStore(t.TempDir())
-	if err := stateStore.Put(&domain.Session{
+	putRevisionSession(t, cfg, stateStore, &domain.Session{
 		Name: "o/r-1", Workflow: "coding", WorkspaceDirPath: t.TempDir(),
 		Nodes: map[string]*contract.TaskState{
 			"claude": {Scope: contract.TaskScopeRun, Status: contract.TaskStatusProduced},
 		},
-	}); err != nil {
-		t.Fatal(err)
-	}
+	})
 
 	log := eventlog.NewStore(t.TempDir())
 	hub := sessionhub.NewRegistry(log)
@@ -362,10 +386,8 @@ include     = ["plect.instruction"]
 		t.Fatalf("channel validation health = %+v, want a failure recorded before the fix", ch)
 	}
 
-	// Run scope goes down (supervisor cancels the dispatcher, matching
-	// TestSupervisor_StartsAndStopsWithRunScope), the workflow gets fixed,
-	// then run scope comes back up: buildDispatcher re-validates on this
-	// fresh up-transition.
+	// Run scope goes down, the corrected declaration is assigned as a new
+	// revision, then the next up-transition re-validates it.
 	if err := stateStore.Update("o/r-1", func(s *domain.Session) error {
 		s.Nodes["claude"].Status = contract.TaskStatusCleaned
 		return nil
@@ -377,21 +399,27 @@ include     = ["plect.instruction"]
 		t.Fatalf("dispatcher not stopped after run scope down: %d active", len(active))
 	}
 
-	writeFile(t, filepath.Join(globalDir, "channels", "claude_channel.toml"), `
-[claude_channel]
-kind = "channel"
-type = "unix_socket"
-path = { from = "inputs.path" }
-body = { json = { from = "event" } }
-
-[claude_channel.input_schema]
-path = { type = "string", required = true }
-`)
+	workflowPath := filepath.Join(globalDir, "workflows", "coding.toml")
+	declaration, err := os.ReadFile(workflowPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	writeFile(t, workflowPath, strings.Replace(string(declaration), "uses        = \"claude_channel\"", "uses        = \"claude_channel\"\ninputs.path = { from = \"nodes.claude.outputs.socket_path\" }", 1))
+	revision, err := cfg.CaptureWorkflowRevision("", "coding")
+	if err != nil {
+		t.Fatal(err)
+	}
+	body, digest, err := revision.CanonicalBody()
+	if err != nil {
+		t.Fatal(err)
+	}
 	if err := stateStore.Update("o/r-1", func(s *domain.Session) error {
 		// Bypassing RunSetup, so clear ExecutionID by hand the way a real
 		// fresh setup attempt would, rather than reusing the released one.
 		s.Nodes["claude"].Status = contract.TaskStatusProduced
 		s.Nodes["claude"].ExecutionID = ""
+		s.Nodes["claude"].Outputs = map[string]any{"socket_path": filepath.Join(t.TempDir(), "socket")}
+		s.WorkflowRevision, s.WorkflowRevisionBody = digest, string(body)
 		return nil
 	}); err != nil {
 		t.Fatal(err)
@@ -453,14 +481,12 @@ include     = ["plect.instruction"]
 
 	stateStore := state.NewStore(t.TempDir())
 	sock, _ := startFakeSocket(t)
-	if err := stateStore.Put(&domain.Session{
+	putRevisionSession(t, cfg, stateStore, &domain.Session{
 		Name: "o/r-1", Workflow: "coding", WorkspaceDirPath: t.TempDir(),
 		Nodes: map[string]*contract.TaskState{
 			"claude": {Scope: contract.TaskScopeRun, Status: contract.TaskStatusProduced, Outputs: map[string]any{"socket_path": sock}},
 		},
-	}); err != nil {
-		t.Fatal(err)
-	}
+	})
 	seededAt := time.Now()
 	if err := stateStore.Update("o/r-1", func(s *domain.Session) error {
 		s.ChannelDeliveryHealth = &contract.ChannelHealth{ConsecutiveFailures: 2, FirstFailureAt: seededAt, LastFailureAt: seededAt, LastChannel: "runtime"}
@@ -539,18 +565,17 @@ include     = ["plect.instruction"]
 	// its current value, so reassigning it simulates config.Live swapping in
 	// a freshly-resolved Config on its next periodic refresh.
 	currentCfg := &config.Config{}
+	mountedCfg := &config.Config{PluginDirs: []string{pluginDir}}
 
 	dir := t.TempDir()
 	stateStore := state.NewStore(dir)
 	sock, recv := startFakeSocket(t)
-	if err := stateStore.Put(&domain.Session{
+	putRevisionSession(t, mountedCfg, stateStore, &domain.Session{
 		Name: "o/r-1", Workflow: "coding", WorkspaceDirPath: t.TempDir(),
 		Nodes: map[string]*contract.TaskState{
 			"claude": {Scope: contract.TaskScopeRun, Status: contract.TaskStatusProduced, Outputs: map[string]any{"socket_path": sock}},
 		},
-	}); err != nil {
-		t.Fatal(err)
-	}
+	})
 
 	log := eventlog.NewStore(dir)
 	hub := sessionhub.NewRegistry(log, sessionhub.WithPollInterval(2*time.Millisecond))
@@ -569,7 +594,7 @@ include     = ["plect.instruction"]
 
 	// The plugin mounts (config refresh happens) before this session's
 	// dispatcher is built.
-	currentCfg = &config.Config{PluginDirs: []string{pluginDir}}
+	currentCfg = mountedCfg
 
 	sup.reconcile(ctx, active, skip, &wg)
 	if _, ok := active["o/r-1"]; !ok {

@@ -163,11 +163,16 @@ func TestUp_IgnoresQueuedSessionsThatCannotWake(t *testing.T) {
 				[]nodeFixture{{id: "runtime"}})
 			writeCapWorkflow(t, cfg.BaseDir, "parent_wf", intPtr(1))
 			seedSessionWithNodes(t, store, "parent", "acct", 1, "parent_wf", nil)
-			brokenWorkflow := "child_wf"
+			seedSessionWithNodes(t, store, "broken", "acct", 2, "child_wf", nil)
 			if tc.name == "suspended" {
-				brokenWorkflow = "missing_wf"
+				if err := store.Update("broken", func(s *domain.Session) error {
+					s.Workflow = "missing_wf"
+					s.WorkflowRevision, s.WorkflowRevisionBody = "", ""
+					return nil
+				}); err != nil {
+					t.Fatal(err)
+				}
 			}
-			seedSessionWithNodes(t, store, "broken", "acct", 2, brokenWorkflow, nil)
 			seedSessionWithNodes(t, store, "ok", "acct", 3, "child_wf", nil)
 			setParent(t, store, "broken", "parent")
 			setParent(t, store, "ok", "parent")

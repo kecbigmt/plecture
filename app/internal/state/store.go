@@ -10,6 +10,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"log/slog"
 	"time"
 
 	"github.com/kecbigmt/plecture/app/internal/datahome"
@@ -77,6 +78,30 @@ func (s *Store) CheckReadable() error {
 	}
 	_, err = db.AllSessions(context.Background())
 	return err
+}
+
+func (s *Store) NeedsWorkflowRevisionBackfill() (bool, error) {
+	db, err := s.dbHandle()
+	if err != nil {
+		return false, err
+	}
+	return db.NeedsWorkflowRevisionBackfill(context.Background())
+}
+
+func (s *Store) CompleteWorkflowRevisionBackfill() error {
+	db, err := s.dbHandle()
+	if err != nil {
+		return err
+	}
+	return db.CompleteWorkflowRevisionBackfill(context.Background())
+}
+
+func (s *Store) PruneWorkflowRevisions() error {
+	db, err := s.dbHandle()
+	if err != nil {
+		return err
+	}
+	return db.PruneWorkflowRevisions(context.Background())
 }
 
 // Get returns a session by name, or nil if not found or unreadable.
@@ -219,6 +244,9 @@ func (s *Store) Destroy(name string) error {
 	}
 	if err := db.DestroySession(context.Background(), name, time.Now()); err != nil {
 		return fmt.Errorf("state: destroy %q: %w", name, err)
+	}
+	if err := db.PruneWorkflowRevisions(context.Background()); err != nil {
+		slog.Warn("workflow revision prune failed after session destroy", "session", name, "error", err)
 	}
 	return nil
 }

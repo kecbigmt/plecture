@@ -28,6 +28,7 @@ type StatusIdentity struct {
 	Title         string                         `json:"title,omitempty"`
 	Branch        string                         `json:"branch,omitempty"`
 	Workflow      string                         `json:"workflow,omitempty"`
+	Revision      string                         `json:"revision,omitempty"`
 	Population    *contract.PopulationProvenance `json:"population,omitempty"`
 	Tag           string                         `json:"tag,omitempty"`
 	ParentSession string                         `json:"parent_session,omitempty"`
@@ -213,6 +214,14 @@ func Status(cfg *config.Config, store *state.Store, identifier string) (*StatusR
 	if err != nil {
 		return nil, err
 	}
+	declarations := taskDeclarations{}
+	if session.WorkflowRevision != "" {
+		docs, effects, err := cfg.TaskDeclarationsForSession(session)
+		if err != nil {
+			return nil, err
+		}
+		declarations = taskDeclarations{docs: docs, effects: effects}
+	}
 
 	return &StatusResult{
 		Identity: StatusIdentity{
@@ -221,6 +230,7 @@ func Status(cfg *config.Config, store *state.Store, identifier string) (*StatusR
 			Title:         displayTitle,
 			Branch:        domain.SessionBranch(session),
 			Workflow:      session.Workflow,
+			Revision:      shortWorkflowRevision(session.WorkflowRevision),
 			Population:    session.Population,
 			Tag:           sessionTag(sessionName),
 			ParentSession: session.ParentSession,
@@ -244,7 +254,7 @@ func Status(cfg *config.Config, store *state.Store, identifier string) (*StatusR
 			Message:            LatestStatusMessage(store, sessionName),
 			AttachCommand:      attachCommandFor(cfg, session),
 		},
-		Work:     statusTaskViews(cfg, loadDisplayTasks(cfg), session, sessions, actionsByInstance, chainsByInstance),
+		Work:     statusTaskViews(cfg, declarations, session, sessions, actionsByInstance, chainsByInstance),
 		Flow:     StatusFlow{Events: events},
 		Warnings: warnings,
 	}, nil
@@ -285,7 +295,7 @@ func attachCommandFor(cfg *config.Config, session *domain.Session) string {
 // alongside it.
 func sessionDisplayTitle(cfg *config.Config, session *domain.Session) string {
 	var cached cachedInfo
-	applyDisplay(loadDisplayWorkflows(cfg), session, &cached)
+	applyDisplay(session, &cached)
 	return cached.Title
 }
 
@@ -428,6 +438,7 @@ type StatusSummaryIdentity struct {
 	SessionName   string                         `json:"session_name"`
 	ResourceID    string                         `json:"resource_id,omitempty"`
 	Workflow      string                         `json:"workflow,omitempty"`
+	Revision      string                         `json:"revision,omitempty"`
 	Population    *contract.PopulationProvenance `json:"population,omitempty"`
 	Tag           string                         `json:"tag,omitempty"`
 	ParentSession string                         `json:"parent_session,omitempty"`
@@ -485,6 +496,7 @@ func Summarize(result *StatusResult) *StatusSummary {
 			SessionName:   result.Identity.SessionName,
 			ResourceID:    result.Identity.ResourceID,
 			Workflow:      result.Identity.Workflow,
+			Revision:      result.Identity.Revision,
 			Population:    result.Identity.Population,
 			Tag:           result.Identity.Tag,
 			ParentSession: result.Identity.ParentSession,

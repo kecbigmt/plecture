@@ -256,23 +256,6 @@ func taskViews(cfg *config.Config, declarations taskDeclarations, session *domai
 	return out
 }
 
-// loadDisplayTasks loads the trusted-layer task declarations once for
-// done_when display across sessions. Declarations are trusted-layer-only (the
-// workdir layer cannot contribute shell), so the workdir-independent load is
-// sufficient — mirroring loadDisplayWorkflows. A load failure leaves display
-// without predicates rather than failing a listing: nothing here decides
-// anything.
-func loadDisplayTasks(cfg *config.Config) taskDeclarations {
-	if cfg == nil {
-		return taskDeclarations{}
-	}
-	docs, effects, err := cfg.LoadTaskDeclarations("")
-	if err != nil {
-		return taskDeclarations{}
-	}
-	return taskDeclarations{docs: docs, effects: effects}
-}
-
 // lookupTombstone resolves identifier to a session name the same way
 // resolveSession does (but without requiring a live state entry — the state
 // entry is exactly what's gone by the time a tombstone matters) and reads
@@ -303,6 +286,7 @@ func childNames(sessions map[string]*domain.Session, name string) []string {
 // ListEntry represents a single entry in the session list.
 type ListEntry struct {
 	SessionName      string             `json:"session_name"`
+	Revision         string             `json:"revision,omitempty"`
 	Title            string             `json:"title,omitempty"`
 	Run              domain.RunState    `json:"run"`
 	Sleep            string             `json:"sleep,omitempty"`
@@ -330,12 +314,17 @@ func List(cfg *config.Config, store *state.Store) ([]ListEntry, error) {
 	if err != nil {
 		return nil, err
 	}
-	displayWorkflows := loadDisplayWorkflows(cfg)
-	displayTasks := loadDisplayTasks(cfg)
-
 	entries := make([]ListEntry, 0, len(sessions))
 	for _, s := range sessions {
-		entry, err := buildListEntry(cfg, store, displayWorkflows, displayTasks, s, sessions)
+		declarations := taskDeclarations{}
+		if s.WorkflowRevision != "" {
+			docs, effects, err := cfg.TaskDeclarationsForSession(s)
+			if err != nil {
+				return nil, err
+			}
+			declarations = taskDeclarations{docs: docs, effects: effects}
+		}
+		entry, err := buildListEntry(cfg, store, declarations, s, sessions)
 		if err != nil {
 			return nil, err
 		}
@@ -351,9 +340,9 @@ func List(cfg *config.Config, store *state.Store) ([]ListEntry, error) {
 	return entries, nil
 }
 
-func buildListEntry(cfg *config.Config, store *state.Store, displayWorkflows map[string]config.WorkflowFile, displayTasks taskDeclarations, s *domain.Session, sessions map[string]*domain.Session) (ListEntry, error) {
+func buildListEntry(cfg *config.Config, store *state.Store, displayTasks taskDeclarations, s *domain.Session, sessions map[string]*domain.Session) (ListEntry, error) {
 	var cached cachedInfo
-	applyDisplay(displayWorkflows, s, &cached)
+	applyDisplay(s, &cached)
 
 	run := sessionRunState(cfg, s)
 	sleep, position, err := sleepVisibility(cfg, store, s)
@@ -369,6 +358,7 @@ func buildListEntry(cfg *config.Config, store *state.Store, displayWorkflows map
 	}
 	entry := ListEntry{
 		SessionName:      s.Name,
+		Revision:         shortWorkflowRevision(s.WorkflowRevision),
 		Title:            cached.Title,
 		Run:              run,
 		Sleep:            sleep,
@@ -387,6 +377,13 @@ func buildListEntry(cfg *config.Config, store *state.Store, displayWorkflows map
 	}
 
 	return entry, nil
+}
+
+func shortWorkflowRevision(digest string) string {
+	if len(digest) < 8 {
+		return digest
+	}
+	return digest[:8]
 }
 
 // sessionRunState reports the "run" fact: whether a current-plan run-scoped
@@ -478,32 +475,21 @@ func WorkspaceDir(cfg *config.Config, store *state.Store, identifier string) (st
 	return "", &Error{Code: ErrSessionNotFound, Message: fmt.Sprintf("no state entry for session %q", identifier)}
 }
 
-// loadDisplayWorkflows loads the trusted base layers once for [display]
-// lookup across sessions. Display is a trusted-layer-only field, so the
-// per-session ancestor overlays can't change it; one load serves the whole
-// listing.
-func loadDisplayWorkflows(cfg *config.Config) map[string]config.WorkflowFile {
-	if cfg == nil {
-		return nil
-	}
-	workflows, err := cfg.LoadWorkflows("")
-	if err != nil {
-		return nil
-	}
-	return workflows
-}
-
 // applyDisplay resolves the workflow's [display] values into cached when they
 // produce a non-empty result. Evaluation is state-only (the workflow's own
 // persisted outputs and the session's inputs) — no network. A value that does
 // not resolve leaves the field at what it already shows: a listing reporting
 // a blank title would read as a session that has none.
-func applyDisplay(workflows map[string]config.WorkflowFile, s *domain.Session, cached *cachedInfo) {
+func applyDisplay(s *domain.Session, cached *cachedInfo) {
 	if s.Workflow == "" {
 		return
 	}
-	wf, ok := workflows[s.Workflow]
-	if !ok || len(wf.Display) == 0 {
+	stored, ok, err := config.RevisionForSession(s)
+	if err != nil || !ok {
+		return
+	}
+	wf := stored.Workflow
+	if len(wf.Display) == 0 {
 		return
 	}
 	outputs := workflowDisplayOutputs(s)

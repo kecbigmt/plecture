@@ -3,14 +3,67 @@ package webui
 import (
 	"context"
 	"database/sql"
+	"fmt"
 	"net/http"
+	"os"
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 
+	"github.com/kecbigmt/plecture/app/internal/domain"
+	"github.com/kecbigmt/plecture/app/internal/lang"
 	"github.com/kecbigmt/plecture/app/internal/persistence"
 	"github.com/kecbigmt/plecture/app/internal/state"
+	contract "github.com/kecbigmt/plecture/contracts/state"
 )
+
+func TestNewLiveServiceBackfillsExistingSessionRevision(t *testing.T) {
+	dataHome := t.TempDir()
+	configHome := t.TempDir()
+	t.Setenv("XDG_DATA_HOME", dataHome)
+	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
+	t.Setenv("PLECT_CONFIG_HOME", configHome)
+	if err := os.WriteFile(filepath.Join(configHome, "config.toml"), []byte(fmt.Sprintf("schema_version = %d\n", lang.KnownSchemaVersion)), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Mkdir(filepath.Join(configHome, "workflows"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(configHome, "workflows", "work.toml"), []byte("[work]\nkind = \"workflow\"\n[[work.nodes]]\nuses = \"runtime\"\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Mkdir(filepath.Join(configHome, "tasks"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(configHome, "tasks", "runtime.toml"), []byte("[runtime]\nkind = \"effect\"\nscope = \"run\"\n[runtime.setup]\ntype = \"shell\"\nscript = \"echo '{}'\"\n[runtime.health.alive]\ntype = \"noop\"\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	store := state.NewStore("")
+	now := time.Now()
+	if err := store.Put(&domain.Session{Name: "existing", Workflow: "work", Status: contract.SessionStatusDown, CreatedAt: now, UpdatedAt: now}); err != nil {
+		t.Fatal(err)
+	}
+	db, err := persistence.EnsureCurrent(context.Background(), persistence.PathIn(store.Dir()))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := db.WithImmediateTx(context.Background(), func(tx *sql.Tx) error {
+		_, err := tx.Exec(`UPDATE workflow_revision_migration SET completed = 0 WHERE id = 1`)
+		return err
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if err := db.Close(); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := NewLiveService(); err != nil {
+		t.Fatal(err)
+	}
+	if got := store.Get("existing"); got == nil || got.WorkflowRevision == "" {
+		t.Fatalf("session revision after web startup = %+v", got)
+	}
+}
 
 // plect-web has no cobra parent chain of its own, unlike the `plect` CLI.
 func TestNewLiveService_RefusesADatabaseNewerThanSupported(t *testing.T) {

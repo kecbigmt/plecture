@@ -60,9 +60,7 @@ include     = ["plect.instruction"]
 			"runtime": {Scope: contract.TaskScopeRun, Status: contract.TaskStatusProduced, Outputs: map[string]any{"socket_path": dead}},
 		},
 	}
-	if err := stateStore.Put(s); err != nil {
-		t.Fatal(err)
-	}
+	putRevisionSession(t, cfg, stateStore, s)
 	var asked []string
 	hub := sessionhub.NewRegistry(log)
 	defer hub.Close()

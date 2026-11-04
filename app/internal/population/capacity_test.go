@@ -142,6 +142,20 @@ type = "object"
 
 	base := time.Date(2026, 9, 5, 0, 0, 0, 0, time.UTC)
 	addCapacityMember(t, def, store, logStore, "idle+agent", "urn:case:idle", base, base.Add(time.Minute))
+	revision, err := cfg.CaptureWorkflowRevision("", def.Workflow.Address)
+	if err != nil {
+		t.Fatal(err)
+	}
+	body, digest, err := revision.CanonicalBody()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := store.Update("idle+agent", func(s *contract.Session) error {
+		s.WorkflowRevision, s.WorkflowRevisionBody = digest, string(body)
+		return nil
+	}); err != nil {
+		t.Fatal(err)
+	}
 
 	if err := store.UpdatePopulation(populationKey(def), func(population *state.PopulationState) error {
 		population.Members["urn:case:new"] = &state.PopulationMember{ResourceID: "urn:case:new", PendingUp: true}

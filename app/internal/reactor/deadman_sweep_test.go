@@ -59,6 +59,7 @@ on = ["resource.*"]
 			Nodes: map[string]*contract.TaskState{"claude": {Scope: contract.TaskScopeRun, Status: contract.TaskStatusCleaned}},
 		},
 	} {
+		pinRevision(t, cfg, s)
 		if err := st.Put(s); err != nil {
 			t.Fatal(err)
 		}
@@ -110,10 +111,12 @@ heartbeat = "1h"
 `)
 	cfg := &config.Config{PluginDirs: []string{pluginDir}}
 	st := state.NewStore(t.TempDir())
-	if err := st.Put(&domain.Session{
+	session := &domain.Session{
 		Name: "o/r-1", Workflow: "goal",
 		Nodes: map[string]*contract.TaskState{"claude": {Scope: contract.TaskScopeRun, Status: contract.TaskStatusProduced}},
-	}); err != nil {
+	}
+	pinRevision(t, cfg, session)
+	if err := st.Put(session); err != nil {
 		t.Fatal(err)
 	}
 

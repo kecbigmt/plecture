@@ -17,7 +17,16 @@ func buildPlanForSession(cfg *config.Config, workdirDir string, session *domain.
 	if session == nil || session.Workflow == "" {
 		return nil, fmt.Errorf("session has no frozen workflow; destroy and recreate it with --workflow")
 	}
-	return buildWorkflowPlan(cfg, workdirDir, session.Workflow)
+	if r, ok, err := config.RevisionForSession(session); ok || err != nil {
+		if err != nil {
+			return nil, err
+		}
+		if r.WorkspaceCapturePending {
+			return nil, fmt.Errorf("session %q has pending workspace capture; retry create or destroy it", session.Name)
+		}
+		return task.CompileWorkflow(r.Workflow, r.Effects)
+	}
+	return nil, fmt.Errorf("session %q has no stored workflow revision", session.Name)
 }
 
 // buildWorkflowPlan loads `.plect/workflows/<name>.toml` (+ referenced task

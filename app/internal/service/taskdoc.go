@@ -23,7 +23,7 @@ import (
 // completion key no longer resolves is reported once, as a load error, rather
 // than evaluating against a contract nothing checked.
 func loadTaskDeclarations(cfg *config.Config, session *domain.Session) (map[string]config.TaskDocument, map[string]config.TaskDefinition, error) {
-	docs, effects, err := cfg.LoadTaskDeclarations(session.WorkspaceDirPath)
+	docs, effects, err := cfg.TaskDeclarationsForSession(session)
 	if err != nil {
 		return nil, nil, &Error{Code: ErrExecutionFailed, Message: fmt.Sprintf("load task declarations: %v", err)}
 	}
@@ -37,6 +37,9 @@ func loadTaskDeclarations(cfg *config.Config, session *domain.Session) (map[stri
 }
 
 func validateTaskDocuments(cfg *config.Config, session *domain.Session, docs map[string]config.TaskDocument) error {
+	if session.WorkflowRevision != "" {
+		return nil
+	}
 	observers, err := cfg.LoadResourceDefs()
 	if err != nil {
 		return &Error{Code: ErrExecutionFailed, Message: fmt.Sprintf("load resource observers: %v", err)}

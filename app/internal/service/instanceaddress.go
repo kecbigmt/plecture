@@ -18,8 +18,8 @@ func nodeAddresses(cfg *config.Config, session *domain.Session) map[string]strin
 	if session == nil {
 		return nil
 	}
-	wf := sessionWorkflowConfig(cfg, session.Workflow, session.WorkspaceDirPath)
-	if wf == nil {
+	wf, err := cfg.ResolveSessionWorkflow(session)
+	if err != nil || wf == nil {
 		return nil
 	}
 	out := make(map[string]string, len(wf.Nodes))

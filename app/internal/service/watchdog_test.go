@@ -222,7 +222,7 @@ func TestRunAliveForHealth_TimedOutProbeIsUnevaluable(t *testing.T) {
 	}
 }
 
-func TestHealthcheckSession_UnevaluableRepairProbeEscalatesOnThirdCycleAndResets(t *testing.T) {
+func TestHealthcheckSession_UnevaluableRepairProbeEscalatesOnThirdCycleAndIgnoresEdit(t *testing.T) {
 	store := testStore(t)
 	cfg := aliveFixtureConfig(t, "true")
 	workflowPath := filepath.Join(cfg.BaseDir, "workflows", "default.toml")
@@ -294,8 +294,8 @@ missing = { from = "self.outputs.nope" }
 		t.Fatal(err)
 	}
 	got := store.Get("owner/repo-1").Health
-	if got.UnevaluableCycles != 0 {
-		t.Fatalf("health after evaluable cycle = %+v; want undecidable state cleared", got)
+	if got.UnevaluableCycles != 4 {
+		t.Fatalf("health after editing the probe = %+v; want the stored probe to remain in use", got)
 	}
 }
 
@@ -458,9 +458,16 @@ func TestEvaluateHealth_FailedSessionScopedNodeDoesNotAffectRunScopedHealthRepor
 func TestEvaluateHealth_UnresolvableWorkflowReturnsError(t *testing.T) {
 	store := testStore(t)
 	cfg := currentPlanConfig(t, "true", "true") // only declares workflow "default"
-	seedSessionWithNodes(t, store, "owner/repo-1", "owner/repo", 1, "ghost-workflow", map[string]*contract.TaskState{
+	seedSessionWithNodes(t, store, "owner/repo-1", "owner/repo", 1, "default", map[string]*contract.TaskState{
 		"pane": {Scope: contract.TaskScopeRun, TaskID: "pane", Status: contract.TaskStatusProduced},
 	})
+	if err := store.Update("owner/repo-1", func(s *domain.Session) error {
+		s.Workflow = "ghost-workflow"
+		s.WorkflowRevision, s.WorkflowRevisionBody = "", ""
+		return nil
+	}); err != nil {
+		t.Fatal(err)
+	}
 
 	if _, err := EvaluateHealth(cfg, store, "owner/repo-1"); err == nil {
 		t.Fatal("expected a plan-resolution error for a session whose workflow no longer resolves")
@@ -1666,6 +1673,7 @@ uses = "official.acme.runner"
 		PluginDirs: []string{pluginDir},
 		Plugins:    []plugins.Mounted{{ID: "official/acme", Dir: pluginDir}},
 	}
+	registerFixture(t, cfg)
 	// TaskID omitted, as it is for every node whose id equals the referenced
 	// definition's id.
 	seedSessionWithNodes(t, store, "owner/repo-1", "owner/repo", 1, "default", map[string]*contract.TaskState{

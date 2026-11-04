@@ -9,13 +9,50 @@ import (
 	"slices"
 	"sort"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
 	"github.com/kecbigmt/plecture/app/internal/config"
+	"github.com/kecbigmt/plecture/app/internal/domain"
 	"github.com/kecbigmt/plecture/app/internal/lang"
 	contract "github.com/kecbigmt/plecture/contracts/state"
 )
+
+var workflowFixtures sync.Map
+
+func registerFixture(t *testing.T, cfg *config.Config) *config.Config {
+	workflowFixtures.Store(t.Name(), cfg)
+	t.Cleanup(func() { workflowFixtures.Delete(t.Name()) })
+	return cfg
+}
+
+func fixtureConfig(t *testing.T) *config.Config {
+	for name := t.Name(); name != ""; {
+		if value, ok := workflowFixtures.Load(name); ok {
+			return value.(*config.Config)
+		}
+		cut := strings.LastIndexByte(name, '/')
+		if cut < 0 {
+			break
+		}
+		name = name[:cut]
+	}
+	return nil
+}
+
+func pinSessionRevision(t *testing.T, cfg *config.Config, session *domain.Session) {
+	t.Helper()
+	revision, err := cfg.CaptureWorkflowRevision(session.WorkspaceDirPath, session.Workflow)
+	if err != nil {
+		t.Fatal(err)
+	}
+	body, digest, err := revision.CanonicalBody()
+	if err != nil {
+		t.Fatal(err)
+	}
+	session.WorkflowRevision, session.WorkflowRevisionBody = digest, string(body)
+}
 
 // taskFixture is a terse spec for one task definition. Scope defaults to
 // "run". Empty fields are omitted from the generated TOML. extra is raw TOML
@@ -186,10 +223,11 @@ func writeWorkflowFixture(t *testing.T, workdirsRoot, wfID string, defs []taskFi
 	if err := os.WriteFile(filepath.Join(workflowsDir, wfID+".toml"), []byte(w.String()), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	return &config.Config{
+	cfg := &config.Config{
 		WorkspaceDirsRoot: workdirsRoot,
 		BaseDir:           baseDir,
 	}
+	return registerFixture(t, cfg)
 }
 
 // legacyProjection matches the projections a fixture script writes inline.

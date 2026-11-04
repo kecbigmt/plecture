@@ -273,11 +273,17 @@ func resolveSessionInputs(cfg *config.Config, workspaceDirPath, workflowName str
 // for partial-create recovery. Errors building the plan map to false so
 // the caller proceeds and surfaces the error through its own path.
 func hasIncompleteSessionTask(cfg *config.Config, session *domain.Session) bool {
+	if session.Workflow != "" && session.WorkflowRevision == "" {
+		return true
+	}
+	if revision, ok, err := config.RevisionForSession(session); err == nil && ok && revision.WorkspaceCapturePending {
+		return true
+	}
 	// A workspace-provider-backed workflow needs its pseudo-node produced
 	// too — a failed/absent setup is exactly the partial-create state to
 	// recover.
-	if workflows, err := cfg.LoadWorkflows(session.WorkspaceDirPath); err == nil {
-		if wf, ok := workflows[session.Workflow]; ok && wf.WorkspaceProvider != "" {
+	if wf, err := cfg.ResolveSessionWorkflow(session); err == nil {
+		if wf != nil && wf.WorkspaceProvider != "" {
 			st, ok := session.Nodes[contract.WorkflowPseudoNodeID]
 			if !ok || st == nil || st.Status != contract.TaskStatusProduced {
 				return true
@@ -304,15 +310,10 @@ func loadSessionWorkflow(cfg *config.Config, workspaceDirPath string, session *d
 	if session == nil || session.Workflow == "" {
 		return config.WorkflowFile{}, nil
 	}
-	workflows, err := cfg.LoadWorkflows(workspaceDirPath)
-	if err != nil {
-		return config.WorkflowFile{}, fmt.Errorf("load workflows: %w", err)
+	if r, ok, err := config.RevisionForSession(session); ok || err != nil {
+		return r.Workflow, err
 	}
-	wf, ok := workflows[session.Workflow]
-	if !ok {
-		return config.WorkflowFile{}, fmt.Errorf("workflow %q not found", session.Workflow)
-	}
-	return wf, nil
+	return config.WorkflowFile{}, fmt.Errorf("session %q has no stored workflow revision", session.Name)
 }
 
 // resolveWorkspaceProviderInputs validates the workflow's

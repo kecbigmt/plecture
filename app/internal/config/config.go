@@ -1,6 +1,7 @@
 package config
 
 import (
+	"encoding/json"
 	"fmt"
 	"log/slog"
 	"os"
@@ -20,6 +21,18 @@ import (
 // users can write strings like "7d" / "30m" in config.toml.
 type Duration struct {
 	time.Duration
+}
+
+func (d Duration) MarshalJSON() ([]byte, error) {
+	return json.Marshal(d.Duration.String())
+}
+
+func (d *Duration) UnmarshalJSON(data []byte) error {
+	var value string
+	if err := json.Unmarshal(data, &value); err != nil {
+		return err
+	}
+	return d.UnmarshalText([]byte(value))
 }
 
 // UnmarshalText parses a duration string. Accepts standard Go durations plus

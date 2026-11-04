@@ -74,6 +74,17 @@ echo '{"workspace_dir":"%s","branch":"issue/5","title":"T"}'
 	if got, _ := probe.Outputs["cwd"].(string); got != workdir {
 		t.Errorf("task cwd = %q, want workdir %q", got, workdir)
 	}
+	if len(s.WorkflowRevision) != 64 {
+		t.Fatalf("revision digest = %q, want SHA-256 hex", s.WorkflowRevision)
+	}
+	entries, err := List(cfg, store)
+	if err != nil || len(entries) != 1 || entries[0].Revision != s.WorkflowRevision[:8] {
+		t.Fatalf("list revision = %+v, err %v", entries, err)
+	}
+	status, err := Status(cfg, store, s.Name)
+	if err != nil || status.Identity.Revision != s.WorkflowRevision[:8] {
+		t.Fatalf("status revision = %+v, err %v", status, err)
+	}
 }
 
 func TestCreate_RecordsParentSession(t *testing.T) {
@@ -542,6 +553,12 @@ workspace_dir = { type = "string" }
 	url := "https://github.com/org/repo/issues/7"
 	if _, err := Create(cfg, store, CreateParams{URL: url}); err != nil {
 		t.Fatalf("Create: %v", err)
+	}
+	if err := os.Remove(filepath.Join(cfg.BaseDir, "workflows", "wf.toml")); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Remove(filepath.Join(cfg.BaseDir, "workspaces", "wf_provider.toml")); err != nil {
+		t.Fatal(err)
 	}
 
 	result, err := Destroy(cfg, store, DestroyParams{Identifier: "org/repo-7+wf"})

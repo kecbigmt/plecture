@@ -3,14 +3,14 @@
 -- name: InsertSession :exec
 INSERT INTO sessions (
     id, name, status, sleep_since, destroyed_at, parent_session_id, root_session_id,
-    resource_id, alias, workflow, workspace_dir,
+    resource_id, alias, workflow, workflow_revision, workspace_dir,
     population_workflow, population_name, inputs_json,
     health_last_checked_at, health_last_activity_at, health_last_fingerprint,
     health_last_state, health_last_reason, health_last_notified_at, health_notify_count,
     health_unevaluable_cycles,
     tick_consecutive_unchanged, tick_last_fingerprint, last_tick_at,
     created_at, updated_at
-) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);
+) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);
 
 -- name: UpdateSessionByID :exec
 UPDATE sessions SET
@@ -23,6 +23,7 @@ UPDATE sessions SET
     resource_id = ?,
     alias = ?,
     workflow = ?,
+    workflow_revision = ?,
     workspace_dir = ?,
     population_workflow = ?,
     population_name = ?,
@@ -43,7 +44,7 @@ WHERE id = ?;
 
 -- name: GetLiveSession :one
 SELECT id, name, status, sleep_since, destroyed_at, parent_session_id, root_session_id,
-       resource_id, alias, workflow, workspace_dir,
+       resource_id, alias, workflow, workflow_revision, workspace_dir,
        population_workflow, population_name, inputs_json,
        health_last_checked_at, health_last_activity_at, health_last_fingerprint,
        health_last_state, health_last_reason, health_last_notified_at, health_notify_count,
@@ -54,7 +55,7 @@ FROM sessions WHERE name = ? AND status <> 'destroyed';
 
 -- name: GetLatestDestroyedSession :one
 SELECT id, name, status, sleep_since, destroyed_at, parent_session_id, root_session_id,
-       resource_id, alias, workflow, workspace_dir,
+       resource_id, alias, workflow, workflow_revision, workspace_dir,
        population_workflow, population_name, inputs_json,
        health_last_checked_at, health_last_activity_at, health_last_fingerprint,
        health_last_state, health_last_reason, health_last_notified_at, health_notify_count,
@@ -68,7 +69,7 @@ LIMIT 1;
 
 -- name: ListLiveSessions :many
 SELECT id, name, status, sleep_since, destroyed_at, parent_session_id, root_session_id,
-       resource_id, alias, workflow, workspace_dir,
+       resource_id, alias, workflow, workflow_revision, workspace_dir,
        population_workflow, population_name, inputs_json,
        health_last_checked_at, health_last_activity_at, health_last_fingerprint,
        health_last_state, health_last_reason, health_last_notified_at, health_notify_count,
@@ -79,7 +80,7 @@ FROM sessions WHERE status <> 'destroyed' ORDER BY name;
 
 -- name: ListLiveSessionsByAlias :many
 SELECT id, name, status, sleep_since, destroyed_at, parent_session_id, root_session_id,
-       resource_id, alias, workflow, workspace_dir,
+       resource_id, alias, workflow, workflow_revision, workspace_dir,
        population_workflow, population_name, inputs_json,
        health_last_checked_at, health_last_activity_at, health_last_fingerprint,
        health_last_state, health_last_reason, health_last_notified_at, health_notify_count,

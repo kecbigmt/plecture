@@ -5,9 +5,11 @@ import (
 	"os"
 
 	"github.com/kecbigmt/plecture/app/internal/cachehome"
+	"github.com/kecbigmt/plecture/app/internal/config"
 	"github.com/kecbigmt/plecture/app/internal/confighome"
 	"github.com/kecbigmt/plecture/app/internal/datahome"
 	"github.com/kecbigmt/plecture/app/internal/persistence"
+	"github.com/kecbigmt/plecture/app/internal/service"
 	"github.com/kecbigmt/plecture/app/internal/state"
 	"github.com/spf13/cobra"
 )
@@ -77,7 +79,8 @@ identifier no resolver matches selects a workflow explicitly (see
 			// silent migration landing ahead of that backup.
 			return nil
 		}
-		if err := state.NewStore("").CheckReadable(); err != nil {
+		store := state.NewStore("")
+		if err := store.CheckReadable(); err != nil {
 			return err
 		}
 		// Keeps storage.db's own schema current independently of the
@@ -86,7 +89,23 @@ identifier no resolver matches selects a workflow explicitly (see
 		if err != nil {
 			return err
 		}
-		return db.Close()
+		if err := db.Close(); err != nil {
+			return err
+		}
+		pending, err := store.NeedsWorkflowRevisionBackfill()
+		if err != nil {
+			return err
+		}
+		if pending {
+			cfg, err := config.Load()
+			if err != nil {
+				return fmt.Errorf("load configuration for workflow revision migration: %w", err)
+			}
+			if err := service.BackfillWorkflowRevisions(cfg, store); err != nil {
+				return err
+			}
+		}
+		return nil
 	},
 }
 

@@ -89,7 +89,7 @@ func TaskCleanup(cfg *config.Config, store *state.Store, params TaskCleanupParam
 	// only the script plus the persisted inputs/outputs/resource.
 	taskID := instanceDefinitionAddress(params.Instance, st, true, nodeAddresses(cfg, session))
 	r := task.Resolved{NodeID: params.Instance, TaskID: taskID, Scope: st.Scope}
-	defs, defErr := cfg.LoadTaskDefinitions(session.WorkspaceDirPath)
+	defs, defErr := cfg.TaskDefinitionsForSession(session)
 	if defErr != nil {
 		return nil, &Error{Code: ErrExecutionFailed, Message: fmt.Sprintf("load task definitions: %v", defErr)}
 	}

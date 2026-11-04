@@ -28,6 +28,15 @@ func NewLiveService() (*LiveService, error) {
 	if err != nil {
 		return nil, err
 	}
+	pending, err := store.NeedsWorkflowRevisionBackfill()
+	if err != nil {
+		return nil, err
+	}
+	if pending {
+		if err := service.BackfillWorkflowRevisions(cfg, store); err != nil {
+			return nil, err
+		}
+	}
 	return newLiveService(cfg, store), nil
 }
 

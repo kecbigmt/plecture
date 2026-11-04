@@ -241,6 +241,8 @@ func (db *DB) DestroySession(ctx context.Context, name string, destroyedAt time.
 	if err := db.UpdateSession(ctx, name, func(s *domain.Session) error {
 		s.Status = contract.SessionStatusDestroyed
 		s.DestroyedAt = destroyedAt
+		s.WorkflowRevision = ""
+		s.WorkflowRevisionBody = ""
 		return nil
 	}); err != nil {
 		return fmt.Errorf("destroy session %q: %w", name, err)
@@ -288,6 +290,9 @@ func (db *DB) PurgeSessionByName(ctx context.Context, name string) error {
 
 func (db *DB) writeSessionTx(ctx context.Context, tx *sql.Tx, s *domain.Session) error {
 	q := sqlcgen.New(tx)
+	if err := writeWorkflowRevisionTx(ctx, tx, s); err != nil {
+		return err
+	}
 
 	existingID, err := q.SessionIDByLiveName(ctx, s.Name)
 	switch {
@@ -356,6 +361,7 @@ func (db *DB) writeSessionTx(ctx context.Context, tx *sql.Tx, s *domain.Session)
 		ResourceID:               nullString(s.ResourceID),
 		Alias:                    nullString(s.Alias),
 		Workflow:                 s.Workflow,
+		WorkflowRevision:         nullString(s.WorkflowRevision),
 		WorkspaceDir:             nullString(s.WorkspaceDirPath),
 		PopulationWorkflow:       populationWorkflow,
 		PopulationName:           populationName,
@@ -397,6 +403,7 @@ func insertSessionParams(id, status string, parentCol, rootCol, populationWorkfl
 		ResourceID:               nullString(s.ResourceID),
 		Alias:                    nullString(s.Alias),
 		Workflow:                 s.Workflow,
+		WorkflowRevision:         nullString(s.WorkflowRevision),
 		WorkspaceDir:             nullString(s.WorkspaceDirPath),
 		PopulationWorkflow:       populationWorkflow,
 		PopulationName:           populationName,
@@ -606,6 +613,7 @@ func sessionFromRow(row sqlcgen.Session) (*domain.Session, error) {
 		RootSessionID:    row.RootSessionID.String,
 		Alias:            row.Alias.String,
 		Workflow:         row.Workflow,
+		WorkflowRevision: row.WorkflowRevision.String,
 		WorkspaceDirPath: row.WorkspaceDir.String,
 	}
 	if row.PopulationWorkflow.Valid && row.PopulationName.Valid {
@@ -699,6 +707,9 @@ func healthFromRow(row sqlcgen.Session) (*contract.HealthState, error) {
 // from node/task instance rows).
 func (db *DB) loadSessionExtras(ctx context.Context, q sqlcgen.DBTX, s *domain.Session) error {
 	queries := sqlcgen.New(q)
+	if err := loadWorkflowRevisionBody(ctx, q, s); err != nil {
+		return err
+	}
 
 	parentSession, err := deriveParentSession(ctx, queries, nullString(s.ParentSessionID), nullString(s.RootSessionID))
 	if err != nil {
@@ -761,6 +772,9 @@ func (db *DB) loadSessionExtrasBatch(ctx context.Context, q sqlcgen.DBTX, sessio
 	}
 
 	for _, s := range sessions {
+		if err := loadWorkflowRevisionBody(ctx, q, s); err != nil {
+			return err
+		}
 		switch {
 		case s.ParentSessionID != "":
 			s.ParentSession = parentRootNames[s.ParentSessionID]

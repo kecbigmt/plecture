@@ -88,9 +88,8 @@ func singlePublishedPluginMatch(rest string, published []string) (string, bool) 
 // MountedBins resolves an action's `bin` reference against the plugins
 // mounted on this machine, returning the executable's path — the same
 // resolution a rendered hook helper once performed, raised to the language's
-// own reference contract. SourcePath is the file the reference was written
-// in, which is what identifies the containing plugin a bare name resolves
-// against.
+// own reference contract. SourcePath identifies the containing plugin for a
+// bare name, either by the declaration file or a stored revision source.
 type MountedBins struct {
 	Mounted    []plugins.Mounted
 	SourcePath string
