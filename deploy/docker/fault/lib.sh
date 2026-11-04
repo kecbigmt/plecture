@@ -18,8 +18,13 @@ runtime_health() {
   inside sh -c 'plect --data-home /var/lib/plect/data/plect status "$1" --json --full | jq -r ".runtime.health // empty"' _ "$session"
 }
 
+resume_notice_count() {
+  inside sh -c 'grep -c -F "The runtime was restarted" "$HOME/fault/prompts" || true'
+}
+
 assert_recovered() {
   inside sh -c 'tail -n 1 "$HOME/fault/launches"' | grep -F -- "--resume $sid" \
     && wait_for 'runtime health healthy' "$recovery_wait" runtime_health healthy \
-    && inside git -C "/var/lib/plect/workspace_dirs/$session" status --short | grep -q 'uncommitted-change'
+    && inside git -C "/var/lib/plect/workspace_dirs/$session" status --short | grep -q 'uncommitted-change' \
+    && wait_for 'resume notice recorded once' "$recovery_wait" resume_notice_count 1
 }

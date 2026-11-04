@@ -247,9 +247,33 @@ not individual keys.
 
 `[<id>.health]` optionally permits automatic repair with
 `auto_repair_attempts`, a required non-negative integer when the table is
-declared. The default is `0`, which disables repair. A later workflow table
-replaces an inherited `[health]` table as a whole; setting the value to `0`
-disables inherited permission. The health cycle may run plain `up` only while
+declared. The default is `0`, which disables repair. `resume_notice` is an
+optional string. Its default instructs the agent to check the worktree and
+related PRs and threads before continuing after an interrupted runtime.
+An empty string disables the notice. A later workflow table replaces an
+inherited `[health]` table as a whole; setting `auto_repair_attempts` to `0`
+disables inherited permission, while omitting `resume_notice` selects the
+default text. For example:
+
+```toml
+# plect-fixture: result=valid entry=definitions
+
+[review_workflow]
+kind = "workflow"
+
+[review_workflow.health]
+auto_repair_attempts = 2
+resume_notice = "Check the worktree and the review thread before continuing."
+```
+
+After a runtime is recreated from a previous run, core publishes one inbound
+`plect.session.resumed` event to the session's log. Its body is the effective
+notice; `trigger` metadata is `repair`, `up`, or `recreate`, and
+`prev_session_id` identifies the previous runtime when available. A first
+launch and an `up` that reuses a live runtime publish no notice. The event is
+delivered through runtime channels that include `plect.instruction`.
+
+The health cycle may run plain `up` only while
 the session's recorded status is `up`, after a non-zero `alive` exit (a
 `process` probe that finds its pid gone or reused counts as one), a failed
 or missing current-plan node, or a down run state. Probe errors that prevent

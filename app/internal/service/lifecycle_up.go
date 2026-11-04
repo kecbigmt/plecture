@@ -34,6 +34,7 @@ type UpParams struct {
 	// preserving durable identity and event log state.
 	ForceRecreate  bool
 	HumanInitiated bool
+	repair         bool
 }
 
 // UpResult holds the outcome of Up.
@@ -239,6 +240,7 @@ func upUnlocked(cfg *config.Config, store *state.Store, params UpParams) (*UpRes
 	if wfErr != nil {
 		return nil, &Error{Code: ErrExecutionFailed, Message: wfErr.Error()}
 	}
+	previousRun := snapshotRunNodes(session)
 	if params.ForceRecreate && forceRecreateExisting {
 		var recreateErr error
 		plan, recreateErr = recreateSessionRuntime(cfg, store, sessionName, session, wf, plan, params.Observer)
@@ -276,6 +278,28 @@ func upUnlocked(cfg *config.Config, store *state.Store, params UpParams) (*UpRes
 	if err := setSessionStatus(store, sessionName, contract.SessionStatusUp); err != nil {
 		return nil, &Error{Code: ErrExecutionFailed, Message: fmt.Sprintf("failed to record session status: %v", err)}
 	}
+	if priorID, recreated := recreatedRun(previousRun, session); recreated && wf.Health.ResumeNotice != "" {
+		trigger := "up"
+		if params.repair {
+			trigger = "repair"
+		} else if params.ForceRecreate {
+			trigger = "recreate"
+		}
+		meta := map[string]string{"trigger": trigger}
+		if priorID != "" {
+			meta["prev_session_id"] = priorID
+		}
+		if _, _, _, err := eventlog.NewStore(store.Dir()).Append(event.Event{
+			SessionName: sessionName,
+			Type:        event.TypeSessionResumed,
+			Source:      event.SourcePlect,
+			Direction:   event.Inbound,
+			Body:        wf.Health.ResumeNotice,
+			Metadata:    meta,
+		}); err != nil {
+			return nil, &Error{Code: ErrExecutionFailed, Message: fmt.Sprintf("up completed but resume notice failed: %v", err)}
+		}
+	}
 	recordLifecycle(store, sessionName, "up", "run-scoped tasks produced")
 	if wasSleeping {
 		if err := appendWakeEvent(store, sessionName, "succeeded", "runtime started"); err != nil {
@@ -308,6 +332,37 @@ func acceptSleepingUp(cfg *config.Config, store *state.Store, name string) (*UpR
 		return nil, err
 	}
 	return &UpResult{SessionName: name, Result: "sleeping", QueuePosition: position}, nil
+}
+
+func snapshotRunNodes(session *domain.Session) map[string]*contract.TaskState {
+	previous := make(map[string]*contract.TaskState)
+	for id, node := range session.Nodes {
+		if node != nil && node.Scope == contract.TaskScopeRun && node.Outputs != nil {
+			previous[id] = node
+		}
+	}
+	return previous
+}
+
+func recreatedRun(previous map[string]*contract.TaskState, session *domain.Session) (string, bool) {
+	ids := make([]string, 0, len(previous))
+	for id := range previous {
+		ids = append(ids, id)
+	}
+	sort.Strings(ids)
+	recreated := false
+	priorID := ""
+	for _, id := range ids {
+		old := previous[id]
+		current := session.Nodes[id]
+		if current != nil && current.Status == contract.TaskStatusProduced && !current.SetupAt.Equal(old.SetupAt) {
+			recreated = true
+		}
+		if priorID == "" {
+			priorID, _ = old.Outputs["session_id"].(string)
+		}
+	}
+	return priorID, recreated
 }
 
 func cleanupStaleWorkflowNodes(cfg *config.Config, store *state.Store, sessionName string, session *domain.Session, plan *task.Plan, observer task.Observer) error {

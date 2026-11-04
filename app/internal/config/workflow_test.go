@@ -1068,21 +1068,53 @@ func TestLoadWorkflows_HealthRepairAttempts(t *testing.T) {
 	}
 }
 
+func TestLoadWorkflows_ResumeNotice(t *testing.T) {
+	for _, tt := range []struct {
+		name, value, want string
+		fail              bool
+	}{
+		{"default", "", DefaultResumeNotice, false},
+		{"override", `resume_notice = "Check before continuing."`, "Check before continuing.", false},
+		{"disabled", `resume_notice = ""`, "", false},
+		{"wrong type", `resume_notice = 1`, "", true},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			base := t.TempDir()
+			writeFile(t, filepath.Join(base, "workflows", "w.toml"), "[w]\nkind = \"workflow\"\n[w.health]\nauto_repair_attempts = 0\n"+tt.value+"\n")
+			got, err := (&Config{BaseDir: base}).LoadWorkflows(t.TempDir())
+			if tt.fail {
+				if err == nil {
+					t.Fatal("expected error")
+				}
+				return
+			}
+			if err != nil {
+				t.Fatal(err)
+			}
+			if got["w"].Health.ResumeNotice != tt.want {
+				t.Fatalf("notice = %q, want %q", got["w"].Health.ResumeNotice, tt.want)
+			}
+		})
+	}
+}
+
 func TestLoadWorkflows_HealthRepairOverlayCanDisableInheritedPermission(t *testing.T) {
 	for _, tt := range []struct {
-		name    string
-		overlay string
-		want    int
+		name       string
+		overlay    string
+		want       int
+		wantNotice string
 	}{
-		{"omitted", "[w]\nkind = \"workflow\"\n", 3},
-		{"disabled", "[w]\nkind = \"workflow\"\n[w.health]\nauto_repair_attempts = 0\n", 0},
+		{"omitted", "[w]\nkind = \"workflow\"\n", 3, "Global notice"},
+		{"replaced", "[w]\nkind = \"workflow\"\n[w.health]\nauto_repair_attempts = 0\n", 0, DefaultResumeNotice},
+		{"overridden", "[w]\nkind = \"workflow\"\n[w.health]\nauto_repair_attempts = 0\nresume_notice = \"Local notice\"\n", 0, "Local notice"},
 	} {
 		t.Run(tt.name, func(t *testing.T) {
 			home := t.TempDir()
 			t.Setenv("HOME", home)
 			globalDir := filepath.Join(home, ".config", "plect")
 			writeFile(t, filepath.Join(globalDir, "config.toml"), "schema_version = 2\n")
-			writeFile(t, filepath.Join(globalDir, "workflows", "w.toml"), "[w]\nkind = \"workflow\"\n[w.health]\nauto_repair_attempts = 3\n")
+			writeFile(t, filepath.Join(globalDir, "workflows", "w.toml"), "[w]\nkind = \"workflow\"\n[w.health]\nauto_repair_attempts = 3\nresume_notice = \"Global notice\"\n")
 			projectDir := filepath.Join(home, "projects", "project")
 			writeFile(t, filepath.Join(projectDir, ".plect", "workflows", "w.toml"), tt.overlay)
 			workspace := filepath.Join(projectDir, "session")
@@ -1099,6 +1131,9 @@ func TestLoadWorkflows_HealthRepairOverlayCanDisableInheritedPermission(t *testi
 			}
 			if got["w"].Health.AutoRepairAttempts != tt.want {
 				t.Fatalf("auto_repair_attempts = %d, want %d", got["w"].Health.AutoRepairAttempts, tt.want)
+			}
+			if got["w"].Health.ResumeNotice != tt.wantNotice {
+				t.Fatalf("resume_notice = %q, want %q", got["w"].Health.ResumeNotice, tt.wantNotice)
 			}
 		})
 	}

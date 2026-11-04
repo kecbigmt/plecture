@@ -321,7 +321,7 @@ func (v Validation) validateWorkflow(def *Definition, pos Position) error {
 	}{
 		{"tick", []string{"on", "heartbeat", "max_heartbeat", "backoff_reset"}},
 		{"healthcheck", []string{"period", "stall_threshold", "renotify_every"}},
-		{"health", []string{"auto_repair_attempts"}},
+		{"health", []string{"auto_repair_attempts", "resume_notice"}},
 	} {
 		raw, ok := def.Body[clock.field]
 		if !ok {
