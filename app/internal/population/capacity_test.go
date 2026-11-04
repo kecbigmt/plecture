@@ -462,6 +462,18 @@ args = ['{"workspace_dir":"%s","branch":"main"}']
 [provider.outputs_schema]
 type = "object"
 `, cfg.WorkspaceDirsRoot))
+	writeDefinition(t, cfg.BaseDir, "work", `[work]
+kind = "effect"
+scope = "run"
+[work.setup]
+type = "exec"
+command = "printf"
+args = ['{}']
+[work.outputs_schema]
+type = "object"
+[work.health.alive]
+type = "noop"
+`)
 	limit := 1
 	cfg.MaxUpChildren = &limit
 	definitions, err := Load(cfg)
@@ -469,6 +481,7 @@ type = "object"
 		t.Fatal(err)
 	}
 	def := definitions[0]
+	def.Population.Session.Task = "work"
 	store := state.NewStore(t.TempDir())
 	logStore := eventlog.NewStore(store.Dir())
 	coordinator := newCapacityCoordinator(func() *config.Config { return cfg }, store, logStore, admitstatus.NewCache(logStore))
@@ -515,8 +528,8 @@ type = "object"
 		t.Fatal(err)
 	}
 	engine.now = func() time.Time { return member.AdmitRetryAt }
-	if err := engine.Reconcile(context.Background()); err == nil {
-		t.Fatal("expected wake-suspended admission failure")
+	if err := engine.Reconcile(context.Background()); err != nil {
+		t.Fatalf("admission wait while wake is suspended: %v", err)
 	}
 	sleepsAfter, _, _, err := logStore.List(member.SessionName, 0, event.Filter{Types: []string{event.TypeSessionSleep}})
 	if err != nil || len(sleepsAfter) != len(sleepsBefore) {
@@ -533,20 +546,52 @@ type = "object"
 		}
 		retryAt := population.Members[resource].AdmitRetryAt
 		engine.now = func() time.Time { return retryAt }
-		if err := engine.Reconcile(context.Background()); err == nil {
-			t.Fatalf("admission retry %d unexpectedly succeeded", attempt+1)
+		if err := engine.Reconcile(context.Background()); err != nil {
+			t.Fatalf("admission wait %d while wake is suspended: %v", attempt+1, err)
 		}
 	}
 	population, err = store.Population(engine.key)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if got := population.Members[resource]; !got.AdmitSuspended || got.ConsecutiveAdmitFailures != admitFailureLimit || got.LastAdmitReason != "wake_suspended" {
-		t.Fatalf("member after suspended admission retries = %+v", got)
+	if got := population.Members[resource]; !got.PendingUp || got.AdmitSuspended || got.ConsecutiveAdmitFailures != 0 || got.AdmitRetryAt.IsZero() {
+		t.Fatalf("member after suspended admission waits = %+v, want pending without failures", got)
 	}
 	sleepsAfter, _, _, err = logStore.List(member.SessionName, 0, event.Filter{Types: []string{event.TypeSessionSleep}})
 	if err != nil || len(sleepsAfter) != len(sleepsBefore) {
-		t.Fatalf("sleep events after admission suspension = %v, %v; want unchanged count %d", sleepsAfter, err, len(sleepsBefore))
+		t.Fatalf("sleep events after admission waits = %v, %v; want unchanged count %d", sleepsAfter, err, len(sleepsBefore))
+	}
+	if _, err := service.Down(cfg, store, service.DownParams{Identifier: earlier.SessionName}); err != nil {
+		t.Fatalf("remove earlier sleeper from queue: %v", err)
+	}
+	if err := store.Update("manual", func(session *contract.Session) error {
+		session.Tasks["runtime"].Status = contract.TaskStatusCleaned
+		return nil
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if _, _, _, err := logStore.Append(event.Event{SessionName: member.SessionName, Type: "resource.changed", Direction: event.Inbound}); err != nil {
+		t.Fatal(err)
+	}
+	requested, err := service.RequestWake(store, member.SessionName, time.Now())
+	if err != nil || !requested {
+		t.Fatalf("inbound wake request = %t, %v; want queued", requested, err)
+	}
+	if err := service.WakeQueuedSessions(cfg, store); err != nil {
+		t.Fatalf("wake after inbound event: %v", err)
+	}
+	population, err = store.Population(engine.key)
+	if err != nil {
+		t.Fatal(err)
+	}
+	retryAt := population.Members[resource].AdmitRetryAt
+	engine.now = func() time.Time { return retryAt }
+	if err := engine.Reconcile(context.Background()); err != nil {
+		t.Fatalf("admit after inbound wake: %v", err)
+	}
+	completed := store.Get(member.SessionName)
+	if completed == nil || completed.Tasks["initial"] == nil || completed.Tasks["initial"].Status != contract.TaskStatusProduced {
+		t.Fatalf("initial task after inbound wake = %+v, want produced", completed)
 	}
 }
 

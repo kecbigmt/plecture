@@ -293,7 +293,14 @@ func (e *Engine) admit(ctx context.Context, member *state.PopulationMember) erro
 				return e.failAdmit(member, member.SessionName, "up", err)
 			}
 			if reason != "" {
-				return e.failAdmit(member, member.SessionName, "wake_suspended", fmt.Errorf("automatic wake suspended: %s", reason))
+				return e.state.UpdatePopulation(e.key, func(population *state.PopulationState) error {
+					current := population.Members[member.ResourceID]
+					if current == nil || current.Generation != member.Generation || current.Tombstoned {
+						return nil
+					}
+					current.AdmitRetryAt = e.now().Add(admitRetryBase)
+					return nil
+				})
 			}
 		}
 	}
