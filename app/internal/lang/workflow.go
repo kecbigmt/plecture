@@ -28,8 +28,6 @@ const nodeReadPrefix = "nodes."
 
 const publicOutputReadPrefix = "workflow.outputs."
 
-// WorkdirRef is a workflow's `workdir` projection: the one node output whose
-// value is the directory the workflow's non-preparation nodes run in.
 type WorkdirRef struct {
 	Node string
 	Key  string
@@ -143,11 +141,9 @@ func workflowNode(entry map[string]any, pos Position, outputs map[string]*Value)
 	return node, nil
 }
 
-// WorkflowWorkdir reads a workflow's `workdir`: exactly one projection from a
-// node's output, spelled `{ from = "nodes.<id>.outputs.<key>" }`. It is not a
-// general value, because the preparation nodes are derived from the node it
-// names before anything is evaluated; a default or a computed form would make
-// that derivation depend on a runtime fact.
+// WorkflowWorkdir reads `workdir` as one node-output projection rather than a
+// general value: the preparation nodes are derived from the node it names
+// before anything is evaluated.
 func WorkflowWorkdir(def *Definition) (*WorkdirRef, error) {
 	raw, ok := def.Body["workdir"]
 	if !ok {

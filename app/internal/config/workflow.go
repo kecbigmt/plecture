@@ -36,13 +36,8 @@ type WorkflowFile struct {
 	Definition  *lang.Definition
 	Name        string
 	Description string
-	// Workdir is the node output naming the directory every non-preparation
-	// node runs in; nil when the workflow declares none.
-	Workdir *lang.WorkdirRef
-	// Resource is the one entry resource type this workflow accepts: the
-	// address of a resource declaration. `plect up <identifier>` selects a
-	// workflow by the type the identifier resolves to.
-	Resource string
+	Workdir     *lang.WorkdirRef
+	Resource    string
 	// Display declares the values `plect ls` / `show` and the web UI render.
 	// They read persisted outputs and the session's inputs only — no network
 	// — so their freshness follows whatever cadence updates those outputs.
@@ -290,13 +285,10 @@ type EventChannel struct {
 // The id is the definition table's name. Effects intentionally have no
 // `depends_on`: wiring is the workflow's job.
 type TaskDefinition struct {
-	ID      string
-	Scope   string
-	Setup   *lang.Action
-	Cleanup *lang.Action
-	// CleanupInputsSchema declares the plugin-owned destruction inputs the
-	// cleanup reads as `cleanup.inputs.<key>`. An effect without one receives
-	// no such keys.
+	ID                  string
+	Scope               string
+	Setup               *lang.Action
+	Cleanup             *lang.Action
 	CleanupInputsSchema map[string]any
 	// Inner names the next effect inward, making this declaration the outer
 	// layer of a nesting chain: either a plain id (resolved in the merged
@@ -518,9 +510,8 @@ func resolveSchemaPath(file, baseDir string) string {
 }
 
 // layerDir pairs a cascade search directory with its trust classification.
-// Every layer (plugin, global, ancestor overlays above the invocation
-// directory) is machine-owned and trusted; the invocation directory's own
-// `.plect/` is not a layer, because it can be a generated checkout.
+// The invocation directory's own `.plect/` is never a layer, because it can be
+// a generated checkout.
 //
 // plugin marks a layer sourced from c.PluginDirs specifically (as opposed to
 // the global config dir or an ancestor overlay), which is what decides the
@@ -652,9 +643,7 @@ func (c *Config) LoadTaskDefinitions(invocationDir string) (map[string]TaskDefin
 }
 
 // definitionRoots orders the cascade: plugins (base) → global → ancestor
-// overlays above invocationDir, outermost-first. Each entry is a whole
-// definition root rather than one kind's directory, because a directory under
-// a root is author organization.
+// overlays above invocationDir, outermost-first.
 func (c *Config) definitionRoots(invocationDir string) []layerDir {
 	pluginIDs := make(map[string]string, len(c.Plugins))
 	for _, m := range c.Plugins {
@@ -673,10 +662,9 @@ func (c *Config) definitionRoots(invocationDir string) []layerDir {
 	return dirs
 }
 
-// cascadeAncestors walks up from invocationDir, ordered outermost-first, and
-// excludes invocationDir itself. $HOME is the exclusive upper bound because
-// the user's global config lives at `~/.config/plect/` and `$HOME/.plect/`
-// would collide with that.
+// cascadeAncestors walks up from invocationDir, ordered outermost-first.
+// $HOME is the exclusive upper bound because the user's global config lives at
+// `~/.config/plect/` and `$HOME/.plect/` would collide with that.
 func cascadeAncestors(invocationDir string) []string {
 	if invocationDir == "" {
 		return nil

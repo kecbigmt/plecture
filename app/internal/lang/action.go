@@ -108,11 +108,9 @@ func ParseAliveAction(raw any, pos Position) (*Action, error) {
 	return action, nil
 }
 
-// ParseCleanup reads an effect's `cleanup` table: its action, plus the
-// optional `inputs_schema` that declares the plugin-owned destruction inputs
-// the cleanup may read as `cleanup.inputs.<key>`. The schema is a contract on
-// the invocation rather than part of the action, so it is split off before the
-// action's own closed surface is applied.
+// ParseCleanup reads an effect's `cleanup` table: an action plus its optional
+// `inputs_schema`, a contract on the invocation that is split off before the
+// action's own closed surface applies.
 func ParseCleanup(raw any, pos Position) (*Action, map[string]any, error) {
 	tbl, ok := raw.(map[string]any)
 	if !ok {

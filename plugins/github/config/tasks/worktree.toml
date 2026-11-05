@@ -1,26 +1,14 @@
-# GitHub worktree effect — owns every piece of GitHub knowledge a session's
-# checkout needs, independent of any particular workflow: acquiring and
-# releasing the git worktree an issue or pull request resource maps to, and
-# choosing the branch it is checked out on. Workflows compose on top by
-# declaring a node `uses = "official.github.worktree"` (substituting the
-# alias this plugin is enabled under) and naming its `workspace_dir` output
-# as the workflow's `workdir`.
-#
-# `setup`/`cleanup` name github-worktree and github-watcher
-# (this plugin's bin/) through `bin`'s plugin-local bare-name reading, so
-# both are reachable purely from this plugin being enabled — no PATH setup
-# required, and no dependency on which alias the operator registered this
-# catalog under.
+# GitHub worktree effect: acquires and releases the git worktree an issue or
+# pull request resource maps to. A workflow composes it as a node and names its
+# `workspace_dir` output as the workflow's `workdir`; `bin` reads a bare name
+# against this plugin, so no PATH setup or catalog alias is assumed.
 [worktree]
 kind  = "effect"
 scope = "session"
 
-# Title/state fetches route through github-watcher's gh-api subcommand, so a
-# setup call and the daemon's own polling share one rate budget instead of
-# each independently re-tripping GitHub's secondary rate limit — unless
-# app_id/private_key_path below are set, in which case they authenticate
-# directly as the GitHub App installation instead, same as the git
-# operations these inputs already opt in below.
+# Title/state fetches go through github-watcher's gh-api subcommand so setup and
+# the daemon's polling share one rate budget, unless app_id/private_key_path
+# authenticate directly as the GitHub App installation.
 [worktree.setup]
 type = "exec"
 bin  = "github-worktree"
@@ -54,22 +42,13 @@ args = [
   { from = "session.inputs.private_key_path", default = "" },
 ]
 
-# --delete-branch reads the delete_branch cleanup input (`plect destroy
-# --input delete_branch=true`, or the plect_destroy MCP tool's cleanup_inputs
-# object) — an effect-level opt-in, not a core flag, so core carries no
-# branch vocabulary. A caller who expressed no intent falls through
-# to the `delete_branch_default` parameter, which is itself off unless a
-# workflow says otherwise: a branch left behind after worktree removal is
-# safer than one silently reclaimed.
+# delete_branch comes from the destroy intent; a caller who expressed none falls
+# through to delete_branch_default, off unless a workflow says otherwise,
+# because a branch left behind is safer than one silently reclaimed.
 #
-# This is a shell action because releasing the worktree and dropping the
-# session's watcher subscriptions are two steps with a deliberate ordering
-# rule between them: the unsubscribe runs unconditionally after worktree
-# cleanup and never gates the exit status, since dropping subscriptions is
-# orthogonal to whether the worktree came out clean, and a dirty-worktree
-# failure must still fail `plect destroy`. Without it a destroyed session's
-# subscriptions poll forever — the watcher has no other way to learn a
-# session is gone between its own startup sweeps.
+# The unsubscribe runs after the worktree cleanup and never gates its exit
+# status: a dirty worktree must still fail `plect destroy`, and a destroyed
+# session's subscriptions must not poll forever.
 [worktree.cleanup]
 type = "shell"
 script = '''
@@ -98,9 +77,8 @@ force                 = { from = "force" }
 delete_branch         = { from = "cleanup.inputs.delete_branch", default = "" }
 delete_branch_default = { from = "inputs.delete_branch_default", default = "" }
 
-# `[worktree.cleanup.inputs_schema]` declares the one destruction-time
-# input. The invocation surface supplies it as a typed boolean, so the
-# binding above reaches the shell as "true" or "false".
+# The invocation supplies delete_branch as a typed boolean, so the binding
+# above reaches the shell as "true" or "false".
 [worktree.cleanup.inputs_schema]
 type                 = "object"
 additionalProperties = false
@@ -108,45 +86,34 @@ additionalProperties = false
 [worktree.cleanup.inputs_schema.properties]
 delete_branch = { type = "boolean" }
 
-# The recorded worktree directory is the one fact a stale session can lose
-# behind this effect's back, so liveness checks exactly that.
+# The recorded directory is the one fact a stale session can lose behind this
+# effect's back.
 [worktree.health.alive]
 type    = "exec"
 command = "test"
 args    = ["-d", { from = "self.outputs.workspace_dir" }]
 
-# Author-declared parameters, set through the workflow node's `inputs`.
-# Every one is data — a path, a naming template, a boolean — so wiring one
-# can change where and under what name a worktree lands but never what the
-# actions run. The naming templates use single-brace placeholders
-# (`{number}`, `{tag}`) rather than value projections because these strings
-# are expanded by github-worktree itself.
-#
+# Every parameter is data, so wiring one changes where and under what name a
+# worktree lands, never what the actions run. Naming templates use single-brace
+# placeholders because github-worktree expands them itself.
 [worktree.inputs_schema]
 type                 = "object"
 additionalProperties = false
 
 [worktree.inputs_schema.properties]
-# Empty selects the default root, `$HOME/workspace_dirs`, which
-# github-worktree itself resolves.
+# Empty selects `$HOME/workspace_dirs`, which github-worktree resolves.
 dirs_root             = { type = "string", pattern = "^[A-Za-z0-9_./~:-]*$" }
-# The charset restrictions survive the move to values, where nothing is
-# spliced into a command line any more, because they also bound what reaches
-# github-worktree's own path and template handling.
+# The charsets also bound what reaches github-worktree's path and template
+# handling.
 workspace_layout_root = { type = "string", pattern = "^[A-Za-z0-9_./~:-]*$" }
 issue_branch_template = { type = "string", pattern = "^[A-Za-z0-9_./{}-]*$" }
 tagged_branch_suffix  = { type = "string", pattern = "^[A-Za-z0-9_./+{}-]*$" }
-# A string, not a boolean: github-worktree reads the empty string as "no
-# intent expressed", which a boolean cannot say, so the schema states the two
-# spellings that mean something rather than accepting any.
+# A string, so the empty string can mean "no intent expressed".
 delete_branch_default = { type = "string", enum = ["true", "false"] }
 
-# Outputs contract. `workspace_dir`/`branch` are always present; the rest
-# degrade to absent when their gh-api fetch is tolerated as best-effort (see
-# github-worktree's setup command). `mutable` keys may additionally be
-# merged from trusted side paths (`plect state set-output`) — GitHub status
-# for done_when is fetched by dynamic output refresh via the resource
-# observers, not by re-running this hook.
+# `workspace_dir` and `branch` are always present; the rest degrade to absent
+# when their gh-api fetch fails. `mutable` keys may be merged by
+# `plect state set-output`.
 [worktree.outputs_schema]
 type     = "object"
 required = ["workspace_dir", "branch"]

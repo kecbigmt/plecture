@@ -57,10 +57,7 @@ type StatusRuntime struct {
 	LastCheckedAt  time.Time           `json:"last_checked_at,omitzero"`
 	LastActivityAt time.Time           `json:"last_activity_at,omitzero"`
 	Tasks          []StatusRuntimeTask `json:"tasks,omitempty"`
-	// Workdir is the directory the workflow's `workdir` evaluates to against
-	// the nodes produced right now, and WorkdirExists whether it is present
-	// on disk. Both are omitted for a workflow that declares none, and
-	// neither is stored.
+	// Both are evaluated on read and omitted when the workflow declares no workdir.
 	Workdir       string          `json:"workdir,omitempty"`
 	WorkdirExists *bool           `json:"workdir_exists,omitempty"`
 	Message       *domain.Message `json:"message,omitempty"`
@@ -262,10 +259,8 @@ func Status(cfg *config.Config, store *state.Store, identifier string) (*StatusR
 	}, nil
 }
 
-// statusWorkdir evaluates the session's workdir for display. A workdir that
-// cannot be evaluated yet (its producer is not produced) is reported as absent
-// rather than as an error: `plect status` reports facts, it doesn't fail on
-// them.
+// statusWorkdir reports a workdir whose producer is not produced yet as
+// absent: `plect status` reports facts and does not fail on them.
 func statusWorkdir(cfg *config.Config, session *domain.Session) (string, *bool) {
 	dir, err := sessionWorkdir(cfg, session)
 	if err != nil || dir == "" {

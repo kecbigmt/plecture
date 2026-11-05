@@ -284,8 +284,6 @@ type CleanupOptions struct {
 	// deleting one is not always what a review-only or shared-branch session
 	// wants.
 	DeleteBranchDefault string
-	// WorkspaceDirsRoot is the effect's `dirs_root` input; empty means
-	// `$HOME/workspace_dirs`.
 	WorkspaceDirsRoot string
 	// WorkspaceLayoutRoot is setup's parameter of the same name; cleanup
 	// needs it only to build a Manager, since the workspace directory it

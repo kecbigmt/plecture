@@ -1,7 +1,5 @@
-# The generic Resource contract applied to a GitHub issue. Independent of the
-# GitHub worktree effect (tasks/worktree.toml, which acquires the checkout a
-# session works in) — this is a standalone contract callable via `plect
-# resource status` outside any one task instance.
+# The generic Resource contract applied to a GitHub issue, callable standalone
+# via `plect resource status` outside any one task instance.
 #
 # An issue-keyed session tracks its LINKED pull request once one exists
 # (found through the issue's closing references), so checks_status

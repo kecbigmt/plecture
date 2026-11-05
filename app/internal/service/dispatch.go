@@ -65,20 +65,14 @@ func SessionGuardForOwnSession(sessionName string) (string, error) {
 	return "^" + regexp.QuoteMeta(sessionName) + "($|/)", nil
 }
 
-// dispatchResult is the outcome of workflow dispatch: which workflow handles
-// the resource, the resource declaration that recognized it, and the derived
-// resource instance name (before any +tag suffix).
 type dispatchResult struct {
 	Workflow    config.WorkflowFile
 	ResourceKey string
 	Name        string
 }
 
-// resolveResource recognizes an identifier as exactly one resource declaration
-// and derives its instance name. A resource id that no declaration matches is
-// reported as matched=false so the caller owns the diagnostic; two matching
-// declarations are an ambiguity, since the type decides which workflow
-// accepts the identifier.
+// resolveResource treats two matching declarations as an ambiguity, since the
+// resource type decides which workflow accepts the identifier.
 func resolveResource(resources map[string]config.ResourceDef, id string) (key, name string, matched bool, err error) {
 	keys := make([]string, 0, len(resources))
 	for k := range resources {
@@ -109,19 +103,12 @@ func workflowAutoSelect(wf config.WorkflowFile) bool {
 	return wf.AutoSelect == nil || *wf.AutoSelect
 }
 
-// dispatchResource selects the workflow for a resource identifier by its
-// entry resource type.
-//
-//	flag != "" — that workflow handles it; its `resource` must equal the type
-//	             the identifier resolves to.
-//	flag == "" — exactly one auto-selectable workflow accepting that type;
-//	             zero or several is an error naming the candidates.
-//
-// Dispatch reads only the trusted base layers (plugin + global): no session
-// directory exists yet, and identity must not depend on a project's content.
-//
-// matched is false, with no error, for an identifier no resource declaration
-// recognizes: a caller may then treat it as the name of an existing session.
+// dispatchResource selects the workflow for a resource identifier by its entry
+// resource type: --workflow must accept that type, otherwise exactly one
+// auto-selectable workflow does. matched is false, with no error, for an
+// identifier no resource recognizes, so a caller may treat it as a session
+// name. It reads only the trusted base layers, because identity must not
+// depend on a project's content.
 func dispatchResource(cfg *config.Config, flag, resource string) (result dispatchResult, matched bool, err error) {
 	workflows, err := cfg.LoadWorkflows("")
 	if err != nil {

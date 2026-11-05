@@ -20,16 +20,9 @@ type discoveredLayer struct {
 	defs  []*lang.Definition
 }
 
-// A layer's trust decides what it may declare. A kind a layer may declare is
-// loaded; a kind that simply does not reach this layer is skipped, because a
-// project's own directory holding one is not a mistake — it just does not
-// participate.
-//
-// A resource and a channel are trusted-base content: they decide how a
-// resource is recognized and how a process is reached, so one in an ancestor
-// overlay is skipped — it does not participate, and does not stop the layer
-// loading either. Effects, task documents and workflows do reach an ancestor
-// overlay, since a project may add its own lifecycle and its own work.
+// A resource and a channel are trusted-base content, so one in an ancestor
+// overlay is skipped rather than refused: a project directory holding one is
+// not a mistake, it just does not participate.
 var loadedKinds = map[layerScope]map[lang.Kind]bool{
 	layerScopeTrusted: {
 		lang.KindResource: true,
@@ -45,16 +38,10 @@ var loadedKinds = map[layerScope]map[lang.Kind]bool{
 	},
 }
 
-// layerScope names how far a layer's trust reaches, which is what decides
-// which kinds it may declare.
 type layerScope int
 
 const (
-	// layerScopeTrusted is a plugin's own config root or the machine's global
-	// config: machine-owned, so anything may be declared there.
 	layerScopeTrusted layerScope = iota
-	// layerScopeOverlay is an ancestor `.plect/` directory above the
-	// invocation directory: trusted, but a project's own.
 	layerScopeOverlay
 )
 
@@ -66,9 +53,8 @@ func (l layerDir) scope() layerScope {
 }
 
 // discoverLayers reads every cascade layer's definition root once, in
-// shallowest-first order. invocationDir selects the ancestor overlays; an
-// empty one means the trusted base layers alone, which is what a chain or a
-// population sees, since neither has a caller directory of its own.
+// shallowest-first order. An empty invocationDir means the trusted base layers
+// alone, which is what a chain or a population sees.
 func (c *Config) discoverLayers(invocationDir string) ([]discoveredLayer, error) {
 	out := make([]discoveredLayer, 0, len(c.PluginDirs)+2)
 	for _, layer := range c.definitionRoots(invocationDir) {

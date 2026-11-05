@@ -418,13 +418,7 @@ func fixtureObserverDoc(defs []taskFixture) string {
 	return b.String()
 }
 
-// stubObservedFacts makes the fixture observer the one resource type: it
-// recognizes the fixture URLs, so it still dispatches sessions and answers for
-// the task documents' instances, and observing it succeeds and reports the
-// given facts — for a path that re-observes before deciding (finalize,
-// instantiation) rather than reading the last observation. Every fixture
-// workflow is re-pointed at it, since one identifier recognized by two
-// declarations is an error rather than a tie.
+// stubObservedFacts makes the fixture observer the one resource type: one identifier recognized by two declarations is an error, not a tie.
 func stubObservedFacts(t *testing.T, cfg *config.Config, facts map[string]any) {
 	t.Helper()
 	encoded, err := json.Marshal(facts)
@@ -486,14 +480,11 @@ func addWorkflowFields(t *testing.T, cfg *config.Config, wfID, fields string) {
 	}
 }
 
-// issueMatch is the identifier shape the session fixtures create from.
 const issueMatch = `^https://github\.com/(?P<owner>[^/]+)/(?P<repo>[^/]+)/(issues|pull)/(?P<number>\d+)` // boundary-allow: neutral fixture of a URL-shaped resource id
 
 const issueResolverFields = "match = '" + issueMatch + "'\n" +
 	`name  = { expr = "match.owner + '/' + match.repo + '-' + match.number" }`
 
-// issueResourceDoc declares the resource type fixture workflows accept. Its
-// observation always fails, so a test that reads facts seeds them instead.
 const issueResourceDoc = `[issue]
 kind  = "resource"
 ` + issueResolverFields + `
@@ -506,16 +497,11 @@ script = "echo 'this fixture has no resource to observe' >&2; exit 1"
 type = "object"
 `
 
-// writeIssueResource declares the `issue` resource type a fixture workflow
-// names, so a URL passed to Create or Up resolves to a session.
 func writeIssueResource(t *testing.T, cfg *config.Config) {
 	t.Helper()
 	writeResourceDoc(t, cfg, "issue", issueResourceDoc)
 }
 
-// useResource points a fixture workflow at a resource declaration of the
-// test's own, replacing the default `issue` resource so that two
-// declarations never claim the same identifier.
 func useResource(t *testing.T, cfg *config.Config, wfID, id, doc string) {
 	t.Helper()
 	writeResourceDoc(t, cfg, id, doc)
@@ -525,7 +511,6 @@ func useResource(t *testing.T, cfg *config.Config, wfID, id, doc string) {
 	setWorkflowResource(t, cfg, wfID, id)
 }
 
-// setWorkflowResource points one fixture workflow at a resource address.
 func setWorkflowResource(t *testing.T, cfg *config.Config, wfID, resource string) {
 	t.Helper()
 	path := filepath.Join(cfg.BaseDir, "workflows", wfID+".toml")
@@ -545,7 +530,6 @@ func setWorkflowResource(t *testing.T, cfg *config.Config, wfID, resource string
 
 var resourceLine = regexp.MustCompile(`(?m)^resource = "[^"]*"\n`)
 
-// setWorkflowsResource points every fixture workflow at one resource address.
 func setWorkflowsResource(t *testing.T, cfg *config.Config, resource string) {
 	t.Helper()
 	entries, err := os.ReadDir(filepath.Join(cfg.BaseDir, "workflows"))
@@ -557,9 +541,6 @@ func setWorkflowsResource(t *testing.T, cfg *config.Config, resource string) {
 	}
 }
 
-// dropIssueResource removes the default `issue` declaration for a test that
-// declares its own resource over the same identifiers: one identifier that two
-// declarations recognize is an error rather than a tie.
 func dropIssueResource(t *testing.T, cfg *config.Config) {
 	t.Helper()
 	if err := os.Remove(filepath.Join(cfg.BaseDir, "resources", "issue.toml")); err != nil && !os.IsNotExist(err) {
@@ -567,7 +548,6 @@ func dropIssueResource(t *testing.T, cfg *config.Config) {
 	}
 }
 
-// writeResourceDoc writes one resource declaration document.
 func writeResourceDoc(t *testing.T, cfg *config.Config, id, doc string) {
 	t.Helper()
 	dir := filepath.Join(cfg.BaseDir, "resources")
@@ -579,12 +559,9 @@ func writeResourceDoc(t *testing.T, cfg *config.Config, id, doc string) {
 	}
 }
 
-// workdirEffectID is the effect fixtures use to produce a session's
-// directory.
 const workdirEffectID = "checkout"
 
-// workdirOutputsSchema declares the one output the workflow's workdir reads;
-// a reference to an undeclared output does not resolve at load.
+// A workdir reading an undeclared output does not resolve at load.
 const workdirOutputsSchema = `
 [outputs_schema]
 type = "object"
@@ -593,10 +570,7 @@ type = "object"
 workspace_dir = { type = "string" }
 `
 
-// attachWorkdir gives a fixture workflow a directory-producing effect and
-// points the workflow's workdir at its `workspace_dir` output. The effect
-// runs in $HOME, so the test gets a private one. d.id defaults to
-// workdirEffectID and d.scope to "session".
+// attachWorkdir runs in $HOME, so the test gets a private one.
 func attachWorkdir(t *testing.T, cfg *config.Config, wfID string, d taskFixture) {
 	t.Helper()
 	t.Setenv("HOME", t.TempDir())
@@ -628,21 +602,15 @@ func attachWorkdir(t *testing.T, cfg *config.Config, wfID string, d taskFixture)
 	}
 }
 
-// mkdirScript is a setup that creates dir and reports it as the workdir.
 func mkdirScript(dir string) string {
 	return fmt.Sprintf("mkdir -p %q\nprintf '{\"workspace_dir\":\"%s\"}'\n", dir, dir)
 }
 
-// attachWorkdirDir is attachWorkdir for the common case: the effect only
-// creates dir.
 func attachWorkdirDir(t *testing.T, cfg *config.Config, wfID, dir string) {
 	t.Helper()
 	attachWorkdir(t, cfg, wfID, taskFixture{setup: mkdirScript(dir)})
 }
 
-// addFixtureWorkflow declares one more workflow, using the effect the fixture
-// already declares, beside the one writeWorkflowFixture wrote. fields is raw
-// TOML placed in the workflow's own table.
 func addFixtureWorkflow(t *testing.T, cfg *config.Config, wfID, resource, uses, fields string) {
 	t.Helper()
 	doc := fmt.Sprintf("[%[1]s]\nkind = \"workflow\"\nresource = %[2]q\n%[4]s\n[[%[1]s.nodes]]\nuses = %[3]q\n", wfID, resource, uses, fields)

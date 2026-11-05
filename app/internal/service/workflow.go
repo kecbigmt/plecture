@@ -23,12 +23,9 @@ type WorkflowSummary struct {
 // `plect_workflow_show`: identity, the merged inputs_schema (so callers can build
 // `--inputs`), and the DAG (so agents can reason about node ordering).
 type WorkflowDetail struct {
-	ID          string `json:"id"`
-	Name        string `json:"name,omitempty"`
-	Description string `json:"description,omitempty"`
-	// Resource is the entry resource type this workflow accepts. Workdir is
-	// the node output the workflow's non-preparation nodes run in, spelled as
-	// its projection; it is empty when the workflow declares none.
+	ID           string               `json:"id"`
+	Name         string               `json:"name,omitempty"`
+	Description  string               `json:"description,omitempty"`
 	Resource     string               `json:"resource"`
 	Workdir      string               `json:"workdir,omitempty"`
 	Display      map[string]string    `json:"display,omitempty"`

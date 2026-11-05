@@ -74,15 +74,9 @@ type Resolved struct {
 	// Layers is the node's nesting chain, outermost first, when its task
 	// definition declares `inner`. Empty for a plain task, which is the one
 	// distinction the lifecycle runners make between the two.
-	Layers []effect.Layer
-	// Prep marks a preparation node of a workflow that declares `workdir`:
-	// the workdir's producer or one of its transitive prerequisites.
-	Prep bool
-	// Workdir is the node output a non-preparation node's actions run in;
-	// nil on a preparation node and in a workflow that declares no workdir.
-	Workdir *lang.WorkdirRef
-	// CleanupInputsSchema is the contract of the destruction inputs this
-	// node's cleanup reads, nil when it declares none.
+	Layers              []effect.Layer
+	Prep                bool
+	Workdir             *lang.WorkdirRef
 	CleanupInputsSchema map[string]any
 	// Unresolved marks a teardown-only entry whose current definition could
 	// not be found by TaskID, so there is no cleanup recipe to run at all.
@@ -147,9 +141,7 @@ type Probe struct {
 	From       lang.Ownership
 	Env        []string
 	Process    *contract.ProcessIdentity
-	// Dir is the directory the probe runs in: the one its node's setup
-	// recorded, empty when setup ran with none.
-	Dir string
+	Dir        string
 }
 
 func (p Probe) context(session SessionVars) RenderContext {
@@ -541,8 +533,7 @@ func topoSortNodes(list []Resolved) ([]Resolved, error) {
 //	Tasks  — outputs of upstream nodes, indexed by node id.
 //	Inputs   — node's resolved input bindings (post-render), exposed as `.Inputs.<key>`.
 //	           Also reachable via `.Nodes.<self>.inputs.<key>` for symmetry.
-//	Workflow — the workflow's public outputs, exposed as
-//	           `.Workflow.outputs.<key>`. Empty for a workflow that declares none.
+//	Workflow — the workflow's public outputs, exposed as `.Workflow.outputs.<key>`.
 //
 // `.Nodes.<id>.outputs.<key>` is the canonical reference for upstream node
 // outputs in setup/cleanup templates; `.Tasks.<id>.<key>` is a shorter
@@ -558,9 +549,7 @@ type RenderContext struct {
 	// Locals are the private intermediates one layer of a nesting chain
 	// emitted from its own setup, visible to that layer's cleanup and to its
 	// own binding templates and nowhere else. Empty for a plain task.
-	Locals map[string]any
-	// CleanupInputs are the destruction inputs the rendering effect declared,
-	// already filtered to its own cleanup contract.
+	Locals        map[string]any
 	CleanupInputs map[string]any
 	// SourcePath is the absolute path of the file the rendered template
 	// (Setup/Cleanup/...) came from. It feeds the bare-name `bin = "<name>"`
@@ -576,15 +565,13 @@ type SessionVars struct {
 	ResourceID    string
 	ParentSession string
 	Inputs        map[string]any
-	// Force and CleanupInputs are the current destruction operation's own
-	// intent, read only by cleanup actions: core's boolean `force`, and the
-	// typed invocation inputs (see ResolveCleanupInputs). Setup never sees
-	// either.
+	// Force and CleanupInputs are the destruction operation's own intent, read
+	// only by cleanup actions.
 	Force         bool
 	CleanupInputs map[string]any
-	// ReleaseAfterFailure makes cleanup attempt the prerequisites of a node
-	// whose own cleanup failed. Without it they stay retained: releasing what
-	// a node still depends on would strand the node's own retry.
+	// Without ReleaseAfterFailure the prerequisites of a node whose cleanup
+	// failed stay retained: releasing what it still depends on would strand
+	// its own retry.
 	ReleaseAfterFailure bool
 	// Plugins are the resolved, catalog-qualified plugins
 	// (config.Config.Plugins) in declaration order, against which a `bin`
@@ -607,10 +594,8 @@ type SessionVars struct {
 // that effect's own current outputs — what a verb's own values are resolved
 // against — and with the identity a `bin` inside a verb resolves through.
 type TerminalBinding struct {
-	Ops     *config.TerminalConfig
-	Outputs map[string]any
-	// Dir is the directory the declaring effect's setup recorded, which its
-	// verbs run in.
+	Ops        *config.TerminalConfig
+	Outputs    map[string]any
 	Dir        string
 	SourcePath string
 	From       lang.Ownership
@@ -1088,9 +1073,7 @@ func toJSONShape(m map[string]any) map[string]any {
 // Each node's cleanup is run with .Self bound to its persisted outputs and
 // .Input bound to the inputs persisted at setup time — so cleanup never
 // depends on the original CLI invocation.
-// A cleanup error is collected and does not stop the loop, but the failed
-// node's prerequisites (and theirs) are retained rather than released, unless
-// session.ReleaseAfterFailure says to attempt them anyway; work that does not
+// A cleanup error is collected and does not stop the loop; work that does not
 // depend on the failed node still runs.
 //
 // ordered can freely mix workflow-node and dynamic-instance entries, so
@@ -1100,9 +1083,6 @@ func toJSONShape(m map[string]any) map[string]any {
 func RunCleanup(goCtx context.Context, ordered []Resolved, session SessionVars, tasks map[string]*contract.TaskState, observer Observer) error {
 	obs := observerOr(observer)
 	var firstErr error
-	// retained holds the nodes whose release waits on a dependent's: a node
-	// whose cleanup failed, or that was itself held back, still needs what it
-	// depends on.
 	retained := map[string]bool{}
 	hold := func(r Resolved) {
 		for _, dep := range r.DependsOn {

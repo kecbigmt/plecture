@@ -1,16 +1,8 @@
 # local-okf goal directory effect: a read-context scratch directory over the
 # owner's knowledge bundle for a session whose entry resource is a
-# `local-okf://<owner>/<concept-id>` concept. This is the dispatch-time
-# counterpart to resources/okf_goal.toml's observe — same owner-alias
-# resolution and bundle-containment checks, but here they gate directory
-# acquisition (`plect up` / `plect create --task`) instead of a status read,
-# so a missing or unresolvable bundle fails the dispatch outright rather
-# than folding into a resource-state field.
-#
-# The session identity comes from the resource declaration; a workflow
-# composes this effect as a node and names its `workspace_dir` output as the
-# workflow's `workdir`. The scratch directory is created under the owner
-# session's own workdir, so this effect takes no dirs root of its own.
+# `local-okf://<owner>/<concept-id>` concept. A workflow composes it as a node
+# and names its `workspace_dir` output as the workflow's `workdir`. The
+# directory lives under the owner session's own workdir, so there is no dirs root.
 [goal_dir]
 kind  = "effect"
 scope = "session"
@@ -25,8 +17,7 @@ type = "exec"
 bin  = "okf-bundle"
 args = ["cleanup", "--workspace-dir", { from = "self.outputs.workspace_dir" }]
 
-# The scratch directory is the only thing this effect owns that can vanish
-# behind its back.
+# The scratch directory can vanish behind this effect's back.
 [goal_dir.health.alive]
 type    = "exec"
 command = "test"

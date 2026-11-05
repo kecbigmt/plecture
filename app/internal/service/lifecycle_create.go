@@ -23,10 +23,8 @@ type CreateParams struct {
 	ParentSession string         // parent session name; empty falls back to PLECT_SESSION_NAME when it exists and is not self.
 	Observer      task.Observer
 	Population    *contract.PopulationProvenance
-	// InvocationDir is the directory whose ancestors' `.plect/` overlays
-	// contribute definitions: the caller's working directory for a direct
-	// invocation, empty for a chain or a population, which read only the
-	// plugin and global layers.
+	// InvocationDir is the caller's directory for a direct invocation, empty
+	// for a chain or a population, which read only plugin and global layers.
 	InvocationDir string
 }
 
@@ -75,19 +73,10 @@ func putBestEffort(store *state.Store, session *domain.Session, context string) 
 	}
 }
 
-// Create establishes the session: state entry + workflow revision +
-// session-scoped nodes.
-//
-// The resource identifier selects its workflow by type: the resource
-// declaration whose `match` recognizes it names the type, and the workflow
-// whose `resource` equals it (or the --workflow flag's, which must agree)
-// derives the session name and assembles the environment through its nodes.
-// The core performs no version-control or provider-API work of its own.
-//
-// Create is idempotent: re-running it against an existing session reuses
-// the state entry and retries any session-scoped node that has not yet
-// reached "produced". This is the recovery path for a previous create that
-// partially failed.
+// Create establishes the session: state entry, workflow revision and every
+// session-scoped node. It is idempotent: re-running it against an existing
+// session retries nodes that have not yet reached "produced", which is the
+// recovery path for a partially failed create.
 func Create(cfg *config.Config, store *state.Store, params CreateParams) (*CreateResult, error) {
 	resource := params.URL
 
