@@ -1,8 +1,7 @@
 # local-okf goal directory effect: a read-context scratch directory over the
-# owner's knowledge bundle for a session whose entry resource is a
-# `local-okf://<owner>/<concept-id>` concept. A workflow composes it as a node
-# and names its `workspace_dir` output as the workflow's `workdir`. The
-# directory lives under the owner session's own workdir, so there is no dirs root.
+# owner's knowledge bundle. A workflow composes it as a node and names its
+# `workspace_dir` output as its `workdir`; the directory lives under the owner
+# session's own workdir, so there is no dirs root.
 [goal_dir]
 kind  = "effect"
 scope = "session"
@@ -17,7 +16,6 @@ type = "exec"
 bin  = "okf-bundle"
 args = ["cleanup", "--workspace-dir", { from = "self.outputs.workspace_dir" }]
 
-# The scratch directory can vanish behind this effect's back.
 [goal_dir.health.alive]
 type    = "exec"
 command = "test"

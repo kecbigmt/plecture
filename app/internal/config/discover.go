@@ -20,9 +20,8 @@ type discoveredLayer struct {
 	defs  []*lang.Definition
 }
 
-// A resource and a channel are trusted-base content, so one in an ancestor
-// overlay is skipped rather than refused: a project directory holding one is
-// not a mistake, it just does not participate.
+// A resource or a channel in an ancestor overlay is skipped, not refused: a
+// project directory holding one is not a mistake.
 var loadedKinds = map[layerScope]map[lang.Kind]bool{
 	layerScopeTrusted: {
 		lang.KindResource: true,
@@ -53,8 +52,7 @@ func (l layerDir) scope() layerScope {
 }
 
 // discoverLayers reads every cascade layer's definition root once, in
-// shallowest-first order. An empty invocationDir means the trusted base layers
-// alone, which is what a chain or a population sees.
+// shallowest-first order. An empty invocationDir reads the base layers alone.
 func (c *Config) discoverLayers(invocationDir string) ([]discoveredLayer, error) {
 	out := make([]discoveredLayer, 0, len(c.PluginDirs)+2)
 	for _, layer := range c.definitionRoots(invocationDir) {

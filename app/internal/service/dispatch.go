@@ -104,11 +104,8 @@ func workflowAutoSelect(wf config.WorkflowFile) bool {
 }
 
 // dispatchResource selects the workflow for a resource identifier by its entry
-// resource type: --workflow must accept that type, otherwise exactly one
-// auto-selectable workflow does. matched is false, with no error, for an
-// identifier no resource recognizes, so a caller may treat it as a session
-// name. It reads only the trusted base layers, because identity must not
-// depend on a project's content.
+// resource type. matched is false, with no error, for an identifier no resource
+// recognizes, so a caller may treat it as a session name.
 func dispatchResource(cfg *config.Config, flag, resource string) (result dispatchResult, matched bool, err error) {
 	workflows, err := cfg.LoadWorkflows("")
 	if err != nil {

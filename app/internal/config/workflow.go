@@ -206,8 +206,7 @@ func NormalizeHealthcheckConfig(in *HealthcheckConfig) HealthcheckConfig {
 // Blocks declares reverse dependency edges: each listed node id becomes a
 // dependent of this one, equivalent to writing the inverse dependency in the
 // listed node. It exists for a cascade overlay that must insert itself ahead
-// of base nodes it cannot modify (e.g. a process killer that must clean up
-// after the runtime and agent effects).
+// of base nodes it cannot modify.
 type WorkflowNode struct {
 	ID           string
 	Uses         string
@@ -510,8 +509,6 @@ func resolveSchemaPath(file, baseDir string) string {
 }
 
 // layerDir pairs a cascade search directory with its trust classification.
-// The invocation directory's own `.plect/` is never a layer, because it can be
-// a generated checkout.
 //
 // plugin marks a layer sourced from c.PluginDirs specifically (as opposed to
 // the global config dir or an ancestor overlay), which is what decides the
@@ -531,8 +528,8 @@ type layerDir struct {
 }
 
 // LoadWorkflows loads every workflow declaration the cascade layers hold:
-// plugins (base), the global config, then each ancestor overlay above the
-// invocation directory. A deeper layer merges into a same-id shallower
+// plugins (base), the global config, then each ancestor overlay ending at the
+// invocation directory's parent. A deeper layer merges into a same-id shallower
 // workflow by the cascade rules — it may set a field the shallower layer left
 // unset, its nodes append, and its `[tick]` / `[healthcheck]` replace the
 // shallower table wholesale — so a project extends a shared workflow instead
@@ -643,7 +640,7 @@ func (c *Config) LoadTaskDefinitions(invocationDir string) (map[string]TaskDefin
 }
 
 // definitionRoots orders the cascade: plugins (base) → global → ancestor
-// overlays above invocationDir, outermost-first.
+// overlays above invocationDir.
 func (c *Config) definitionRoots(invocationDir string) []layerDir {
 	pluginIDs := make(map[string]string, len(c.Plugins))
 	for _, m := range c.Plugins {
@@ -662,9 +659,9 @@ func (c *Config) definitionRoots(invocationDir string) []layerDir {
 	return dirs
 }
 
-// cascadeAncestors walks up from invocationDir, ordered outermost-first.
-// $HOME is the exclusive upper bound because the user's global config lives at
-// `~/.config/plect/` and `$HOME/.plect/` would collide with that.
+// cascadeAncestors walks up from invocationDir, excluding it, ordered outermost-first.
+// $HOME is the exclusive upper bound because the user's global config lives
+// at `~/.config/plect/` and `$HOME/.plect/` would collide with that.
 func cascadeAncestors(invocationDir string) []string {
 	if invocationDir == "" {
 		return nil

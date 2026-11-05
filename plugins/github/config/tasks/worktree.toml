@@ -1,14 +1,12 @@
 # GitHub worktree effect: acquires and releases the git worktree an issue or
 # pull request resource maps to. A workflow composes it as a node and names its
-# `workspace_dir` output as the workflow's `workdir`; `bin` reads a bare name
-# against this plugin, so no PATH setup or catalog alias is assumed.
+# `workspace_dir` output as its `workdir`.
 [worktree]
 kind  = "effect"
 scope = "session"
 
 # Title/state fetches go through github-watcher's gh-api subcommand so setup and
-# the daemon's polling share one rate budget, unless app_id/private_key_path
-# authenticate directly as the GitHub App installation.
+# the daemon's polling share one rate budget.
 [worktree.setup]
 type = "exec"
 bin  = "github-worktree"
@@ -77,8 +75,6 @@ force                 = { from = "force" }
 delete_branch         = { from = "cleanup.inputs.delete_branch", default = "" }
 delete_branch_default = { from = "inputs.delete_branch_default", default = "" }
 
-# The invocation supplies delete_branch as a typed boolean, so the binding
-# above reaches the shell as "true" or "false".
 [worktree.cleanup.inputs_schema]
 type                 = "object"
 additionalProperties = false
@@ -86,16 +82,13 @@ additionalProperties = false
 [worktree.cleanup.inputs_schema.properties]
 delete_branch = { type = "boolean" }
 
-# The recorded directory is the one fact a stale session can lose behind this
-# effect's back.
 [worktree.health.alive]
 type    = "exec"
 command = "test"
 args    = ["-d", { from = "self.outputs.workspace_dir" }]
 
-# Every parameter is data, so wiring one changes where and under what name a
-# worktree lands, never what the actions run. Naming templates use single-brace
-# placeholders because github-worktree expands them itself.
+# Every parameter is data, so wiring one changes where a worktree lands, never
+# what the actions run.
 [worktree.inputs_schema]
 type                 = "object"
 additionalProperties = false
@@ -103,17 +96,13 @@ additionalProperties = false
 [worktree.inputs_schema.properties]
 # Empty selects `$HOME/workspace_dirs`, which github-worktree resolves.
 dirs_root             = { type = "string", pattern = "^[A-Za-z0-9_./~:-]*$" }
-# The charsets also bound what reaches github-worktree's path and template
-# handling.
 workspace_layout_root = { type = "string", pattern = "^[A-Za-z0-9_./~:-]*$" }
 issue_branch_template = { type = "string", pattern = "^[A-Za-z0-9_./{}-]*$" }
 tagged_branch_suffix  = { type = "string", pattern = "^[A-Za-z0-9_./+{}-]*$" }
 # A string, so the empty string can mean "no intent expressed".
 delete_branch_default = { type = "string", enum = ["true", "false"] }
 
-# `workspace_dir` and `branch` are always present; the rest degrade to absent
-# when their gh-api fetch fails. `mutable` keys may be merged by
-# `plect state set-output`.
+# `mutable` keys may be merged by `plect state set-output`.
 [worktree.outputs_schema]
 type     = "object"
 required = ["workspace_dir", "branch"]
