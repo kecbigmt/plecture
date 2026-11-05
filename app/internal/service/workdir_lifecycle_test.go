@@ -605,3 +605,80 @@ uses = "agent"
 		t.Errorf("the workdir was deleted by the refused rebase: %v", statErr)
 	}
 }
+
+func TestWorkflowRebase_ReleasesDependentsBeforeTheirPrerequisites(t *testing.T) {
+	f := newWDFixture(t, wdWorkdirWorkflow)
+	if _, err := Up(f.cfg, f.store, UpParams{Identifier: wdIssueURL}); err != nil {
+		t.Fatalf("Up: %v", err)
+	}
+	name, _ := wdSession(t, f)
+	wdWrite(t, filepath.Join(f.base, "workflows", "review.toml"), `
+[review]
+kind     = "workflow"
+resource = "issue"
+
+[[review.nodes]]
+id   = "replacement"
+uses = "runner"
+`)
+	if _, err := WorkflowRebase(f.cfg, f.store, RebaseParams{Identifier: name}); err != nil {
+		t.Fatalf("rebase: %v (the agent's cleanup runs in the checkout, so the checkout must be released after it)", err)
+	}
+}
+
+func TestUp_ProducerLivenessFailureDoesNotReleaseTheWorkdirUnderADynamicInstance(t *testing.T) {
+	f := newWDFixture(t, wdWorkdirWorkflow)
+	wdWrite(t, filepath.Join(f.base, "tasks", "checkout.toml"), `
+[checkout]
+kind  = "effect"
+scope = "session"
+
+[checkout.setup]
+type   = "shell"
+script = '''
+dir="$HOME/checkouts/$name"
+mkdir -p "$dir"
+touch "$dir/.alive"
+printf '{"workspace_dir":"%s","cwd":"%s"}' "$dir" "$(pwd -P)"
+'''
+
+[checkout.setup.bind]
+name = { from = "session.name" }
+
+[checkout.cleanup]
+type   = "shell"
+script = 'rm -rf "$dir"'
+
+[checkout.cleanup.bind]
+dir = { from = "self.outputs.workspace_dir" }
+
+[checkout.health.alive]
+type   = "shell"
+script = 'test -f "$dir/.alive"'
+
+[checkout.health.alive.bind]
+dir = { from = "self.outputs.workspace_dir" }
+`)
+	if _, err := Up(f.cfg, f.store, UpParams{Identifier: wdIssueURL}); err != nil {
+		t.Fatalf("Up: %v", err)
+	}
+	name, nodes := wdSession(t, f)
+	workdir, _ := nodes["checkout"].Outputs["workspace_dir"].(string)
+	if _, err := TaskSetup(f.cfg, f.store, TaskSetupParams{TaskID: "failing", SessionName: name}); err != nil {
+		t.Fatalf("TaskSetup: %v", err)
+	}
+	keep := filepath.Join(workdir, "keep")
+	if err := os.WriteFile(keep, []byte("x"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Remove(filepath.Join(workdir, ".alive")); err != nil {
+		t.Fatal(err)
+	}
+
+	if _, err := Up(f.cfg, f.store, UpParams{Identifier: name}); err == nil {
+		t.Fatal("up rebuilt the checkout although a dynamic instance still runs in its directory")
+	}
+	if _, statErr := os.Stat(keep); statErr != nil {
+		t.Errorf("the workdir was released under the dynamic instance: %v", statErr)
+	}
+}

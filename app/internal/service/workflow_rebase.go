@@ -173,9 +173,9 @@ func cleanupRebasedNodes(cfg *config.Config, store *state.Store, session *domain
 	selected := rebaseReleaseSet(old, next, plan, classification.RecreateNodes, session)
 	ordered := plan.UpOrder()
 	var cleanup []task.Resolved
-	for i := len(ordered) - 1; i >= 0; i-- {
-		if selected[ordered[i].NodeID] && session.Nodes[ordered[i].NodeID] != nil {
-			cleanup = append(cleanup, ordered[i])
+	for _, node := range ordered {
+		if selected[node.NodeID] && session.Nodes[node.NodeID] != nil {
+			cleanup = append(cleanup, node)
 		}
 	}
 	if len(cleanup) == 0 {
