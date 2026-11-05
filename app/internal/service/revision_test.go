@@ -340,7 +340,7 @@ func TestUpUsesStoredRevisionWhenDispatchFailsAfterWorkflowFileRemoval(t *testin
 	if err := os.WriteFile(filepath.Join(cfg.BaseDir, "workflows", "broken.toml"), []byte("invalid workflow data"), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	if _, _, err := dispatchResource(cfg, "", "existing"); err == nil {
+	if _, _, err := dispatchResource(cfg, "", "", "existing"); err == nil {
 		t.Fatal("dispatch unexpectedly succeeded")
 	}
 	if _, err := Up(cfg, store, UpParams{Identifier: "existing"}); err != nil {

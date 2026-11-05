@@ -347,6 +347,16 @@ func loadSessionWorkflow(cfg *config.Config, session *domain.Session) (config.Wo
 	return config.WorkflowFile{}, fmt.Errorf("session %q has no stored workflow revision", session.Name)
 }
 
+// workdirProducer is the node whose output a session's workdir is read from,
+// or "" when its workflow declares none.
+func workdirProducer(cfg *config.Config, session *domain.Session) string {
+	wf, err := loadSessionWorkflow(cfg, session)
+	if err != nil || wf.Workdir == nil {
+		return ""
+	}
+	return wf.Workdir.Node
+}
+
 // sessionWorkdir evaluates the directory the session's workflow declares as its
 // `workdir`, against the outputs its producer node recorded. A workflow that
 // declares none has no directory, reported as "".

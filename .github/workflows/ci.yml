@@ -498,7 +498,7 @@ jobs:
       # github-watcher binaries (from plugins/github/src) under test — that's
       # slow enough to be excluded from the default
       # go test run but is exactly the coverage that would otherwise let a
-      # spec-encoding test like TestIntegration_DestroyRefusesWhenWorkspaceDirDirty
+      # spec-encoding test like TestIntegration_DestroyRefusesWhenWorkdirDirty
       # rot unnoticed.
       #
       # `./...` would also re-run every untagged unit test in every other

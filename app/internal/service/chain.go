@@ -125,7 +125,7 @@ func sanitizeTag(s string) string {
 // would resolve to — mirroring Up's name derivation so the idempotency check
 // sees the same name Up will.
 func resolveSpawnSessionName(cfg *config.Config, resource, workflow, tag string) (string, error) {
-	disp, matched, err := dispatchResource(cfg, workflow, resource)
+	disp, matched, err := dispatchResource(cfg, "", workflow, resource)
 	if err != nil {
 		return "", err
 	}

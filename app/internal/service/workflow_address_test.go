@@ -322,7 +322,7 @@ func TestDispatch_AmbiguityNamesAddressesNotIds(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	_, _, err := dispatchResource(cfg, "", "https://github.com/org/repo/issues/42")
+	_, _, err := dispatchResource(cfg, "", "", "https://github.com/org/repo/issues/42")
 	if err == nil {
 		t.Fatal("expected two auto-selecting workflows to be ambiguous")
 	}

@@ -8,6 +8,7 @@ import (
 	"sort"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/kecbigmt/plecture/app/internal/config"
 	"github.com/kecbigmt/plecture/app/internal/effect"
@@ -406,5 +407,35 @@ func TestRunCleanup_ReleaseAfterFailureAttemptsPrerequisitesToo(t *testing.T) {
 	}
 	if tasks["checkout"].Status != contract.TaskStatusCleaned {
 		t.Errorf("checkout.Status = %q, want cleaned", tasks["checkout"].Status)
+	}
+}
+
+func TestRunSetup_RecordThatFailedAfterProductionRetriesReleaseInsteadOfRebuilding(t *testing.T) {
+	homeDir(t)
+	markers := t.TempDir()
+	wf := config.WorkflowFile{ID: "env", Nodes: []config.WorkflowNode{{ID: "agent", Uses: "agent"}}}
+	defs := map[string]config.TaskDefinition{"agent": {
+		ID: "agent", Scope: "session",
+		Setup:   shellStub(`touch ` + filepath.Join(markers, "rebuilt")),
+		Cleanup: shellStub(`exit 3`),
+	}}
+	plan, err := CompileWorkflow(wf, defs)
+	if err != nil {
+		t.Fatal(err)
+	}
+	tasks := map[string]*contract.TaskState{"agent": {
+		Scope: "session", Status: contract.TaskStatusFailed, Error: "release failed",
+		SetupAt: time.Now().Add(-time.Hour), Directory: t.TempDir(),
+	}}
+
+	err = RunSetup(context.Background(), plan.Session, SessionVars{Name: "x"}, tasks, nil)
+	if err == nil {
+		t.Fatal("setup succeeded while a failed release was outstanding")
+	}
+	if _, statErr := os.Stat(filepath.Join(markers, "rebuilt")); statErr == nil {
+		t.Errorf("the node was set up again before its release succeeded")
+	}
+	if tasks["agent"].Status != contract.TaskStatusFailed {
+		t.Errorf("agent.Status = %q, want failed: the obligation remains", tasks["agent"].Status)
 	}
 }

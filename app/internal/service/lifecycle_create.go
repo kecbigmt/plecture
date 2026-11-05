@@ -43,7 +43,7 @@ func populationCollision(session string, existing, requested *contract.Populatio
 // ResolvePopulationSessionName runs the same static workflow dispatch as Up
 // without creating or mutating a session.
 func ResolvePopulationSessionName(cfg *config.Config, workflow, resource string) (string, error) {
-	dispatch, matched, err := dispatchResource(cfg, workflow, resource)
+	dispatch, matched, err := dispatchResource(cfg, "", workflow, resource)
 	if err != nil {
 		return "", err
 	}
@@ -94,7 +94,7 @@ func Create(cfg *config.Config, store *state.Store, params CreateParams) (*Creat
 		}
 	}
 
-	disp, matched, dispErr := dispatchResource(cfg, params.Workflow, resource)
+	disp, matched, dispErr := dispatchResource(cfg, params.InvocationDir, params.Workflow, resource)
 	if dispErr != nil {
 		if svcErr, ok := dispErr.(*Error); ok {
 			return nil, svcErr

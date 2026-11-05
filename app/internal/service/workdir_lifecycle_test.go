@@ -84,7 +84,11 @@ type = "object"
 delete_branch = { type = "boolean" }
 
 [checkout.health.alive]
-type = "noop"
+type   = "shell"
+script = 'test -d "$dir"'
+
+[checkout.health.alive.bind]
+dir = { from = "self.outputs.workspace_dir" }
 `)
 	wdWrite(t, filepath.Join(base, "tasks", "agent.toml"), `
 [agent]
@@ -103,7 +107,44 @@ script = 'true'
 
 [agent.health.alive]
 type   = "shell"
-script = 'true'
+script = 'test "$(pwd -P)" = "$want"'
+
+[agent.health.alive.bind]
+want = { from = "self.outputs.cwd" }
+`)
+	wdWrite(t, filepath.Join(base, "tasks", "runner.toml"), `
+[runner]
+kind  = "effect"
+scope = "run"
+
+[runner.setup]
+type   = "shell"
+script = '''
+printf '{"cwd":"%s"}' "$(pwd -P)"
+'''
+
+[runner.health.alive]
+type   = "shell"
+script = 'test "$(pwd -P)" = "$want"'
+
+[runner.health.alive.bind]
+want = { from = "self.outputs.cwd" }
+`)
+	wdWrite(t, filepath.Join(base, "tasks", "failing.toml"), `
+[failing]
+kind  = "effect"
+scope = "session"
+
+[failing.setup]
+type   = "shell"
+script = 'echo "{}"'
+
+[failing.cleanup]
+type   = "shell"
+script = 'exit 9'
+
+[failing.health.alive]
+type = "noop"
 `)
 	wdWrite(t, filepath.Join(base, "workflows", "review.toml"), workflowBody)
 	return &wdFixture{home: home, base: base, store: state.NewStore(t.TempDir()), cfg: &config.Config{BaseDir: base}}
@@ -352,4 +393,106 @@ command = "true"
 			t.Fatal("Up accepted an identifier no resource recognizes")
 		}
 	})
+}
+
+const wdRunWorkflow = `
+[review]
+kind     = "workflow"
+resource = "issue"
+workdir  = { from = "nodes.checkout.outputs.workspace_dir" }
+
+[[review.nodes]]
+uses = "checkout"
+
+[[review.nodes]]
+uses = "runner"
+`
+
+func TestEvaluateHealth_ProbesRunInTheDirectoryTheirSetupRecorded(t *testing.T) {
+	f := newWDFixture(t, wdRunWorkflow)
+	t.Chdir(realPath(t, t.TempDir()))
+	if _, err := Up(f.cfg, f.store, UpParams{Identifier: wdIssueURL}); err != nil {
+		t.Fatalf("Up: %v", err)
+	}
+	name, _ := wdSession(t, f)
+	report, err := EvaluateHealth(f.cfg, f.store, name)
+	if err != nil {
+		t.Fatalf("EvaluateHealth: %v", err)
+	}
+	if !report.Healthy {
+		t.Errorf("a run-scoped node whose alive probe asserts its own working directory is unhealthy (%s): the probe ran outside the recorded directory", report.Reason)
+	}
+}
+
+func TestTaskSetup_DynamicInstanceDependsOnTheWorkdirProducer(t *testing.T) {
+	f := newWDFixture(t, wdWorkdirWorkflow)
+	if _, err := Up(f.cfg, f.store, UpParams{Identifier: wdIssueURL}); err != nil {
+		t.Fatalf("Up: %v", err)
+	}
+	name, nodes := wdSession(t, f)
+	workdir, _ := nodes["checkout"].Outputs["workspace_dir"].(string)
+	result, err := TaskSetup(f.cfg, f.store, TaskSetupParams{TaskID: "failing", SessionName: name})
+	if err != nil {
+		t.Fatalf("TaskSetup: %v", err)
+	}
+	session, _ := f.store.GetE(name)
+	instance := session.Tasks[result.Instance]
+	if instance == nil || instance.Directory != workdir {
+		t.Fatalf("dynamic instance = %+v, want it recorded in %q", instance, workdir)
+	}
+
+	if _, err := Destroy(f.cfg, f.store, DestroyParams{Identifier: name}); err == nil {
+		t.Fatal("destroy succeeded although the dynamic instance's cleanup fails")
+	}
+	if _, statErr := os.Stat(workdir); statErr != nil {
+		t.Errorf("the workdir was released although a dynamic instance running in it failed its cleanup: %v", statErr)
+	}
+}
+
+func TestUp_OutstandingReleaseBlocksReconstruction(t *testing.T) {
+	f := newWDFixture(t, wdWorkdirWorkflow)
+	if _, err := Up(f.cfg, f.store, UpParams{Identifier: wdIssueURL}); err != nil {
+		t.Fatalf("Up: %v", err)
+	}
+	name, nodes := wdSession(t, f)
+	workdir, _ := nodes["checkout"].Outputs["workspace_dir"].(string)
+	firstCheckout := nodes["checkout"].ExecutionID
+	if err := os.RemoveAll(workdir); err != nil {
+		t.Fatal(err)
+	}
+	for attempt := 1; attempt <= 2; attempt++ {
+		if _, err := Up(f.cfg, f.store, UpParams{Identifier: name}); err == nil {
+			t.Fatalf("up %d with the workdir gone and its release outstanding succeeded", attempt)
+		}
+		if _, statErr := os.Stat(workdir); statErr == nil {
+			t.Fatalf("up %d recreated the workdir while a release was outstanding", attempt)
+		}
+		_, nodes = wdSession(t, f)
+		if nodes["checkout"].ExecutionID != firstCheckout || nodes["checkout"].Status == contract.TaskStatusCleaned {
+			t.Errorf("up %d replaced the checkout execution %q with %q (status %q)", attempt, firstCheckout, nodes["checkout"].ExecutionID, nodes["checkout"].Status)
+		}
+	}
+}
+
+func TestUp_DirectInvocationSeesWorkflowsOfAncestorOverlays(t *testing.T) {
+	f := newWDFixture(t, wdWorkdirWorkflow)
+	overlay := filepath.Join(f.home, "projects")
+	wdWrite(t, filepath.Join(overlay, ".plect", "workflows", "local.toml"), `
+[local]
+kind     = "workflow"
+resource = "issue"
+
+[[local.nodes]]
+uses = "agent"
+`)
+	invocation := filepath.Join(overlay, "checkout-a")
+	if err := os.MkdirAll(invocation, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := Up(f.cfg, f.store, UpParams{Identifier: wdIssueURL, Workflow: "local"}); err == nil {
+		t.Fatal("a caller with no directory resolved a workflow only an ancestor overlay declares")
+	}
+	if _, err := Up(f.cfg, f.store, UpParams{Identifier: wdIssueURL, Workflow: "local", InvocationDir: invocation}); err != nil {
+		t.Fatalf("a direct invocation below the overlay could not use its workflow: %v", err)
+	}
 }

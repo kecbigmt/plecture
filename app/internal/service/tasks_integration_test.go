@@ -454,7 +454,7 @@ func TestIntegration_UpAutoCreateWithInput(t *testing.T) {
 	}
 }
 
-func TestIntegration_DestroyRefusesWhenWorkspaceDirDirty(t *testing.T) {
+func TestIntegration_DestroyRefusesWhenWorkdirDirty(t *testing.T) {
 	workspaceDirsRoot := setupE2ERepo(t)
 	setupFakeScripts(t)
 	store := state.NewStore(t.TempDir())

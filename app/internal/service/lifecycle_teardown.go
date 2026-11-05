@@ -70,6 +70,11 @@ func unifiedTeardownList(cfg *config.Config, session *domain.Session, runOnly bo
 		// Only the cleanup-relevant fields, so a def drifted invalid since
 		// creation is no more fatal than a disappeared one.
 		r := task.Resolved{NodeID: key, TaskID: taskID, Scope: st.Scope}
+		if producer := workdirProducer(cfg, session); producer != "" && st.Directory != "" {
+			// Only nodes persist their edges; an instance that ran in the workdir
+			// still needs its producer until the instance is released.
+			r.DependsOn = []string{producer}
+		}
 		if def, ok := defs[taskID]; ok {
 			r.Cleanup = def.Cleanup
 			r.CleanupInputsSchema = def.CleanupInputsSchema

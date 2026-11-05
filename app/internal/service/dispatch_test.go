@@ -13,7 +13,7 @@ func TestDispatchResource_AutoUniqueMatch(t *testing.T) {
 		[]taskFixture{{id: "noop", scope: "session", setup: "echo '{}'"}},
 		[]nodeFixture{{id: "noop"}})
 
-	disp, matched, err := dispatchResource(cfg, "", "https://github.com/org/repo/issues/42")
+	disp, matched, err := dispatchResource(cfg, "", "", "https://github.com/org/repo/issues/42")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -33,7 +33,7 @@ func TestDispatchResource_NoMatchFallsThrough(t *testing.T) {
 		[]taskFixture{{id: "noop", scope: "session", setup: "echo '{}'"}},
 		[]nodeFixture{{id: "noop"}})
 
-	_, matched, err := dispatchResource(cfg, "", "https://jira.example.com/browse/PROJ-1")
+	_, matched, err := dispatchResource(cfg, "", "", "https://jira.example.com/browse/PROJ-1")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -48,7 +48,7 @@ func TestDispatchResource_AmbiguousIsError(t *testing.T) {
 		[]nodeFixture{{id: "noop"}})
 	addFixtureWorkflow(t, cfg, "b", "issue", "noop", "")
 
-	_, _, err := dispatchResource(cfg, "", "https://github.com/org/repo/issues/1")
+	_, _, err := dispatchResource(cfg, "", "", "https://github.com/org/repo/issues/1")
 	if err == nil {
 		t.Fatal("expected ambiguity error")
 	}
@@ -64,7 +64,7 @@ func TestDispatchResource_AutoSelectFalseSkippedUnlessExplicit(t *testing.T) {
 	addFixtureWorkflow(t, cfg, "codex", "issue", "noop", "auto_select = false\n")
 	url := "https://github.com/org/repo/issues/1"
 
-	disp, matched, err := dispatchResource(cfg, "", url)
+	disp, matched, err := dispatchResource(cfg, "", "", url)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -72,7 +72,7 @@ func TestDispatchResource_AutoSelectFalseSkippedUnlessExplicit(t *testing.T) {
 		t.Fatalf("auto dispatch = matched %v workflow %q, want claude", matched, disp.Workflow.ID)
 	}
 
-	disp, matched, err = dispatchResource(cfg, "codex", url)
+	disp, matched, err = dispatchResource(cfg, "", "codex", url)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -96,7 +96,7 @@ script = "echo '{}'"
 `)
 	addFixtureWorkflow(t, cfg, "elsewhere", "other", "noop", "")
 
-	_, _, err := dispatchResource(cfg, "elsewhere", "https://github.com/org/repo/issues/1")
+	_, _, err := dispatchResource(cfg, "", "elsewhere", "https://github.com/org/repo/issues/1")
 	if err == nil {
 		t.Fatal("expected a resource-type mismatch error for explicit --workflow")
 	}
@@ -110,7 +110,7 @@ func TestDispatchResource_UnrecognizedIdentifierIsNotDispatched(t *testing.T) {
 		[]taskFixture{{id: "noop", scope: "session", setup: "echo '{}'"}},
 		[]nodeFixture{{id: "noop"}})
 
-	_, matched, err := dispatchResource(cfg, "gh", "my-session")
+	_, matched, err := dispatchResource(cfg, "", "gh", "my-session")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -125,7 +125,7 @@ func TestDispatchResource_NoWorkflowAcceptingResourceIsError(t *testing.T) {
 		[]nodeFixture{{id: "noop"}})
 	addWorkflowFields(t, cfg, "gh", "auto_select = false\n")
 
-	_, _, err := dispatchResource(cfg, "", "https://github.com/org/repo/issues/1")
+	_, _, err := dispatchResource(cfg, "", "", "https://github.com/org/repo/issues/1")
 	if err == nil || !strings.Contains(err.Error(), "no workflow accepts resource") {
 		t.Fatalf("err = %v, want no-workflow error", err)
 	}

@@ -111,7 +111,7 @@ func TestPostMigrationState_ResolverDispatchOverPostMigrationState(t *testing.T)
 		[]taskFixture{{id: "noop", scope: "session", setup: "echo '{}'"}},
 		[]nodeFixture{{id: "noop"}})
 
-	disp, matched, err := dispatchResource(cfg, "", "https://github.com/acme/widgets/issues/42")
+	disp, matched, err := dispatchResource(cfg, "", "", "https://github.com/acme/widgets/issues/42")
 	if err != nil || !matched {
 		t.Fatalf("dispatch: matched=%v err=%v", matched, err)
 	}

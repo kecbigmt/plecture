@@ -105,9 +105,10 @@ func workflowAutoSelect(wf config.WorkflowFile) bool {
 
 // dispatchResource selects the workflow for a resource identifier by its entry
 // resource type. matched is false, with no error, for an identifier no resource
-// recognizes, so a caller may treat it as a session name.
-func dispatchResource(cfg *config.Config, flag, resource string) (result dispatchResult, matched bool, err error) {
-	workflows, err := cfg.LoadWorkflows("")
+// recognizes, so a caller may treat it as a session name. Workflows come from
+// the same layers revision capture reads for invocationDir.
+func dispatchResource(cfg *config.Config, invocationDir, flag, resource string) (result dispatchResult, matched bool, err error) {
+	workflows, err := cfg.LoadWorkflows(invocationDir)
 	if err != nil {
 		return dispatchResult{}, false, &Error{Code: ErrExecutionFailed, Message: fmt.Sprintf("load workflows: %v", err)}
 	}

@@ -128,7 +128,7 @@ func writeIntegrationFixture(t *testing.T, workdirsRoot, wfID string, defs []tas
 func attachGithubWorktree(t *testing.T, cfg *config.Config, wfID, workdirsRoot string) {
 	t.Helper()
 	if len(cfg.Plugins) == 0 {
-		mount := buildWorkspaceProviderBinaries(t, repoRoot(t))
+		mount := buildShippedPluginBinaries(t, repoRoot(t))
 		cfg.Plugins = append(cfg.Plugins, mount...)
 		cfg.PluginDirs = append(cfg.PluginDirs, mount[0].Dir)
 		tasksDir := filepath.Join(mount[0].Dir, "config", "tasks")

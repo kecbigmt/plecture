@@ -17,6 +17,7 @@ package task
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"log/slog"
 	"strings"
@@ -770,6 +771,13 @@ func RunSetup(goCtx context.Context, ordered []Resolved, session SessionVars, ta
 		if existing, ok := tasks[r.NodeID]; ok && existing != nil && existing.Status != contract.TaskStatusCleaned && declarationChanged(r, existing) {
 			return fmt.Errorf("node %q: an unreleased setup attempt for a different declaration (task %q) still exists; release it with `plect down` or `plect destroy` before setting up %q",
 				r.NodeID, describeTaskID(existing.TaskID, r.NodeID), describeTaskID(taskIDFor(r), r.NodeID))
+		}
+		// A record that failed after it was produced still owns its allocation:
+		// retry its release, and set it up again only once that succeeds.
+		if existing, ok := tasks[r.NodeID]; ok && existing != nil && existing.Status == contract.TaskStatusFailed && !existing.SetupAt.IsZero() {
+			if releaseErr := invalidateProducedNode(goCtx, r, ordered, errors.New(existing.Error), session, tasks, obs); releaseErr != nil {
+				return releaseErr
+			}
 		}
 		if existing, ok := tasks[r.NodeID]; ok && existing != nil && existing.Status == contract.TaskStatusProduced {
 			aliveStart := time.Now()

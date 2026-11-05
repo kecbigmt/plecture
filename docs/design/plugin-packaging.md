@@ -405,7 +405,7 @@ Plecture-maintained plugins also remain available through the existing Nix path.
 ## Reference resolution
 
 Users register catalogs and enable selected plugins in trusted user-owned
-config, not inside cloned workspace-dir content. The global declaration file lives at:
+config, not inside a generated checkout. The global declaration file lives at:
 
 ```text
 ~/.config/plect/catalogs.toml
@@ -580,8 +580,8 @@ The lockfile records exactly what was mounted. The default path is:
 ```
 
 Because catalog registrations and nested plugin selections are global-only in the
-first implementation, this lockfile is global-only too. A workspace-dir-owned
-lockfile is ignored for plugin resolution.
+first implementation, this lockfile is global-only too. A lockfile inside a generated
+checkout is ignored for plugin resolution.
 
 Example:
 
@@ -788,15 +788,13 @@ Threat model:
   safe at scale, not what makes it possible.
 - No auto-update exists. Plugin directories mounted by core are read-only during
   normal command execution.
-- Workspace-dir-owned cloned content cannot declare plugin references,
-  resources, channels, or task definitions.
+- A generated checkout's own `.plect/` is never a layer, so it cannot declare
+  plugin references, resources, channels, workflows, or task definitions.
 
 Loader trust restrictions follow this shape:
 
 - Resources and channels load only from plugin dirs and
   global config.
-- Tasks reject definitions inside the workspace-dir layer.
-- Workflows allow workspace-dir files only to add nodes.
 
 ## Shadowing and precedence
 
@@ -804,8 +802,8 @@ For loaders that receive plugin dirs, resolution order is:
 
 1. Plugin layers, in declaration order.
 2. Global user config.
-3. Trusted ancestor overlays, outermost to innermost.
-4. Workspace-dir `.plect/` overlay, with the same restrictions.
+3. Trusted ancestor overlays above the invocation directory, outermost to
+   innermost.
 
 Each mounted plugin is its own namespace, addressed by its catalog alias and
 plugin path, and the user-owned layers are one namespace between them. Two

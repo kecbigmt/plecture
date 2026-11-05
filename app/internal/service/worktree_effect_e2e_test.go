@@ -34,7 +34,7 @@ func resolveGoToolCaches() []string {
 	return []string{"GOMODCACHE=" + lines[0], "GOCACHE=" + lines[1]}
 }
 
-var workspaceProviderBinaries = []struct{ moduleDir, pkg, name string }{
+var pluginBinaries = []struct{ moduleDir, pkg, name string }{
 	{"app", "./cmd/plect", "plect"},
 	{filepath.Join("plugins", "github", "src"), "./cmd/github-worktree", "github-worktree"},
 	{filepath.Join("plugins", "github", "src"), "./cmd/github-watcher", "github-watcher"},
@@ -43,29 +43,29 @@ var workspaceProviderBinaries = []struct{ moduleDir, pkg, name string }{
 	{filepath.Join("plugins", "github", "src"), "./cmd/gh-app-token", "gh-app-token"},
 }
 
-// buildSharedWorkspaceProviderBinaries builds workspaceProviderBinaries once
-// per test binary run: dozens of tests each mount a workspace-provider
+// buildSharedPluginBinaries builds pluginBinaries once
+// per test binary run: dozens of tests each mount a plugin
 // fixture, and a per-test rebuild of all four was this package's dominant
 // integration-test cost.
-func buildSharedWorkspaceProviderBinaries(root string) (string, error) {
-	return sharedWorkspaceProviderBinaries.build(root, workspaceProviderBinaries, goToolCaches)
+func buildSharedPluginBinaries(root string) (string, error) {
+	return sharedPluginBinaries.build(root, pluginBinaries, goToolCaches)
 }
 
-// buildWorkspaceProviderBinaries symlinks the shared binaries (see
-// buildSharedWorkspaceProviderBinaries) into a fresh per-test directory and
-// PATH, so a test's own config/workspaces writes don't collide with
+// buildShippedPluginBinaries symlinks the shared binaries (see
+// buildSharedPluginBinaries) into a fresh per-test directory and
+// PATH, so a test's own config writes do not collide with
 // another test's.
-func buildWorkspaceProviderBinaries(t *testing.T, root string) []plugins.Mounted {
+func buildShippedPluginBinaries(t *testing.T, root string) []plugins.Mounted {
 	t.Helper()
-	sharedDir, err := buildSharedWorkspaceProviderBinaries(root)
+	sharedDir, err := buildSharedPluginBinaries(root)
 	if err != nil {
-		t.Fatalf("build workspace provider binaries: %v", err)
+		t.Fatalf("build plugin binaries: %v", err)
 	}
 	binDir := filepath.Join(t.TempDir(), "bin")
 	if err := os.MkdirAll(binDir, 0o755); err != nil {
 		t.Fatal(err)
 	}
-	for _, b := range workspaceProviderBinaries {
+	for _, b := range pluginBinaries {
 		if err := os.Symlink(filepath.Join(sharedDir, b.name), filepath.Join(binDir, b.name)); err != nil {
 			t.Fatalf("symlink %s: %v", b.name, err)
 		}
@@ -85,10 +85,10 @@ func buildWorkspaceProviderBinaries(t *testing.T, root string) []plugins.Mounted
 	}}
 }
 
-func TestBuildWorkspaceProviderBinaries_BuildsOnce(t *testing.T) {
+func TestBuildPluginBinaries_BuildsOnce(t *testing.T) {
 	root := repoRoot(t)
-	buildWorkspaceProviderBinaries(t, root)
-	firstDir, err := buildSharedWorkspaceProviderBinaries(root)
+	buildShippedPluginBinaries(t, root)
+	firstDir, err := buildSharedPluginBinaries(root)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -97,8 +97,8 @@ func TestBuildWorkspaceProviderBinaries_BuildsOnce(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	buildWorkspaceProviderBinaries(t, root)
-	secondDir, err := buildSharedWorkspaceProviderBinaries(root)
+	buildShippedPluginBinaries(t, root)
+	secondDir, err := buildSharedPluginBinaries(root)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -110,7 +110,7 @@ func TestBuildWorkspaceProviderBinaries_BuildsOnce(t *testing.T) {
 		t.Fatal(err)
 	}
 	if !secondInfo.ModTime().Equal(firstInfo.ModTime()) {
-		t.Error("plect was rebuilt on a second mount request; workspace-provider binaries must build exactly once per test binary run")
+		t.Error("plect was rebuilt on a second mount request; plugin binaries must build exactly once per test binary run")
 	}
 }
 
@@ -122,7 +122,7 @@ func TestForceSharedBuildFailure(t *testing.T) {
 	if os.Getenv(forceSharedBuildFailureEnvVar) != "1" {
 		t.Skip("subprocess helper; set " + forceSharedBuildFailureEnvVar + " to run")
 	}
-	dir, err := sharedWorkspaceProviderBinaries.build(repoRoot(t), []struct{ moduleDir, pkg, name string }{
+	dir, err := sharedPluginBinaries.build(repoRoot(t), []struct{ moduleDir, pkg, name string }{
 		{"app", "./cmd/this-package-does-not-exist", "nope"},
 	}, goToolCaches)
 	if err == nil {
@@ -192,7 +192,7 @@ func watcherSubscriptions(t *testing.T, home string) map[string]json.RawMessage 
 // `unsubscribe` hook.
 func TestE2E_GithubResourceWiresAndDropsEventDelivery(t *testing.T) {
 	root := repoRoot(t)
-	mounted := buildWorkspaceProviderBinaries(t, root)
+	mounted := buildShippedPluginBinaries(t, root)
 	cfg := &config.Config{PluginDirs: []string{mounted[0].Dir}, Plugins: mounted}
 	copyShippedGithubResources(t, mounted[0].Dir)
 
@@ -230,7 +230,7 @@ func TestE2E_GithubResourceWiresAndDropsEventDelivery(t *testing.T) {
 
 func TestIntegration_SubscribeCallsGithubWatcherForPullRequest(t *testing.T) {
 	root := repoRoot(t)
-	mounted := buildWorkspaceProviderBinaries(t, root)
+	mounted := buildShippedPluginBinaries(t, root)
 	copyShippedGithubResources(t, mounted[0].Dir)
 	cfg := &config.Config{PluginDirs: []string{mounted[0].Dir}, Plugins: mounted}
 	home := t.TempDir()
@@ -248,7 +248,7 @@ func TestIntegration_SubscribeCallsGithubWatcherForPullRequest(t *testing.T) {
 
 func TestIntegration_RetryCallsGithubWatcherAfterHookFailure(t *testing.T) {
 	root := repoRoot(t)
-	mounted := buildWorkspaceProviderBinaries(t, root)
+	mounted := buildShippedPluginBinaries(t, root)
 	copyShippedGithubResources(t, mounted[0].Dir)
 	cfg := &config.Config{PluginDirs: []string{mounted[0].Dir}, Plugins: mounted}
 	home := t.TempDir()

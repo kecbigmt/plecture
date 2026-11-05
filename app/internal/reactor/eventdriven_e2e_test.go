@@ -76,7 +76,7 @@ func splitLines(s string) []string {
 // pin that. Its identifiers below are a genuine, necessary exception to
 // core's own provider-neutrality, using check-provider-boundary.sh's own
 // "boundary-allow" escape hatch, the same way the pre-existing
-// app/internal/service/provider_github_e2e_test.go already does.
+// app/internal/service/worktree_effect_e2e_test.go already does.
 const (
 	pluginDirName      = "github"           // boundary-allow: real plugin directory name
 	worktreeBin        = "github-worktree"  // boundary-allow: real plugin binary name
@@ -105,7 +105,7 @@ func buildSharedShippedPluginBinaries(root string) (string, error) {
 // buildSharedShippedPluginBinaries) into a fresh per-test directory and PATH,
 // and returns the mounted-plugin entry the shipped worktree.toml's
 // `{{bin ...}}` references need to resolve. Mirrors app/internal/service's
-// own buildWorkspaceProviderBinaries — duplicated here rather than shared,
+// own buildShippedPluginBinaries — duplicated here rather than shared,
 // because that helper is unexported in a package this one cannot import (see
 // the comment on TestE2E_TaskSetupResourceDeliversRealWatcherEventToReactiveTick
 // for why this test lives in this package at all).

@@ -85,7 +85,7 @@ func Up(cfg *config.Config, store *state.Store, params UpParams) (*UpResult, err
 }
 
 func upLifecycleLockName(cfg *config.Config, store *state.Store, params UpParams) (string, error) {
-	disp, matched, err := dispatchResource(cfg, params.Workflow, params.Identifier)
+	disp, matched, err := dispatchResource(cfg, params.InvocationDir, params.Workflow, params.Identifier)
 	if err == nil && matched {
 		tag, tagErr := effectiveTag(params.Tag, disp.Workflow.ID)
 		if tagErr != nil {
@@ -99,7 +99,7 @@ func upLifecycleLockName(cfg *config.Config, store *state.Store, params UpParams
 func upUnlocked(cfg *config.Config, store *state.Store, params UpParams) (*UpResult, error) {
 	identifier := params.Identifier
 	forceRecreateExisting := false
-	disp, matched, dispErr := dispatchResource(cfg, params.Workflow, params.Identifier)
+	disp, matched, dispErr := dispatchResource(cfg, params.InvocationDir, params.Workflow, params.Identifier)
 	if dispErr != nil {
 		if params.Tag == "" {
 			if _, existing, lookupErr := resolveSession(cfg, store, params.Identifier); lookupErr == nil && existing != nil {

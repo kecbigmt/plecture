@@ -93,7 +93,7 @@ func resolveSession(cfg *config.Config, store *state.Store, identifier string) (
 
 	sessionName := identifier
 	if cfg != nil {
-		if disp, matched, err := dispatchResource(cfg, "", identifier); err == nil && matched {
+		if disp, matched, err := dispatchResource(cfg, "", "", identifier); err == nil && matched {
 			if session, err := store.GetE(disp.Name); err != nil {
 				return "", nil, err
 			} else if session != nil {
