@@ -30,20 +30,8 @@ func TestSessionDisplayUsesStoredWorkflowDeclaration(t *testing.T) {
 	}
 }
 
-func TestBuildPlanForSessionRejectsPendingWorkspaceCapture(t *testing.T) {
-	revision := config.WorkflowRevision{Workflow: config.WorkflowFile{Address: "work"}, WorkspaceCapturePending: true}
-	body, digest, err := revision.CanonicalBody()
-	if err != nil {
-		t.Fatal(err)
-	}
-	session := &domain.Session{Name: "session", Workflow: "work", WorkflowRevision: digest, WorkflowRevisionBody: string(body)}
-	if _, err := buildPlanForSession(&config.Config{}, "", session); err == nil || !strings.Contains(err.Error(), "pending workspace capture") {
-		t.Fatalf("plan error = %v, want pending workspace capture", err)
-	}
-}
-
 func TestBuildPlanForSessionUsesRevisionAfterDefinitionsDisappear(t *testing.T) {
-	cfg := writeWorkflowFixture(t, t.TempDir(), "coding",
+	cfg := writeWorkflowFixture(t, "coding",
 		[]taskFixture{{id: "original", scope: "run", setup: `echo '{}'`, cleanup: "true"}},
 		[]nodeFixture{{id: "original"}},
 	)
@@ -62,14 +50,14 @@ func TestBuildPlanForSessionUsesRevisionAfterDefinitionsDisappear(t *testing.T) 
 		t.Fatal(err)
 	}
 	session := &domain.Session{Workflow: "coding", WorkflowRevision: digest, WorkflowRevisionBody: string(body)}
-	plan, err := buildPlanForSession(cfg, "", session)
+	plan, err := buildPlanForSession(cfg, session)
 	if err != nil || len(plan.Run) != 1 || plan.Run[0].NodeID != "original" {
 		t.Fatalf("stored plan = %+v, err %v", plan, err)
 	}
 }
 
 func TestBuildPlanForSessionKeepsExternalSchemaAfterFileRemoved(t *testing.T) {
-	cfg := writeWorkflowFixture(t, t.TempDir(), "coding",
+	cfg := writeWorkflowFixture(t, "coding",
 		[]taskFixture{{id: "original", scope: "run", setup: `echo '{}'`, extra: "inputs_schema_file = \"input-schema.json\"\n"}},
 		[]nodeFixture{{id: "original"}},
 	)
@@ -89,14 +77,14 @@ func TestBuildPlanForSessionKeepsExternalSchemaAfterFileRemoved(t *testing.T) {
 		t.Fatal(err)
 	}
 	session := &domain.Session{Workflow: "coding", WorkflowRevision: digest, WorkflowRevisionBody: string(body)}
-	plan, err := buildPlanForSession(cfg, "", session)
+	plan, err := buildPlanForSession(cfg, session)
 	if err != nil || plan == nil || len(plan.Run) != 1 {
 		t.Fatalf("stored plan with external schema = %+v, err %v", plan, err)
 	}
 }
 
 func TestBackfillWorkflowRevisionsPinsExistingSessionAtMigration(t *testing.T) {
-	cfg := writeWorkflowFixture(t, t.TempDir(), "coding",
+	cfg := writeWorkflowFixture(t, "coding",
 		[]taskFixture{{id: "original", scope: "run", setup: `echo '{}'`}},
 		[]nodeFixture{{id: "original"}},
 	)
@@ -115,7 +103,7 @@ func TestBackfillWorkflowRevisionsPinsExistingSessionAtMigration(t *testing.T) {
 	if session.WorkflowRevision == "" {
 		t.Fatal("migration did not assign a revision")
 	}
-	plan, err := buildPlanForSession(cfg, "", session)
+	plan, err := buildPlanForSession(cfg, session)
 	if err != nil || plan == nil || len(plan.Run) != 1 {
 		t.Fatalf("migrated plan = %+v, err %v", plan, err)
 	}
@@ -127,7 +115,7 @@ func TestDestroyForceRemovesFailedSetupWithoutRevision(t *testing.T) {
 	session := &domain.Session{
 		Name: "failed-setup", Workflow: "removed", Status: contract.SessionStatusDown,
 		CreatedAt: now, UpdatedAt: now,
-		Nodes: map[string]*contract.TaskState{contract.WorkflowPseudoNodeID: {Status: contract.TaskStatusFailed, Scope: contract.TaskScopeSession}},
+		Nodes: map[string]*contract.TaskState{workdirEffectID: {Status: contract.TaskStatusFailed, Scope: contract.TaskScopeSession}},
 	}
 	if err := store.Put(session); err != nil {
 		t.Fatal(err)
@@ -143,22 +131,20 @@ func TestDestroyForceRemovesFailedSetupWithoutRevision(t *testing.T) {
 	}
 }
 
-func TestDestroyFailedWorkspaceSetupUsesCapturedCleanupAfterProviderEdit(t *testing.T) {
+func TestDestroyFailedEffectSetupUsesCapturedCleanupAfterEffectEdit(t *testing.T) {
 	root := t.TempDir()
 	allocation := filepath.Join(root, "allocation")
 	cleanupLog := filepath.Join(root, "cleanup.log")
-	cfg := writeWorkflowFixture(t, t.TempDir(), "wf", nil, nil)
-	writeSetupWorkflow(t, cfg, "wf", providerRunningScript("wf", fmt.Sprintf("mkdir -p %q; exit 1", allocation))+fmt.Sprintf(`
-[wf.cleanup]
-type = "exec"
-command = "sh"
-args = ["-c", %q]
-`, fmt.Sprintf("rm -rf %q; printf original > %q", allocation, cleanupLog)))
+	cfg := writeWorkflowFixture(t, "wf", nil, nil)
+	attachWorkdir(t, cfg, "wf", taskFixture{
+		setup:   fmt.Sprintf("mkdir -p %q; exit 1", allocation),
+		cleanup: fmt.Sprintf("rm -rf %q; printf original > %q", allocation, cleanupLog),
+	})
 	store := testStore(t)
 	resource := "https://github.com/org/repo/issues/5"
 	_, createErr := Create(cfg, store, CreateParams{URL: resource})
 	if createErr == nil {
-		t.Fatal("Create succeeded despite failed provider setup")
+		t.Fatal("Create succeeded despite failed effect setup")
 	}
 	sessions, err := store.AllE()
 	if err != nil || len(sessions) != 1 {
@@ -168,20 +154,17 @@ args = ["-c", %q]
 	for _, candidate := range sessions {
 		session = candidate
 	}
-	if session == nil || session.Nodes[contract.WorkflowPseudoNodeID] == nil {
+	if session == nil || session.Nodes[workdirEffectID] == nil {
 		t.Fatalf("failed setup session = %+v, create error = %v", session, createErr)
 	}
 	if _, err := os.Stat(allocation); err != nil {
 		t.Fatalf("setup allocation: %v", err)
 	}
-	providerPath := filepath.Join(cfg.BaseDir, "workspaces", "wf_provider.toml")
-	changed := providerRunningScript("wf_provider", "exit 1") + fmt.Sprintf(`
-[wf_provider.cleanup]
-type = "exec"
-command = "sh"
-args = ["-c", %q]
-`, fmt.Sprintf("printf changed > %q", cleanupLog))
-	if err := os.WriteFile(providerPath, []byte(changed), 0o644); err != nil {
+	changed := effectFixtureDoc(taskFixture{
+		id: workdirEffectID, scope: "session", setup: "exit 1",
+		cleanup: fmt.Sprintf("printf changed > %q", cleanupLog),
+	})
+	if err := os.WriteFile(filepath.Join(cfg.BaseDir, "tasks", workdirEffectID+".toml"), []byte(changed), 0o644); err != nil {
 		t.Fatal(err)
 	}
 	if _, err := Destroy(cfg, store, DestroyParams{Identifier: session.Name}); err != nil {
@@ -191,26 +174,23 @@ args = ["-c", %q]
 		t.Fatalf("allocation remains after cleanup: %v", err)
 	}
 	if got, err := os.ReadFile(cleanupLog); err != nil || string(got) != "original" {
-		t.Fatalf("cleanup = %q, err %v, want captured provider", got, err)
+		t.Fatalf("cleanup = %q, err %v, want captured effect", got, err)
 	}
 }
 
-func TestCreateRetryKeepsProviderRevisionAfterFailedSetup(t *testing.T) {
+func TestCreateRetryKeepsEffectRevisionAfterFailedSetup(t *testing.T) {
 	root := t.TempDir()
 	firstAttempt := filepath.Join(root, "attempted")
 	workspace := filepath.Join(root, "workspace")
 	cleanupLog := filepath.Join(root, "cleanup.log")
-	cfg := writeWorkflowFixture(t, t.TempDir(), "wf",
+	cfg := writeWorkflowFixture(t, "wf",
 		[]taskFixture{{id: "runtime", scope: "run", setup: `echo '{}'`}},
 		[]nodeFixture{{id: "runtime"}},
 	)
-	setup := fmt.Sprintf("if [ ! -e %q ]; then touch %q; exit 1; fi; mkdir -p %q; printf '{\"workspace_dir\":\"%s\"}'", firstAttempt, firstAttempt, workspace, workspace)
-	writeSetupWorkflow(t, cfg, "wf", providerRunningScript("wf", setup)+fmt.Sprintf(`
-[wf.cleanup]
-type = "exec"
-command = "sh"
-args = ["-c", %q]
-`, fmt.Sprintf("printf original > %q", cleanupLog)))
+	attachWorkdir(t, cfg, "wf", taskFixture{
+		setup:   fmt.Sprintf("if [ ! -e %q ]; then touch %q; exit 1; fi\n", firstAttempt, firstAttempt) + mkdirScript(workspace),
+		cleanup: fmt.Sprintf("printf original > %q", cleanupLog),
+	})
 	store := testStore(t)
 	resource := "https://github.com/org/repo/issues/5"
 	if _, err := Create(cfg, store, CreateParams{URL: resource}); err == nil {
@@ -223,135 +203,31 @@ args = ["-c", %q]
 	var name string
 	for name = range sessions {
 	}
-	providerPath := filepath.Join(cfg.BaseDir, "workspaces", "wf_provider.toml")
-	changed := providerRunningScript("wf_provider", "exit 1") + fmt.Sprintf(`
-[wf_provider.cleanup]
-type = "exec"
-command = "sh"
-args = ["-c", %q]
-`, fmt.Sprintf("printf changed > %q", cleanupLog))
-	if err := os.WriteFile(providerPath, []byte(changed), 0o644); err != nil {
+	changed := effectFixtureDoc(taskFixture{
+		id: workdirEffectID, scope: "session", setup: "exit 1",
+		cleanup: fmt.Sprintf("printf changed > %q", cleanupLog),
+	})
+	if err := os.WriteFile(filepath.Join(cfg.BaseDir, "tasks", workdirEffectID+".toml"), []byte(changed), 0o644); err != nil {
 		t.Fatal(err)
 	}
 	if _, err := Create(cfg, store, CreateParams{URL: resource}); err != nil {
-		t.Fatalf("retry with captured provider: %v", err)
+		t.Fatalf("retry with captured effect: %v", err)
 	}
 	if _, err := Destroy(cfg, store, DestroyParams{Identifier: name}); err != nil {
 		t.Fatal(err)
 	}
 	if got, err := os.ReadFile(cleanupLog); err != nil || string(got) != "original" {
-		t.Fatalf("cleanup = %q, err %v, want captured provider", got, err)
-	}
-}
-
-func TestDestroyAfterWorkspaceRevisionCaptureFailsUsesBaseProvider(t *testing.T) {
-	root := t.TempDir()
-	workspace := filepath.Join(root, "workspace")
-	badLayer := filepath.Join(workspace, ".plect", "workflows")
-	if err := os.MkdirAll(badLayer, 0o755); err != nil {
-		t.Fatal(err)
-	}
-	if err := os.WriteFile(filepath.Join(badLayer, "wf.toml"), []byte("not valid TOML = ["), 0o644); err != nil {
-		t.Fatal(err)
-	}
-	cleanupLog := filepath.Join(root, "cleanup.log")
-	cfg := writeWorkflowFixture(t, t.TempDir(), "wf", nil, nil)
-	writeSetupWorkflow(t, cfg, "wf", providerRunningScript("wf", fmt.Sprintf(`printf '{"workspace_dir":"%s"}'`, workspace))+fmt.Sprintf(`
-[wf.cleanup]
-type = "exec"
-command = "sh"
-args = ["-c", %q]
-`, fmt.Sprintf("printf cleaned > %q", cleanupLog)))
-	store := testStore(t)
-	if _, err := Create(cfg, store, CreateParams{URL: "https://github.com/org/repo/issues/5"}); err == nil {
-		t.Fatal("Create succeeded despite invalid workspace layer")
-	}
-	sessions, err := store.AllE()
-	if err != nil || len(sessions) != 1 {
-		t.Fatalf("sessions after capture failure = %+v, err %v", sessions, err)
-	}
-	for name, session := range sessions {
-		if session.WorkflowRevision == "" {
-			t.Fatal("base revision was not retained")
-		}
-		if _, err := Destroy(cfg, store, DestroyParams{Identifier: name}); err != nil {
-			t.Fatalf("Destroy after capture failure: %v", err)
-		}
-	}
-	if got, err := os.ReadFile(cleanupLog); err != nil || string(got) != "cleaned" {
-		t.Fatalf("cleanup = %q, err %v", got, err)
-	}
-}
-
-func TestCreateRetryCapturesWorkspaceOverlayAfterCaptureFailure(t *testing.T) {
-	workspace := filepath.Join(t.TempDir(), "workspace")
-	layer := filepath.Join(workspace, ".plect", "workflows")
-	if err := os.MkdirAll(layer, 0o755); err != nil {
-		t.Fatal(err)
-	}
-	overlay := filepath.Join(layer, "wf.toml")
-	if err := os.WriteFile(overlay, []byte("not valid TOML = ["), 0o644); err != nil {
-		t.Fatal(err)
-	}
-	cfg := writeWorkflowFixture(t, t.TempDir(), "wf",
-		[]taskFixture{
-			{id: "base", scope: "run", setup: `echo '{}'`},
-			{id: "extra", scope: "run", setup: `echo '{}'`},
-		},
-		[]nodeFixture{{id: "base"}},
-	)
-	writeSetupWorkflow(t, cfg, "wf", providerCreatingWorkspace("wf", workspace))
-	store := testStore(t)
-	resource := "https://github.com/org/repo/issues/5"
-	if _, err := Create(cfg, store, CreateParams{URL: resource}); err == nil {
-		t.Fatal("Create succeeded despite invalid workspace overlay")
-	}
-	if err := os.WriteFile(overlay, []byte("[wf]\nkind = \"workflow\"\n[[wf.nodes]]\nuses = \"extra\"\n"), 0o644); err != nil {
-		t.Fatal(err)
-	}
-	baseTaskPath := filepath.Join(cfg.BaseDir, "tasks", "base.toml")
-	originalBase, err := os.ReadFile(baseTaskPath)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if err := os.WriteFile(baseTaskPath, []byte(effectFixtureDoc(taskFixture{id: "base", scope: "run", setup: `printf '{}'`})), 0o644); err != nil {
-		t.Fatal(err)
-	}
-	if _, err := Create(cfg, store, CreateParams{URL: resource}); err == nil || !strings.Contains(err.Error(), "trusted configuration changed since session") || !strings.Contains(err.Error(), "was created; restore it before retrying") {
-		t.Fatalf("retry with changed trusted configuration = %v", err)
-	}
-	if err := os.WriteFile(baseTaskPath, originalBase, 0o644); err != nil {
-		t.Fatal(err)
-	}
-	if _, err := Up(cfg, store, UpParams{Identifier: resource}); err != nil {
-		t.Fatalf("up after overlay repair: %v", err)
-	}
-	want, err := cfg.CaptureWorkflowRevision(workspace, "wf")
-	if err != nil {
-		t.Fatal(err)
-	}
-	_, digest, err := want.CanonicalBody()
-	if err != nil {
-		t.Fatal(err)
-	}
-	sessions, err := store.AllE()
-	if err != nil || len(sessions) != 1 {
-		t.Fatalf("sessions = %+v, err %v", sessions, err)
-	}
-	for _, session := range sessions {
-		if session.WorkflowRevision != digest {
-			t.Fatalf("stored revision = %q, want overlay revision %q", session.WorkflowRevision, digest)
-		}
+		t.Fatalf("cleanup = %q, err %v, want captured effect", got, err)
 	}
 }
 
 func TestCreateSharesRevisionUntilDeclarationChanges(t *testing.T) {
 	workdir := filepath.Join(t.TempDir(), "workspace")
-	cfg := writeWorkflowFixture(t, t.TempDir(), "wf",
+	cfg := writeWorkflowFixture(t, "wf",
 		[]taskFixture{{id: "runtime", scope: "run", setup: `echo '{}'`}},
 		[]nodeFixture{{id: "runtime"}},
 	)
-	writeSetupWorkflow(t, cfg, "wf", providerRunningScript("wf", fmt.Sprintf("mkdir -p %q; printf '{\"workspace_dir\":\"%s\"}'", workdir, workdir)))
+	attachWorkdirDir(t, cfg, "wf", workdir)
 	store := testStore(t)
 	var created []string
 	for _, n := range []string{"1", "2"} {
@@ -380,13 +256,13 @@ func TestCreateSharesRevisionUntilDeclarationChanges(t *testing.T) {
 	}
 }
 
-func TestCreateRetryUsesStoredProviderInputsAfterWorkflowEdit(t *testing.T) {
+func TestCreateRetryKeepsStoredRevisionAfterWorkflowEdit(t *testing.T) {
 	workdir := filepath.Join(t.TempDir(), "workspace")
-	cfg := writeWorkflowFixture(t, t.TempDir(), "wf",
+	cfg := writeWorkflowFixture(t, "wf",
 		[]taskFixture{{id: "runtime", scope: "run", setup: `echo '{}'`}},
 		[]nodeFixture{{id: "runtime"}},
 	)
-	writeSetupWorkflow(t, cfg, "wf", providerCreatingWorkspace("wf", workdir))
+	attachWorkdirDir(t, cfg, "wf", workdir)
 	store := testStore(t)
 	resource := "https://github.com/org/repo/issues/5"
 	result, err := Create(cfg, store, CreateParams{URL: resource})
@@ -394,7 +270,7 @@ func TestCreateRetryUsesStoredProviderInputsAfterWorkflowEdit(t *testing.T) {
 		t.Fatal(err)
 	}
 	before := store.Get(result.SessionName)
-	addWorkflowFields(t, cfg, "wf", "workspace_provider_inputs = { unexpected = \"new\" }\n")
+	addWorkflowFields(t, cfg, "wf", "name = \"Edited after create\"\n")
 	if _, err := Create(cfg, store, CreateParams{URL: resource}); err != nil {
 		t.Fatal(err)
 	}
@@ -405,7 +281,7 @@ func TestCreateRetryUsesStoredProviderInputsAfterWorkflowEdit(t *testing.T) {
 
 func TestUpUsesStoredNodeDeclarationAfterEdit(t *testing.T) {
 	marker := filepath.Join(t.TempDir(), "ran")
-	cfg := writeWorkflowFixture(t, t.TempDir(), "coding",
+	cfg := writeWorkflowFixture(t, "coding",
 		[]taskFixture{{id: "runtime", scope: "run", setup: fmt.Sprintf("printf old > %q; echo '{}'", marker)}},
 		[]nodeFixture{{id: "runtime"}},
 	)
@@ -440,7 +316,7 @@ func TestUpUsesStoredNodeDeclarationAfterEdit(t *testing.T) {
 
 func TestUpUsesStoredRevisionWhenDispatchFailsAfterWorkflowFileRemoval(t *testing.T) {
 	marker := filepath.Join(t.TempDir(), "ran")
-	cfg := writeWorkflowFixture(t, t.TempDir(), "coding",
+	cfg := writeWorkflowFixture(t, "coding",
 		[]taskFixture{{id: "runtime", scope: "run", setup: fmt.Sprintf("printf stored > %q; echo '{}'", marker)}},
 		[]nodeFixture{{id: "runtime"}},
 	)
@@ -476,7 +352,7 @@ func TestUpUsesStoredRevisionWhenDispatchFailsAfterWorkflowFileRemoval(t *testin
 }
 
 func TestEvaluateHealthUsesStoredProbeAfterEdit(t *testing.T) {
-	cfg := writeWorkflowFixture(t, t.TempDir(), "coding",
+	cfg := writeWorkflowFixture(t, "coding",
 		[]taskFixture{{id: "runtime", scope: "run", alive: "false"}},
 		[]nodeFixture{{id: "runtime"}},
 	)
@@ -514,7 +390,7 @@ func TestEvaluateHealthUsesStoredProbeAfterEdit(t *testing.T) {
 
 func TestDestroyUsesStoredCleanupAfterWorkflowFileRemoved(t *testing.T) {
 	log := filepath.Join(t.TempDir(), "cleanup.log")
-	cfg := writeWorkflowFixture(t, t.TempDir(), "coding",
+	cfg := writeWorkflowFixture(t, "coding",
 		[]taskFixture{{id: "original", scope: "run", cleanup: fmt.Sprintf("printf cleaned > %q", log)}},
 		[]nodeFixture{{id: "original"}},
 	)

@@ -5,6 +5,7 @@ import (
 	"log/slog"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/kecbigmt/plecture/app/internal/confighome"
@@ -55,7 +56,6 @@ func TestLoad_WithConfigFile(t *testing.T) {
 
 	configContent := `
 schema_version = 2
-workspace_dirs_root = "~/my-workspace-dirs"
 resource_allowlist = ["^https://example\\.test/org/", "^https://example\\.test/other/"]
 detached = false
 `
@@ -66,9 +66,6 @@ detached = false
 	cfg, err := Load()
 	if err != nil {
 		t.Fatal(err)
-	}
-	if cfg.WorkspaceDirsRoot != filepath.Join(tmpHome, "my-workspace-dirs") {
-		t.Errorf("WorkspaceDirsRoot = %q, want %q", cfg.WorkspaceDirsRoot, filepath.Join(tmpHome, "my-workspace-dirs"))
 	}
 	if len(cfg.ResourceAllowlist) != 2 {
 		t.Errorf("ResourceAllowlist length = %d, want 2", len(cfg.ResourceAllowlist))
@@ -137,7 +134,7 @@ func TestLoad_MalformedConfigFileFallsBackAndWarns(t *testing.T) {
 	}
 }
 
-func TestLoad_LegacyWorktreesRootWarns(t *testing.T) {
+func TestLoad_RetiredWorkspaceDirsRootIsALoadErrorPointingAtTheMigration(t *testing.T) {
 	tmpHome := t.TempDir()
 	t.Setenv("HOME", tmpHome)
 
@@ -145,53 +142,13 @@ func TestLoad_LegacyWorktreesRootWarns(t *testing.T) {
 	if err := os.MkdirAll(configDir, 0o755); err != nil {
 		t.Fatal(err)
 	}
-	if err := os.WriteFile(filepath.Join(configDir, "config.toml"), []byte("schema_version = 2\nworktrees_root = \"/legacy/worktrees\""), 0o644); err != nil {
+	if err := os.WriteFile(filepath.Join(configDir, "config.toml"), []byte("schema_version = 2\nworkspace_dirs_root = \"~/workspace_dirs\"\n"), 0o644); err != nil {
 		t.Fatal(err)
 	}
 
-	var logs bytes.Buffer
-	prev := slog.Default()
-	slog.SetDefault(slog.New(slog.NewTextHandler(&logs, nil)))
-	defer slog.SetDefault(prev)
-
-	cfg, err := Load()
-	if err != nil {
-		t.Fatal(err)
-	}
-	if cfg.WorkspaceDirsRoot != filepath.Join(tmpHome, "workspace_dirs") {
-		t.Errorf("WorkspaceDirsRoot = %q, want default because legacy key is ignored", cfg.WorkspaceDirsRoot)
-	}
-	if !bytes.Contains(logs.Bytes(), []byte("legacy config key worktrees_root is ignored")) {
-		t.Errorf("expected a warning about worktrees_root, got log output: %q", logs.String())
-	}
-}
-
-func TestLoad_LegacyWorkdirsRootWarns(t *testing.T) {
-	tmpHome := t.TempDir()
-	t.Setenv("HOME", tmpHome)
-
-	configDir := filepath.Join(tmpHome, ".config", "plect")
-	if err := os.MkdirAll(configDir, 0o755); err != nil {
-		t.Fatal(err)
-	}
-	if err := os.WriteFile(filepath.Join(configDir, "config.toml"), []byte("schema_version = 2\nworkdirs_root = \"/legacy/workdirs\""), 0o644); err != nil {
-		t.Fatal(err)
-	}
-
-	var logs bytes.Buffer
-	prev := slog.Default()
-	slog.SetDefault(slog.New(slog.NewTextHandler(&logs, nil)))
-	defer slog.SetDefault(prev)
-
-	cfg, err := Load()
-	if err != nil {
-		t.Fatal(err)
-	}
-	if cfg.WorkspaceDirsRoot != filepath.Join(tmpHome, "workspace_dirs") {
-		t.Errorf("WorkspaceDirsRoot = %q, want default because legacy key is ignored", cfg.WorkspaceDirsRoot)
-	}
-	if !bytes.Contains(logs.Bytes(), []byte("legacy config key workdirs_root is ignored")) {
-		t.Errorf("expected a warning about workdirs_root, got log output: %q", logs.String())
+	_, err := Load()
+	if err == nil || !strings.Contains(err.Error(), "workspace_dirs_root is retired") || !strings.Contains(err.Error(), "docs/migrations/") {
+		t.Fatalf("Load() error = %v, want the retired key named with a pointer to the migration guide", err)
 	}
 }
 
@@ -226,12 +183,12 @@ func TestLoad_ReadsFromConfigHomeEnvVarInsteadOfRealHome(t *testing.T) {
 	if err := os.MkdirAll(realConfigDir, 0o755); err != nil {
 		t.Fatal(err)
 	}
-	if err := os.WriteFile(filepath.Join(realConfigDir, "config.toml"), []byte("schema_version = 2\nworkspace_dirs_root = \"/real-home-workspace-dirs\"\n"), 0o644); err != nil {
+	if err := os.WriteFile(filepath.Join(realConfigDir, "config.toml"), []byte("schema_version = 2\nmax_up_children = 3\n"), 0o644); err != nil {
 		t.Fatal(err)
 	}
 
 	overrideDir := testpath.Real(t, t.TempDir())
-	if err := os.WriteFile(filepath.Join(overrideDir, "config.toml"), []byte("schema_version = 2\nworkspace_dirs_root = \"/override-workspace-dirs\"\n"), 0o644); err != nil {
+	if err := os.WriteFile(filepath.Join(overrideDir, "config.toml"), []byte("schema_version = 2\nmax_up_children = 9\n"), 0o644); err != nil {
 		t.Fatal(err)
 	}
 	t.Setenv(confighome.EnvVar, overrideDir)
@@ -240,8 +197,8 @@ func TestLoad_ReadsFromConfigHomeEnvVarInsteadOfRealHome(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if cfg.WorkspaceDirsRoot != "/override-workspace-dirs" {
-		t.Errorf("WorkspaceDirsRoot = %q, want the override dir's value, not the real home's", cfg.WorkspaceDirsRoot)
+	if cfg.MaxUpChildren == nil || *cfg.MaxUpChildren != 9 {
+		t.Errorf("MaxUpChildren = %v, want the override dir's value, not the real home's", cfg.MaxUpChildren)
 	}
 	if cfg.BaseDir != overrideDir {
 		t.Errorf("BaseDir = %q, want %q", cfg.BaseDir, overrideDir)

@@ -10,13 +10,12 @@ import (
 	contract "github.com/kecbigmt/plecture/contracts/state"
 )
 
-func TestRenderInstruction_EvaluatesPublicOutputsNotTheProviderPseudoNode(t *testing.T) {
+func TestRenderInstruction_EvaluatesPublicOutputs(t *testing.T) {
 	session := &domain.Session{
 		Name:     "review-1",
 		Workflow: "wf",
 		Nodes: map[string]*contract.TaskState{
-			"orchestrator":                {Status: contract.TaskStatusProduced, Outputs: map[string]any{"endpoint": "unix:///run/o.sock"}},
-			contract.WorkflowPseudoNodeID: {Outputs: map[string]any{"endpoint": "from-provider"}},
+			"orchestrator": {Status: contract.TaskStatusProduced, Outputs: map[string]any{"endpoint": "unix:///run/o.sock"}},
 		},
 	}
 	pinDisplayWorkflow(t, config.WorkflowFile{ID: "wf", Outputs: map[string]*lang.Value{
@@ -27,7 +26,7 @@ func TestRenderInstruction_EvaluatesPublicOutputsNotTheProviderPseudoNode(t *tes
 	if err != nil {
 		t.Fatalf("renderInstruction: %v", err)
 	}
-	if !strings.Contains(got, "unix:///run/o.sock") || strings.Contains(got, "from-provider") {
+	if !strings.Contains(got, "unix:///run/o.sock") {
 		t.Fatalf("instruction = %q, want the public output's value", got)
 	}
 }

@@ -28,7 +28,7 @@ type = "string"
 
 func TestSetOutput_MergesMutableKeys(t *testing.T) {
 	store := testStore(t)
-	cfg := writeWorkflowFixture(t, t.TempDir(), "wf",
+	cfg := writeWorkflowFixture(t, "wf",
 		[]taskFixture{{id: "watch", scope: "session", setup: "echo '{}'", extra: watchTaskSchema}},
 		[]nodeFixture{{id: "watch"}})
 
@@ -66,7 +66,7 @@ func TestSetOutput_MergesMutableKeys(t *testing.T) {
 // SessionGuard like the other per-session write paths.
 func TestSetOutput_SessionGuardBlocksCrossOwner(t *testing.T) {
 	store := testStore(t)
-	cfg := writeWorkflowFixture(t, t.TempDir(), "wf",
+	cfg := writeWorkflowFixture(t, "wf",
 		[]taskFixture{{id: "watch", scope: "session", setup: "echo '{}'", extra: watchTaskSchema}},
 		[]nodeFixture{{id: "watch"}})
 
@@ -99,7 +99,7 @@ func TestSetOutput_SessionGuardBlocksCrossOwner(t *testing.T) {
 
 func TestSetOutput_RejectsImmutableKey(t *testing.T) {
 	store := testStore(t)
-	cfg := writeWorkflowFixture(t, t.TempDir(), "wf",
+	cfg := writeWorkflowFixture(t, "wf",
 		[]taskFixture{{id: "watch", scope: "session", setup: "echo '{}'", extra: watchTaskSchema}},
 		[]nodeFixture{{id: "watch"}})
 	seedSessionWithNodes(t, store, "org/repo-1", "org/repo", 1, "wf", map[string]*contract.TaskState{
@@ -124,7 +124,7 @@ func TestSetOutput_RejectsImmutableKey(t *testing.T) {
 
 func TestSetOutput_RejectsWhenNoMutableDeclared(t *testing.T) {
 	store := testStore(t)
-	cfg := writeWorkflowFixture(t, t.TempDir(), "wf",
+	cfg := writeWorkflowFixture(t, "wf",
 		[]taskFixture{{id: "plain", scope: "session", setup: "echo '{}'"}},
 		[]nodeFixture{{id: "plain"}})
 	seedSessionWithNodes(t, store, "org/repo-1", "org/repo", 1, "wf", map[string]*contract.TaskState{
@@ -144,29 +144,9 @@ func TestSetOutput_RejectsWhenNoMutableDeclared(t *testing.T) {
 	}
 }
 
-func TestSetOutput_WorkdirAlwaysRejected(t *testing.T) {
-	store := testStore(t)
-	cfg := writeWorkflowFixture(t, t.TempDir(), "wf",
-		[]taskFixture{{id: "watch", scope: "session", setup: "echo '{}'", extra: watchTaskSchema}},
-		[]nodeFixture{{id: "watch"}})
-	seedSession(t, store, "org/repo-1", "org/repo", 1, "wf", nil)
-
-	_, err := SetOutput(cfg, store, SetOutputParams{
-		Identifier: "org/repo-1",
-		Node:       "watch",
-		Outputs:    map[string]any{"workspace_dir": "/tmp/evil"},
-	})
-	if err == nil {
-		t.Fatal("expected error: workdir is reserved")
-	}
-	if !strings.Contains(err.Error(), "reserved") {
-		t.Errorf("unexpected message: %q", err.Error())
-	}
-}
-
 func TestSetOutput_RequiresProducedState(t *testing.T) {
 	store := testStore(t)
-	cfg := writeWorkflowFixture(t, t.TempDir(), "wf",
+	cfg := writeWorkflowFixture(t, "wf",
 		[]taskFixture{{id: "watch", scope: "session", setup: "echo '{}'", extra: watchTaskSchema}},
 		[]nodeFixture{{id: "watch"}})
 	seedSessionWithNodes(t, store, "org/repo-1", "org/repo", 1, "wf", map[string]*contract.TaskState{
@@ -198,7 +178,7 @@ type = "string"
 enum = ["open", "merged", "closed"]
 mutable = true
 `
-	cfg := writeWorkflowFixture(t, t.TempDir(), "wf",
+	cfg := writeWorkflowFixture(t, "wf",
 		[]taskFixture{{id: "watch", scope: "session", setup: "echo '{}'", extra: schema}},
 		[]nodeFixture{{id: "watch"}})
 	seedSessionWithNodes(t, store, "org/repo-1", "org/repo", 1, "wf", map[string]*contract.TaskState{
@@ -220,11 +200,11 @@ mutable = true
 
 func TestSetOutput_ExactlyOneTargetRequired(t *testing.T) {
 	store := testStore(t)
-	cfg := &config.Config{WorkspaceDirsRoot: t.TempDir()}
+	cfg := &config.Config{}
 
 	for _, p := range []SetOutputParams{
-		{Identifier: "x", Outputs: map[string]any{"a": 1}},                            // neither
-		{Identifier: "x", Node: "n", Workflow: true, Outputs: map[string]any{"a": 1}}, // both
+		{Identifier: "x", Outputs: map[string]any{"a": 1}},                       // neither
+		{Identifier: "x", Node: "n", Task: "t", Outputs: map[string]any{"a": 1}}, // both
 	} {
 		if _, err := SetOutput(cfg, store, p); err == nil {
 			t.Errorf("params %+v: expected target-selection error", p)
@@ -232,58 +212,9 @@ func TestSetOutput_ExactlyOneTargetRequired(t *testing.T) {
 	}
 }
 
-func TestSetOutput_WorkflowPseudoNode(t *testing.T) {
-	store := testStore(t)
-	workdirsRoot := t.TempDir()
-	cfg := writeWorkflowFixture(t, workdirsRoot, "wf",
-		[]taskFixture{{id: "noop", scope: "session", setup: "echo '{}'"}},
-		[]nodeFixture{{id: "noop"}})
-
-	// The @workflow outputs contract lives on the workflow's provider.
-	writeSetupWorkflow(t, cfg, "wf", providerEchoingOutputs("wf", `{"workdir":"/tmp/x"}`)+`
-[wf.outputs_schema]
-type = "object"
-
-[wf.outputs_schema.properties.pr_state]
-type = "string"
-mutable = true
-
-[wf.outputs_schema.properties.workdir]
-type = "string"
-`)
-
-	// Simulate a Phase 3 session: workflow pseudo-node already produced.
-	seedSessionWithNodes(t, store, "org/repo-1", "org/repo", 1, "wf", map[string]*contract.TaskState{
-		contract.WorkflowPseudoNodeID: {
-			Scope:   contract.TaskScopeSession,
-			Status:  contract.TaskStatusProduced,
-			Outputs: map[string]any{"workspace_dir": "/tmp/wd", "pr_state": "open"},
-		},
-	})
-
-	result, err := SetOutput(cfg, store, SetOutputParams{
-		Identifier: "org/repo-1",
-		Workflow:   true,
-		Outputs:    map[string]any{"pr_state": "merged"},
-	})
-	if err != nil {
-		t.Fatalf("SetOutput --workflow: %v", err)
-	}
-	if result.Target != contract.WorkflowPseudoNodeID {
-		t.Errorf("Target = %q, want %q", result.Target, contract.WorkflowPseudoNodeID)
-	}
-	got := store.Get("org/repo-1").Nodes[contract.WorkflowPseudoNodeID].Outputs
-	if got["pr_state"] != "merged" {
-		t.Errorf("pr_state = %v, want merged", got["pr_state"])
-	}
-	if got["workspace_dir"] != "/tmp/wd" {
-		t.Errorf("workdir must be untouched, got %v", got["workspace_dir"])
-	}
-}
-
 func TestSetOutput_Task_MergesMutableKeys(t *testing.T) {
 	store := testStore(t)
-	cfg := writeWorkflowFixture(t, t.TempDir(), "wf",
+	cfg := writeWorkflowFixture(t, "wf",
 		[]taskFixture{{id: "review", scope: "session", setup: "echo '{}'", extra: watchTaskSchema}},
 		[]nodeFixture{{id: "review"}})
 	seedSession(t, store, "org/repo-1", "org/repo", 1, "wf", map[string]*contract.TaskState{
@@ -329,7 +260,7 @@ func TestSetOutput_Task_MergesMutableKeys(t *testing.T) {
 
 func TestSetOutput_Task_RejectsImmutableKey(t *testing.T) {
 	store := testStore(t)
-	cfg := writeWorkflowFixture(t, t.TempDir(), "wf",
+	cfg := writeWorkflowFixture(t, "wf",
 		[]taskFixture{{id: "review", scope: "session", setup: "echo '{}'", extra: watchTaskSchema}},
 		[]nodeFixture{{id: "review"}})
 	seedSession(t, store, "org/repo-1", "org/repo", 1, "wf", map[string]*contract.TaskState{
@@ -344,7 +275,7 @@ func TestSetOutput_Task_RejectsImmutableKey(t *testing.T) {
 
 func TestSetOutput_Task_NotFound(t *testing.T) {
 	store := testStore(t)
-	cfg := writeWorkflowFixture(t, t.TempDir(), "wf",
+	cfg := writeWorkflowFixture(t, "wf",
 		[]taskFixture{{id: "review", scope: "session", setup: "echo '{}'", extra: watchTaskSchema}},
 		[]nodeFixture{{id: "review"}})
 	seedSession(t, store, "org/repo-1", "org/repo", 1, "wf", map[string]*contract.TaskState{})
@@ -356,7 +287,7 @@ func TestSetOutput_Task_NotFound(t *testing.T) {
 
 func TestSetOutput_Task_RejectsStaticNode(t *testing.T) {
 	store := testStore(t)
-	cfg := writeWorkflowFixture(t, t.TempDir(), "wf",
+	cfg := writeWorkflowFixture(t, "wf",
 		[]taskFixture{{id: "watch", scope: "session", setup: "echo '{}'", extra: watchTaskSchema}},
 		[]nodeFixture{{id: "watch"}})
 	seedSessionWithNodes(t, store, "org/repo-1", "org/repo", 1, "wf", map[string]*contract.TaskState{
@@ -373,8 +304,6 @@ func TestSetOutput_RejectsMultipleTargets(t *testing.T) {
 	cfg := &config.Config{}
 	tests := []SetOutputParams{
 		{Identifier: "org/repo-1", Node: "a", Task: "b", Outputs: map[string]any{"x": "y"}},
-		{Identifier: "org/repo-1", Workflow: true, Task: "b", Outputs: map[string]any{"x": "y"}},
-		{Identifier: "org/repo-1", Node: "a", Workflow: true, Outputs: map[string]any{"x": "y"}},
 	}
 	for _, tt := range tests {
 		if _, err := SetOutput(cfg, store, tt); err == nil || !strings.Contains(err.Error(), "exactly one") {
@@ -416,7 +345,7 @@ mutable = true
 // re-read from there rather than merged over.
 func TestSetOutput_NestedRoutesWriteToTheBoundInnerOutput(t *testing.T) {
 	store := testStore(t)
-	cfg := writeWorkflowFixture(t, t.TempDir(), "wf",
+	cfg := writeWorkflowFixture(t, "wf",
 		[]taskFixture{
 			{id: "runtime", scope: "session", setup: "echo '{}'", extra: nestedRuntimeInner},
 			{id: "team_runtime", scope: "session", extra: nestedRuntimeOuter},
@@ -459,7 +388,7 @@ func TestSetOutput_NestedRoutesWriteToTheBoundInnerOutput(t *testing.T) {
 // node does.
 func TestSetOutput_NestedDynamicInstanceRoutesThroughItsLayers(t *testing.T) {
 	store := testStore(t)
-	cfg := writeWorkflowFixture(t, t.TempDir(), "wf",
+	cfg := writeWorkflowFixture(t, "wf",
 		[]taskFixture{
 			{id: "runtime", scope: "session", setup: "echo '{}'", extra: nestedRuntimeInner},
 			{id: "team_runtime", scope: "session", extra: nestedRuntimeOuter},

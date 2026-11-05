@@ -119,12 +119,10 @@ func TestShippedCatalog_EffectActionsResolve(t *testing.T) {
 	tasks, mounted := loadShippedCatalogTasks(t)
 
 	session := SessionVars{
-		Name:             "test-session",
-		ResourceID:       "owner:test",
-		WorkspaceDirPath: "/tmp/test-workdir",
-		Branch:           "issue/1",
-		Plugins:          mounted,
-		Inputs:           map[string]any{},
+		Name:       "test-session",
+		ResourceID: "owner:test",
+		Plugins:    mounted,
+		Inputs:     map[string]any{},
 		// Every shipped agent effect composes the plan's terminal verbs
 		// against whichever effect declares them — this kitchen-sink
 		// resolution has no real multiplexer in scope, so a stand-in stands
@@ -157,6 +155,8 @@ func TestShippedCatalog_EffectActionsResolve(t *testing.T) {
 		"dir":            "/tmp/plect-gh-guard.x",
 		"thread_ts":      "1234567890.123456",
 		"permalink":      "https://example.slack.com/archives/C123/p1234567890123456",
+		"workspace_dir":  "/tmp/wd",
+		"branch":         "issue/1",
 	}
 	inputs := map[string]any{
 		"terminal_ready":   "test-session",
@@ -172,6 +172,7 @@ func TestShippedCatalog_EffectActionsResolve(t *testing.T) {
 		"owner":            "acme",
 		"assignees":        "",
 		"instruction":      "",
+		"workspace_dir":    "/tmp/wd",
 		"base_url":         "http://127.0.0.1:7890",
 		"channel_id":       "C123",
 		"root_text":        "[AI review] Fix widgets — https://github.com/acme/widgets/pull/7",

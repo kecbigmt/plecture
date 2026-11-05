@@ -76,7 +76,7 @@ command = "true"
 }
 
 func TestResourceStatus_NoDefinition(t *testing.T) {
-	state, _, ok, err := ResourceStatus(nil, "https://github.com/o/r/pull/1", "", "", nil)
+	state, _, ok, err := ResourceStatus(nil, "https://github.com/o/r/pull/1", nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -105,7 +105,7 @@ required = ["resource_kind"]
 resource_kind = { type = "string" }
 checks_status = { type = "string" }
 `)
-	state, def, ok, err := ResourceStatus(defs, "https://github.com/o/r/pull/5", "", "", nil)
+	state, def, ok, err := ResourceStatus(defs, "https://github.com/o/r/pull/5", nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -119,40 +119,16 @@ checks_status = { type = "string" }
 
 func TestResourceStatus_ObserveReadsItsSurfaceRoots(t *testing.T) {
 	tests := []struct {
-		name             string
-		projection       string
-		branch           string
-		workspaceDirPath string
-		wantKey          string
-		want             string
+		name       string
+		projection string
+		wantKey    string
+		want       string
 	}{
 		{
 			name:       "resource.id",
 			projection: `{ from = "resource.id" }`,
 			wantKey:    "value",
 			want:       "local-okf://kec/goals/x.md",
-		},
-		{
-			name:       "workspace.branch",
-			projection: `{ from = "workspace.branch" }`,
-			branch:     "issue/632+claude",
-			wantKey:    "value",
-			want:       "issue/632+claude",
-		},
-		{
-			name:             "workspace.dir",
-			projection:       `{ from = "workspace.dir" }`,
-			workspaceDirPath: "/tmp/wt/issue-632",
-			wantKey:          "value",
-			want:             "/tmp/wt/issue-632",
-		},
-		{
-			// A standalone observation has no session, so the root is absent
-			// rather than empty and the declared default is what arrives.
-			name:       "an absent workspace falls back to the declared default",
-			projection: `{ from = "workspace.dir", default = "unset" }`,
-			wantKey:    "value",
-			want:       "unset",
 		},
 	}
 	for _, tt := range tests {
@@ -168,7 +144,7 @@ type    = "exec"
 command = "printf"
 args    = ['{"value":"%s"}', `+tt.projection+`]
 `)
-			state, _, ok, err := ResourceStatus(defs, "local-okf://kec/goals/x.md", tt.branch, tt.workspaceDirPath, nil)
+			state, _, ok, err := ResourceStatus(defs, "local-okf://kec/goals/x.md", nil)
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -197,7 +173,7 @@ printf '{"resource_id":"%s"}' "$resource_id"
 [echo.observe.bind]
 resource_id = { from = "resource.id" }
 `)
-	state, _, ok, err := ResourceStatus(defs, "local-okf://kec/goals/x.md", "", "", nil)
+	state, _, ok, err := ResourceStatus(defs, "local-okf://kec/goals/x.md", nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -224,7 +200,7 @@ type = "object"
 [github.state_schema.properties]
 resource_kind = { type = "string" }
 `)
-	if _, _, _, err := ResourceStatus(defs, "x", "", "", nil); err == nil {
+	if _, _, _, err := ResourceStatus(defs, "x", nil); err == nil {
 		t.Error("expected a state_schema validation error")
 	}
 }
@@ -241,7 +217,7 @@ type    = "exec"
 command = "sh"
 args    = ["-c", "echo boom >&2; exit 1"]
 `)
-	if _, _, _, err := ResourceStatus(defs, "x", "", "", nil); err == nil {
+	if _, _, _, err := ResourceStatus(defs, "x", nil); err == nil {
 		t.Error("expected observe failure to error")
 	}
 }

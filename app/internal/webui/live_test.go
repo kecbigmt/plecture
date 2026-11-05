@@ -30,7 +30,7 @@ func TestNewLiveServiceBackfillsExistingSessionRevision(t *testing.T) {
 	if err := os.Mkdir(filepath.Join(configHome, "workflows"), 0o755); err != nil {
 		t.Fatal(err)
 	}
-	if err := os.WriteFile(filepath.Join(configHome, "workflows", "work.toml"), []byte("[work]\nkind = \"workflow\"\n[[work.nodes]]\nuses = \"runtime\"\n"), 0o644); err != nil {
+	if err := os.WriteFile(filepath.Join(configHome, "workflows", "work.toml"), []byte("[work]\nkind = \"workflow\"\nresource = \"issue\"\n[[work.nodes]]\nuses = \"runtime\"\n"), 0o644); err != nil {
 		t.Fatal(err)
 	}
 	if err := os.Mkdir(filepath.Join(configHome, "tasks"), 0o755); err != nil {

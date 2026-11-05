@@ -25,7 +25,6 @@ var ReservedFileNames = map[string]bool{
 // the whole user config tree.
 type ConfigToml struct {
 	SchemaVersion     int            `toml:"schema_version"`
-	WorkspaceDirsRoot string         `toml:"workspace_dirs_root"`
 	MaxUpChildren     *int           `toml:"max_up_children"`
 	ResourceAllowlist []string       `toml:"resource_allowlist"`
 	PluginDirs        []string       `toml:"plugin_dirs"`

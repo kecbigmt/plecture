@@ -435,7 +435,7 @@ func TestStatus_DestroyedSessionReturnsTombstone(t *testing.T) {
 		t.Skip("bash not available")
 	}
 	store := testStore(t)
-	cfg := writeWorkflowFixture(t, t.TempDir(), "default",
+	cfg := writeWorkflowFixture(t, "default",
 		[]taskFixture{
 			{id: "envfile", scope: "session", setup: "true", cleanup: "true"},
 		},
@@ -496,11 +496,9 @@ func TestStatus_ProjectsTree(t *testing.T) {
 	cfg := &config.Config{}
 	store := testStore(t)
 	now := time.Now()
-	wt := t.TempDir()
 	for _, n := range []string{"org/repo-1", "org/repo-2", "org/repo-3"} {
 		if err := store.Put(&domain.Session{
 			Name: n, CreatedAt: now, UpdatedAt: now,
-			WorkspaceDirPath: wt,
 		}); err != nil {
 			t.Fatalf("seed %s: %v", n, err)
 		}
@@ -916,7 +914,7 @@ func TestSetMessage_SessionGuardBlocksCrossOwner(t *testing.T) {
 	}
 }
 
-func TestApplyDisplay_ReadsThePublicOutputRecordNotTheProviderPseudoNode(t *testing.T) {
+func TestApplyDisplay_ReadsThePublicOutputs(t *testing.T) {
 	workflows := map[string]config.WorkflowFile{
 		"wf": {
 			ID: "wf",
@@ -935,10 +933,6 @@ func TestApplyDisplay_ReadsThePublicOutputRecordNotTheProviderPseudoNode(t *test
 		Workflow: "wf",
 		Nodes: map[string]*contract.TaskState{
 			"pr": {Status: contract.TaskStatusProduced, Outputs: map[string]any{"title": "Fix the bug", "state": "open"}},
-			contract.WorkflowPseudoNodeID: {
-				Status:  contract.TaskStatusProduced,
-				Outputs: map[string]any{"title": "provider title", "pr_state": "provider state"},
-			},
 		},
 	}
 	pinDisplayWorkflow(t, workflows["wf"], s)
@@ -1031,7 +1025,7 @@ func TestShowAndListExposePerRuntimeTaskDoneWhen(t *testing.T) {
 check = "resource.state.checks_status"
 eq = "SUCCESS"
 `
-	cfg := writeWorkflowFixture(t, t.TempDir(), "wf",
+	cfg := writeWorkflowFixture(t, "wf",
 		[]taskFixture{{id: "review", scope: "session", extra: extra}},
 		[]nodeFixture{{id: "review"}})
 	seedSession(t, store, "org/repo-1", "org/repo", 1, "wf", map[string]*contract.TaskState{

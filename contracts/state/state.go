@@ -91,18 +91,6 @@ const (
 	SessionStatusDestroyed = "destroyed"
 )
 
-// WorkflowPseudoNodeID is the reserved Session.Nodes key for the
-// workflow-level setup/cleanup pseudo-node. The "@" prefix is outside the
-// node-id grammar ([A-Za-z_][A-Za-z0-9_]*), so it can never collide with a
-// real workflow node.
-const WorkflowPseudoNodeID = "@workflow"
-
-// OutputKeyWorkspaceDir is the reserved output key naming the session's
-// acquired workspace directory. It is always immutable: declaring it
-// `mutable = true` in an outputs schema is a load error, and
-// `plect state set-output` rejects it.
-const OutputKeyWorkspaceDir = "workspace_dir"
-
 // TaskState records the persisted outcome of a task's setup/cleanup.
 // Runtime liveness is not stored here — it is determined on demand by the
 // task's declared alive probe.
@@ -114,10 +102,10 @@ const OutputKeyWorkspaceDir = "workspace_dir"
 // Seq / Resource support dynamic instantiation:
 //
 //   - Seq is the monotonically increasing instantiation order across every
-//     task in the session (workflow pseudo-node, static DAG nodes, and
-//     dynamic `plect task setup` instances, i.e. across both Session.Nodes and
-//     Session.Tasks). Teardown reclaims tasks in descending Seq — the reverse
-//     of the single instantiation stack — so an task always outlives anything
+//     task in the session (static DAG nodes and dynamic `plect task setup`
+//     instances, i.e. across both Session.Nodes and Session.Tasks). Teardown
+//     reclaims tasks in descending Seq — the reverse of the single
+//     instantiation stack — so an task always outlives anything
 //     that depends on it. Zero on legacy state written before this field
 //     existed (such entries fall back to plan order).
 //   - Resource is the `--resource` value bound at instantiation (the external
@@ -142,6 +130,9 @@ type TaskState struct {
 	Subscription string         `json:"subscription,omitempty"` // resource id bound by a workflow node's subscription
 	Name         string         `json:"name,omitempty"`         // --name instance identity (key == name when set)
 	Layers       []LayerState   `json:"layers,omitempty"`       // per-layer record for a nested task; empty for a plain one
+	// Directory is the directory this instance's setup ran in, recorded so
+	// cleanup runs there. Empty when setup ran with no explicit directory.
+	Directory string `json:"directory,omitempty"`
 	// Process is the identity core recorded for the process named by this
 	// instance's `process` alive probe, captured when setup produced it. It is
 	// core's own record, not an output: nil for an instance whose effect
@@ -274,14 +265,13 @@ type Session struct {
 	ParentSession        string                `json:"parent_session,omitempty"`
 	Children             []string              `json:"children,omitempty"`
 	Alias                string                `json:"alias,omitempty"`
-	WorkspaceDirPath     string                `json:"workspace_dir_path"`
 	Workflow             string                `json:"workflow,omitempty"`
 	WorkflowRevision     string                `json:"workflow_revision,omitempty"`
 	WorkflowRevisionBody string                `json:"-"`
 	Population           *PopulationProvenance `json:"population,omitempty"`
 	Inputs               map[string]any        `json:"inputs,omitempty"`
-	// Nodes holds workflow DAG node production records, keyed by node id,
-	// including the @workflow pseudo-node (WorkflowPseudoNodeID). Tasks holds
+	// Nodes holds workflow DAG node production records, keyed by node id.
+	// Tasks holds
 	// `plect task setup` instances, keyed by instance handle (a `--name` or
 	// the numbered `<task>#<n>` form) — a disjoint namespace from node ids (a
 	// `--name` collision is checked against both).

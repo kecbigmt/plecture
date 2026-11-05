@@ -20,47 +20,30 @@ type discoveredLayer struct {
 	defs  []*lang.Definition
 }
 
-// A layer's trust decides what it may declare, and the three answers are not
-// the same shape. A kind a layer may declare is loaded; a kind it must not
-// declare is a load error, because reading it as absent would leave the author
-// believing their declaration is live; and a kind that simply does not reach
-// this layer is skipped, because a project's own directory holding one is not
-// a mistake — it just does not participate.
+// A layer's trust decides what it may declare. A kind a layer may declare is
+// loaded; a kind that simply does not reach this layer is skipped, because a
+// project's own directory holding one is not a mistake — it just does not
+// participate.
 //
-// A workspace provider, a resource and a channel are trusted-base
-// content: they decide how a session's identity is resolved and how a process
-// is reached, so one in an ancestor overlay is skipped — it does not
-// participate, and does not stop the layer loading either. Effects and task
-// documents do reach an ancestor overlay, since a project may add its own
-// lifecycle and its own work; they never reach the workspace directory, which
-// is cloned content, so shell there or a declaration of the work the clone is
-// about is refused outright.
-var (
-	loadedKinds = map[layerScope]map[lang.Kind]bool{
-		layerScopeTrusted: {
-			lang.KindWorkspaceProvider: true,
-			lang.KindResource:          true,
-			lang.KindChannel:           true,
-			lang.KindEffect:            true,
-			lang.KindTask:              true,
-			lang.KindWorkflow:          true,
-		},
-		layerScopeOverlay: {
-			lang.KindEffect:   true,
-			lang.KindTask:     true,
-			lang.KindWorkflow: true,
-		},
-		layerScopeWorkspaceDir: {
-			lang.KindWorkflow: true,
-		},
-	}
-	refusedKinds = map[layerScope]map[lang.Kind]string{
-		layerScopeWorkspaceDir: {
-			lang.KindEffect: "clone content must not carry shell",
-			lang.KindTask:   "clone content must not declare the work it is about",
-		},
-	}
-)
+// A resource and a channel are trusted-base content: they decide how a
+// resource is recognized and how a process is reached, so one in an ancestor
+// overlay is skipped — it does not participate, and does not stop the layer
+// loading either. Effects, task documents and workflows do reach an ancestor
+// overlay, since a project may add its own lifecycle and its own work.
+var loadedKinds = map[layerScope]map[lang.Kind]bool{
+	layerScopeTrusted: {
+		lang.KindResource: true,
+		lang.KindChannel:  true,
+		lang.KindEffect:   true,
+		lang.KindTask:     true,
+		lang.KindWorkflow: true,
+	},
+	layerScopeOverlay: {
+		lang.KindEffect:   true,
+		lang.KindTask:     true,
+		lang.KindWorkflow: true,
+	},
+}
 
 // layerScope names how far a layer's trust reaches, which is what decides
 // which kinds it may declare.
@@ -71,31 +54,24 @@ const (
 	// config: machine-owned, so anything may be declared there.
 	layerScopeTrusted layerScope = iota
 	// layerScopeOverlay is an ancestor `.plect/` directory above the
-	// workspace directory: trusted, but a project's own.
+	// invocation directory: trusted, but a project's own.
 	layerScopeOverlay
-	// layerScopeWorkspaceDir is the `.plect/` directory inside the workspace
-	// directory: cloned, untrusted content.
-	layerScopeWorkspaceDir
 )
 
 func (l layerDir) scope() layerScope {
-	switch {
-	case l.workspaceDir:
-		return layerScopeWorkspaceDir
-	case l.plugin || l.global:
+	if l.plugin || l.global {
 		return layerScopeTrusted
-	default:
-		return layerScopeOverlay
 	}
+	return layerScopeOverlay
 }
 
 // discoverLayers reads every cascade layer's definition root once, in
-// shallowest-first order. workspaceDirPath selects the ancestor overlays; an
-// empty one means the trusted base layers alone, which is what a caller
-// outside any workspace directory sees.
-func (c *Config) discoverLayers(workspaceDirPath string) ([]discoveredLayer, error) {
+// shallowest-first order. invocationDir selects the ancestor overlays; an
+// empty one means the trusted base layers alone, which is what a chain or a
+// population sees, since neither has a caller directory of its own.
+func (c *Config) discoverLayers(invocationDir string) ([]discoveredLayer, error) {
 	out := make([]discoveredLayer, 0, len(c.PluginDirs)+2)
-	for _, layer := range c.definitionRoots(workspaceDirPath) {
+	for _, layer := range c.definitionRoots(invocationDir) {
 		defs, err := discoverLayer(layer)
 		if err != nil {
 			return nil, err
@@ -122,24 +98,12 @@ func discoverLayer(layer layerDir) ([]*lang.Definition, error) {
 	if err != nil {
 		return nil, err
 	}
-	scope := layer.scope()
-	loaded := loadedKinds[scope]
-	refused := refusedKinds[scope]
+	loaded := loadedKinds[layer.scope()]
 	var defs []*lang.Definition
 	for _, def := range discovered {
-		if because, no := refused[def.Kind]; no {
-			return nil, fmt.Errorf("%s: %q declares kind %q, which a `.plect/` directory inside the workspace directory may not (%s); move it to the global layer, a plugin, or an overlay above the workspace dir", def.File, def.ID, def.Kind, because)
+		if loaded[def.Kind] {
+			defs = append(defs, def)
 		}
-		if !loaded[def.Kind] {
-			continue
-		}
-		if scope == layerScopeWorkspaceDir && filepath.Dir(def.File) != filepath.Join(layer.dir, "workflows") {
-			// The workspace-dir layer is not a definition root: only
-			// `.plect/workflows/` is read there, so the directory is the
-			// allowlist rather than author organization.
-			continue
-		}
-		defs = append(defs, def)
 	}
 	sort.SliceStable(defs, func(i, j int) bool { return defs[i].ID < defs[j].ID })
 	return defs, nil
@@ -321,18 +285,18 @@ func (c *Config) resolveNamespace(layers []discoveredLayer, kind lang.Kind) ([]r
 }
 
 // canonicalizeWorkflowRefs rewrites a workflow's static references — its
-// workspace provider, each node's `uses`, and each event channel's `uses` — to
+// each node's `uses` and each event channel's `uses` — to
 // the addresses they select, so the runtime resolves topology by map lookup
 // instead of re-reading the reference grammar at every site.
 func canonicalizeWorkflowRefs(wf *WorkflowFile, prefix string) error {
 	if prefix == "" {
 		return nil
 	}
-	provider, err := referenceAddress(prefix, wf.WorkspaceProvider)
+	resource, err := referenceAddress(prefix, wf.Resource)
 	if err != nil {
-		return fmt.Errorf("workflow %q workspace_provider: %w", wf.ID, err)
+		return fmt.Errorf("workflow %q resource: %w", wf.ID, err)
 	}
-	wf.WorkspaceProvider = provider
+	wf.Resource = resource
 	for i := range wf.Nodes {
 		uses, err := referenceAddress(prefix, wf.Nodes[i].Uses)
 		if err != nil {

@@ -14,11 +14,14 @@ import (
 // handles them without knowing which one came from a plugin and which from
 // user config.
 type Layer struct {
-	EffectID   string
-	Setup      *lang.Action
-	Cleanup    *lang.Action
-	SourcePath string
-	From       lang.Ownership
+	EffectID string
+	Setup    *lang.Action
+	Cleanup  *lang.Action
+	// CleanupInputsSchema is the contract of the destruction inputs this
+	// layer's cleanup may read; nil when it declares none.
+	CleanupInputsSchema map[string]any
+	SourcePath          string
+	From                lang.Ownership
 	// InnerInputs / InnerEnv are this layer's joint toward the next layer
 	// inward: the values producing that layer's input object, and the process
 	// environment added to every execution inside this layer.
@@ -68,14 +71,15 @@ func ResolveLayers(def config.TaskDefinition) ([]Layer, error) {
 	out := make([]Layer, 0, len(defs))
 	for i, d := range defs {
 		layer := Layer{
-			EffectID:    d.ID,
-			Setup:       d.Setup,
-			Cleanup:     d.Cleanup,
-			SourcePath:  d.SourcePath,
-			From:        d.Ownership(),
-			InnerInputs: d.InnerInputs,
-			InnerEnv:    d.InnerEnv,
-			Health:      d.Health,
+			EffectID:            d.ID,
+			Setup:               d.Setup,
+			Cleanup:             d.Cleanup,
+			CleanupInputsSchema: d.CleanupInputsSchema,
+			SourcePath:          d.SourcePath,
+			From:                d.Ownership(),
+			InnerInputs:         d.InnerInputs,
+			InnerEnv:            d.InnerEnv,
+			Health:              d.Health,
 		}
 		if d.Terminal.IsDeclared() {
 			layer.Terminal = d.Terminal
@@ -116,12 +120,13 @@ func CleanupLayers(def config.TaskDefinition) []Layer {
 	out := make([]Layer, 0, len(defs))
 	for _, d := range defs {
 		out = append(out, Layer{
-			EffectID:    d.ID,
-			Cleanup:     d.Cleanup,
-			SourcePath:  d.SourcePath,
-			From:        d.Ownership(),
-			BindOutputs: d.ClassifiedOutputBindings(),
-			Health:      d.Health,
+			EffectID:            d.ID,
+			Cleanup:             d.Cleanup,
+			CleanupInputsSchema: d.CleanupInputsSchema,
+			SourcePath:          d.SourcePath,
+			From:                d.Ownership(),
+			BindOutputs:         d.ClassifiedOutputBindings(),
+			Health:              d.Health,
 		})
 	}
 	return out

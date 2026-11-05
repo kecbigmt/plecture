@@ -193,6 +193,7 @@ func TestWebUIUpResetsSuspendedRepairStreak(t *testing.T) {
 	}
 	if err := os.WriteFile(filepath.Join(base, "workflows", "default.toml"), []byte(`[default]
 kind = "workflow"
+resource = "issue"
 [[default.nodes]]
 uses = "runner"
 `), 0o644); err != nil {
@@ -210,7 +211,7 @@ script = "true"
 `), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	cfg := &config.Config{BaseDir: base, WorkspaceDirsRoot: t.TempDir()}
+	cfg := &config.Config{BaseDir: base}
 	store := state.NewStore(t.TempDir())
 	const name = "owner/repo-1"
 	now := time.Now()

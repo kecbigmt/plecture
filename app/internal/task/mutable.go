@@ -1,11 +1,9 @@
 package task
 
 import (
-	"fmt"
 	"sort"
 
 	"github.com/kecbigmt/plecture/app/internal/config"
-	contract "github.com/kecbigmt/plecture/contracts/state"
 )
 
 // MutableOutputKeys extracts the output keys declared `mutable = true` from an
@@ -13,10 +11,6 @@ import (
 // CompileSchema). `mutable` is a custom annotation keyword: JSON Schema
 // validators ignore unknown keywords, so the same document drives both
 // validation and the set-output write policy.
-//
-// Declaring the reserved `workspace_dir` key mutable is a load error —
-// cleanup correctness depends on workspace_dir, so no external updater may
-// ever rewrite it.
 func MutableOutputKeys(inline map[string]any, filePath string) ([]string, error) {
 	props, err := config.SchemaProperties(inline, filePath)
 	if err != nil {
@@ -29,9 +23,6 @@ func MutableOutputKeys(inline map[string]any, filePath string) ([]string, error)
 			continue
 		}
 		if b, ok := m["mutable"].(bool); ok && b {
-			if name == contract.OutputKeyWorkspaceDir {
-				return nil, fmt.Errorf("output key %q is reserved and always immutable; remove `mutable = true`", contract.OutputKeyWorkspaceDir)
-			}
 			keys = append(keys, name)
 		}
 	}

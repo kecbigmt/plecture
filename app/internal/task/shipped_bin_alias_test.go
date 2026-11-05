@@ -60,16 +60,12 @@ func TestShippedGithubOkf_BinReferencesResolveUnderArbitraryAlias(t *testing.T) 
 	if err != nil {
 		t.Fatalf("LoadResourceDefs: %v", err)
 	}
-	provDefs, err := cfg.LoadWorkspaceProviders()
-	if err != nil {
-		t.Fatalf("LoadWorkspaceProviders: %v", err)
-	}
 	taskDefs, err := cfg.LoadTaskDefinitions("")
 	if err != nil {
 		t.Fatalf("LoadTaskDefinitions: %v", err)
 	}
-	if len(resDefs) == 0 || len(provDefs) == 0 || len(taskDefs) == 0 {
-		t.Fatalf("expected github+okf to declare resources, workspace providers, and tasks; got %d/%d/%d", len(resDefs), len(provDefs), len(taskDefs))
+	if len(resDefs) == 0 || len(taskDefs) == 0 {
+		t.Fatalf("expected github+okf to declare resources and effects; got %d/%d", len(resDefs), len(taskDefs))
 	}
 
 	pluginsRoot := filepath.Join(repoRoot, "plugins")
@@ -78,10 +74,9 @@ func TestShippedGithubOkf_BinReferencesResolveUnderArbitraryAlias(t *testing.T) 
 		bins := config.MountedBins{Mounted: mounted, SourcePath: observer.SourcePath}
 		eval := lang.Eval{
 			Roots: lang.Roots{
-				"resource":  map[string]any{"id": "owner:test", "revision": "abc123", "inputs": map[string]any{}},
-				"workspace": map[string]any{"dir": "/tmp/wd", "branch": "b"},
-				"session":   map[string]any{"name": "test-session", "branch": "b"},
-				"judges":    []any{},
+				"resource": map[string]any{"id": "owner:test", "revision": "abc123", "inputs": map[string]any{}},
+				"session":  map[string]any{"name": "test-session"},
+				"judges":   []any{},
 			},
 			Bin: func(ref string) (string, error) { return bins.ResolveBin(ref, observer.Ownership()) },
 		}
@@ -100,45 +95,12 @@ func TestShippedGithubOkf_BinReferencesResolveUnderArbitraryAlias(t *testing.T) 
 		}
 	}
 
-	for id, prov := range provDefs {
-		provider := prov
-		bins := config.MountedBins{Mounted: mounted, SourcePath: provider.SourcePath}
-		eval := lang.Eval{
-			Roots: lang.Roots{
-				"resource": map[string]any{"id": "example://acme/widget/1"},
-				"session":  map[string]any{"name": "test-session", "inputs": map[string]any{}},
-				"inputs":   map[string]any{},
-				"config":   map[string]any{"workspace_dirs_root": "/tmp/workspace_dirs"},
-				"prev":     map[string]any{},
-				"self":     map[string]any{"outputs": map[string]any{"workspace_dir": "/tmp/wd", "branch": "b"}},
-				"cleanup":  map[string]any{"inputs": map[string]any{}},
-				"force":    false,
-			},
-			Bin: func(ref string) (string, error) { return bins.ResolveBin(ref, provider.Ownership()) },
-		}
-		for field, action := range map[string]*lang.Action{
-			"setup":   provider.Setup,
-			"cleanup": provider.Cleanup,
-		} {
-			if action == nil {
-				continue
-			}
-			execution, err := eval.Run(t.TempDir(), action, nil)
-			if err != nil {
-				t.Errorf("workspace provider %q %s: %v", id, field, err)
-				continue
-			}
-			if !strings.HasPrefix(execution.Argv[0], pluginsRoot) && action.Type != lang.ActionShell {
-				t.Errorf("workspace provider %q %s: argv[0] = %q, want an executable inside %s", id, field, execution.Argv[0], pluginsRoot)
-			}
-		}
-	}
-
-	session := SessionVars{Name: "test-session", ResourceID: "owner:test", WorkspaceDirPath: "/tmp/wd", Plugins: mounted}
+	session := SessionVars{Name: "test-session", ResourceID: "owner:test", Plugins: mounted}
 	inputs := map[string]any{
 		"owner":            "acme",
 		"assignees":        "",
 		"instruction":      "",
+		"workspace_dir":    "/tmp/wd",
 		"app_id":           "123456",
 		"installation_id":  "987654",
 		"private_key_path": "/etc/plect/gh-app.pem",
@@ -147,7 +109,7 @@ func TestShippedGithubOkf_BinReferencesResolveUnderArbitraryAlias(t *testing.T) 
 		ctx := RenderContext{
 			// gh_guard/gh_app_guard's health.alive reads back the directory
 			// their own setup produced, the same way cleanup does.
-			Self:       map[string]any{"dir": "/tmp/plect-gh-guard.x"},
+			Self:       map[string]any{"dir": "/tmp/plect-gh-guard.x", "workspace_dir": "/tmp/wd", "branch": "b"},
 			Prev:       map[string]any{},
 			Inputs:     inputs,
 			Session:    session,

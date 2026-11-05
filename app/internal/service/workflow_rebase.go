@@ -40,6 +40,9 @@ type RebaseParams struct {
 	DryRun      bool
 	WithRestart bool
 	Observer    task.Observer
+	// InvocationDir is the caller's working directory, whose ancestors'
+	// `.plect/` overlays contribute the revision being rebased onto.
+	InvocationDir string
 }
 
 type RebaseResult struct {
@@ -81,10 +84,7 @@ func workflowRebaseUnlocked(cfg *config.Config, store *state.Store, name string,
 	if err != nil {
 		return nil, err
 	}
-	if old.WorkspaceCapturePending {
-		return nil, fmt.Errorf("session %q has pending workspace capture; retry create", name)
-	}
-	next, err := cfg.CaptureWorkflowRevision(session.WorkspaceDirPath, session.Workflow)
+	next, err := cfg.CaptureWorkflowRevision(params.InvocationDir, session.Workflow)
 	if err != nil {
 		return nil, err
 	}
@@ -213,6 +213,14 @@ func cleanupRebasedNodes(cfg *config.Config, store *state.Store, session *domain
 	return persistStaleWorkflowCleanup(store, session.Name, session, cleanup)
 }
 
+// sameExecutionDirectory reports whether a node would run in the same kind of
+// directory under both declarations. A node's recorded setup directory is part
+// of its execution contract, so becoming a preparation node, leaving that set,
+// or following a different workdir output is a change of the node itself.
+func sameExecutionDirectory(old, next task.Resolved) bool {
+	return old.Prep == next.Prep && reflect.DeepEqual(old.Workdir, next.Workdir)
+}
+
 func ClassifyWorkflowRebase(old, next config.WorkflowRevision, session *domain.Session) (RebaseClassification, error) {
 	result := RebaseClassification{Class: RebaseCompatible}
 	if session == nil {
@@ -226,8 +234,8 @@ func ClassifyWorkflowRebase(old, next config.WorkflowRevision, session *domain.S
 	if err != nil {
 		return result, fmt.Errorf("new workflow: %w", err)
 	}
-	if !equalRevisionPart(old.Provider, next.Provider) || old.Workflow.WorkspaceProvider != next.Workflow.WorkspaceProvider || !equalRevisionPart(old.Workflow.WorkspaceProviderInputs, next.Workflow.WorkspaceProviderInputs) {
-		result.raise(RebaseRecreate, "workspace provider changed; destroy and recreate the session")
+	if old.Workflow.Resource != next.Workflow.Resource {
+		result.raise(RebaseRecreate, "entry resource changed; destroy and recreate the session")
 	}
 	oldNodes := make(map[string]config.WorkflowNode)
 	for _, node := range old.Workflow.Nodes {
@@ -248,7 +256,7 @@ func ClassifyWorkflowRebase(old, next config.WorkflowRevision, session *domain.S
 			continue
 		}
 		oldDef, nextDef := old.Effects[oldNodes[node.NodeID].Uses], next.Effects[current.Uses]
-		sameNode := equalRevisionPart(oldNodes[node.NodeID], current) && !readsChangedPublicOutput(current, old.Workflow.Outputs, next.Workflow.Outputs)
+		sameNode := equalRevisionPart(oldNodes[node.NodeID], current) && !readsChangedPublicOutput(current, old.Workflow.Outputs, next.Workflow.Outputs) && sameExecutionDirectory(node, nextResolved[node.NodeID])
 		if sameNode && equalRevisionPart(oldDef, nextDef) {
 			continue
 		}
@@ -354,7 +362,7 @@ func ClassifyWorkflowRebase(old, next config.WorkflowRevision, session *domain.S
 	// would after the rebase rather than against the previous declaration.
 	publicOutputs := publicoutput.Declaration{Bindings: next.Workflow.Outputs, Schema: next.Workflow.OutputsSchema}
 	wfOutputs, _ := publicoutput.Evaluate(publicOutputs, retained, session.Inputs, publicoutput.ProducedOnly)
-	vars := task.SessionVars{Name: session.Name, ResourceID: session.ResourceID, ParentSession: session.ParentSession, WorkspaceDirPath: session.WorkspaceDirPath, Branch: domain.SessionBranch(session), Inputs: session.Inputs}
+	vars := task.SessionVars{Name: session.Name, ResourceID: session.ResourceID, ParentSession: session.ParentSession, Inputs: session.Inputs}
 	for _, node := range nextPlan.UpOrder() {
 		if err := validateRebaseInputs(node.Inputs, outputs, wfOutputs, next.Workflow.Outputs, vars, deferred); err != nil {
 			result.raise(RebaseRecreate, fmt.Sprintf("node %q inputs cannot resolve from saved outputs: %v; add a default or destroy and recreate the session", node.NodeID, err))

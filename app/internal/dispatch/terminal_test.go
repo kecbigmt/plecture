@@ -48,6 +48,7 @@ args    = ["send-keys", "-t", { from = "self.outputs.session_name" }, "--"]
 	writeFile(t, filepath.Join(globalDir, "workflows", "coding.toml"), `
 [coding]
 kind = "workflow"
+resource = "issue"
 [[coding.nodes]]
 uses = "tmux"
 `)
@@ -91,6 +92,7 @@ type = "noop"
 	writeFile(t, filepath.Join(globalDir, "workflows", "coding.toml"), `
 [coding]
 kind = "workflow"
+resource = "issue"
 [[coding.nodes]]
 uses = "envfile"
 `)
@@ -123,6 +125,7 @@ func TestResolveTerminalOwner_CompileFailureIsNonFatal(t *testing.T) {
 	writeFile(t, filepath.Join(globalDir, "workflows", "coding.toml"), `
 [coding]
 kind = "workflow"
+resource = "issue"
 [[coding.nodes]]
 uses = "missing"
 `)

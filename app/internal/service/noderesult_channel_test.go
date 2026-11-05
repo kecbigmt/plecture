@@ -72,7 +72,7 @@ func TestUp_PopulationMemberInPlaceRepairDeliversNodeResultThroughChannel(t *tes
 	sock, recv := startFakeChannelSocket(t)
 	store := testStore(t)
 	sessionName := "session1"
-	cfg := writeWorkflowFixture(t, t.TempDir(), "default",
+	cfg := writeWorkflowFixture(t, "default",
 		[]taskFixture{{
 			id:      "agent",
 			scope:   "run",

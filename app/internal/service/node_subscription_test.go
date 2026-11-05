@@ -45,7 +45,7 @@ func TestNodeSubscriptionBindsProducedOutputAndUnbindsAfterCleanup(t *testing.T)
 			if declared {
 				subscription = "self.outputs.permalink"
 			}
-			cfg := writeWorkflowFixture(t, t.TempDir(), "work", []taskFixture{{
+			cfg := writeWorkflowFixture(t, "work", []taskFixture{{
 				id: "thread", scope: "run", setup: `echo '{"permalink":"thread://one"}'`, cleanup: "true",
 			}}, []nodeFixture{{id: "thread", subscription: subscription}})
 			log := filepath.Join(t.TempDir(), "hooks")
@@ -88,7 +88,7 @@ script = "printf 'unsubscribe\\n' >> '`+log+`'"
 }
 
 func TestNodeSubscriptionFailedHookQueuesRetry(t *testing.T) {
-	cfg := writeWorkflowFixture(t, t.TempDir(), "work", []taskFixture{{
+	cfg := writeWorkflowFixture(t, "work", []taskFixture{{
 		id: "thread", scope: "run", setup: `echo '{"permalink":"thread://one"}'`, cleanup: "true",
 	}}, []nodeFixture{{id: "thread", subscription: "self.outputs.permalink"}})
 	writeNodeSubscriptionResource(t, cfg.BaseDir, `
@@ -107,7 +107,7 @@ script = "exit 3"
 }
 
 func TestNodeSubscriptionRetryRegistersAfterHookRecovers(t *testing.T) {
-	cfg := writeWorkflowFixture(t, t.TempDir(), "work", []taskFixture{{
+	cfg := writeWorkflowFixture(t, "work", []taskFixture{{
 		id: "thread", scope: "run", setup: `echo '{"permalink":"thread://one"}'`, cleanup: "true",
 	}}, []nodeFixture{{id: "thread", subscription: "self.outputs.permalink"}})
 	log := filepath.Join(t.TempDir(), "hook")
@@ -138,13 +138,11 @@ script = "touch '`+log+`'"
 }
 
 func TestNodeSubscriptionCreatedSessionRetriesOnLaterUp(t *testing.T) {
-	cfg := writeWorkflowFixture(t, t.TempDir(), "work", []taskFixture{{
+	cfg := writeWorkflowFixture(t, "work", []taskFixture{{
 		id: "thread", scope: "session", setup: `echo '{"permalink":"thread://one"}'`, cleanup: "true",
 	}}, []nodeFixture{{id: "thread", subscription: "self.outputs.permalink"}})
 	workdir := filepath.Join(t.TempDir(), "wd")
-	writeSetupWorkflow(t, cfg, "work", providerRunningScript("work", `mkdir -p '`+workdir+`'
-echo '{"workspace_dir":"`+workdir+`"}'
-`))
+	attachWorkdirDir(t, cfg, "work", workdir)
 	writeNodeSubscriptionResource(t, cfg.BaseDir, `
 [thread_resource.subscribe]
 type = "shell"
@@ -177,7 +175,7 @@ script = "touch '`+log+`'"
 }
 
 func TestNodeSubscriptionQueuedWithProducedStateBeforeHookRuns(t *testing.T) {
-	cfg := writeWorkflowFixture(t, t.TempDir(), "work", []taskFixture{{
+	cfg := writeWorkflowFixture(t, "work", []taskFixture{{
 		id: "thread", scope: "run", setup: `echo '{"permalink":"thread://one"}'`, cleanup: "true",
 	}}, []nodeFixture{{id: "thread", subscription: "self.outputs.permalink"}})
 	log := filepath.Join(t.TempDir(), "hook")
@@ -189,7 +187,7 @@ script = "touch '`+log+`'"
 	store := testStore(t)
 	seedSessionWithNodes(t, store, "one", "org/repo", 1, "work", nil)
 	session := store.Get("one")
-	plan, err := buildPlanForSession(cfg, session.WorkspaceDirPath, session)
+	plan, err := buildPlanForSession(cfg, session)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -209,7 +207,7 @@ script = "touch '`+log+`'"
 }
 
 func TestNodeSubscriptionKnownRequiredInputsFailRevisionLoad(t *testing.T) {
-	cfg := writeWorkflowFixture(t, t.TempDir(), "work", []taskFixture{{
+	cfg := writeWorkflowFixture(t, "work", []taskFixture{{
 		id: "thread", scope: "run", setup: `echo '{"permalink":"thread://one"}'`,
 		extra: `[outputs_schema]
 type = "object"
@@ -234,7 +232,7 @@ token = { type = "string" }
 }
 
 func TestNodeSubscriptionRequiredActionInputsAreReported(t *testing.T) {
-	cfg := writeWorkflowFixture(t, t.TempDir(), "work", []taskFixture{{
+	cfg := writeWorkflowFixture(t, "work", []taskFixture{{
 		id: "thread", scope: "run", setup: `echo '{"permalink":"thread://one"}'`, cleanup: "true",
 	}}, []nodeFixture{{id: "thread", subscription: "self.outputs.permalink"}})
 	writeNodeSubscriptionResource(t, cfg.BaseDir, `
@@ -267,7 +265,7 @@ token = { type = "string" }
 
 func TestNodeSubscriptionSharedWithEntryResourceSurvivesCleanup(t *testing.T) {
 	const resource = "thread://one"
-	cfg := writeWorkflowFixture(t, t.TempDir(), "work", []taskFixture{{
+	cfg := writeWorkflowFixture(t, "work", []taskFixture{{
 		id: "thread", scope: "run", setup: `echo '{"permalink":"` + resource + `"}'`, cleanup: "true",
 	}}, []nodeFixture{{id: "thread", subscription: "self.outputs.permalink"}})
 	log := filepath.Join(t.TempDir(), "hooks")
@@ -303,7 +301,7 @@ func TestNodeSubscriptionRebuildUnsubscribesBeforeResubscribe(t *testing.T) {
 	if err := os.WriteFile(marker, nil, 0o644); err != nil {
 		t.Fatal(err)
 	}
-	cfg := writeWorkflowFixture(t, t.TempDir(), "work", []taskFixture{{
+	cfg := writeWorkflowFixture(t, "work", []taskFixture{{
 		id: "thread", scope: "run", setup: `echo '{"permalink":"thread://one"}'`, cleanup: "true", alive: "test -f " + marker,
 	}}, []nodeFixture{{id: "thread", subscription: "self.outputs.permalink"}})
 	log := filepath.Join(t.TempDir(), "hooks")
@@ -336,7 +334,7 @@ script = "printf 'unsubscribe\\n' >> '`+log+`'"
 }
 
 func TestNodeSubscriptionUnsubscribeFailureQueuesRetry(t *testing.T) {
-	cfg := writeWorkflowFixture(t, t.TempDir(), "work", []taskFixture{{
+	cfg := writeWorkflowFixture(t, "work", []taskFixture{{
 		id: "thread", scope: "run", setup: `echo '{"permalink":"thread://one"}'`, cleanup: "true",
 	}}, []nodeFixture{{id: "thread", subscription: "self.outputs.permalink"}})
 	writeNodeSubscriptionResource(t, cfg.BaseDir, `
@@ -361,7 +359,7 @@ script = "exit 3"
 }
 
 func TestNodeSubscriptionMissingOutputFailsSetup(t *testing.T) {
-	cfg := writeWorkflowFixture(t, t.TempDir(), "work", []taskFixture{{
+	cfg := writeWorkflowFixture(t, "work", []taskFixture{{
 		id: "thread", scope: "run", setup: `echo '{}'`, cleanup: "true",
 	}}, []nodeFixture{{id: "thread", subscription: "self.outputs.permalink"}})
 	store := testStore(t)

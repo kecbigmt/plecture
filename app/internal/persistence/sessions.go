@@ -376,7 +376,6 @@ func (db *DB) writeSessionTx(ctx context.Context, tx *sql.Tx, s *domain.Session)
 		Alias:                    nullString(s.Alias),
 		Workflow:                 s.Workflow,
 		WorkflowRevision:         nullString(s.WorkflowRevision),
-		WorkspaceDir:             nullString(s.WorkspaceDirPath),
 		PopulationWorkflow:       populationWorkflow,
 		PopulationName:           populationName,
 		InputsJson:               inputsJSON,
@@ -418,7 +417,6 @@ func insertSessionParams(id, status string, parentCol, rootCol, populationWorkfl
 		Alias:                    nullString(s.Alias),
 		Workflow:                 s.Workflow,
 		WorkflowRevision:         nullString(s.WorkflowRevision),
-		WorkspaceDir:             nullString(s.WorkspaceDirPath),
 		PopulationWorkflow:       populationWorkflow,
 		PopulationName:           populationName,
 		InputsJson:               inputsJSON,
@@ -628,7 +626,6 @@ func sessionFromRow(row sqlcgen.Session) (*domain.Session, error) {
 		Alias:            row.Alias.String,
 		Workflow:         row.Workflow,
 		WorkflowRevision: row.WorkflowRevision.String,
-		WorkspaceDirPath: row.WorkspaceDir.String,
 	}
 	if row.PopulationWorkflow.Valid && row.PopulationName.Valid {
 		s.Population = &contract.PopulationProvenance{Workflow: row.PopulationWorkflow.String, Name: row.PopulationName.String}

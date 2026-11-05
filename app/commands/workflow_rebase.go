@@ -58,7 +58,7 @@ var workflowRebaseCmd = &cobra.Command{
 		sort.Strings(args)
 		var failures []error
 		for _, name := range args {
-			result, err := service.WorkflowRebase(cfg, store, service.RebaseParams{Identifier: name, DryRun: workflowRebaseDryRun, WithRestart: workflowRebaseWithRestart, Observer: newTaskObserver(cfg)})
+			result, err := service.WorkflowRebase(cfg, store, service.RebaseParams{Identifier: name, DryRun: workflowRebaseDryRun, WithRestart: workflowRebaseWithRestart, Observer: newTaskObserver(cfg), InvocationDir: invocationDir()})
 			if result != nil {
 				fmt.Fprintf(cmd.OutOrStdout(), "%s: %s %s -> %s\n", result.SessionName, result.Class, result.From, result.To)
 				if len(result.RecreateNodes) > 0 {

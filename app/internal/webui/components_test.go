@@ -73,16 +73,16 @@ func TestInput_LabelAssociatedAndFocusRing(t *testing.T) {
 	}
 }
 
-// card renders one session as a list item with status, branch and github status,
+// card renders one session as a list item with status and display status,
 // keeps depth via border (no shadow), and links the name to its detail page
 // (names contain "/", so the href is the path-escaped /sessions/<name> form).
 func TestCard_SessionRow(t *testing.T) {
 	out := exec(t, "card", cardView{ListEntry: service.ListEntry{
 		SessionName: "owner/repo-1", Title: "fix things",
-		Run: domain.RunUp, Health: domain.HealthHealthy, Branch: "issue/1", DisplayStatus: "open",
+		Run: domain.RunUp, Health: domain.HealthHealthy, DisplayStatus: "open",
 	}})
 	for _, want := range []string{
-		`data-run="up"`, `data-health="healthy"`, "owner/repo-1", "fix things", "issue/1", "open",
+		`data-run="up"`, `data-health="healthy"`, "owner/repo-1", "fix things", "open",
 		"border-border", "bg-card", `href="/sessions/owner/repo-1"`,
 		// clicking opens the session in the right pane without a full navigation
 		`hx-get="/sessions/owner/repo-1"`, `hx-target="#detail-pane"`, `hx-push-url="true"`,

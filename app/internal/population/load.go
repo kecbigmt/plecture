@@ -13,10 +13,13 @@ import (
 
 // Definition is one fully resolved workflow population ready to evaluate.
 type Definition struct {
-	Workflow      config.WorkflowFile
-	Population    config.WorkflowPopulation
-	Observer      config.ResourceDef
-	Provider      config.WorkspaceProviderConfig
+	Workflow   config.WorkflowFile
+	Population config.WorkflowPopulation
+	Observer   config.ResourceDef
+	// Entry is the workflow's entry resource: every item the population
+	// admits must be recognized by it, because a session is created from the
+	// item through that resource.
+	Entry         config.ResourceDef
 	InitialTask   *config.TaskDocument
 	ItemSchema    *jsonschema.Schema
 	SessionSchema *jsonschema.Schema
@@ -34,10 +37,6 @@ func Load(cfg *config.Config) ([]Definition, error) {
 	if err != nil {
 		return nil, err
 	}
-	providers, err := cfg.LoadWorkspaceProviders()
-	if err != nil {
-		return nil, err
-	}
 	docs, err := cfg.LoadTaskDocuments("")
 	if err != nil {
 		return nil, err
@@ -52,7 +51,7 @@ func Load(cfg *config.Config) ([]Definition, error) {
 	for _, address := range addresses {
 		wf := workflows[address]
 		for _, p := range wf.Populations {
-			def, err := resolveDefinition(wf, p, observers, providers, docs)
+			def, err := resolveDefinition(wf, p, observers, docs)
 			if err != nil {
 				return nil, fmt.Errorf("workflow %q population %q: %w", address, p.Name, err)
 			}
@@ -62,18 +61,15 @@ func Load(cfg *config.Config) ([]Definition, error) {
 	return out, nil
 }
 
-func resolveDefinition(wf config.WorkflowFile, p config.WorkflowPopulation, observers map[string]config.ResourceDef, providers map[string]config.WorkspaceProviderConfig, docs map[string]config.TaskDocument) (Definition, error) {
+func resolveDefinition(wf config.WorkflowFile, p config.WorkflowPopulation, observers map[string]config.ResourceDef, docs map[string]config.TaskDocument) (Definition, error) {
 	def := Definition{Workflow: wf, Population: p}
 	observer := observers[p.ResourceObserver]
 	def.Observer = observer
-	provider, ok := providers[wf.WorkspaceProvider]
+	entry, ok := observers[wf.Resource]
 	if !ok {
-		return def, fmt.Errorf("workflow workspace_provider names unknown definition %q", wf.WorkspaceProvider)
+		return def, fmt.Errorf("workflow resource names unknown definition %q", wf.Resource)
 	}
-	if !provider.HasResolver() {
-		return def, fmt.Errorf("workspace provider %q has no resource resolver", wf.WorkspaceProvider)
-	}
-	def.Provider = provider
+	def.Entry = entry
 
 	query := observer.Query
 	var err error

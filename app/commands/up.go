@@ -87,6 +87,7 @@ queue position. --json reports result and queue_position for scripts.`,
 			Observer:       newTaskObserver(cfg),
 			ForceRecreate:  upRecreate,
 			HumanInitiated: true,
+			InvocationDir:  invocationDir(),
 		})
 		if err != nil {
 			return err

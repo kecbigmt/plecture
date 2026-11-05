@@ -21,8 +21,8 @@ func populationConfig(t *testing.T, queryMeans, timing, sessionInputs string) *c
 	dir := t.TempDir()
 	writeDefinition(t, dir, "observer", `[source]
 kind = "resource"
-name = "fixture"
-match = "^urn:case:"
+match = "^urn:case:(?P<id>[A-Za-z0-9]+)$"
+name = { from = "match.id" }
 [source.observe]
 type = "exec"
 command = "true"
@@ -41,16 +41,6 @@ type = "string"
 [source.query.item_schema.properties.context]
 type = "string"
 `+queryMeans)
-	writeDefinition(t, dir, "provider", `[provider]
-kind = "workspace_provider"
-match = "^urn:case:(?P<id>[A-Za-z0-9]+)$"
-name = { from = "match.id" }
-[provider.setup]
-type = "exec"
-command = "true"
-[provider.outputs_schema]
-type = "object"
-`)
 	writeDefinition(t, dir, "runtime", `[runtime]
 kind = "effect"
 scope = "run"
@@ -62,7 +52,7 @@ type = "noop"
 `)
 	writeDefinition(t, dir, "workflow", `[agent]
 kind = "workflow"
-workspace_provider = "provider"
+resource = "source"
 [agent.inputs_schema]
 type = "object"
 required = ["resource"]
@@ -80,7 +70,7 @@ resource_observer = "source"
 scope = "all"
 [agent.populations.session.inputs]
 `+sessionInputs)
-	return &config.Config{BaseDir: dir, WorkspaceDirsRoot: t.TempDir()}
+	return &config.Config{BaseDir: dir}
 }
 
 func TestLoadAcceptsPollPopulationAndCompilesContracts(t *testing.T) {

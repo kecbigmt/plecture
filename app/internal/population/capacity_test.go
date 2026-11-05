@@ -2,7 +2,6 @@ package population
 
 import (
 	"context"
-	"fmt"
 	"strings"
 	"testing"
 	"time"
@@ -43,17 +42,6 @@ func TestCapacityPriorityOnlyAppliesWhenVirtualRootCapIsFull(t *testing.T) {
 type = "exec"
 command = "true"
 `, "uses = [\"poll\"]\npoll_every = \"1m\"", `resource = { from = "resource.id" }`)
-			writeDefinition(t, cfg.BaseDir, "provider", fmt.Sprintf(`[provider]
-kind = "workspace_provider"
-match = "^urn:case:(?P<id>[A-Za-z0-9]+)$"
-name = { from = "match.id" }
-[provider.setup]
-type = "exec"
-command = "printf"
-args = ['{"workspace_dir":"%s","branch":"main"}']
-[provider.outputs_schema]
-type = "object"
-`, cfg.WorkspaceDirsRoot))
 			limit := 1
 			cfg.MaxUpChildren = &limit
 			definitions, err := Load(cfg)
@@ -116,17 +104,6 @@ func TestCapacityPriorityIgnoresMemberWithNonCapacityFailure(t *testing.T) {
 type = "exec"
 command = "true"
 `, "uses = [\"poll\"]\npoll_every = \"1m\"", `resource = { from = "resource.id" }`)
-	writeDefinition(t, cfg.BaseDir, "provider", fmt.Sprintf(`[provider]
-kind = "workspace_provider"
-match = "^urn:case:(?P<id>[A-Za-z0-9]+)$"
-name = { from = "match.id" }
-[provider.setup]
-type = "exec"
-command = "printf"
-args = ['{"workspace_dir":"%s","branch":"main"}']
-[provider.outputs_schema]
-type = "object"
-`, cfg.WorkspaceDirsRoot))
 	limit := 2
 	cfg.MaxUpChildren = &limit
 	definitions, err := Load(cfg)
@@ -305,17 +282,6 @@ func TestCapacityRefusalSurvivesEmptyIdleCandidates(t *testing.T) {
 type = "exec"
 command = "true"
 `, "uses = [\"poll\"]\npoll_every = \"1m\"", `resource = { from = "resource.id" }`)
-	writeDefinition(t, cfg.BaseDir, "provider", fmt.Sprintf(`[provider]
-kind = "workspace_provider"
-match = "^urn:case:(?P<id>[A-Za-z0-9]+)$"
-name = { from = "match.id" }
-[provider.setup]
-type = "exec"
-command = "printf"
-args = ['{"workspace_dir":"%s","branch":"main"}']
-[provider.outputs_schema]
-type = "object"
-`, cfg.WorkspaceDirsRoot))
 	limit := 1
 	cfg.MaxUpChildren = &limit
 	definitions, err := Load(cfg)
@@ -352,17 +318,6 @@ func TestQueuedAdmissionWaitsForWakeBeforeInitialTask(t *testing.T) {
 type = "exec"
 command = "true"
 `, "uses = [\"poll\"]\npoll_every = \"1m\"", `resource = { from = "resource.id" }`)
-	writeDefinition(t, cfg.BaseDir, "provider", fmt.Sprintf(`[provider]
-kind = "workspace_provider"
-match = "^urn:case:(?P<id>[A-Za-z0-9]+)$"
-name = { from = "match.id" }
-[provider.setup]
-type = "exec"
-command = "printf"
-args = ['{"workspace_dir":"%s","branch":"main"}']
-[provider.outputs_schema]
-type = "object"
-`, cfg.WorkspaceDirsRoot))
 	writeDefinition(t, cfg.BaseDir, "work", `[work]
 kind = "effect"
 scope = "run"
@@ -465,17 +420,6 @@ func TestAdmitDoesNotRearmWakeSuspendedMember(t *testing.T) {
 type = "exec"
 command = "true"
 `, "uses = [\"poll\"]\npoll_every = \"1m\"", `resource = { from = "resource.id" }`)
-	writeDefinition(t, cfg.BaseDir, "provider", fmt.Sprintf(`[provider]
-kind = "workspace_provider"
-match = "^urn:case:(?P<id>[A-Za-z0-9]+)$"
-name = { from = "match.id" }
-[provider.setup]
-type = "exec"
-command = "printf"
-args = ['{"workspace_dir":"%s","branch":"main"}']
-[provider.outputs_schema]
-type = "object"
-`, cfg.WorkspaceDirsRoot))
 	writeDefinition(t, cfg.BaseDir, "work", `[work]
 kind = "effect"
 scope = "run"

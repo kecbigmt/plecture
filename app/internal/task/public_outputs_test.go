@@ -105,7 +105,7 @@ func TestRunSetup_PublicOutputBeforeItsProducerRunsFailsTheConsumer(t *testing.T
 	}
 }
 
-func TestExecuteTaskSetup_SeesPublicOutputsNotTheProviderPseudoNode(t *testing.T) {
+func TestExecuteTaskSetup_SeesPublicOutputsNotARawNodeOutput(t *testing.T) {
 	exec := withScriptedExecutor(t, &scriptedExecutor{})
 	def := config.TaskDefinition{ID: "review", Scope: "session", Setup: &lang.Action{
 		Type:   lang.ActionShell,
@@ -114,15 +114,15 @@ func TestExecuteTaskSetup_SeesPublicOutputsNotTheProviderPseudoNode(t *testing.T
 	}}
 	r := resolveDef(t, def, "review#1")
 	nodes := map[string]*contract.TaskState{
-		contract.WorkflowPseudoNodeID: {Status: contract.TaskStatusProduced, Outputs: map[string]any{"branch": "from-provider"}},
-		"checkout":                    {Status: contract.TaskStatusProduced, Outputs: map[string]any{"ref": "feat/x"}},
+		"other":    {Status: contract.TaskStatusProduced, Outputs: map[string]any{"branch": "raw-node-output"}},
+		"checkout": {Status: contract.TaskStatusProduced, Outputs: map[string]any{"ref": "feat/x"}},
 	}
 	vars := SessionVars{PublicOutputs: publicoutput.Declaration{Bindings: map[string]*lang.Value{"branch": fromValue("nodes.checkout.outputs.ref")}}}
-	if _, err := ExecuteTaskSetup(context.Background(), r, nil, vars, nodes); err != nil {
+	if _, err := ExecuteTaskSetup(context.Background(), r, nil, vars, nodes, ""); err != nil {
 		t.Fatalf("ExecuteTaskSetup: %v", err)
 	}
-	if len(exec.bindings) != 1 || !strings.Contains(exec.bindings[0], "feat/x") || strings.Contains(exec.bindings[0], "from-provider") {
-		t.Fatalf("bindings = %v, want the public output's value and not the provider's", exec.bindings)
+	if len(exec.bindings) != 1 || !strings.Contains(exec.bindings[0], "feat/x") || strings.Contains(exec.bindings[0], "raw-node-output") {
+		t.Fatalf("bindings = %v, want the public output's value and not a raw node output's", exec.bindings)
 	}
 }
 
@@ -209,7 +209,7 @@ func TestExecuteTaskSetup_DoesNotReadAReleasedSourcesRecordedOutput(t *testing.T
 		"y": {Scope: contract.TaskScopeRun, Status: contract.TaskStatusCleaned, Outputs: map[string]any{"k": "stale-socket"}},
 	}
 	vars := SessionVars{PublicOutputs: publicoutput.Declaration{Bindings: map[string]*lang.Value{"k": fromValue("nodes.y.outputs.k")}}}
-	if _, err := ExecuteTaskSetup(context.Background(), r, nil, vars, nodes); err != nil {
+	if _, err := ExecuteTaskSetup(context.Background(), r, nil, vars, nodes, ""); err != nil {
 		t.Fatalf("ExecuteTaskSetup: %v", err)
 	}
 	if len(exec.bindings) != 1 || strings.Contains(exec.bindings[0], "stale-socket") {

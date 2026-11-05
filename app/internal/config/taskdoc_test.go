@@ -191,22 +191,6 @@ func TestLoadTaskDocuments_RejectsDuplicateIDInOneLayer(t *testing.T) {
 	}
 }
 
-// Clone content must not declare the work it is about: a task document found
-// under the workspace directory is rejected rather than quietly ignored.
-func TestLoadTaskDocuments_RejectsWorkspaceDirLayer(t *testing.T) {
-	base := t.TempDir()
-	workspace := t.TempDir()
-	writeFile(t, filepath.Join(workspace, ".plect", "tasks", "review.toml"), duplicateTaskDoc)
-	cfg := &Config{BaseDir: base}
-	_, err := cfg.LoadTaskDocuments(workspace)
-	if err == nil {
-		t.Fatal("expected a load error for a task document inside the workspace directory")
-	}
-	if !strings.Contains(err.Error(), "workspace directory") {
-		t.Errorf("error = %v, want it to say where the document was found", err)
-	}
-}
-
 const minimalObserver = `
 [issue_pr]
 kind  = "resource"
@@ -336,6 +320,7 @@ instructions      = [{ text = "Review it." }]
 	writeFile(t, filepath.Join(base, "workflows", "goal_review.toml"), `
 [goal_review]
 kind = "workflow"
+resource = "issue"
 
 [[goal_review.nodes]]
 uses = "noop"

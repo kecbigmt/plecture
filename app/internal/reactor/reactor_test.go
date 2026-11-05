@@ -81,7 +81,7 @@ func pinRevision(t *testing.T, cfg *config.Config, session *domain.Session) {
 	if session.Workflow == "" {
 		return
 	}
-	revision, err := cfg.CaptureWorkflowRevision(session.WorkspaceDirPath, session.Workflow)
+	revision, err := cfg.CaptureWorkflowRevision("", session.Workflow)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -124,7 +124,7 @@ func newTestReactor(t *testing.T, tc config.TickConfig) (*sessionReactor, *state
 	}
 	r := &sessionReactor{
 		session: "o/r-1",
-		cfg:     &config.Config{WorkspaceDirsRoot: t.TempDir()},
+		cfg:     &config.Config{},
 		state:   st,
 		log:     log,
 		hub:     hub,
@@ -139,6 +139,7 @@ func TestCheckHealth_PassesCompletedReportToRepair(t *testing.T) {
 	writeFile(t, filepath.Join(pluginDir, "config", "workflows", "reactive.toml"), `
 [reactive]
 kind = "workflow"
+resource = "issue"
 [[reactive.nodes]]
 id = "claude"
 uses = "claude"
@@ -178,6 +179,7 @@ func TestSupervisor_RepairDownSweepRespectsWorkflowPeriod(t *testing.T) {
 	writeFile(t, filepath.Join(pluginDir, "config", "workflows", "reactive.toml"), `
 [reactive]
 kind = "workflow"
+resource = "issue"
 [[reactive.nodes]]
 id = "claude"
 uses = "claude"
@@ -257,7 +259,7 @@ func TestSupervisor_RepairDownSweepWarnsOncePerWorkflowFailureStreak(t *testing.
 		t.Fatalf("warning count = %d, want 1 during unresolved streak", got)
 	}
 	workflowPath := filepath.Join(pluginDir, "config", "workflows", "missing.toml")
-	writeFile(t, workflowPath, "[missing]\nkind = \"workflow\"\n")
+	writeFile(t, workflowPath, "[missing]\nkind = \"workflow\"\nresource = \"issue\"\n")
 	session := st.Get("o/r-1")
 	pinRevision(t, cfg, session)
 	if err := st.Update(session.Name, func(current *domain.Session) error {
@@ -942,6 +944,7 @@ func TestSupervisor_ResolvesTickConfigFromPluginMountedAfterConstruction(t *test
 	writeFile(t, filepath.Join(pluginDir, "config", "workflows", "coding.toml"), `
 [coding]
 kind = "workflow"
+resource = "issue"
 [coding.tick]
 on = ["github.*"]
 `)
@@ -986,6 +989,7 @@ func TestSupervisor_ForwarderWaitsWhileTheOutgoingReactorIsStillMidTick(t *testi
 	writeFile(t, filepath.Join(pluginDir, "config", "workflows", "reactive.toml"), `
 [reactive]
 kind = "workflow"
+resource = "issue"
 [[reactive.nodes]]
 id   = "claude"
 uses = "claude"
@@ -1072,6 +1076,7 @@ func TestSupervisor_ReactorWaitsWhileTheOutgoingForwarderIsStillMidRelay(t *test
 	writeFile(t, filepath.Join(pluginDir, "config", "workflows", "reactive.toml"), `
 [reactive]
 kind = "workflow"
+resource = "issue"
 [[reactive.nodes]]
 id   = "claude"
 uses = "claude"

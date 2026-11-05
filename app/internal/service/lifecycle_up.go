@@ -34,7 +34,9 @@ type UpParams struct {
 	// preserving durable identity and event log state.
 	ForceRecreate  bool
 	HumanInitiated bool
-	repair         bool
+	// InvocationDir is forwarded to auto-create; see CreateParams.
+	InvocationDir string
+	repair        bool
 }
 
 // UpResult holds the outcome of Up.
@@ -182,6 +184,7 @@ func upUnlocked(cfg *config.Config, store *state.Store, params UpParams) (*UpRes
 				ParentSession: params.ParentSession,
 				Observer:      params.Observer,
 				Population:    params.Population,
+				InvocationDir: params.InvocationDir,
 			}); err != nil {
 				return nil, err
 			}
@@ -213,6 +216,9 @@ func upUnlocked(cfg *config.Config, store *state.Store, params UpParams) (*UpRes
 	if guardErr := checkSessionGuard(cfg, sessionName); guardErr != nil {
 		return nil, guardErr
 	}
+	if !matched && params.Workflow != "" && params.Workflow != session.Workflow {
+		return nil, &Error{Code: ErrInvalidInput, Message: fmt.Sprintf("--workflow %q does not match the session's frozen workflow %q", params.Workflow, session.Workflow)}
+	}
 	// Mirrors the matched branch's reservation above, for a bare-name
 	// session going straight from down to up.
 	if !matched {
@@ -243,11 +249,11 @@ func upUnlocked(cfg *config.Config, store *state.Store, params UpParams) (*UpRes
 		session.Tasks = make(map[string]*contract.TaskState)
 	}
 
-	plan, err := buildPlanForSession(cfg, session.WorkspaceDirPath, session)
+	plan, err := buildPlanForSession(cfg, session)
 	if err != nil {
 		return nil, &Error{Code: ErrExecutionFailed, Message: err.Error()}
 	}
-	wf, wfErr := loadSessionWorkflow(cfg, session.WorkspaceDirPath, session)
+	wf, wfErr := loadSessionWorkflow(cfg, session)
 	if wfErr != nil {
 		return nil, &Error{Code: ErrExecutionFailed, Message: wfErr.Error()}
 	}
@@ -279,7 +285,7 @@ func upUnlocked(cfg *config.Config, store *state.Store, params UpParams) (*UpRes
 	if err := mergeTasksWithSubscriptions(store, sessionName, session, wiredNodes); err != nil {
 		return nil, &Error{Code: ErrExecutionFailed, Message: fmt.Sprintf("failed to save session state: %v", err)}
 	}
-	wireProducedNodeSubscriptions(cfg, store, sessionName, domain.SessionBranch(session), wiredNodes)
+	wireProducedNodeSubscriptions(cfg, store, sessionName, wiredNodes)
 	if setupErr != nil {
 		return nil, &Error{Code: ErrExecutionFailed, Message: setupErr.Error()}
 	}
@@ -439,7 +445,7 @@ func staleProducedWorkflowNodes(cfg *config.Config, session *domain.Session, pla
 	var items []seqResolved
 	for _, key := range sortedTaskKeys(session.Nodes) {
 		st := session.Nodes[key]
-		if st == nil || st.Status == contract.TaskStatusCleaned || key == contract.WorkflowPseudoNodeID || current[key] {
+		if st == nil || st.Status == contract.TaskStatusCleaned || current[key] {
 			continue
 		}
 		taskID := taskIDForInstance(key, st)
@@ -476,7 +482,12 @@ func recreateSessionRuntime(cfg *config.Config, store *state.Store, sessionName 
 	if teardownErr != nil {
 		return nil, &Error{Code: ErrExecutionFailed, Message: teardownErr.Error()}
 	}
-	cleanupErr := runTaskCleanup(context.Background(), cfg, store, teardown, sessionVars(cfg, session, teardownPlan), session, observer)
+	// An internal reset, not an explicit operator destroy: there is no
+	// destruction intent to forward, and the environment is rebuilt right
+	// after, so a dirty checkout is not a reason to refuse.
+	vars := sessionVars(cfg, session, teardownPlan)
+	vars.Force = true
+	cleanupErr := runTaskCleanup(context.Background(), cfg, store, teardown, vars, session, observer)
 	session.UpdatedAt = time.Now()
 	if cleanupErr != nil {
 		if err := mergeTasks(store, sessionName, session); err != nil {
@@ -485,19 +496,6 @@ func recreateSessionRuntime(cfg *config.Config, store *state.Store, sessionName 
 		return nil, &Error{Code: ErrExecutionFailed, Message: cleanupErr.Error()}
 	}
 
-	if wfState, ok := session.Nodes[contract.WorkflowPseudoNodeID]; ok && wfState != nil {
-		// Internal reset path, not an explicit operator destroy: no cleanup
-		// intents to forward.
-		if workflowCleanupErr := runWorkflowCleanupForDestroy(cfg, session, true, nil, observer); workflowCleanupErr != nil {
-			session.UpdatedAt = time.Now()
-			if err := mergeTasks(store, sessionName, session); err != nil {
-				return nil, &Error{Code: ErrExecutionFailed, Message: fmt.Sprintf("failed to save session state: %v", err)}
-			}
-			return nil, &Error{Code: ErrExecutionFailed, Message: workflowCleanupErr.Error()}
-		}
-	}
-
-	session.WorkspaceDirPath = ""
 	session.Nodes = make(map[string]*contract.TaskState)
 	session.Tasks = make(map[string]*contract.TaskState)
 	session.Health = nil
@@ -516,24 +514,7 @@ func recreateSessionRuntime(cfg *config.Config, store *state.Store, sessionName 
 		return nil, &Error{Code: ErrExecutionFailed, Message: fmt.Sprintf("failed to save session state: %v", err)}
 	}
 
-	outputs, setupErr := runWorkflowSetupForSession(cfg, wf, session, observer)
-	session.UpdatedAt = time.Now()
-	if outputs != nil {
-		if workspaceDir, ok := outputs[contract.OutputKeyWorkspaceDir].(string); ok {
-			session.WorkspaceDirPath = workspaceDir
-		}
-		// A git-backed provider's own "branch" output (domain.SessionBranch)
-		// needs no mirroring here: it already lives in this @workflow node's
-		// Outputs, persisted by replaceRuntimeState below.
-	}
-	if err := replaceRuntimeState(store, sessionName, session); err != nil {
-		return nil, &Error{Code: ErrExecutionFailed, Message: fmt.Sprintf("failed to save session state: %v", err)}
-	}
-	if setupErr != nil {
-		return nil, &Error{Code: ErrExecutionFailed, Message: setupErr.Error()}
-	}
-
-	setupPlan, planErr := buildPlanForSession(cfg, session.WorkspaceDirPath, session)
+	setupPlan, planErr := buildPlanForSession(cfg, session)
 	if planErr != nil {
 		return nil, &Error{Code: ErrExecutionFailed, Message: planErr.Error()}
 	}
@@ -546,30 +527,9 @@ func recreateSessionRuntime(cfg *config.Config, store *state.Store, sessionName 
 	if err := mergeTasksWithSubscriptions(store, sessionName, session, wiredNodes); err != nil {
 		return nil, &Error{Code: ErrExecutionFailed, Message: fmt.Sprintf("failed to save session state: %v", err)}
 	}
-	wireProducedNodeSubscriptions(cfg, store, sessionName, domain.SessionBranch(session), wiredNodes)
+	wireProducedNodeSubscriptions(cfg, store, sessionName, wiredNodes)
 	if setupErr != nil {
 		return nil, &Error{Code: ErrExecutionFailed, Message: setupErr.Error()}
 	}
 	return setupPlan, nil
-}
-
-func runWorkflowSetupForSession(cfg *config.Config, wf config.WorkflowFile, session *domain.Session, observer task.Observer) (map[string]any, error) {
-	prov, err := cfg.WorkspaceProviderForSession(session)
-	if err != nil {
-		return nil, err
-	}
-	provInputs, inputsErr := resolveWorkspaceProviderInputs(prov, wf)
-	if inputsErr != nil {
-		return nil, inputsErr
-	}
-	vars := effect.WorkflowHookVars{
-		ResourceID:        session.ResourceID,
-		SessionName:       session.Name,
-		WorkspaceDirsRoot: cfg.WorkspaceDirsRoot,
-		SessionInputs:     session.Inputs,
-		Inputs:            provInputs,
-		Plugins:           cfg.Plugins,
-		SourcePath:        prov.SourcePath,
-	}
-	return runWorkflowSetup(prov, vars, session, observer)
 }

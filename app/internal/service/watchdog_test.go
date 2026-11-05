@@ -48,7 +48,7 @@ func TestPersistHealthState_UpdateFailureLogsWarning(t *testing.T) {
 // to resolve against.
 func aliveFixtureConfig(t *testing.T, alive string) *config.Config {
 	t.Helper()
-	return writeWorkflowFixture(t, t.TempDir(), "default", []taskFixture{{
+	return writeWorkflowFixture(t, "default", []taskFixture{{
 		id:    "runner",
 		scope: contract.TaskScopeRun,
 		alive: alive,
@@ -107,7 +107,7 @@ func TestEvaluateHealth_FailingAliveProbeIsUnhealthy(t *testing.T) {
 // plain effect whose only declaration is the given [health.alive] command.
 func currentPlanConfig(t *testing.T, paneAlive, agentAlive string) *config.Config {
 	t.Helper()
-	return writeWorkflowFixture(t, t.TempDir(), "default", []taskFixture{
+	return writeWorkflowFixture(t, "default", []taskFixture{
 		{id: "pane", scope: contract.TaskScopeRun, alive: paneAlive},
 		{id: "agent", scope: contract.TaskScopeRun, alive: agentAlive},
 	}, []nodeFixture{{id: "pane"}, {id: "agent"}})
@@ -389,7 +389,7 @@ func TestEvaluateHealth_NoProducedRunScopedNodeAfterAbortedFirstUpIsNotUnhealthy
 
 func TestEvaluateHealth_StaleTaskEntryContributesNothing(t *testing.T) {
 	store := testStore(t)
-	cfg := writeWorkflowFixture(t, t.TempDir(), "default", []taskFixture{
+	cfg := writeWorkflowFixture(t, "default", []taskFixture{
 		{id: "pane", scope: contract.TaskScopeRun, alive: "true"},
 		{id: "stale_runtime", scope: contract.TaskScopeRun, alive: "false"},
 	}, []nodeFixture{{id: "pane"}}) // "stale_runtime" keeps a definition but no node uses it anymore.
@@ -437,7 +437,7 @@ func TestEvaluateHealth_StaleProducedNodeAloneReadsDownWithNoVerdict(t *testing.
 // is why this report does not also need to cover it.
 func TestEvaluateHealth_FailedSessionScopedNodeDoesNotAffectRunScopedHealthReport(t *testing.T) {
 	store := testStore(t)
-	cfg := writeWorkflowFixture(t, t.TempDir(), "default", []taskFixture{
+	cfg := writeWorkflowFixture(t, "default", []taskFixture{
 		{id: "guard", scope: contract.TaskScopeSession, alive: "false"},
 		{id: "pane", scope: contract.TaskScopeRun, alive: "true"},
 	}, []nodeFixture{{id: "guard"}, {id: "pane"}})
@@ -501,7 +501,7 @@ func TestEvaluateHealth_AliveProbeCanReadNodeInputs(t *testing.T) {
 func TestEvaluateHealth_AliveProbeCanBindTerminalPID(t *testing.T) {
 	agent := startSleepProcess(t)
 	store := testStore(t)
-	cfg := writeWorkflowFixture(t, t.TempDir(), "default", []taskFixture{
+	cfg := writeWorkflowFixture(t, "default", []taskFixture{
 		{
 			id:    "pane",
 			scope: contract.TaskScopeRun,
@@ -565,7 +565,7 @@ kill -0 "{{.Self.pid}}" 2>/dev/null
 func TestEvaluateHealth_UnproducedInvalidDefinitionDoesNotBlockTerminalBind(t *testing.T) {
 	agent := startSleepProcess(t)
 	store := testStore(t)
-	cfg := writeWorkflowFixture(t, t.TempDir(), "default", []taskFixture{
+	cfg := writeWorkflowFixture(t, "default", []taskFixture{
 		{
 			id:    "pane",
 			scope: contract.TaskScopeRun,
@@ -631,7 +631,7 @@ func TestEvaluateHealth_DuplicateProducedTerminalNodesError(t *testing.T) {
 type   = "shell"
 script = "true"
 `
-	cfg := writeWorkflowFixture(t, t.TempDir(), "default", []taskFixture{
+	cfg := writeWorkflowFixture(t, "default", []taskFixture{
 		{id: "pane_a", scope: contract.TaskScopeRun, extra: terminal},
 		{id: "pane_b", scope: contract.TaskScopeRun, extra: terminal},
 		{id: "runtime", scope: contract.TaskScopeRun, alive: "true"},
@@ -758,7 +758,7 @@ func TestSessionRunAndHealthState_AliveProbeBacked(t *testing.T) {
 // observed as anything but "yes" leaves the session owing progress.
 func activityFixtureConfig(t *testing.T, activity string) *config.Config {
 	t.Helper()
-	return writeWorkflowFixture(t, t.TempDir(), "default", []taskFixture{
+	return writeWorkflowFixture(t, "default", []taskFixture{
 		{
 			id:       "runner",
 			scope:    contract.TaskScopeRun,
@@ -1469,7 +1469,7 @@ func TestHealthcheckSession_RecordsUndeliverableEscalationWithNoLiveAncestor(t *
 // repeated sweeps must never re-probe, re-escalate, or wake it.
 func TestHealthcheckSession_DownSessionStaysDownAcrossRepeatedSweeps(t *testing.T) {
 	store := testStore(t)
-	cfg := &config.Config{WorkspaceDirsRoot: t.TempDir()}
+	cfg := &config.Config{}
 	// No parent: a health escalation with nowhere to go is exactly the
 	// undeliverable case the loop hinged on.
 	seedSessionWithNodes(t, store, "owner/repo-1", "owner/repo", 1, "", nil)
@@ -1522,7 +1522,7 @@ func TestHealthcheckSession_DownSessionStaysDownAcrossRepeatedSweeps(t *testing.
 
 func TestHealthcheckSession_UnknownSessionStillReturnsNotFound(t *testing.T) {
 	store := testStore(t)
-	cfg := &config.Config{WorkspaceDirsRoot: t.TempDir()}
+	cfg := &config.Config{}
 
 	_, err := HealthcheckSession(cfg, store, HealthcheckParams{SessionName: "owner/repo-missing"})
 	svcErr, ok := err.(*Error)
@@ -1536,7 +1536,7 @@ func TestHealthcheckSession_UnknownSessionStillReturnsNotFound(t *testing.T) {
 // each with its own [health] table, wired as two nodes of one workflow.
 func twoInstanceHealthConfig(t *testing.T, workerAlive, workerActivity, sidecarAlive, sidecarActivity string) *config.Config {
 	t.Helper()
-	return writeWorkflowFixture(t, t.TempDir(), "default", []taskFixture{
+	return writeWorkflowFixture(t, "default", []taskFixture{
 		{
 			id:       "worker",
 			scope:    contract.TaskScopeRun,
@@ -1663,6 +1663,7 @@ script = "false"
 	write(filepath.Join(base, "workflows", "default.toml"), `
 [default]
 kind = "workflow"
+resource = "issue"
 
 [[default.nodes]]
 id   = "initial"

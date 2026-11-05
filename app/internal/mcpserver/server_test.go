@@ -3,7 +3,6 @@ package mcpserver
 import (
 	"context"
 	"encoding/json"
-	"fmt"
 	"os"
 	"path/filepath"
 	"testing"
@@ -14,8 +13,9 @@ import (
 )
 
 // setUpConfigHome points config.Load()/state.NewStore("") at a scratch config
-// home with a resolver-less workflow, so dispatch treats the identifier as the
-// session id directly.
+// home with a workflow whose entry resource recognizes any plain identifier
+// (no "+", so a "<name>+<tag>" session name is never mistaken for one) and
+// names the session after it.
 func setUpConfigHome(t *testing.T) {
 	t.Helper()
 	home := t.TempDir()
@@ -23,22 +23,21 @@ func setUpConfigHome(t *testing.T) {
 	t.Setenv("XDG_DATA_HOME", filepath.Join(home, "data"))
 
 	baseDir := filepath.Join(home, ".config", "plect")
-	for _, dir := range []string{"workflows", "tasks", "workspaces"} {
+	for _, dir := range []string{"workflows", "tasks", "resources"} {
 		if err := os.MkdirAll(filepath.Join(baseDir, dir), 0o755); err != nil {
 			t.Fatal(err)
 		}
 	}
 	if err := os.WriteFile(filepath.Join(baseDir, "config.toml"),
-		[]byte("schema_version = 2\nworkspace_dirs_root = \""+filepath.Join(home, "workspace_dirs")+"\"\n"), 0o644); err != nil {
+		[]byte("schema_version = 2\n"), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	workspaceDirPath := filepath.Join(home, "wd")
-	if err := os.WriteFile(filepath.Join(baseDir, "workspaces", "plain_provider.toml"),
-		[]byte(providerDocument("plain_provider", workspaceDirPath)), 0o644); err != nil {
+	if err := os.WriteFile(filepath.Join(baseDir, "resources", "plain_resource.toml"),
+		[]byte("[plain_resource]\nkind = \"resource\"\nmatch = '^(?P<name>[A-Za-z0-9][A-Za-z0-9/_-]*)$'\nname = { expr = \"match.name\" }\n\n[plain_resource.observe]\ntype = \"shell\"\nscript = \"echo '{}'\"\n\n[plain_resource.state_schema]\ntype = \"object\"\n"), 0o644); err != nil {
 		t.Fatal(err)
 	}
 	if err := os.WriteFile(filepath.Join(baseDir, "workflows", "plain.toml"),
-		[]byte("[plain]\nkind = \"workflow\"\nworkspace_provider = \"plain_provider\"\n\n[[plain.nodes]]\nuses = \"noop\"\n"), 0o644); err != nil {
+		[]byte("[plain]\nkind = \"workflow\"\nresource = \"plain_resource\"\n\n[[plain.nodes]]\nuses = \"noop\"\n"), 0o644); err != nil {
 		t.Fatal(err)
 	}
 	if err := os.WriteFile(filepath.Join(baseDir, "tasks", "noop.toml"),
@@ -77,11 +76,10 @@ func TestNewServer_RemovesRemovedTools(t *testing.T) {
 	}
 }
 
-// A resolver-less workflow's identifier isn't a URL, so plect_up's
-// docker-compose-up-style auto-create only kicks in for resolver-matched or
-// URL identifiers. Once a resolver-less session exists, plect_up must still
-// resolve and run it.
-func TestHandleUp_ResolverLessWorkflowExistingSession(t *testing.T) {
+// A "<name>+<tag>" session name is not a resource id any declaration
+// recognizes, so plect_up resolves it as an existing session rather than
+// creating one.
+func TestHandleUp_ExistingSessionByName(t *testing.T) {
 	setUpConfigHome(t)
 
 	createPlainSession(t, "my-session")
@@ -135,23 +133,4 @@ func TestHandleUp_TaskConflictsWithInputs(t *testing.T) {
 	if !result.IsError {
 		t.Fatal("expected error result for conflicting task")
 	}
-}
-
-// providerDocument is a workspace provider whose setup creates the workspace
-// directory it reports, which is all these lifecycle tests need from one.
-func providerDocument(id, workspaceDir string) string {
-	return fmt.Sprintf(`
-[%[1]s]
-kind = "workspace_provider"
-
-[%[1]s.setup]
-type    = "exec"
-command = "sh"
-args = [
-  "-c",
-  """mkdir -p "$1" && printf '{\"workspace_dir\":\"%%s\"}' "$1\"""",
-  "provider",
-  "%[2]s",
-]
-`, id, workspaceDir)
 }

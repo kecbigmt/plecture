@@ -29,11 +29,10 @@ func TestPutSessionAndGetSession_RoundTripsRelationalFields(t *testing.T) {
 
 	now := time.Now().UTC().Truncate(time.Second)
 	session := &domain.Session{
-		Name:             "case123",
-		ResourceID:       "https://example.test/resource/123",
-		WorkspaceDirPath: "/tmp/workdirs/case123",
-		CreatedAt:        now,
-		UpdatedAt:        now,
+		Name:       "case123",
+		ResourceID: "https://example.test/resource/123",
+		CreatedAt:  now,
+		UpdatedAt:  now,
 	}
 
 	if err := db.PutSession(ctx, session); err != nil {
@@ -505,7 +504,7 @@ func TestUpdateSession_AppliesFnAndPersistsNodes(t *testing.T) {
 
 	err := db.UpdateSession(ctx, "s1", func(s *domain.Session) error {
 		s.Nodes = map[string]*contract.TaskState{
-			"@workflow": {Scope: contract.TaskScopeSession, Status: contract.TaskStatusProduced, Outputs: map[string]any{"workspace_dir": "/tmp/x"}},
+			"prepare": {Scope: contract.TaskScopeSession, Status: contract.TaskStatusProduced, Outputs: map[string]any{"path": "/tmp/x"}},
 		}
 		return nil
 	})
@@ -517,12 +516,12 @@ func TestUpdateSession_AppliesFnAndPersistsNodes(t *testing.T) {
 	if err != nil {
 		t.Fatalf("GetSession: %v", err)
 	}
-	node := got.Nodes["@workflow"]
+	node := got.Nodes["prepare"]
 	if node == nil {
-		t.Fatal("node @workflow missing after UpdateSession")
+		t.Fatal("node prepare missing after UpdateSession")
 	}
-	if node.Outputs["workspace_dir"] != "/tmp/x" {
-		t.Errorf("node outputs = %v, want workspace_dir=/tmp/x", node.Outputs)
+	if node.Outputs["path"] != "/tmp/x" {
+		t.Errorf("node outputs = %v, want path=/tmp/x", node.Outputs)
 	}
 }
 
@@ -533,7 +532,7 @@ func TestUpdateSession_FnErrorAbortsWithoutWriting(t *testing.T) {
 
 	wantErr := fmt.Errorf("boom")
 	err := db.UpdateSession(ctx, "s1", func(s *domain.Session) error {
-		s.WorkspaceDirPath = "/should/not/persist"
+		s.Alias = "should-not-persist"
 		return wantErr
 	})
 	if err != wantErr {
@@ -544,8 +543,8 @@ func TestUpdateSession_FnErrorAbortsWithoutWriting(t *testing.T) {
 	if err != nil {
 		t.Fatalf("GetSession: %v", err)
 	}
-	if got.WorkspaceDirPath != "" {
-		t.Errorf("WorkspaceDirPath = %q, want empty (fn's error must have rolled back the write)", got.WorkspaceDirPath)
+	if got.Alias != "" {
+		t.Errorf("Alias = %q, want empty (fn's error must have rolled back the write)", got.Alias)
 	}
 }
 
@@ -618,7 +617,7 @@ func TestPutSession_NodeInstanceDoneWhenRoundTripsAsEmbeddedJSON(t *testing.T) {
 	session := &domain.Session{
 		Name: "s1", CreatedAt: now, UpdatedAt: now,
 		Nodes: map[string]*contract.TaskState{
-			"@workflow": {
+			"build": {
 				Scope: contract.TaskScopeSession, Status: contract.TaskStatusProduced,
 				DoneWhen: &contract.DoneWhenState{LastFingerprint: "wf-fingerprint"},
 			},
@@ -632,7 +631,7 @@ func TestPutSession_NodeInstanceDoneWhenRoundTripsAsEmbeddedJSON(t *testing.T) {
 	if err != nil {
 		t.Fatalf("GetSession: %v", err)
 	}
-	node := got.Nodes["@workflow"]
+	node := got.Nodes["build"]
 	if node == nil {
 		t.Fatalf("node = %+v, want a node instance", node)
 	}
@@ -873,12 +872,11 @@ func TestPutSessionAndGetSession_EveryFieldRoundTrips(t *testing.T) {
 	earlier := now.Add(-time.Hour)
 
 	session := &domain.Session{
-		Name:             "full",
-		ResourceID:       "https://example.test/resource/full",
-		Alias:            "https://example.test/resource/full",
-		WorkspaceDirPath: "/tmp/workdirs/full",
-		Workflow:         "coding-agent",
-		Inputs:           map[string]any{"reason": "investigate"},
+		Name:       "full",
+		ResourceID: "https://example.test/resource/full",
+		Alias:      "https://example.test/resource/full",
+		Workflow:   "coding-agent",
+		Inputs:     map[string]any{"reason": "investigate"},
 		Health: &contract.HealthState{
 			LastCheckedAt:     earlier,
 			LastActivityAt:    earlier,
@@ -955,8 +953,7 @@ func TestPutSessionAndGetSession_EveryFieldRoundTrips(t *testing.T) {
 		t.Fatal("GetSession returned nil")
 	}
 
-	if got.ResourceID != session.ResourceID || got.Alias != session.Alias ||
-		got.WorkspaceDirPath != session.WorkspaceDirPath || got.Workflow != session.Workflow {
+	if got.ResourceID != session.ResourceID || got.Alias != session.Alias || got.Workflow != session.Workflow {
 		t.Fatalf("relational fields = %+v, want %+v", got, session)
 	}
 	if got.Inputs["reason"] != "investigate" {

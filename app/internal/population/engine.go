@@ -573,7 +573,7 @@ func (e *Engine) validateItems(items []map[string]any, complete bool) ([]map[str
 	seen := make(map[string]bool, len(items))
 	out := make([]map[string]any, 0, len(items))
 	observerMatch := regexp.MustCompile(e.definition.Observer.Match)
-	providerMatch := regexp.MustCompile(e.definition.Provider.Match)
+	entryMatch := regexp.MustCompile(e.definition.Entry.Match)
 	for i, item := range items {
 		if err := e.definition.ItemSchema.Validate(item); err != nil {
 			return nil, fmt.Errorf("query item %d: %w", i, err)
@@ -586,8 +586,8 @@ func (e *Engine) validateItems(items []map[string]any, complete bool) ([]map[str
 		if !observerMatch.MatchString(resource) {
 			return nil, fmt.Errorf("query item %d resource %q is not recognized by observer %q", i, resource, e.definition.Observer.ID)
 		}
-		if !providerMatch.MatchString(resource) {
-			return nil, fmt.Errorf("query item %d resource %q is not recognized by workspace provider %q", i, resource, e.definition.Provider.ID)
+		if !entryMatch.MatchString(resource) {
+			return nil, fmt.Errorf("query item %d resource %q is not recognized by the workflow's entry resource %q", i, resource, e.definition.Entry.ID)
 		}
 		if _, err := e.sessionInputs(resource, item); err != nil {
 			if complete {

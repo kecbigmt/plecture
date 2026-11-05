@@ -74,13 +74,12 @@ func publicOutputSession(t *testing.T) *domain.Session {
 	return &domain.Session{
 		Name: "o/r-1", Workflow: "review", WorkflowRevision: digest, WorkflowRevisionBody: string(body),
 		Nodes: map[string]*contract.TaskState{
-			"orchestrator":                {Status: contract.TaskStatusProduced, Outputs: map[string]any{"endpoint": "unix:///run/o.sock"}},
-			contract.WorkflowPseudoNodeID: {Outputs: map[string]any{"endpoint": "from-provider"}},
+			"orchestrator": {Status: contract.TaskStatusProduced, Outputs: map[string]any{"endpoint": "unix:///run/o.sock"}},
 		},
 	}
 }
 
-func TestChannelInputs_EvaluatesPublicOutputsNotTheProviderPseudoNode(t *testing.T) {
+func TestChannelInputs_EvaluatesPublicOutputs(t *testing.T) {
 	ch := config.EventChannel{
 		Name:   "runtime",
 		Inputs: map[string]*lang.Value{"path": fromValue("workflow.outputs.endpoint")},

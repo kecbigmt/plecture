@@ -217,7 +217,7 @@ func TestExecuteTaskSetup_RecordsProcessIdentity(t *testing.T) {
 		[]taskStub{{id: "worker", scope: "run", setup: spawnWorkerSetup, cleanup: "true", aliveAction: processAlive("pid")}},
 		[]nodeStub{{id: "worker"}},
 	)
-	got, err := ExecuteTaskSetup(context.Background(), plan.Run[0], nil, SessionVars{}, nil)
+	got, err := ExecuteTaskSetup(context.Background(), plan.Run[0], nil, SessionVars{}, nil, "")
 	if err != nil {
 		t.Fatalf("ExecuteTaskSetup: %v", err)
 	}

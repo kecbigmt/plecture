@@ -16,7 +16,7 @@ import (
 )
 
 func TestTaskSetup_AppendsInstructionEvent(t *testing.T) {
-	cfg := writeWorkflowFixture(t, t.TempDir(), "coding",
+	cfg := writeWorkflowFixture(t, "coding",
 		[]taskFixture{{id: "work", scope: "session", setup: `echo '{"instruction":"resolve the issue"}'`}},
 		[]nodeFixture{{id: "work"}},
 	)
@@ -43,7 +43,7 @@ func TestTaskSetup_AppendsInstructionEvent(t *testing.T) {
 }
 
 func TestTaskSetup_NoInstructionEventWithoutOutput(t *testing.T) {
-	cfg := writeWorkflowFixture(t, t.TempDir(), "coding",
+	cfg := writeWorkflowFixture(t, "coding",
 		[]taskFixture{{id: "review", scope: "session", setup: `echo '{"ready":"yes"}'`}},
 		[]nodeFixture{{id: "review"}},
 	)
@@ -65,7 +65,7 @@ func TestTaskSetup_NoInstructionEventWithoutOutput(t *testing.T) {
 func TestTaskSetup_ResourceSubscribesToMatchingProvider(t *testing.T) {
 	subRec := filepath.Join(t.TempDir(), "sub-rec")
 	provCfg := writeSubscribeUnsubscribeProvider(t, "github", ghMatch, subRec, "")
-	cfg := writeWorkflowFixture(t, t.TempDir(), "coding",
+	cfg := writeWorkflowFixture(t, "coding",
 		[]taskFixture{{id: "work", scope: "session", setup: `echo '{}'`}},
 		[]nodeFixture{{id: "work"}},
 	)
@@ -79,7 +79,7 @@ func TestTaskSetup_ResourceSubscribesToMatchingProvider(t *testing.T) {
 		t.Fatalf("TaskSetup: %v", err)
 	}
 	if !result.Subscribed {
-		t.Error("Subscribed = false, want true for a resource a workspace provider recognizes")
+		t.Error("Subscribed = false, want true for a resource a declaration recognizes")
 	}
 	got, readErr := os.ReadFile(subRec)
 	if readErr != nil {
@@ -90,66 +90,11 @@ func TestTaskSetup_ResourceSubscribesToMatchingProvider(t *testing.T) {
 	}
 }
 
-// A dynamic task instance's implicit subscribe carries the session's own
-// workspace branch through, the same as the session's own resource does at
-// create time — the hook context is session-scoped, not tied to which
-// resource happens to be getting bound.
-func TestTaskSetup_ResourceSubscribeCarriesSessionBranch(t *testing.T) {
-	subRec := filepath.Join(t.TempDir(), "sub-rec")
-	body := `
-[github]
-kind  = "resource"
-name  = "fixture"
-match = '` + ghMatch + `'
-
-[github.observe]
-type    = "exec"
-command = "printf"
-args    = ['{}']
-
-[github.subscribe]
-type    = "exec"
-command = "sh"
-args    = ["-c", 'printf "%s" "$1" > "$2"', "provider", { from = "session.branch" }, "` + subRec + `"]
-`
-	cfg := writeWorkflowFixture(t, t.TempDir(), "coding",
-		[]taskFixture{{id: "work", scope: "session", setup: `echo '{}'`}},
-		[]nodeFixture{{id: "work"}},
-	)
-	if err := os.MkdirAll(filepath.Join(cfg.BaseDir, "resources"), 0o755); err != nil {
-		t.Fatal(err)
-	}
-	if err := os.WriteFile(filepath.Join(cfg.BaseDir, "resources", "github.toml"), []byte(body), 0o644); err != nil {
-		t.Fatal(err)
-	}
-	store := testStore(t)
-	// seedSessionWithNodes stamps "issue/1" onto an @workflow node's branch
-	// output when the caller's own nodes map already includes one.
-	seedSessionWithNodes(t, store, "o/r-1", "o/r", 1, "coding", map[string]*contract.TaskState{
-		contract.WorkflowPseudoNodeID: {Scope: contract.TaskScopeSession, Status: contract.TaskStatusProduced},
-	})
-
-	result, err := TaskSetup(cfg, store, TaskSetupParams{TaskID: "work", SessionName: "o/r-1", Name: "pr", Resource: "https://github.com/o/r/pull/9"})
-	if err != nil {
-		t.Fatalf("TaskSetup: %v", err)
-	}
-	if !result.Subscribed {
-		t.Fatal("Subscribed = false, want true for a resource a workspace provider recognizes")
-	}
-	got, readErr := os.ReadFile(subRec)
-	if readErr != nil {
-		t.Fatalf("subscribe hook did not run: %v", readErr)
-	}
-	if string(got) != "issue/1" {
-		t.Errorf("subscribe hook saw session.branch = %q, want issue/1", got)
-	}
-}
-
-// A --resource no workspace provider's resolver recognizes is left unwired —
+// A --resource no resource declaration recognizes is left unwired —
 // silently, not an error — since not every bound resource is a
-// workspace-provider-governed one.
+// declared one.
 func TestTaskSetup_ResourceWithNoMatchingProviderLeavesItUnwired(t *testing.T) {
-	cfg := writeWorkflowFixture(t, t.TempDir(), "coding",
+	cfg := writeWorkflowFixture(t, "coding",
 		[]taskFixture{{id: "work", scope: "session", setup: `echo '{}'`}},
 		[]nodeFixture{{id: "work"}},
 	)
@@ -163,7 +108,7 @@ func TestTaskSetup_ResourceWithNoMatchingProviderLeavesItUnwired(t *testing.T) {
 		t.Fatalf("TaskSetup: %v", err)
 	}
 	if result.Subscribed {
-		t.Error("Subscribed = true, want false when no workspace provider matches")
+		t.Error("Subscribed = true, want false when no resource declaration matches")
 	}
 }
 
@@ -173,7 +118,7 @@ func TestTaskSetup_ResourceWithNoMatchingProviderLeavesItUnwired(t *testing.T) {
 func TestTaskSetup_ResourceSubscribeIsIdempotentAcrossRepeatedSetup(t *testing.T) {
 	subRec := filepath.Join(t.TempDir(), "sub-rec")
 	provCfg := writeSubscribeUnsubscribeProvider(t, "github", ghMatch, subRec, "")
-	cfg := writeWorkflowFixture(t, t.TempDir(), "coding",
+	cfg := writeWorkflowFixture(t, "coding",
 		[]taskFixture{{id: "work", scope: "session", setup: `echo '{}'`, cleanup: "true"}},
 		[]nodeFixture{{id: "work"}},
 	)
@@ -193,13 +138,13 @@ func TestTaskSetup_ResourceSubscribeIsIdempotentAcrossRepeatedSetup(t *testing.T
 	}
 }
 
-// A resource matching more than one workspace provider is a real
+// A resource matching more than one declaration is a real
 // configuration defect, but the instance itself is already fully
 // instantiated by the time delivery wiring runs — failing TaskSetup here
 // would tell the caller nothing happened when something did. TaskSetup
 // reports the defect via SubscribeError instead of erroring out.
 func TestTaskSetup_AmbiguousProviderMatchDoesNotFailSetup(t *testing.T) {
-	cfg := writeWorkflowFixture(t, t.TempDir(), "coding",
+	cfg := writeWorkflowFixture(t, "coding",
 		[]taskFixture{{id: "work", scope: "session", setup: `echo '{}'`}},
 		[]nodeFixture{{id: "work"}},
 	)
@@ -228,7 +173,7 @@ func TestTaskSetup_AmbiguousProviderMatchDoesNotFailSetup(t *testing.T) {
 // A subscribe hook that fails to run must not fail TaskSetup either, for the
 // same reason: the instance is already committed by the time this runs.
 func TestTaskSetup_SubscribeHookFailureDoesNotFailSetup(t *testing.T) {
-	cfg := writeWorkflowFixture(t, t.TempDir(), "coding",
+	cfg := writeWorkflowFixture(t, "coding",
 		[]taskFixture{{id: "work", scope: "session", setup: `echo '{}'`}},
 		[]nodeFixture{{id: "work"}},
 	)
@@ -294,7 +239,7 @@ func TestTaskSetup_NoResurrectAfterConcurrentDown(t *testing.T) {
 	}
 	gate := filepath.Join(t.TempDir(), "gate")
 	blockingSetup := `while [ ! -e ` + gate + ` ]; do sleep 0.01; done; echo '{}'`
-	cfg := writeWorkflowFixture(t, t.TempDir(), "coding",
+	cfg := writeWorkflowFixture(t, "coding",
 		[]taskFixture{
 			{id: "tmux", scope: "run", setup: `echo '{}'`, cleanup: "true"},
 			{id: "storybook", scope: "run", setup: blockingSetup, cleanup: "true"},
@@ -351,7 +296,7 @@ func (o *orderObserver) OnFailure(string, string, time.Duration, error, []byte) 
 var _ task.Observer = (*orderObserver)(nil)
 
 func TestTaskSetup_SessionScopedWhileDown(t *testing.T) {
-	cfg := writeWorkflowFixture(t, t.TempDir(), "coding",
+	cfg := writeWorkflowFixture(t, "coding",
 		[]taskFixture{{id: "review", scope: "session", setup: `echo '{"ready":"yes"}'`}},
 		[]nodeFixture{{id: "review"}},
 	)
@@ -380,7 +325,7 @@ func TestTaskSetup_SessionScopedWhileDown(t *testing.T) {
 }
 
 func TestTaskSetup_AppendsExtraDoneWhen(t *testing.T) {
-	cfg := writeWorkflowFixture(t, t.TempDir(), "coding",
+	cfg := writeWorkflowFixture(t, "coding",
 		[]taskFixture{{id: "work", scope: "session", setup: `echo '{"checks_status":"SUCCESS","revision":"sha1"}'`}},
 		[]nodeFixture{{id: "work"}},
 	)
@@ -402,7 +347,7 @@ func TestTaskSetup_AppendsExtraDoneWhen(t *testing.T) {
 }
 
 func TestTaskSetup_RunScopedRejectedWhenDown(t *testing.T) {
-	cfg := writeWorkflowFixture(t, t.TempDir(), "coding",
+	cfg := writeWorkflowFixture(t, "coding",
 		[]taskFixture{{id: "storybook", scope: "run", setup: `echo '{}'`}},
 		[]nodeFixture{{id: "storybook"}},
 	)
@@ -419,7 +364,7 @@ func TestTaskSetup_RunScopedRejectedWhenDown(t *testing.T) {
 }
 
 func TestTaskSetup_RunScopedAllowedWhenUp(t *testing.T) {
-	cfg := writeWorkflowFixture(t, t.TempDir(), "coding",
+	cfg := writeWorkflowFixture(t, "coding",
 		[]taskFixture{
 			{id: "storybook", scope: "run", setup: `echo '{}'`},
 			{id: "runtime", scope: "run"},
@@ -441,7 +386,7 @@ func TestTaskSetup_RunScopedAllowedWhenUp(t *testing.T) {
 }
 
 func TestTaskSetup_RunScopedRejectedWhenOnlyStaleProducedRecord(t *testing.T) {
-	cfg := writeWorkflowFixture(t, t.TempDir(), "coding",
+	cfg := writeWorkflowFixture(t, "coding",
 		[]taskFixture{{id: "storybook", scope: "run", setup: `echo '{}'`}},
 		[]nodeFixture{{id: "storybook"}},
 	)
@@ -465,7 +410,7 @@ func TestTaskSetup_RunScopedRejectedWhenOnlyStaleProducedRecord(t *testing.T) {
 // tasks number independently; numbers are monotonic across a destroyed
 // instance (no reuse).
 func TestTaskSetup_SequentialPerTask(t *testing.T) {
-	cfg := writeWorkflowFixture(t, t.TempDir(), "coding",
+	cfg := writeWorkflowFixture(t, "coding",
 		[]taskFixture{
 			{id: "review", scope: "session", setup: `echo '{}'`, cleanup: "true"},
 			{id: "investigate", scope: "session", setup: `echo '{}'`},
@@ -512,7 +457,7 @@ func TestTaskSetup_SequentialPerTask(t *testing.T) {
 // A --name instance keys on the name alone (no <task># prefix), so it is a
 // session-global singleton addressable as that name.
 func TestTaskSetup_NamedInstanceKeysOnName(t *testing.T) {
-	cfg := writeWorkflowFixture(t, t.TempDir(), "coding",
+	cfg := writeWorkflowFixture(t, "coding",
 		[]taskFixture{{id: "work", scope: "session", setup: `echo '{"instruction":"x"}'`}},
 		[]nodeFixture{{id: "work"}},
 	)
@@ -535,7 +480,7 @@ func TestTaskSetup_NamedInstanceKeysOnName(t *testing.T) {
 // A second setup of an existing name is a collision error (no auto-recover);
 // the name-less numbered form never collides.
 func TestTaskSetup_NameCollisionErrors(t *testing.T) {
-	cfg := writeWorkflowFixture(t, t.TempDir(), "coding",
+	cfg := writeWorkflowFixture(t, "coding",
 		[]taskFixture{{id: "work", scope: "session", setup: `echo '{}'`}},
 		[]nodeFixture{{id: "work"}},
 	)
@@ -558,7 +503,7 @@ func TestTaskSetup_NameCollisionErrors(t *testing.T) {
 // A --name carrying a '#' (or otherwise not an identifier) is rejected before
 // any state mutation, so it can't masquerade as a numbered key.
 func TestTaskSetup_RejectsInvalidName(t *testing.T) {
-	cfg := writeWorkflowFixture(t, t.TempDir(), "coding",
+	cfg := writeWorkflowFixture(t, "coding",
 		[]taskFixture{{id: "work", scope: "session", setup: `echo '{}'`}},
 		[]nodeFixture{{id: "work"}},
 	)
@@ -583,7 +528,7 @@ type = "string"
 `
 
 func TestTaskSetup_InputBindingPrecedence(t *testing.T) {
-	cfg := writeWorkflowFixture(t, t.TempDir(), "coding",
+	cfg := writeWorkflowFixture(t, "coding",
 		[]taskFixture{{id: "work", scope: "session", setup: `printf '{"intent":"%s"}' '{{.Inputs.intent}}'`, extra: intentSchema}},
 		[]nodeFixture{{id: "work"}},
 	)
@@ -615,7 +560,7 @@ func TestTaskSetup_InputBindingPrecedence(t *testing.T) {
 }
 
 func TestTaskSetup_RejectsUndeclaredInput(t *testing.T) {
-	cfg := writeWorkflowFixture(t, t.TempDir(), "coding",
+	cfg := writeWorkflowFixture(t, "coding",
 		[]taskFixture{{id: "work", scope: "session", setup: `echo '{}'`, extra: intentSchema}},
 		[]nodeFixture{{id: "work"}},
 	)
@@ -634,7 +579,7 @@ func TestTaskSetup_RejectsUndeclaredInput(t *testing.T) {
 // Down reclaims a run-scoped dynamic instance ahead of the static run node it
 // was instantiated after; a session-scoped dynamic instance survives.
 func TestDown_ReclaimsDynamicRunInstance(t *testing.T) {
-	cfg := writeWorkflowFixture(t, t.TempDir(), "coding",
+	cfg := writeWorkflowFixture(t, "coding",
 		[]taskFixture{
 			{id: "tmux", scope: "run", setup: `echo '{}'`, cleanup: "true"},
 			{id: "storybook", scope: "run", setup: `echo '{}'`, cleanup: "true"},
@@ -677,7 +622,7 @@ func TestDown_ReclaimsDynamicRunInstance(t *testing.T) {
 }
 
 func TestDestroy_ReclaimsDynamicSessionInstance(t *testing.T) {
-	cfg := writeWorkflowFixture(t, t.TempDir(), "coding",
+	cfg := writeWorkflowFixture(t, "coding",
 		[]taskFixture{
 			{id: "tmux", scope: "run", setup: `echo '{}'`, cleanup: "true"},
 			{id: "review", scope: "session", setup: `echo '{}'`, cleanup: "true"},
@@ -702,7 +647,7 @@ func TestDestroy_ReclaimsDynamicSessionInstance(t *testing.T) {
 // distinct keys (the under-lock reservation prevents two runs allocating the
 // same sequential number) and distinct Seq (the merge re-reads under the lock).
 func TestTaskSetup_ConcurrentInstancesDistinctSeq(t *testing.T) {
-	cfg := writeWorkflowFixture(t, t.TempDir(), "coding",
+	cfg := writeWorkflowFixture(t, "coding",
 		[]taskFixture{{id: "review", scope: "session", setup: `echo '{}'`}},
 		[]nodeFixture{{id: "review"}},
 	)
@@ -757,7 +702,7 @@ func TestTaskSetup_ConcurrentInstancesDistinctSeq(t *testing.T) {
 // seq) must still be cleaned first. The teardown is one strict seq-descending
 // pass, not "all dynamic first, then all static".
 func TestDestroy_StrictReverseSeqAcrossStaticDynamic(t *testing.T) {
-	cfg := writeWorkflowFixture(t, t.TempDir(), "coding",
+	cfg := writeWorkflowFixture(t, "coding",
 		[]taskFixture{
 			{id: "tmux", scope: "run", setup: `echo '{}'`, cleanup: "true"},
 			{id: "claude", scope: "run", setup: `echo '{}'`, cleanup: "true"},

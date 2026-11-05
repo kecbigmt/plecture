@@ -14,7 +14,6 @@ type SubscribeHookVars struct {
 	ResourceID  string
 	Inputs      map[string]any
 	SessionName string
-	Branch      string
 	Plugins     []plugins.Mounted
 	SourcePath  string
 }
@@ -36,10 +35,10 @@ func runResourceDeliveryHook(def config.ResourceDef, action *lang.Action, name s
 		inputs = map[string]any{}
 	}
 	env := lang.Roots{
-		"session":  map[string]any{"name": vars.SessionName, "branch": vars.Branch},
+		"session":  map[string]any{"name": vars.SessionName},
 		"resource": map[string]any{"id": vars.ResourceID, "inputs": inputs},
 	}
-	_, stderr, runErr := RunProviderAction(action, ProviderEval(env, vars.Plugins, vars.SourcePath, def.Ownership()))
+	_, stderr, runErr := RunHookAction(action, HookEval(env, vars.Plugins, vars.SourcePath, def.Ownership()))
 	if runErr != nil {
 		if msg := strings.TrimSpace(string(stderr)); msg != "" {
 			return fmt.Errorf("resource %q %s: %w: %s", def.ID, name, runErr, msg)

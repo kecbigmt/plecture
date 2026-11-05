@@ -44,8 +44,11 @@ func effectFrom(def *lang.Definition, path string, fromPlugin bool) (TaskDefinit
 	if d.Setup, err = actionField(def, path, "setup"); err != nil {
 		return d, err
 	}
-	if d.Cleanup, err = actionField(def, path, "cleanup"); err != nil {
-		return d, err
+	if raw, ok := def.Body["cleanup"]; ok {
+		d.Cleanup, d.CleanupInputsSchema, err = lang.ParseCleanup(raw, lang.Position{File: path, Path: def.ID + ".cleanup"})
+		if err != nil {
+			return d, err
+		}
 	}
 	if d.Health, err = healthFrom(def, path); err != nil {
 		return d, err

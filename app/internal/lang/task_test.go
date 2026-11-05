@@ -23,6 +23,7 @@ revision      = { type = "string" }
 
 [goal_reviewer]
 kind = "workflow"
+resource = "issue"
 
 [goal_reviewer.inputs_schema]
 type                 = "object"
@@ -37,6 +38,7 @@ head         = { type = "string" }
 
 [open_reviewer]
 kind = "workflow"
+resource = "issue"
 
 [open_reviewer.inputs_schema]
 type     = "object"

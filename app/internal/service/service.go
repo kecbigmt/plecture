@@ -48,7 +48,7 @@ func validateTagFormat(tag string) *Error {
 // default, so two workflows acting on one resource (a work workflow, a
 // review workflow) materialize distinct sessions instead of racing for one
 // branch/workspace.
-// The tag is never empty on the workspace-provider-dispatch paths — session
+// The tag is never empty on the resource-dispatch paths — session
 // identity always carries a label.
 func effectiveTag(tag, workflowID string) (string, *Error) {
 	if tag != "" {
@@ -69,7 +69,7 @@ func effectiveTag(tag, workflowID string) (string, *Error) {
 //  1. exact session name
 //  2. create-time alias (survives resolver rule changes; ambiguous when tag
 //     variants share the alias)
-//  3. resolver derivation (pure, offline — works during workspace provider
+//  3. resource derivation (pure, offline — works during external service
 //     outages)
 func resolveSession(cfg *config.Config, store *state.Store, identifier string) (string, *domain.Session, error) {
 	if session, err := store.GetE(identifier); err != nil {
@@ -189,15 +189,6 @@ func sessionTaskItems(cfg *config.Config, declarations taskDeclarations, session
 			if st == nil {
 				continue
 			}
-			if key == contract.WorkflowPseudoNodeID {
-				// The workflow pseudo-node carries session-level outputs (title,
-				// branch, ...) but no done_when or lifecycle status of its own —
-				// still one Task line + outputs, per the unified display rule.
-				if len(st.Outputs) > 0 {
-					items = append(items, sessionTaskItem{seq: st.Seq, instance: key, outputs: st.Outputs})
-				}
-				continue
-			}
 			taskID := taskIDForInstance(key, st)
 			var dwResult *task.DoneWhenResult
 			if r, ok := cached[key]; ok {
@@ -285,22 +276,21 @@ func childNames(sessions map[string]*domain.Session, name string) []string {
 
 // ListEntry represents a single entry in the session list.
 type ListEntry struct {
-	SessionName      string             `json:"session_name"`
-	Revision         string             `json:"revision,omitempty"`
-	Title            string             `json:"title,omitempty"`
-	Run              domain.RunState    `json:"run"`
-	Sleep            string             `json:"sleep,omitempty"`
-	QueuePosition    int                `json:"queue_position,omitempty"`
-	Health           domain.HealthState `json:"health,omitempty"`
-	HealthReason     string             `json:"health_reason,omitempty"`
-	DisplayStatus    string             `json:"display_status"`
-	ResourceID       string             `json:"resource_id"`
-	Tracked          bool               `json:"tracked"`
-	LastActiveAt     *time.Time         `json:"last_active_at,omitempty"`
-	Message          *domain.Message    `json:"message,omitempty"`
-	Branch           string             `json:"branch,omitempty"`
-	WorkspaceDirPath string             `json:"workspace_dir_path,omitempty"`
-	ParentSession    string             `json:"parent_session,omitempty"`
+	SessionName   string             `json:"session_name"`
+	Revision      string             `json:"revision,omitempty"`
+	Title         string             `json:"title,omitempty"`
+	Run           domain.RunState    `json:"run"`
+	Sleep         string             `json:"sleep,omitempty"`
+	QueuePosition int                `json:"queue_position,omitempty"`
+	Health        domain.HealthState `json:"health,omitempty"`
+	HealthReason  string             `json:"health_reason,omitempty"`
+	DisplayStatus string             `json:"display_status"`
+	ResourceID    string             `json:"resource_id"`
+	Tracked       bool               `json:"tracked"`
+	LastActiveAt  *time.Time         `json:"last_active_at,omitempty"`
+	Message       *domain.Message    `json:"message,omitempty"`
+	Workdir       string             `json:"workdir,omitempty"`
+	ParentSession string             `json:"parent_session,omitempty"`
 	// Tasks projects the session's dynamic instances and done_when-bearing
 	// tasks with their per-instance done_when status.
 	Tasks []TaskInstanceView `json:"tasks,omitempty"`
@@ -357,23 +347,22 @@ func buildListEntry(cfg *config.Config, store *state.Store, displayTasks taskDec
 		health, healthReason = "", ""
 	}
 	entry := ListEntry{
-		SessionName:      s.Name,
-		Revision:         shortWorkflowRevision(s.WorkflowRevision),
-		Title:            cached.Title,
-		Run:              run,
-		Sleep:            sleep,
-		QueuePosition:    position,
-		Health:           health,
-		HealthReason:     healthReason,
-		DisplayStatus:    cached.DisplayStatus,
-		ResourceID:       s.ResourceID,
-		Tracked:          true,
-		LastActiveAt:     &s.UpdatedAt,
-		Message:          LatestStatusMessage(store, s.Name),
-		Branch:           domain.SessionBranch(s),
-		WorkspaceDirPath: s.WorkspaceDirPath,
-		ParentSession:    s.ParentSession,
-		Tasks:            taskViews(cfg, displayTasks, s, sessions),
+		SessionName:   s.Name,
+		Revision:      shortWorkflowRevision(s.WorkflowRevision),
+		Title:         cached.Title,
+		Run:           run,
+		Sleep:         sleep,
+		QueuePosition: position,
+		Health:        health,
+		HealthReason:  healthReason,
+		DisplayStatus: cached.DisplayStatus,
+		ResourceID:    s.ResourceID,
+		Tracked:       true,
+		LastActiveAt:  &s.UpdatedAt,
+		Message:       LatestStatusMessage(store, s.Name),
+		Workdir:       listWorkdir(cfg, s),
+		ParentSession: s.ParentSession,
+		Tasks:         taskViews(cfg, displayTasks, s, sessions),
 	}
 
 	return entry, nil
@@ -457,22 +446,36 @@ type cachedInfo struct {
 	DisplayStatus string
 }
 
-// WorkspaceDir resolves an identifier to the session's workspace directory
-// using the full lookup order (name -> alias -> resolver derivation). The
-// workspace directory is whatever the workspace provider's setup recorded;
-// plect never recomputes it from the shape of the identifier.
-func WorkspaceDir(cfg *config.Config, store *state.Store, identifier string) (string, error) {
+// Workdir resolves an identifier to the directory its session's workflow
+// declares as `workdir`, evaluated against the outputs its producer recorded.
+// The directory is never stored: a session whose workflow declares none, or
+// whose producer is not produced, has no workdir.
+func Workdir(cfg *config.Config, store *state.Store, identifier string) (string, error) {
 	if _, session, err := resolveSession(cfg, store, identifier); err == nil {
-		if session.WorkspaceDirPath == "" {
-			return "", &Error{Code: ErrSessionNotFound, Message: fmt.Sprintf("session %q has no workspace directory recorded", session.Name)}
+		dir, dirErr := sessionWorkdir(cfg, session)
+		if dirErr != nil {
+			return "", &Error{Code: ErrNotProduced, Message: fmt.Sprintf("session %q has no workdir: %v", session.Name, dirErr)}
 		}
-		return session.WorkspaceDirPath, nil
+		if dir == "" {
+			return "", &Error{Code: ErrSessionNotFound, Message: fmt.Sprintf("session %q has no workdir: its workflow declares none", session.Name)}
+		}
+		return dir, nil
 	} else if svcErr, ok := err.(*Error); ok && svcErr.Code != ErrSessionNotFound {
 		// An ambiguous alias must surface rather than fall through.
 		return "", err
 	}
 
 	return "", &Error{Code: ErrSessionNotFound, Message: fmt.Sprintf("no state entry for session %q", identifier)}
+}
+
+// listWorkdir is the listing's best-effort workdir: empty when none is declared
+// or it cannot be evaluated yet, since a listing never fails on one session.
+func listWorkdir(cfg *config.Config, s *domain.Session) string {
+	dir, err := sessionWorkdir(cfg, s)
+	if err != nil {
+		return ""
+	}
+	return dir
 }
 
 // applyDisplay resolves the workflow's [display] values into cached when they

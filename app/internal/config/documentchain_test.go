@@ -119,7 +119,7 @@ func TestValidateTaskDocuments_ChainReferences(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			base := t.TempDir()
 			writeFile(t, filepath.Join(base, "resources", "issue_pr.toml"), minimalObserver)
-			writeFile(t, filepath.Join(base, "workflows", "wf.toml"), "[wf]\nkind = \"workflow\"\n\n[[wf.nodes]]\nuses = \"noop\"\n")
+			writeFile(t, filepath.Join(base, "workflows", "wf.toml"), "[wf]\nkind = \"workflow\"\nresource = \"issue\"\n\n[[wf.nodes]]\nuses = \"noop\"\n")
 			target := tc.workflow
 			if target == "" {
 				target = "wf"

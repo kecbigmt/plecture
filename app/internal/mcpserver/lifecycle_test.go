@@ -39,6 +39,12 @@ script = "echo '{}'"
 type   = "shell"
 script = "true"
 
+[noop.cleanup.inputs_schema]
+type = "object"
+
+[noop.cleanup.inputs_schema.properties]
+delete_branch = { type = "boolean" }
+
 [noop.health.alive]
 type = "noop"
 
@@ -164,6 +170,25 @@ func TestHandleDestroy_ForceAndCleanupInputsForwarded(t *testing.T) {
 		t.Fatalf("handleDestroy: %v", err)
 	}
 	decodeJSONResult(t, result)
+}
+
+func TestHandleDestroy_UndeclaredCleanupInputIsRejectedAndKeepsTheSession(t *testing.T) {
+	setUpConfigHomeWithCapture(t)
+	name := createPlainSession(t, "destroy-undeclared-input-session")
+
+	result, err := handleDestroy(context.Background(), reqWith(map[string]any{
+		"session":        name,
+		"cleanup_inputs": map[string]any{"not_declared": "x"},
+	}))
+	if err != nil {
+		t.Fatalf("handleDestroy: %v", err)
+	}
+	if !result.IsError {
+		t.Fatal("expected an error result for a cleanup input no effect declares")
+	}
+	if state.NewStore("").Get(name) == nil {
+		t.Fatalf("session %q was destroyed despite the rejected cleanup input", name)
+	}
 }
 
 func TestHandleCapture_ReturnsRenderedContent(t *testing.T) {

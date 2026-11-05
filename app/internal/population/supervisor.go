@@ -106,9 +106,9 @@ func definitionFingerprint(def Definition) [32]byte {
 		Workflow   *lang.Definition
 		Population config.WorkflowPopulation
 		Observer   *lang.Definition
-		Provider   config.WorkspaceProviderConfig
+		Entry      *lang.Definition
 		Task       *lang.Definition
-	}{def.Workflow.Definition, def.Population, def.Observer.Definition, def.Provider, taskDefinition(def.InitialTask)})
+	}{def.Workflow.Definition, def.Population, def.Observer.Definition, def.Entry.Definition, taskDefinition(def.InitialTask)})
 	return sha256.Sum256(raw)
 }
 

@@ -50,6 +50,7 @@ func verifyLiveness(goCtx context.Context, r Resolved, session SessionVars, exis
 			SourcePath: r.SourcePath,
 			From:       r.From,
 			Process:    existing.Process,
+			Dir:        existing.Directory,
 		}, session)
 	}
 	if len(existing.Layers) != len(r.Layers) {
@@ -72,6 +73,7 @@ func verifyLiveness(goCtx context.Context, r Resolved, session SessionVars, exis
 			From:       layer.From,
 			Env:        effect.EnclosingEnv(existing.Layers, i),
 			Process:    existing.Process,
+			Dir:        existing.Directory,
 		}
 		if err := RunAliveProbe(goCtx, probe, session); err != nil {
 			return fmt.Errorf("layer %q: %w", layer.EffectID, err)

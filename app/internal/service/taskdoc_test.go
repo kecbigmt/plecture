@@ -76,7 +76,7 @@ type = "object"
 
 // writeTaskDocumentFixture writes one observer, one empty workflow, and the
 // given task documents into a config layer.
-func writeTaskDocumentFixture(t *testing.T, workdirsRoot, wfID string, observerState map[string]string, documents ...string) *config.Config {
+func writeTaskDocumentFixture(t *testing.T, wfID string, observerState map[string]string, documents ...string) *config.Config {
 	t.Helper()
 	baseDir := t.TempDir()
 	write := func(rel, content string) {
@@ -89,16 +89,16 @@ func writeTaskDocumentFixture(t *testing.T, workdirsRoot, wfID string, observerS
 		}
 	}
 	write(filepath.Join("resources", "issue_pr.toml"), observerDocument(observerState))
-	write(filepath.Join("workflows", wfID+".toml"), "["+wfID+"]\nkind = \"workflow\"\n\n[["+wfID+".nodes]]\nuses = \"noop\"\n")
+	write(filepath.Join("workflows", wfID+".toml"), "["+wfID+"]\nkind = \"workflow\"\nresource = \"issue\"\n\n[["+wfID+".nodes]]\nuses = \"noop\"\n")
 	for i, doc := range documents {
 		write(filepath.Join("tasks", fmt.Sprintf("doc%d.toml", i)), doc)
 	}
-	return registerFixture(t, &config.Config{WorkspaceDirsRoot: workdirsRoot, BaseDir: baseDir})
+	return registerFixture(t, &config.Config{BaseDir: baseDir})
 }
 
 func TestSetTaskState_RecordsDeclaredKey(t *testing.T) {
 	store := testStore(t)
-	cfg := writeTaskDocumentFixture(t, t.TempDir(), "wf", map[string]string{"resource_kind": "pull", "revision": "sha2"}, reviewDocument)
+	cfg := writeTaskDocumentFixture(t, "wf", map[string]string{"resource_kind": "pull", "revision": "sha2"}, reviewDocument)
 	seedSession(t, store, "org/repo-1", "org/repo", 1, "wf", map[string]*contract.TaskState{
 		"review#1": {
 			Scope:    contract.TaskScopeSession,
@@ -128,7 +128,7 @@ func TestSetTaskState_RecordsDeclaredKey(t *testing.T) {
 
 func TestSetTaskState_UndeclaredKeyRejected(t *testing.T) {
 	store := testStore(t)
-	cfg := writeTaskDocumentFixture(t, t.TempDir(), "wf", map[string]string{"resource_kind": "pull", "revision": "sha2"}, reviewDocument)
+	cfg := writeTaskDocumentFixture(t, "wf", map[string]string{"resource_kind": "pull", "revision": "sha2"}, reviewDocument)
 	seedSession(t, store, "org/repo-1", "org/repo", 1, "wf", map[string]*contract.TaskState{
 		"review#1": {Scope: contract.TaskScopeSession, TaskID: "review", Status: contract.TaskStatusProduced, SetupAt: time.Now()},
 	})
@@ -151,7 +151,7 @@ func TestSetTaskState_UndeclaredKeyRejected(t *testing.T) {
 // refused rather than landing somewhere nothing reads.
 func TestSetTaskState_NonDocumentInstanceRejected(t *testing.T) {
 	store := testStore(t)
-	cfg := writeWorkflowFixture(t, t.TempDir(), "wf",
+	cfg := writeWorkflowFixture(t, "wf",
 		[]taskFixture{{id: "watch", scope: "session", setup: "echo '{}'"}},
 		[]nodeFixture{{id: "watch"}})
 	seedSession(t, store, "org/repo-1", "org/repo", 1, "wf", map[string]*contract.TaskState{
@@ -170,7 +170,7 @@ func TestSetTaskState_NonDocumentInstanceRejected(t *testing.T) {
 
 func TestSetTaskState_CleanedInstanceRejected(t *testing.T) {
 	store := testStore(t)
-	cfg := writeTaskDocumentFixture(t, t.TempDir(), "wf", map[string]string{"resource_kind": "pull", "revision": "sha2"}, reviewDocument)
+	cfg := writeTaskDocumentFixture(t, "wf", map[string]string{"resource_kind": "pull", "revision": "sha2"}, reviewDocument)
 	seedSession(t, store, "org/repo-1", "org/repo", 1, "wf", map[string]*contract.TaskState{
 		"review#1": {Scope: contract.TaskScopeSession, TaskID: "review", Status: contract.TaskStatusCleaned, SetupAt: time.Now()},
 	})
@@ -190,7 +190,7 @@ func TestSetTaskState_CleanedInstanceRejected(t *testing.T) {
 // nothing else runs.
 func TestTaskSetup_TaskDocumentInstance(t *testing.T) {
 	store := testStore(t)
-	cfg := writeTaskDocumentFixture(t, t.TempDir(), "wf", map[string]string{"resource_kind": "pull", "revision": "sha2"}, reviewDocument)
+	cfg := writeTaskDocumentFixture(t, "wf", map[string]string{"resource_kind": "pull", "revision": "sha2"}, reviewDocument)
 	seedSession(t, store, "org/repo-1", "org/repo", 1, "wf", nil)
 
 	result, err := TaskSetup(cfg, store, TaskSetupParams{
@@ -226,7 +226,7 @@ func TestTaskSetup_TaskDocumentInstance(t *testing.T) {
 // never satisfy is worse than no instance.
 func TestTaskSetup_TaskDocumentFirstObservationFails(t *testing.T) {
 	store := testStore(t)
-	cfg := writeTaskDocumentFixture(t, t.TempDir(), "wf", map[string]string{"resource_kind": "pull", "revision": "sha2"}, reviewDocument)
+	cfg := writeTaskDocumentFixture(t, "wf", map[string]string{"resource_kind": "pull", "revision": "sha2"}, reviewDocument)
 	if err := os.WriteFile(filepath.Join(cfg.BaseDir, "resources", "issue_pr.toml"), []byte(`
 [issue_pr]
 kind = "resource"
@@ -263,7 +263,7 @@ revision = { type = "string" }
 // producing an instance whose predicate can never read anything.
 func TestTaskSetup_TaskDocumentResourceMustResolveToDeclaredObserver(t *testing.T) {
 	store := testStore(t)
-	cfg := writeTaskDocumentFixture(t, t.TempDir(), "wf", map[string]string{"resource_kind": "pull", "revision": "sha2"}, reviewDocument)
+	cfg := writeTaskDocumentFixture(t, "wf", map[string]string{"resource_kind": "pull", "revision": "sha2"}, reviewDocument)
 	seedSession(t, store, "org/repo-1", "org/repo", 1, "wf", nil)
 
 	_, err := TaskSetup(cfg, store, TaskSetupParams{
@@ -376,15 +376,15 @@ revision      = { type = "string" }
 # Declared but never reported, so a value reading it exercises the absent case.
 pr_url        = { type = "string" }
 `, revisionFile))
-	write(filepath.Join("workflows", "wf.toml"), "[wf]\nkind = \"workflow\"\n\n[[wf.nodes]]\nuses = \"noop\"\n")
+	write(filepath.Join("workflows", "wf.toml"), "[wf]\nkind = \"workflow\"\nresource = \"issue\"\n\n[[wf.nodes]]\nuses = \"noop\"\n")
 	for i, doc := range documents {
 		write(filepath.Join("tasks", fmt.Sprintf("doc%d.toml", i)), doc)
 	}
-	return registerFixture(t, &config.Config{WorkspaceDirsRoot: t.TempDir(), BaseDir: baseDir})
+	return registerFixture(t, &config.Config{BaseDir: baseDir})
 }
 
 func TestTaskShow_TaskDocument(t *testing.T) {
-	cfg := writeTaskDocumentFixture(t, t.TempDir(), "wf", map[string]string{"resource_kind": "pull", "revision": "sha2"}, reviewDocument)
+	cfg := writeTaskDocumentFixture(t, "wf", map[string]string{"resource_kind": "pull", "revision": "sha2"}, reviewDocument)
 	detail, err := TaskShow(cfg, "", "review")
 	if err != nil {
 		t.Fatalf("TaskShow: %v", err)
@@ -404,7 +404,7 @@ func TestTaskShow_TaskDocument(t *testing.T) {
 // rather than failing for want of a cleanup action.
 func TestTaskCleanup_TaskDocumentInstance(t *testing.T) {
 	store := testStore(t)
-	cfg := writeTaskDocumentFixture(t, t.TempDir(), "wf", map[string]string{"resource_kind": "pull", "revision": "sha2"}, reviewDocument)
+	cfg := writeTaskDocumentFixture(t, "wf", map[string]string{"resource_kind": "pull", "revision": "sha2"}, reviewDocument)
 	seedSession(t, store, "org/repo-1", "org/repo", 1, "wf", map[string]*contract.TaskState{
 		"review#1": {Scope: contract.TaskScopeSession, TaskID: "review", Status: contract.TaskStatusProduced, SetupAt: time.Now()},
 	})
@@ -424,7 +424,7 @@ func TestTaskCleanup_TaskDocumentInstance(t *testing.T) {
 // together, so `plect task show` reports a reference that will not resolve
 // rather than deferring it to an instantiation.
 func TestTaskShow_TaskDocumentReportsABrokenContract(t *testing.T) {
-	cfg := writeTaskDocumentFixture(t, t.TempDir(), "wf", map[string]string{"revision": "sha2"}, reviewDocument)
+	cfg := writeTaskDocumentFixture(t, "wf", map[string]string{"revision": "sha2"}, reviewDocument)
 	_, err := TaskShow(cfg, "", "review")
 	if err == nil {
 		t.Fatal("expected the completion key its observer does not publish to be reported")
@@ -453,15 +453,14 @@ func TestTaskSetup_PluginTaskDocumentResolvesItsOwnObserver(t *testing.T) {
 	write(filepath.Join("config", "resources", "issue_pr.toml"), observerDocument(map[string]string{"resource_kind": "pull", "revision": "sha2"}))
 	write(filepath.Join("config", "tasks", "review.toml"), reviewDocument)
 	cfg := &config.Config{
-		WorkspaceDirsRoot: t.TempDir(),
-		PluginDirs:        []string{pluginDir},
-		Plugins:           []plugins.Mounted{{ID: "official/acme", Dir: pluginDir}},
+		PluginDirs: []string{pluginDir},
+		Plugins:    []plugins.Mounted{{ID: "official/acme", Dir: pluginDir}},
 	}
 	cfg.BaseDir = t.TempDir()
 	if err := os.MkdirAll(filepath.Join(cfg.BaseDir, "workflows"), 0o755); err != nil {
 		t.Fatal(err)
 	}
-	if err := os.WriteFile(filepath.Join(cfg.BaseDir, "workflows", "wf.toml"), []byte("[wf]\nkind = \"workflow\"\n"), 0o644); err != nil {
+	if err := os.WriteFile(filepath.Join(cfg.BaseDir, "workflows", "wf.toml"), []byte("[wf]\nkind = \"workflow\"\nresource = \"issue\"\n"), 0o644); err != nil {
 		t.Fatal(err)
 	}
 	registerFixture(t, cfg)
@@ -490,7 +489,7 @@ func TestTaskSetup_PluginTaskDocumentResolvesItsOwnObserver(t *testing.T) {
 // An id names one declaration. A document and an effect claiming the same id
 // fails at load, rather than instantiation silently picking one of them.
 func TestTaskSetup_TaskDocumentCollidingWithAnEffectFails(t *testing.T) {
-	cfg := writeTaskDocumentFixture(t, t.TempDir(), "wf", map[string]string{"resource_kind": "pull", "revision": "sha2"}, reviewDocument)
+	cfg := writeTaskDocumentFixture(t, "wf", map[string]string{"resource_kind": "pull", "revision": "sha2"}, reviewDocument)
 	if err := os.WriteFile(filepath.Join(cfg.BaseDir, "tasks", "review.toml"), []byte(`
 [review]
 kind  = "effect"
@@ -516,7 +515,7 @@ script = "true"
 // the observation is the only thing that knows it.
 func TestRecordJudge_TaskDocumentInstance(t *testing.T) {
 	store := testStore(t)
-	cfg := writeTaskDocumentFixture(t, t.TempDir(), "wf", map[string]string{"resource_kind": "pull", "revision": "sha2"}, judgedDocument)
+	cfg := writeTaskDocumentFixture(t, "wf", map[string]string{"resource_kind": "pull", "revision": "sha2"}, judgedDocument)
 	seedSession(t, store, "org/repo-0", "org/repo", 0, "wf", nil)
 	seedSession(t, store, "org/repo-1", "org/repo", 1, "wf", nil)
 	seedSession(t, store, "org/repo-2", "org/repo", 2, "wf", nil)
@@ -554,7 +553,7 @@ func TestRecordJudge_TaskDocumentInstance(t *testing.T) {
 // the document's own.
 func TestRecordJudge_TaskDocumentRejectsAnUndeclaredLeaf(t *testing.T) {
 	store := testStore(t)
-	cfg := writeTaskDocumentFixture(t, t.TempDir(), "wf", map[string]string{"resource_kind": "pull", "revision": "sha2"}, judgedDocument)
+	cfg := writeTaskDocumentFixture(t, "wf", map[string]string{"resource_kind": "pull", "revision": "sha2"}, judgedDocument)
 	seedSession(t, store, "org/repo-1", "org/repo", 1, "wf", nil)
 	seedSession(t, store, "org/repo-2", "org/repo", 2, "wf", nil)
 	setup, err := TaskSetup(cfg, store, TaskSetupParams{
@@ -579,7 +578,7 @@ func TestRecordJudge_TaskDocumentRejectsAnUndeclaredLeaf(t *testing.T) {
 // revision in the completion record.
 func TestFinalizeTask_TaskDocumentInstance(t *testing.T) {
 	store := testStore(t)
-	cfg := writeTaskDocumentFixture(t, t.TempDir(), "wf", map[string]string{"resource_kind": "pull", "revision": "sha2"}, reviewDocument)
+	cfg := writeTaskDocumentFixture(t, "wf", map[string]string{"resource_kind": "pull", "revision": "sha2"}, reviewDocument)
 	seedSession(t, store, "org/repo-1", "org/repo", 1, "wf", nil)
 	setup, err := TaskSetup(cfg, store, TaskSetupParams{
 		TaskID: "review", SessionName: "org/repo-1", Resource: "https://example.test/pull/1",
@@ -613,7 +612,7 @@ func TestFinalizeTask_TaskDocumentInstance(t *testing.T) {
 // nothing is written: the schema is the contract, not a hint.
 func TestSetTaskState_PayloadViolatingTheSchemaRejected(t *testing.T) {
 	store := testStore(t)
-	cfg := writeTaskDocumentFixture(t, t.TempDir(), "wf", map[string]string{"resource_kind": "pull", "revision": "sha2"}, reviewDocument)
+	cfg := writeTaskDocumentFixture(t, "wf", map[string]string{"resource_kind": "pull", "revision": "sha2"}, reviewDocument)
 	seedSession(t, store, "org/repo-1", "org/repo", 1, "wf", map[string]*contract.TaskState{
 		"review#1": {
 			Scope:   contract.TaskScopeSession,
@@ -656,7 +655,7 @@ all = [
 // write path rather than reporting the declaration as missing.
 func TestSetOutput_TaskDocumentInstanceNamesTheStateWritePath(t *testing.T) {
 	store := testStore(t)
-	cfg := writeTaskDocumentFixture(t, t.TempDir(), "wf", map[string]string{"resource_kind": "pull", "revision": "sha2"}, reviewDocument)
+	cfg := writeTaskDocumentFixture(t, "wf", map[string]string{"resource_kind": "pull", "revision": "sha2"}, reviewDocument)
 	seedSession(t, store, "org/repo-1", "org/repo", 1, "wf", map[string]*contract.TaskState{
 		"review#1": {Scope: contract.TaskScopeSession, TaskID: "review", Status: contract.TaskStatusProduced, SetupAt: time.Now()},
 	})
@@ -673,7 +672,7 @@ func TestSetOutput_TaskDocumentInstanceNamesTheStateWritePath(t *testing.T) {
 
 func TestSetTaskState_EmptyPayloadRejected(t *testing.T) {
 	store := testStore(t)
-	cfg := writeTaskDocumentFixture(t, t.TempDir(), "wf", map[string]string{"resource_kind": "pull", "revision": "sha2"}, reviewDocument)
+	cfg := writeTaskDocumentFixture(t, "wf", map[string]string{"resource_kind": "pull", "revision": "sha2"}, reviewDocument)
 	seedSession(t, store, "org/repo-1", "org/repo", 1, "wf", map[string]*contract.TaskState{
 		"review#1": {Scope: contract.TaskScopeSession, TaskID: "review", Status: contract.TaskStatusProduced, SetupAt: time.Now()},
 	})
@@ -688,7 +687,7 @@ func TestSetTaskState_EmptyPayloadRejected(t *testing.T) {
 
 func TestSetTaskState_InstanceRequired(t *testing.T) {
 	store := testStore(t)
-	cfg := writeTaskDocumentFixture(t, t.TempDir(), "wf", map[string]string{"revision": "sha2"}, reviewDocument)
+	cfg := writeTaskDocumentFixture(t, "wf", map[string]string{"revision": "sha2"}, reviewDocument)
 	if _, err := SetTaskState(cfg, store, SetTaskStateParams{
 		Identifier: "org/repo-1", State: map[string]any{"verdict_revision": "sha2"},
 	}); err == nil {
@@ -701,7 +700,7 @@ func TestSetTaskState_InstanceRequired(t *testing.T) {
 // exist. Accepting it persisted a record nothing could ever consume.
 func TestRecordJudge_InstanceWithNoGateRejectsEveryLeaf(t *testing.T) {
 	store := testStore(t)
-	cfg := writeTaskDocumentFixture(t, t.TempDir(), "wf", map[string]string{"resource_kind": "pull", "revision": "sha2"}, gatelessDocument)
+	cfg := writeTaskDocumentFixture(t, "wf", map[string]string{"resource_kind": "pull", "revision": "sha2"}, gatelessDocument)
 	seedSession(t, store, "org/repo-0", "org/repo", 0, "wf", nil)
 	seedSession(t, store, "org/repo-1", "org/repo", 1, "wf", nil)
 	seedSession(t, store, "org/repo-2", "org/repo", 2, "wf", nil)
@@ -739,7 +738,7 @@ instructions      = [{ text = "Note something about {{ resource.id }}." }]
 // document that will not load is reported as that rather than as a
 // declaration nobody wrote.
 func TestSetOutput_ReportsAnUnloadableDocument(t *testing.T) {
-	cfg := writeTaskDocumentFixture(t, t.TempDir(), "wf", map[string]string{"resource_kind": "pull", "revision": "sha2"}, reviewDocument)
+	cfg := writeTaskDocumentFixture(t, "wf", map[string]string{"resource_kind": "pull", "revision": "sha2"}, reviewDocument)
 	// A declaration that parses but carries a field outside the task surface:
 	// a `.md` that no instructions element's file names is a template asset
 	// rather than a broken document, so it would not fail the load.
@@ -776,7 +775,7 @@ type = "object"
 [review.inputs_schema.properties]
 instruction = { type = "string", default = "" }
 `
-	cfg := writeTaskDocumentFixture(t, t.TempDir(), "wf", map[string]string{"resource_kind": "pull", "revision": "sha2"}, document)
+	cfg := writeTaskDocumentFixture(t, "wf", map[string]string{"resource_kind": "pull", "revision": "sha2"}, document)
 	seedSession(t, store, "org/repo-1", "org/repo", 1, "wf", nil)
 
 	bare, err := TaskSetup(cfg, store, TaskSetupParams{

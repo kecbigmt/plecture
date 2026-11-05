@@ -109,12 +109,11 @@ func TestKindSurfaceMatchesSchema(t *testing.T) {
 		t.Fatal(err)
 	}
 	for kind, def := range map[Kind]string{
-		KindEffect:            "effectDefinition",
-		KindTask:              "taskDefinition",
-		KindChannel:           "channelDefinition",
-		KindWorkflow:          "workflowDefinition",
-		KindWorkspaceProvider: "workspaceProviderDefinition",
-		KindResource:          "resourceDefinition",
+		KindEffect:   "effectDefinition",
+		KindTask:     "taskDefinition",
+		KindChannel:  "channelDefinition",
+		KindWorkflow: "workflowDefinition",
+		KindResource: "resourceDefinition",
 	} {
 		t.Run(string(kind), func(t *testing.T) {
 			var want []string

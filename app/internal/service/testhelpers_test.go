@@ -3,19 +3,32 @@
 package service
 
 import (
+	"fmt"
 	"os"
 	"os/exec"
 	"path/filepath"
-	"strings"
+	"runtime"
 	"testing"
 
 	"github.com/kecbigmt/plecture/app/internal/config"
 )
 
+// repoRoot locates the repository root from this test file's own path, so a
+// test that reads a shipped config file does not depend on the working
+// directory it is run from.
+func repoRoot(t *testing.T) string {
+	t.Helper()
+	_, thisFile, _, ok := runtime.Caller(0)
+	if !ok {
+		t.Fatal("runtime.Caller failed")
+	}
+	return filepath.Join(filepath.Dir(thisFile), "..", "..", "..")
+}
+
 // setupE2ERepo creates a git repo structure that mimics what plect expects.
-// The workspace-dirs root is HOME-based so a `plect` subprocess spawned by a
-// workspace provider hook resolves the same root from its own config
-// defaults. Returns the workspace-dirs root.
+// The workspace-dirs root is HOME-based so a `plect` subprocess spawned by an
+// effect hook resolves the same root from its own defaults. Returns the
+// workspace-dirs root.
 func setupE2ERepo(t *testing.T) string {
 	t.Helper()
 	home := t.TempDir()
@@ -108,51 +121,57 @@ esac
 	t.Setenv("PATH", binDir+":"+origPath)
 }
 
-// writeIntegrationFixture is writeWorkflowFixture plus the workspace
-// provider that backs the workflow: the real GitHub workspace provider
-// hooks, so an integration test exercises actual workspace acquisition
-// rather than a stub directory.
+// writeIntegrationFixture is writeWorkflowFixture plus the shipped GitHub
+// worktree effect that backs the workflow's directory: the real hooks, so an
+// integration test exercises actual worktree acquisition rather than a stub
+// directory. workdirsRoot is where the effect places its worktrees.
 func writeIntegrationFixture(t *testing.T, workdirsRoot, wfID string, defs []taskFixture, nodes []nodeFixture) *config.Config {
 	t.Helper()
-	cfg := writeWorkflowFixture(t, workdirsRoot, wfID, defs, nodes)
-	attachGithubWorkspaceProvider(t, cfg, wfID)
+	cfg := writeWorkflowFixture(t, wfID, defs, nodes)
+	attachGithubWorktree(t, cfg, wfID, workdirsRoot)
 	return cfg
 }
 
-// attachGithubWorkspaceProvider points a workflow at a workspace provider
-// whose hooks are the shipped GitHub workspace provider executable, and
-// mounts that executable (and github-watcher) as cfg.Plugins so the hooks'
-// `{{bin ...}}` references resolve the way they would for a real
-// catalog-mounted plugin. The workspace provider file itself is written
-// inside that same mounted plugin's directory (not the global config
-// layer) — plugin-local `{{bin "<name>"}}` resolution finds the containing
-// plugin from the workspace provider file's own path, so a fixture that
-// split the two across different directories the way a real mount never
-// does would fail to resolve its own bare-name references.
-func attachGithubWorkspaceProvider(t *testing.T, cfg *config.Config, wfID string) {
+// attachGithubWorktree mounts the GitHub plugin's executables (and the shipped
+// worktree effect, inside the same mounted directory so its plugin-local
+// `bin` references resolve the way they do for a real catalog mount), adds the
+// effect as a workflow node and points the workflow's workdir at its output.
+// A second call for another workflow reuses the mount: one catalog identity
+// has one directory.
+func attachGithubWorktree(t *testing.T, cfg *config.Config, wfID, workdirsRoot string) {
 	t.Helper()
-	// Appended, not assigned: a fixture attaching more than one workflow (each
-	// its own attachGithubWorkspaceProvider call) must keep every earlier call's mount
-	// resolvable too, not just the last one.
-	newMount := buildWorkspaceProviderBinaries(t, repoRoot(t))
-	cfg.Plugins = append(cfg.Plugins, newMount...)
-	pluginDir := newMount[0].Dir
-	cfg.PluginDirs = append(cfg.PluginDirs, pluginDir)
-	workspacesDir := filepath.Join(pluginDir, "config", "workspaces")
-	if err := os.MkdirAll(workspacesDir, 0o755); err != nil {
+	if len(cfg.Plugins) == 0 {
+		mount := buildWorkspaceProviderBinaries(t, repoRoot(t))
+		cfg.Plugins = append(cfg.Plugins, mount...)
+		cfg.PluginDirs = append(cfg.PluginDirs, mount[0].Dir)
+		tasksDir := filepath.Join(mount[0].Dir, "config", "tasks")
+		if err := os.MkdirAll(tasksDir, 0o755); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(filepath.Join(tasksDir, "worktree.toml"), []byte(shippedGithubWorktreeTOML(t)), 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
+	addWorkflowFields(t, cfg, wfID, "workdir = { from = \"nodes.worktree.outputs.workspace_dir\" }\n")
+	path := filepath.Join(cfg.BaseDir, "workflows", wfID+".toml")
+	f, err := os.OpenFile(path, os.O_APPEND|os.O_WRONLY, 0o644)
+	if err != nil {
 		t.Fatal(err)
 	}
-	// The shipped declaration's id is its table name, so a fixture that wants
-	// the provider under the workflow's own id renames the table rather than
-	// the file.
-	provID := wfID + "_provider"
-	body := strings.ReplaceAll(shippedGithubWorkspaceProviderTOML(t), "[worktree", "["+provID)
-	if err := os.WriteFile(filepath.Join(workspacesDir, provID+".toml"), []byte(body), 0o644); err != nil {
+	defer f.Close()
+	if _, err := fmt.Fprintf(f, "\n[[%[1]s.nodes]]\nid   = \"worktree\"\nuses = \"official.github.worktree\"\n\n[%[1]s.nodes.inputs]\ndirs_root = %[2]q\n", wfID, workdirsRoot); err != nil {
 		t.Fatal(err)
 	}
-	// The provider is declared inside a mounted plugin, so the workflow — which
-	// the user owns — names it by that plugin's catalog address.
-	addWorkflowFields(t, cfg, wfID, "workspace_provider = \"official.github."+provID+"\"\n")
+}
+
+// useShippedGithubResources makes the workflow accept the GitHub plugin's own
+// issue resource, in place of the fixture's default, so Create wires delivery
+// through the real watcher hooks.
+func useShippedGithubResources(t *testing.T, cfg *config.Config, wfID string) {
+	t.Helper()
+	copyShippedGithubResources(t, cfg.PluginDirs[0])
+	dropIssueResource(t, cfg)
+	setWorkflowResource(t, cfg, wfID, "official.github.issue")
 }
 
 func copyShippedGithubResources(t *testing.T, pluginDir string) {
@@ -172,11 +191,11 @@ func copyShippedGithubResources(t *testing.T, pluginDir string) {
 	}
 }
 
-// shippedGithubWorkspaceProviderTOML reads the workspace provider config the
-// GitHub workspace provider plugin ships, so fixtures never drift from it.
-func shippedGithubWorkspaceProviderTOML(t *testing.T) string {
+// shippedGithubWorktreeTOML reads the worktree effect the GitHub plugin
+// ships, so fixtures never drift from it.
+func shippedGithubWorktreeTOML(t *testing.T) string {
 	t.Helper()
-	data, err := os.ReadFile(filepath.Join(repoRoot(t), "plugins", "github", "config", "workspaces", "worktree.toml"))
+	data, err := os.ReadFile(filepath.Join(repoRoot(t), "plugins", "github", "config", "tasks", "worktree.toml"))
 	if err != nil {
 		t.Fatal(err)
 	}

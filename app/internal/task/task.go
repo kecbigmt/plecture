@@ -75,6 +75,15 @@ type Resolved struct {
 	// definition declares `inner`. Empty for a plain task, which is the one
 	// distinction the lifecycle runners make between the two.
 	Layers []effect.Layer
+	// Prep marks a preparation node of a workflow that declares `workdir`:
+	// the workdir's producer or one of its transitive prerequisites.
+	Prep bool
+	// Workdir is the node output a non-preparation node's actions run in;
+	// nil on a preparation node and in a workflow that declares no workdir.
+	Workdir *lang.WorkdirRef
+	// CleanupInputsSchema is the contract of the destruction inputs this
+	// node's cleanup reads, nil when it declares none.
+	CleanupInputsSchema map[string]any
 	// Unresolved marks a teardown-only entry whose current definition could
 	// not be found by TaskID, so there is no cleanup recipe to run at all.
 	// RunCleanup reports it as an error and leaves the record unreleased,
@@ -138,6 +147,9 @@ type Probe struct {
 	From       lang.Ownership
 	Env        []string
 	Process    *contract.ProcessIdentity
+	// Dir is the directory the probe runs in: the one its node's setup
+	// recorded, empty when setup ran with none.
+	Dir string
 }
 
 func (p Probe) context(session SessionVars) RenderContext {
@@ -168,7 +180,7 @@ func RunAliveProbe(goCtx context.Context, p Probe, session SessionVars) error {
 		return err
 	}
 	defer resolved.Close()
-	_, stderr, err := resolved.Run(goCtx, session.WorkspaceDirPath, p.Env...)
+	_, stderr, err := resolved.Run(goCtx, p.Dir, p.Env...)
 	if err != nil {
 		if len(stderr) > 0 {
 			return fmt.Errorf("%w: %s", err, strings.TrimSpace(string(stderr)))
@@ -211,7 +223,7 @@ func runTerminalVerb(goCtx context.Context, binding *TerminalBinding, verb strin
 		return nil, nil, err
 	}
 	defer resolved.Close()
-	return resolved.Run(goCtx, session.WorkspaceDirPath, env...)
+	return resolved.Run(goCtx, binding.Dir, env...)
 }
 
 // CompileWorkflow turns a workflow file plus its referenced task definitions
@@ -266,6 +278,9 @@ func resolveWorkflowNodes(wf config.WorkflowFile, defs map[string]config.TaskDef
 	if err := applyBlocks(out, wf.Nodes); err != nil {
 		return nil, err
 	}
+	if err := applyWorkdir(wf, out); err != nil {
+		return nil, err
+	}
 	return out, nil
 }
 
@@ -307,19 +322,20 @@ func ResolveDefinition(def config.TaskDefinition, nodeID string) (Resolved, erro
 		}
 	}
 	return Resolved{
-		NodeID:         nodeID,
-		TaskID:         def.ID,
-		Scope:          scope,
-		Setup:          def.Setup,
-		Cleanup:        def.Cleanup,
-		Health:         def.Health,
-		SourcePath:     def.SourcePath,
-		From:           def.Ownership(),
-		Terminal:       terminal,
-		InputsSchema:   inputsSchema,
-		OutputsSchema:  outputsSchema,
-		MutableOutputs: mutableOutputs,
-		Layers:         layers,
+		NodeID:              nodeID,
+		TaskID:              def.ID,
+		Scope:               scope,
+		Setup:               def.Setup,
+		Cleanup:             def.Cleanup,
+		CleanupInputsSchema: def.CleanupInputsSchema,
+		Health:              def.Health,
+		SourcePath:          def.SourcePath,
+		From:                def.Ownership(),
+		Terminal:            terminal,
+		InputsSchema:        inputsSchema,
+		OutputsSchema:       outputsSchema,
+		MutableOutputs:      mutableOutputs,
+		Layers:              layers,
 	}, nil
 }
 
@@ -525,9 +541,8 @@ func topoSortNodes(list []Resolved) ([]Resolved, error) {
 //	Tasks  — outputs of upstream nodes, indexed by node id.
 //	Inputs   — node's resolved input bindings (post-render), exposed as `.Inputs.<key>`.
 //	           Also reachable via `.Nodes.<self>.inputs.<key>` for symmetry.
-//	Workflow — the workflow pseudo-node's outputs, exposed as
-//	           `.Workflow.outputs.<key>` (workspace_dir, branch, ...). Empty for
-//	           sessions whose workflow declares no setup hook.
+//	Workflow — the workflow's public outputs, exposed as
+//	           `.Workflow.outputs.<key>`. Empty for a workflow that declares none.
 //
 // `.Nodes.<id>.outputs.<key>` is the canonical reference for upstream node
 // outputs in setup/cleanup templates; `.Tasks.<id>.<key>` is a shorter
@@ -544,6 +559,9 @@ type RenderContext struct {
 	// emitted from its own setup, visible to that layer's cleanup and to its
 	// own binding templates and nowhere else. Empty for a plain task.
 	Locals map[string]any
+	// CleanupInputs are the destruction inputs the rendering effect declared,
+	// already filtered to its own cleanup contract.
+	CleanupInputs map[string]any
 	// SourcePath is the absolute path of the file the rendered template
 	// (Setup/Cleanup/...) came from. It feeds the bare-name `bin = "<name>"`
 	// reading only — plugins.ResolveBin uses it to find the containing plugin — so a
@@ -554,12 +572,20 @@ type RenderContext struct {
 }
 
 type SessionVars struct {
-	Name             string
-	ResourceID       string
-	ParentSession    string
-	WorkspaceDirPath string
-	Branch           string
-	Inputs           map[string]any
+	Name          string
+	ResourceID    string
+	ParentSession string
+	Inputs        map[string]any
+	// Force and CleanupInputs are the current destruction operation's own
+	// intent, read only by cleanup actions: core's boolean `force`, and the
+	// typed invocation inputs (see ResolveCleanupInputs). Setup never sees
+	// either.
+	Force         bool
+	CleanupInputs map[string]any
+	// ReleaseAfterFailure makes cleanup attempt the prerequisites of a node
+	// whose own cleanup failed. Without it they stay retained: releasing what
+	// a node still depends on would strand the node's own retry.
+	ReleaseAfterFailure bool
 	// Plugins are the resolved, catalog-qualified plugins
 	// (config.Config.Plugins) in declaration order, against which a `bin`
 	// reference resolves. Threaded through SessionVars rather than added as
@@ -581,8 +607,11 @@ type SessionVars struct {
 // that effect's own current outputs — what a verb's own values are resolved
 // against — and with the identity a `bin` inside a verb resolves through.
 type TerminalBinding struct {
-	Ops        *config.TerminalConfig
-	Outputs    map[string]any
+	Ops     *config.TerminalConfig
+	Outputs map[string]any
+	// Dir is the directory the declaring effect's setup recorded, which its
+	// verbs run in.
+	Dir        string
 	SourcePath string
 	From       lang.Ownership
 }
@@ -793,14 +822,22 @@ func RunSetup(goCtx context.Context, ordered []Resolved, session SessionVars, ta
 		// A failed attempt is persisted like a successful one, so it needs a
 		// real Seq: at 0 it would sort below an older cleaned execution of the
 		// same node, which the next load would then read as the current one.
+		var dir string
 		failed := func(errMsg string, inputs map[string]any) *contract.TaskState {
 			st := failedState(r, now, errMsg, prev, inputs, continuingExecID)
+			st.Directory = dir
 			if continuingExecID != "" {
 				st.Seq = continuingSeq
 			} else {
 				st.Seq = nextSeq(tasks)
 			}
 			return st
+		}
+		var dirErr error
+		if dir, dirErr = r.setupDir(tasks); dirErr != nil {
+			tasks[r.NodeID] = failed(dirErr.Error(), nil)
+			wrapped := fmt.Errorf("node %q: %w", r.NodeID, dirErr)
+			return reportSetupFailure(obs, r, time.Since(now), wrapped, nil)
 		}
 		deps := dependencyOutputs(r.DependsOn, tasks)
 		resolvedInputs, inputErr := ResolveNodeInputs(r.Inputs, deps, workflowOutputs(session, tasks, publicoutput.ProducedOnly), session)
@@ -826,7 +863,7 @@ func RunSetup(goCtx context.Context, ordered []Resolved, session SessionVars, ta
 			SourcePath: r.SourcePath,
 		}
 		if len(r.Layers) > 0 {
-			layers, stderr, nestErr := effect.RunLayers(goCtx, r.Layers, chainHost(ctx, obs, r.Scope, r.NodeID), ctx.Session.WorkspaceDirPath, resolvedInputs)
+			layers, stderr, nestErr := effect.RunLayers(goCtx, r.Layers, chainHost(ctx, obs, r.Scope, r.NodeID), dir, resolvedInputs)
 			if nestErr != nil {
 				// The layers that did produce are persisted with the
 				// failure: the next cleanup has to unwind exactly those.
@@ -865,6 +902,7 @@ func RunSetup(goCtx context.Context, ordered []Resolved, session SessionVars, ta
 				NewExecution: continuingExecID == "",
 				Seq:          nextSeq(tasks),
 				SetupAt:      now,
+				Directory:    dir,
 			}
 			reportSetupSuccess(obs, r, time.Since(now), stderr)
 			continue
@@ -878,7 +916,7 @@ func RunSetup(goCtx context.Context, ordered []Resolved, session SessionVars, ta
 				wrapped := fmt.Errorf("effect %q setup: %w", r.NodeID, resolveErr)
 				return reportSetupFailure(obs, r, time.Since(now), wrapped, nil)
 			}
-			stdout, stderr, runErr := resolved.Run(goCtx, session.WorkspaceDirPath)
+			stdout, stderr, runErr := resolved.Run(goCtx, dir)
 			resolved.Close()
 			stderrCaptured = stderr
 			if runErr != nil {
@@ -919,6 +957,7 @@ func RunSetup(goCtx context.Context, ordered []Resolved, session SessionVars, ta
 			NewExecution: continuingExecID == "",
 			Seq:          nextSeq(tasks),
 			SetupAt:      now,
+			Directory:    dir,
 		}
 		reportSetupSuccess(obs, r, time.Since(now), stderrCaptured)
 	}
@@ -1049,7 +1088,10 @@ func toJSONShape(m map[string]any) map[string]any {
 // Each node's cleanup is run with .Self bound to its persisted outputs and
 // .Input bound to the inputs persisted at setup time — so cleanup never
 // depends on the original CLI invocation.
-// Cleanup errors are collected but do not stop the loop — all cleanups attempt.
+// A cleanup error is collected and does not stop the loop, but the failed
+// node's prerequisites (and theirs) are retained rather than released, unless
+// session.ReleaseAfterFailure says to attempt them anyway; work that does not
+// depend on the failed node still runs.
 //
 // ordered can freely mix workflow-node and dynamic-instance entries, so
 // tasks must merge every collection a targeted key could live in. Mutation
@@ -1058,6 +1100,15 @@ func toJSONShape(m map[string]any) map[string]any {
 func RunCleanup(goCtx context.Context, ordered []Resolved, session SessionVars, tasks map[string]*contract.TaskState, observer Observer) error {
 	obs := observerOr(observer)
 	var firstErr error
+	// retained holds the nodes whose release waits on a dependent's: a node
+	// whose cleanup failed, or that was itself held back, still needs what it
+	// depends on.
+	retained := map[string]bool{}
+	hold := func(r Resolved) {
+		for _, dep := range r.DependsOn {
+			retained[dep] = true
+		}
+	}
 	for i := len(ordered) - 1; i >= 0; i-- {
 		r := ordered[i]
 		now := time.Now()
@@ -1071,12 +1122,18 @@ func RunCleanup(goCtx context.Context, ordered []Resolved, session SessionVars, 
 			obs.OnSkip(r.Scope, r.NodeID, "already cleaned")
 			continue
 		}
+		if retained[r.NodeID] && !session.ReleaseAfterFailure {
+			obs.OnSkip(r.Scope, r.NodeID, "retained: a dependent's cleanup failed")
+			hold(r)
+			continue
+		}
 		if r.Unresolved {
 			obs.OnStart(r.Scope, r.NodeID)
 			wrapped := fmt.Errorf("node %q: current definition not found; record left unreleased", r.NodeID)
 			state.Status = contract.TaskStatusFailed
 			state.Error = wrapped.Error()
 			state.FailedAt = now
+			hold(r)
 			if firstErr == nil {
 				firstErr = wrapped
 			}
@@ -1095,11 +1152,12 @@ func RunCleanup(goCtx context.Context, ordered []Resolved, session SessionVars, 
 				Workflow: workflowOutputs(session, tasks, publicoutput.LastRecorded),
 				Session:  sess,
 			}
-			stderr, nestErr := effect.RunLayerCleanup(goCtx, r.Layers, state.Layers, chainHost(base, obs, r.Scope, r.NodeID), base.Session.WorkspaceDirPath)
+			stderr, nestErr := effect.RunLayerCleanup(goCtx, r.Layers, state.Layers, chainHost(base, obs, r.Scope, r.NodeID), state.Directory)
 			if nestErr != nil {
 				state.Status = contract.TaskStatusFailed
 				state.Error = nestErr.Error()
 				state.FailedAt = now
+				hold(r)
 				wrapped := fmt.Errorf("task %q cleanup: %w", r.NodeID, nestErr)
 				if firstErr == nil {
 					firstErr = wrapped
@@ -1132,19 +1190,21 @@ func RunCleanup(goCtx context.Context, ordered []Resolved, session SessionVars, 
 			sess.ResourceID = state.Resource
 		}
 		ctx := RenderContext{
-			Self:       state.Outputs,
-			Process:    state.Process,
-			Tasks:      dependencyOutputs(r.DependsOn, tasks),
-			Inputs:     state.Inputs,
-			Workflow:   workflowOutputs(session, tasks, publicoutput.LastRecorded),
-			Session:    sess,
-			SourcePath: r.SourcePath,
+			Self:          state.Outputs,
+			Process:       state.Process,
+			Tasks:         dependencyOutputs(r.DependsOn, tasks),
+			Inputs:        state.Inputs,
+			Workflow:      workflowOutputs(session, tasks, publicoutput.LastRecorded),
+			Session:       sess,
+			SourcePath:    r.SourcePath,
+			CleanupInputs: FilterCleanupInputs(r.CleanupInputsSchema, sess.CleanupInputs),
 		}
 		resolved, resolveErr := resolveEffect(r.Cleanup, cleanupRoots(ctx), ctx, r.From, nil)
 		if resolveErr != nil {
 			state.Status = contract.TaskStatusFailed
 			state.Error = resolveErr.Error()
 			state.FailedAt = now
+			hold(r)
 			wrapped := fmt.Errorf("effect %q cleanup: %w", r.NodeID, resolveErr)
 			if firstErr == nil {
 				firstErr = wrapped
@@ -1152,12 +1212,13 @@ func RunCleanup(goCtx context.Context, ordered []Resolved, session SessionVars, 
 			reportCleanupFailure(obs, r, time.Since(now), wrapped, nil)
 			continue
 		}
-		_, stderr, runErr := resolved.Run(goCtx, sess.WorkspaceDirPath)
+		_, stderr, runErr := resolved.Run(goCtx, state.Directory)
 		resolved.Close()
 		if runErr != nil {
 			state.Status = contract.TaskStatusFailed
 			state.Error = runErr.Error()
 			state.FailedAt = now
+			hold(r)
 			wrapped := fmt.Errorf("task %q cleanup: %w", r.NodeID, runErr)
 			if firstErr == nil {
 				firstErr = wrapped

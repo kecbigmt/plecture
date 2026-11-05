@@ -80,7 +80,6 @@ func TestDecodedRevisionCacheReturnsIndependentTopLevelDeclarations(t *testing.T
 		Effects:  map[string]TaskDefinition{"effect": {ID: "effect"}},
 		Tasks:    map[string]TaskDocument{"task": {ID: "task"}},
 		Channels: map[string]ChannelDefinition{"channel": {ID: "channel"}},
-		Provider: &WorkspaceProviderConfig{ID: "provider"},
 	}
 	body, digest, err := revision.CanonicalBody()
 	if err != nil {
@@ -94,12 +93,11 @@ func TestDecodedRevisionCacheReturnsIndependentTopLevelDeclarations(t *testing.T
 	first.Effects["effect"] = TaskDefinition{ID: "changed"}
 	first.Tasks["task"] = TaskDocument{ID: "changed"}
 	first.Channels["channel"] = ChannelDefinition{ID: "changed"}
-	first.Provider.ID = "changed"
 	second, err := cache.load(body, digest)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if second.Effects["effect"].ID != "effect" || second.Tasks["task"].ID != "task" || second.Channels["channel"].ID != "channel" || second.Provider.ID != "provider" {
+	if second.Effects["effect"].ID != "effect" || second.Tasks["task"].ID != "task" || second.Channels["channel"].ID != "channel" {
 		t.Fatalf("cache lookup was changed by caller: %+v", second)
 	}
 }
@@ -108,7 +106,7 @@ func TestWorkflowRevisionPluginSourceSurvivesMountChange(t *testing.T) {
 	oldDir := filepath.Join(t.TempDir(), "old")
 	newDir := filepath.Join(t.TempDir(), "new")
 	base := t.TempDir()
-	writeFile(t, filepath.Join(base, "workflows", "work.toml"), "[work]\nkind = \"workflow\"\n[[work.nodes]]\nuses = \"catalog.agent.effect\"\n")
+	writeFile(t, filepath.Join(base, "workflows", "work.toml"), "[work]\nkind = \"workflow\"\nresource = \"issue\"\n[[work.nodes]]\nuses = \"catalog.agent.effect\"\n")
 	for _, dir := range []string{oldDir, newDir} {
 		writeFile(t, filepath.Join(dir, "config", "tasks", "effect.toml"), "[effect]\nkind = \"effect\"\nscope = \"run\"\n")
 	}
@@ -180,9 +178,6 @@ func TestSessionWithWorkflowRequiresStoredRevision(t *testing.T) {
 	}
 	if _, err := cfg.ChannelsForSession(session); err == nil {
 		t.Fatal("channels resolved from live configuration")
-	}
-	if _, err := cfg.WorkspaceProviderForSession(session); err == nil {
-		t.Fatal("provider resolved from live configuration")
 	}
 }
 

@@ -125,18 +125,18 @@ func get(t *testing.T, svc SessionService, path string) *httptest.ResponseRecord
 	return rec
 }
 
-// 1. List view: GET / renders session_name, status, branch, github status.
+// 1. List view: GET / renders session_name, status, display status.
 func TestIndex_ShowsSessions(t *testing.T) {
 	svc := &fakeService{entries: []service.ListEntry{
-		{SessionName: "acme/mm-123", Run: domain.RunUp, Health: domain.HealthHealthy, Branch: "issue/123", DisplayStatus: "open"},
-		{SessionName: "acme/mm-456", Run: domain.RunDown, Branch: "issue/456"},
+		{SessionName: "acme/mm-123", Run: domain.RunUp, Health: domain.HealthHealthy, DisplayStatus: "open"},
+		{SessionName: "acme/mm-456", Run: domain.RunDown},
 	}}
 	rec := get(t, svc, "/")
 	if rec.Code != http.StatusOK {
 		t.Fatalf("status = %d, want 200", rec.Code)
 	}
 	body := rec.Body.String()
-	for _, want := range []string{"acme/mm-123", "acme/mm-456", "issue/123", "open"} {
+	for _, want := range []string{"acme/mm-123", "acme/mm-456", "open"} {
 		if !strings.Contains(body, want) {
 			t.Errorf("body missing %q", want)
 		}

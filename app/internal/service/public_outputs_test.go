@@ -18,7 +18,7 @@ func TestUp_PublicOutputsFollowTheNodesThatProduceThem(t *testing.T) {
 	if err := os.WriteFile(endpointFile, []byte("e1"), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	cfg := writeWorkflowFixture(t, t.TempDir(), "default",
+	cfg := writeWorkflowFixture(t, "default",
 		[]taskFixture{
 			{id: "agent", scope: "run", setup: `printf '{"endpoint":"%s"}' "$(cat ` + endpointFile + `)"`, cleanup: "true"},
 			{id: "relay", scope: "run", setup: `echo '{}'`, cleanup: "true"},
@@ -69,7 +69,7 @@ func TestUp_PublicOutputsFollowTheNodesThatProduceThem(t *testing.T) {
 
 func TestUp_ConsumerOfAPublicOutputWaitsForItsProducerEvenWhenDeclaredFirst(t *testing.T) {
 	store := testStore(t)
-	cfg := writeWorkflowFixture(t, t.TempDir(), "default",
+	cfg := writeWorkflowFixture(t, "default",
 		[]taskFixture{
 			{id: "agent", scope: "run", setup: `echo '{"endpoint":"e1"}'`, cleanup: "true"},
 			{id: "relay", scope: "run", setup: `echo '{}'`, cleanup: "true"},
@@ -90,7 +90,7 @@ func TestUp_ConsumerOfAPublicOutputWaitsForItsProducerEvenWhenDeclaredFirst(t *t
 }
 
 func TestLoadWorkflows_CycleThroughAPublicOutputFailsTheWorkflowLoad(t *testing.T) {
-	cfg := writeWorkflowFixture(t, t.TempDir(), "default",
+	cfg := writeWorkflowFixture(t, "default",
 		[]taskFixture{{id: "agent", scope: "run", setup: `echo '{}'`}},
 		[]nodeFixture{{id: "agent", inputs: map[string]*lang.Value{"peer": {Form: lang.FormFrom, From: "workflow.outputs.endpoint"}}}})
 	addWorkflowFields(t, cfg, "default", "\n[default.outputs]\nendpoint = { from = \"nodes.agent.outputs.endpoint\" }\n")
@@ -103,7 +103,7 @@ func TestLoadWorkflows_CycleThroughAPublicOutputFailsTheWorkflowLoad(t *testing.
 func TestDestroy_ReleasesADependentOfAFailedSourceThroughItsPublicOutput(t *testing.T) {
 	store := testStore(t)
 	marker := filepath.Join(t.TempDir(), "released")
-	cfg := writeWorkflowFixture(t, t.TempDir(), "default",
+	cfg := writeWorkflowFixture(t, "default",
 		[]taskFixture{
 			{id: "y", scope: "run", setup: `echo '{"k":"v1"}'`, cleanup: "true"},
 			{id: "x", scope: "run", setup: `echo '{}'`, cleanup: `printf %s {{.Workflow.outputs.k}} > ` + marker},

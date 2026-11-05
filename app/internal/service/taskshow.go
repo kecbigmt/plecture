@@ -124,10 +124,10 @@ func schemaOwnKeys(schema map[string]any) []string {
 	return out
 }
 
-// TaskShow resolves one task definition from the cascade rooted at
-// workspaceDirPath.
-func TaskShow(cfg *config.Config, workspaceDirPath, id string) (*TaskDetail, error) {
-	docs, defs, err := cfg.LoadTaskDeclarations(workspaceDirPath)
+// TaskShow resolves one task definition from the cascade of ancestor overlays
+// above invocationDir.
+func TaskShow(cfg *config.Config, invocationDir, id string) (*TaskDetail, error) {
+	docs, defs, err := cfg.LoadTaskDeclarations(invocationDir)
 	if err != nil {
 		return nil, fmt.Errorf("load task declarations: %w", err)
 	}
@@ -141,7 +141,7 @@ func TaskShow(cfg *config.Config, workspaceDirPath, id string) (*TaskDetail, err
 		if oerr != nil {
 			return nil, fmt.Errorf("load resources: %w", oerr)
 		}
-		workflows, werr := cfg.LoadWorkflows(workspaceDirPath)
+		workflows, werr := cfg.LoadWorkflows(invocationDir)
 		if werr != nil {
 			return nil, fmt.Errorf("load workflows: %w", werr)
 		}

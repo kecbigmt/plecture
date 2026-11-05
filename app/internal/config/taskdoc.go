@@ -95,8 +95,8 @@ func (d TaskDocument) ResolvedStateSchemaPath() string {
 // Task documents share the effect root — a directory name is not semantic —
 // and the same TOML serialization every other kind uses; what makes a
 // declaration a task document is its `kind`, not the file it is found in.
-func (c *Config) LoadTaskDocuments(workspaceDirPath string) (map[string]TaskDocument, error) {
-	layers, err := c.discoverLayers(workspaceDirPath)
+func (c *Config) LoadTaskDocuments(invocationDir string) (map[string]TaskDocument, error) {
+	layers, err := c.discoverLayers(invocationDir)
 	if err != nil {
 		return nil, err
 	}
@@ -316,12 +316,12 @@ func (c *Config) taskReferenceRegistry(docs map[string]TaskDocument, observers m
 // because which kind an id resolves to is exactly what such a caller is
 // asking, and answering it from one of the two maps alone would make a
 // collision a silent choice.
-func (c *Config) LoadTaskDeclarations(workspaceDirPath string) (map[string]TaskDocument, map[string]TaskDefinition, error) {
-	docs, err := c.LoadTaskDocuments(workspaceDirPath)
+func (c *Config) LoadTaskDeclarations(invocationDir string) (map[string]TaskDocument, map[string]TaskDefinition, error) {
+	docs, err := c.LoadTaskDocuments(invocationDir)
 	if err != nil {
 		return nil, nil, err
 	}
-	effects, err := c.LoadTaskDefinitions(workspaceDirPath)
+	effects, err := c.LoadTaskDefinitions(invocationDir)
 	if err != nil {
 		return nil, nil, err
 	}

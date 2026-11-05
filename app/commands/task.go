@@ -61,7 +61,7 @@ session-global singleton: the instance key IS the name and a second
 'plect task cleanup <name>' first. --resource binds the external resource this
 instance works on (exposed to its setup/done_when as .ResourceID); it is
 decoupled from the instance's identity. Binding implies delivery: when a
-workspace provider recognizes --resource, it is also registered for event
+resource declaration recognizes --resource, it is also registered for event
 delivery to the session (the same registration 'plect subscribe' performs),
 so done_when re-evaluation and chain firing react to its events instead of
 waiting for the heartbeat. 'plect task cleanup' drops that registration once

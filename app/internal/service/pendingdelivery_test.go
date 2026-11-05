@@ -48,7 +48,7 @@ func subscriptionRetryCount(t *testing.T, store *state.Store, sessionName, actio
 // gone by the time this runs, so the queue is the only surviving trace of
 // the failure.
 func TestTaskCleanup_UnsubscribeFailureIsDurablyQueued(t *testing.T) {
-	cfg := writeWorkflowFixture(t, t.TempDir(), "coding",
+	cfg := writeWorkflowFixture(t, "coding",
 		[]taskFixture{{id: "work", scope: "session", setup: `echo '{}'`, cleanup: "true"}},
 		[]nodeFixture{{id: "work"}},
 	)
@@ -76,7 +76,7 @@ func TestTaskCleanup_UnsubscribeFailureIsDurablyQueued(t *testing.T) {
 // A TaskSetup whose subscribe hook fails queues the resource for a durable
 // retry too — the symmetric case of the unsubscribe side above.
 func TestTaskSetup_SubscribeFailureIsDurablyQueued(t *testing.T) {
-	cfg := writeWorkflowFixture(t, t.TempDir(), "coding",
+	cfg := writeWorkflowFixture(t, "coding",
 		[]taskFixture{{id: "work", scope: "session", setup: `echo '{}'`}},
 		[]nodeFixture{{id: "work"}},
 	)
@@ -192,7 +192,7 @@ args    = ["-c", 'test -e "$1" || exit 3; echo done > "$2"', "provider", "` + to
 func TestFlushPendingDelivery_RetriesUnsubscribeAndDrainsOnSuccess(t *testing.T) {
 	toggle := filepath.Join(t.TempDir(), "toggle")
 	rec := filepath.Join(t.TempDir(), "rec")
-	cfg := writeWorkflowFixture(t, t.TempDir(), "coding",
+	cfg := writeWorkflowFixture(t, "coding",
 		[]taskFixture{{id: "work", scope: "session", setup: `echo '{}'`, cleanup: "true"}},
 		[]nodeFixture{{id: "work"}},
 	)
@@ -231,7 +231,7 @@ func TestFlushPendingDelivery_RetriesUnsubscribeAndDrainsOnSuccess(t *testing.T)
 func TestFlushPendingDeliveryLogged_DrainsOrphanedEntryViaAnotherSessionsActivity(t *testing.T) {
 	toggle := filepath.Join(t.TempDir(), "toggle")
 	rec := filepath.Join(t.TempDir(), "rec")
-	cfg := writeWorkflowFixture(t, t.TempDir(), "coding",
+	cfg := writeWorkflowFixture(t, "coding",
 		[]taskFixture{{id: "work", scope: "session", setup: `echo '{}'`}},
 		[]nodeFixture{{id: "work"}},
 	)
@@ -270,7 +270,7 @@ func TestFlushPendingDeliveryLogged_DrainsOrphanedEntryViaAnotherSessionsActivit
 func TestSweepOrphanedPendingDeliveriesDoesNotUnsubscribeLiveNameReplacement(t *testing.T) {
 	toggle := filepath.Join(t.TempDir(), "toggle")
 	rec := filepath.Join(t.TempDir(), "rec")
-	cfg := writeWorkflowFixture(t, t.TempDir(), "coding",
+	cfg := writeWorkflowFixture(t, "coding",
 		[]taskFixture{{id: "work", scope: "session", setup: `echo '{}'`}},
 		[]nodeFixture{{id: "work"}},
 	)
@@ -324,7 +324,7 @@ func TestSweepOrphanedPendingDeliveriesDoesNotUnsubscribeLiveNameReplacement(t *
 // moot once something else has since claimed the resource again.
 func TestFlushPendingDelivery_DropsUnsubscribeEntryOnceResourceIsNeededAgain(t *testing.T) {
 	rec := filepath.Join(t.TempDir(), "rec")
-	cfg := writeWorkflowFixture(t, t.TempDir(), "coding",
+	cfg := writeWorkflowFixture(t, "coding",
 		[]taskFixture{{id: "work", scope: "session", setup: `echo '{}'`, cleanup: "true"}},
 		[]nodeFixture{{id: "work"}},
 	)
@@ -362,7 +362,7 @@ func TestFlushPendingDelivery_DropsUnsubscribeEntryOnceResourceIsNeededAgain(t *
 func TestFlushPendingDelivery_RetriesSubscribeAndDrainsOnSuccess(t *testing.T) {
 	toggle := filepath.Join(t.TempDir(), "toggle")
 	rec := filepath.Join(t.TempDir(), "rec")
-	cfg := writeWorkflowFixture(t, t.TempDir(), "coding",
+	cfg := writeWorkflowFixture(t, "coding",
 		[]taskFixture{{id: "work", scope: "session", setup: `echo '{}'`}},
 		[]nodeFixture{{id: "work"}},
 	)
@@ -419,7 +419,7 @@ args    = ["-c", 'test -e "$1" || exit 3; echo done > "$2"', "provider", "` + to
 // binding was itself reclaimed) is dropped without retrying.
 func TestFlushPendingDelivery_DropsSubscribeEntryOnceResourceIsNoLongerNeeded(t *testing.T) {
 	rec := filepath.Join(t.TempDir(), "rec")
-	cfg := writeWorkflowFixture(t, t.TempDir(), "coding",
+	cfg := writeWorkflowFixture(t, "coding",
 		[]taskFixture{{id: "work", scope: "session", setup: `echo '{}'`, cleanup: "true"}},
 		[]nodeFixture{{id: "work"}},
 	)

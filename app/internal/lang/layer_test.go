@@ -28,7 +28,7 @@ func TestMergeLayerDifferentKindIsIDDuplicate(t *testing.T) {
 
 func TestMergeLayerWorkflowCascadeAddsNewField(t *testing.T) {
 	shallower := []*Definition{defOf("review_session", KindWorkflow, map[string]any{
-		"workspace_provider": "worktree",
+		"resource": "issue",
 	})}
 	deeper := []*Definition{defOf("review_session", KindWorkflow, map[string]any{
 		"name": "cascade overlay",
@@ -38,7 +38,7 @@ func TestMergeLayerWorkflowCascadeAddsNewField(t *testing.T) {
 		t.Fatalf("unexpected error: %v", err)
 	}
 	got := findByID(merged, "review_session")
-	if got.Body["workspace_provider"] != "worktree" || got.Body["name"] != "cascade overlay" {
+	if got.Body["resource"] != "issue" || got.Body["name"] != "cascade overlay" {
 		t.Fatalf("expected both fields to survive the merge, got %+v", got.Body)
 	}
 }
@@ -62,10 +62,10 @@ func TestMergeLayerWorkflowCascadeAppendsNodes(t *testing.T) {
 
 func TestMergeLayerWorkflowCascadeRejectsFieldRedeclare(t *testing.T) {
 	shallower := []*Definition{defOf("review_session", KindWorkflow, map[string]any{
-		"workspace_provider": "worktree",
+		"resource": "issue",
 	})}
 	deeper := []*Definition{defOf("review_session", KindWorkflow, map[string]any{
-		"workspace_provider": "other",
+		"resource": "pull_request",
 	})}
 	if _, err := MergeLayer(shallower, deeper); err == nil {
 		t.Fatal("expected an error: a cascade layer may not redeclare a field the shallower layer set")

@@ -26,21 +26,17 @@ type WorkflowDetail struct {
 	ID          string `json:"id"`
 	Name        string `json:"name,omitempty"`
 	Description string `json:"description,omitempty"`
-	// WorkspaceProvider is the referenced workspace provider's id; the
-	// resolved workspace provider (resolver + hooks) rides along so
-	// `workflow show` can present the whole picture without a second lookup.
-	WorkspaceProvider     string                          `json:"workspace_provider,omitempty"`
-	WorkspaceProviderInfo *config.WorkspaceProviderConfig `json:"workspace_provider_info,omitempty"`
-	// WorkspaceProviderError is set instead of WorkspaceProviderInfo, never
-	// both, so a load failure cannot make `workflow show` abort rendering
-	// the rest of an otherwise-loadable workflow.
-	WorkspaceProviderError string               `json:"workspace_provider_error,omitempty"`
-	Display                map[string]string    `json:"display,omitempty"`
-	AutoSelect             bool                 `json:"auto_select"`
-	InputsSchema           map[string]any       `json:"inputs_schema,omitempty"`
-	Nodes                  []WorkflowNode       `json:"nodes"`
-	Channels               []WorkflowChannel    `json:"channels,omitempty"`
-	Populations            []WorkflowPopulation `json:"populations,omitempty"`
+	// Resource is the entry resource type this workflow accepts. Workdir is
+	// the node output the workflow's non-preparation nodes run in, spelled as
+	// its projection; it is empty when the workflow declares none.
+	Resource     string               `json:"resource"`
+	Workdir      string               `json:"workdir,omitempty"`
+	Display      map[string]string    `json:"display,omitempty"`
+	AutoSelect   bool                 `json:"auto_select"`
+	InputsSchema map[string]any       `json:"inputs_schema,omitempty"`
+	Nodes        []WorkflowNode       `json:"nodes"`
+	Channels     []WorkflowChannel    `json:"channels,omitempty"`
+	Populations  []WorkflowPopulation `json:"populations,omitempty"`
 	// Tick is the workflow's declared [tick] table (docs/wiki/verification-gate.md),
 	// nil when undeclared.
 	Tick *config.TickConfig `json:"tick,omitempty"`
@@ -82,10 +78,10 @@ type WorkflowNode struct {
 }
 
 // WorkflowList returns all discoverable workflows merged from the cascade
-// rooted at workspaceDirPath, sorted by id for stable output. An empty
-// workspaceDirPath still surfaces the global layer.
-func WorkflowList(cfg *config.Config, workspaceDirPath string) ([]WorkflowSummary, error) {
-	workflows, err := cfg.LoadWorkflows(workspaceDirPath)
+// of ancestor overlays above invocationDir, sorted by id for stable output. An empty
+// invocationDir still surfaces the global layer.
+func WorkflowList(cfg *config.Config, invocationDir string) ([]WorkflowSummary, error) {
+	workflows, err := cfg.LoadWorkflows(invocationDir)
 	if err != nil {
 		return nil, fmt.Errorf("load workflows: %w", err)
 	}
@@ -109,8 +105,8 @@ func WorkflowList(cfg *config.Config, workspaceDirPath string) ([]WorkflowSummar
 // node's input wiring has drifted from its task's inputs_schema — the same
 // mismatch RunSetup would otherwise only catch once dispatch reaches that
 // node, by which point earlier nodes may already have run.
-func WorkflowShow(cfg *config.Config, workspaceDirPath, id string) (*WorkflowDetail, error) {
-	workflows, err := cfg.LoadWorkflows(workspaceDirPath)
+func WorkflowShow(cfg *config.Config, invocationDir, id string) (*WorkflowDetail, error) {
+	workflows, err := cfg.LoadWorkflows(invocationDir)
 	if err != nil {
 		return nil, fmt.Errorf("load workflows: %w", err)
 	}
@@ -118,7 +114,7 @@ func WorkflowShow(cfg *config.Config, workspaceDirPath, id string) (*WorkflowDet
 	if !ok {
 		return nil, &Error{Code: ErrInvalidInput, Message: fmt.Sprintf("workflow %q not found", id)}
 	}
-	defs, err := cfg.LoadTaskDefinitions(workspaceDirPath)
+	defs, err := cfg.LoadTaskDefinitions(invocationDir)
 	if err != nil {
 		return nil, fmt.Errorf("load task definitions: %w", err)
 	}
@@ -144,24 +140,19 @@ func WorkflowShow(cfg *config.Config, workspaceDirPath, id string) (*WorkflowDet
 		nodes = append(nodes, resolvedToNode(r, references[r.NodeID]))
 	}
 	detail := &WorkflowDetail{
-		ID:                wf.Address,
-		Name:              wf.Name,
-		Description:       wf.Description,
-		WorkspaceProvider: wf.WorkspaceProvider,
-		Display:           valueSources(wf.Display),
-		AutoSelect:        workflowAutoSelect(wf),
-		InputsSchema:      wf.InputsSchema,
-		Nodes:             nodes,
-		Populations:       workflowPopulationViews(wf.Populations),
-		Tick:              wf.Tick,
+		ID:           wf.Address,
+		Name:         wf.Name,
+		Description:  wf.Description,
+		Resource:     wf.Resource,
+		Display:      valueSources(wf.Display),
+		AutoSelect:   workflowAutoSelect(wf),
+		InputsSchema: wf.InputsSchema,
+		Nodes:        nodes,
+		Populations:  workflowPopulationViews(wf.Populations),
+		Tick:         wf.Tick,
 	}
-	if wf.WorkspaceProvider != "" {
-		workspaceProviders, err := cfg.LoadWorkspaceProviders()
-		if err != nil {
-			detail.WorkspaceProviderError = err.Error()
-		} else if prov, ok := workspaceProviders[wf.WorkspaceProvider]; ok {
-			detail.WorkspaceProviderInfo = &prov
-		}
+	if wf.Workdir != nil {
+		detail.Workdir = "nodes." + wf.Workdir.Node + ".outputs." + wf.Workdir.Key
 	}
 	if len(wf.Event.Channel) > 0 {
 		channels, err := cfg.LoadChannels()

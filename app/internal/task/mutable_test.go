@@ -3,10 +3,8 @@ package task
 import (
 	"os"
 	"path/filepath"
-	"strings"
 	"testing"
 
-	"github.com/kecbigmt/plecture/app/internal/config"
 	"github.com/kecbigmt/plecture/app/internal/lang"
 )
 
@@ -39,18 +37,18 @@ func TestMutableOutputKeys_NoSchemaMeansNothingMutable(t *testing.T) {
 	}
 }
 
-func TestMutableOutputKeys_WorkspaceDirMutableIsLoadError(t *testing.T) {
+func TestMutableOutputKeys_WorkspaceDirIsAnOrdinaryKey(t *testing.T) {
 	schema := map[string]any{
 		"properties": map[string]any{
 			"workspace_dir": map[string]any{"type": "string", "mutable": true},
 		},
 	}
-	_, err := MutableOutputKeys(schema, "")
-	if err == nil {
-		t.Fatal("expected error: workspace_dir is reserved always-immutable")
+	keys, err := MutableOutputKeys(schema, "")
+	if err != nil {
+		t.Fatalf("MutableOutputKeys: %v", err)
 	}
-	if !strings.Contains(err.Error(), "reserved") {
-		t.Errorf("unexpected message: %v", err)
+	if len(keys) != 1 || keys[0] != "workspace_dir" {
+		t.Errorf("keys = %v, want [workspace_dir]: no output name is reserved", keys)
 	}
 }
 
@@ -67,33 +65,6 @@ func TestMutableOutputKeys_FromFile(t *testing.T) {
 	}
 	if len(keys) != 1 || keys[0] != "pr_state" {
 		t.Errorf("keys = %v, want [pr_state]", keys)
-	}
-}
-
-// CompileWorkflow must reject a task whose schema declares workspace_dir mutable
-// — load-time failure, before any lifecycle command can run against it.
-func TestCompileWorkflow_RejectsWorkspaceDirMutableDeclaration(t *testing.T) {
-	wf := config.WorkflowFile{
-		ID:    "wf",
-		Nodes: []config.WorkflowNode{{ID: "bad", Uses: "bad"}},
-	}
-	defs := map[string]config.TaskDefinition{
-		"bad": {
-			ID:    "bad",
-			Setup: shellStub("echo '{}'"),
-			OutputsSchema: map[string]any{
-				"properties": map[string]any{
-					"workspace_dir": map[string]any{"type": "string", "mutable": true},
-				},
-			},
-		},
-	}
-	_, err := CompileWorkflow(wf, defs)
-	if err == nil {
-		t.Fatal("expected compile error")
-	}
-	if !strings.Contains(err.Error(), "reserved") {
-		t.Errorf("unexpected message: %v", err)
 	}
 }
 

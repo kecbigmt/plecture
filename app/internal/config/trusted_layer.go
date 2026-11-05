@@ -9,9 +9,8 @@ import (
 // and reads each declaration with one, which turns it into the runtime's own
 // shape.
 //
-// The per-workspace-dir ancestor cascade is deliberately excluded: a
-// workspace provider, a resource and a channel decide how a session's
-// identity is resolved and how a process is reached, and those belong to the
+// The ancestor overlay cascade is deliberately excluded: a resource and a
+// channel decide how an identifier is recognized and how a process is reached, and those belong to the
 // machine rather than to any directory a project owns. Such a declaration in
 // an ancestor overlay is skipped rather than refused, because a project's own
 // directory holding one is not a mistake — it simply does not participate.
@@ -28,7 +27,7 @@ func loadTrustedKind[T any](resolved []resolvedDefinition, one func(*lang.Defini
 }
 
 // trustedKind resolves one kind over the base layers alone. A caller loading a
-// kind the cascade does not reach has no workspace directory to pass, and
+// kind the cascade does not reach has no invocation directory to pass, and
 // reading the overlays anyway would only discover declarations it must skip.
 func (c *Config) trustedKind(kind lang.Kind) ([]resolvedDefinition, error) {
 	layers, err := c.discoverLayers("")

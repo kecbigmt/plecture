@@ -2,9 +2,8 @@
 // owns the effect-nesting machinery a chain of layers composes: setup/
 // cleanup execution, the `[id.inner]` joint, `[outputs.bind]` projection, and
 // `[terminal]` lookup — effects own these, not tasks. It also owns the
-// workspace-provider hooks (setup/cleanup/subscribe), which run before any
-// task DAG exists and take only plain, session-identifier-shaped values as
-// their context.
+// resource delivery hooks (subscribe/unsubscribe), which run outside any task
+// DAG and take only plain, identifier-shaped values as their context.
 //
 // Root-building that depends on a session's task-DAG state (node outputs,
 // self.state) stays in app/internal/task, which hands this package only the
@@ -16,6 +15,7 @@ import (
 	"bytes"
 	"context"
 	"errors"
+	"fmt"
 	"os"
 	"os/exec"
 	"syscall"
@@ -108,9 +108,12 @@ func runHostCmd(ctx context.Context, req ExecRequest, outBuf, errBuf *bytes.Buff
 	cmd.Stdout = outBuf
 	cmd.Stderr = errBuf
 	if req.Dir != "" {
-		if _, statErr := os.Stat(req.Dir); statErr == nil {
-			cmd.Dir = req.Dir
+		// A directory that is gone is a failed launch, not a cue to run
+		// somewhere else: an action's effect depends on where it runs.
+		if _, statErr := os.Stat(req.Dir); statErr != nil {
+			return fmt.Errorf("working directory: %w", statErr)
 		}
+		cmd.Dir = req.Dir
 	}
 	if len(req.Stdin) > 0 {
 		cmd.Stdin = bytes.NewReader(req.Stdin)
@@ -156,8 +159,8 @@ func runHostCmd(ctx context.Context, req ExecRequest, outBuf, errBuf *bytes.Buff
 	return cmd.Run()
 }
 
-// alwaysHostExecutor backs RunHook, the path used by workspace provider
-// setup/cleanup, workspace provider subscribe, and resource observe/finalize.
+// alwaysHostExecutor backs RunHook, the path used by resource
+// observe/finalize/subscribe/unsubscribe.
 // Unlike defaultExecutor, this is never swapped, not even by tests.
 var alwaysHostExecutor Executor = hostExecutor{}
 
@@ -185,8 +188,7 @@ func ExecHook(ctx context.Context, execution *lang.Execution, workDir string, en
 }
 
 // RunHook runs one resolved execution on the host, unconditionally: the path
-// workspace provider setup/cleanup, provider subscribe, and resource
-// observe/finalize take.
+// resource observe/finalize/subscribe/unsubscribe take.
 func RunHook(ctx context.Context, execution *lang.Execution, workDir string) (stdout, stderr []byte, err error) {
 	return alwaysHostExecutor.Run(ctx, requestFor(execution, workDir, nil, false))
 }

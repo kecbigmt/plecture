@@ -21,7 +21,7 @@ var judgeLeafDoneWhen = json.RawMessage(`{"all":[{"judge":"acceptance criteria a
 
 func TestRecordJudge_PersistsReviewerInput(t *testing.T) {
 	store := testStore(t)
-	cfg := &config.Config{WorkspaceDirsRoot: t.TempDir()}
+	cfg := &config.Config{}
 	seedSession(t, store, "owner/repo-1", "owner/repo", 1, "", map[string]*contract.TaskState{
 		"initial": {
 			Scope:    contract.TaskScopeSession,
@@ -68,7 +68,7 @@ func TestRecordJudge_PersistsReviewerInput(t *testing.T) {
 // the judged session, not the recorder.
 func TestRecordJudge_AppendsJudgeRecordedEvent(t *testing.T) {
 	store := testStore(t)
-	cfg := &config.Config{WorkspaceDirsRoot: t.TempDir()}
+	cfg := &config.Config{}
 	work := "owner/repo-1"
 	reviewer := "owner/repo-1+review"
 	seedSession(t, store, work, "owner/repo", 1, "", map[string]*contract.TaskState{
@@ -134,7 +134,7 @@ func TestRecordJudge_AppendsJudgeRecordedEvent(t *testing.T) {
 // re-walking the tree or assuming the reviewer session still exists.
 func TestRecordJudge_StampsRelationAndWorkflow(t *testing.T) {
 	store := testStore(t)
-	cfg := &config.Config{WorkspaceDirsRoot: t.TempDir()}
+	cfg := &config.Config{}
 	work := "owner/repo-1"
 	reviewer := "owner/repo-1+review"
 	seedSession(t, store, work, "owner/repo", 1, "", map[string]*contract.TaskState{
@@ -232,7 +232,7 @@ func TestJudgeInputs_NewRecordHonorsStampedEmptyWorkflow(t *testing.T) {
 
 func TestRecordJudge_RequiresRevision(t *testing.T) {
 	store := testStore(t)
-	cfg := &config.Config{WorkspaceDirsRoot: t.TempDir()}
+	cfg := &config.Config{}
 	seedSession(t, store, "owner/repo-1", "owner/repo", 1, "", map[string]*contract.TaskState{
 		"initial": {Scope: contract.TaskScopeSession, Status: contract.TaskStatusProduced},
 	})
@@ -253,7 +253,7 @@ func TestRecordJudge_RequiresRevision(t *testing.T) {
 func TestRecordJudge_RequiresJudgeSession(t *testing.T) {
 	t.Setenv("PLECT_SESSION_NAME", "")
 	store := testStore(t)
-	cfg := &config.Config{WorkspaceDirsRoot: t.TempDir()}
+	cfg := &config.Config{}
 	seedSession(t, store, "owner/repo-1", "owner/repo", 1, "", map[string]*contract.TaskState{
 		"initial": {
 			Scope:    contract.TaskScopeSession,
@@ -281,7 +281,7 @@ func TestRecordJudge_RequiresJudgeSession(t *testing.T) {
 // at record time, independent of any leaf relation policy.
 func TestRecordJudge_RejectsSelfReview(t *testing.T) {
 	store := testStore(t)
-	cfg := &config.Config{WorkspaceDirsRoot: t.TempDir()}
+	cfg := &config.Config{}
 	work := "owner/repo-1"
 	seedSession(t, store, work, "owner/repo", 1, "", map[string]*contract.TaskState{
 		"initial": {
@@ -535,7 +535,7 @@ func TestTickSession_KickCarriesStructuredUnmetItemsInEventMetadata(t *testing.T
 // instance with no done_when leaves to evaluate.
 func TestTickSession_StampsLastTickAt(t *testing.T) {
 	store := testStore(t)
-	cfg := &config.Config{WorkspaceDirsRoot: t.TempDir()}
+	cfg := &config.Config{}
 	seedSession(t, store, "owner/repo-1", "owner/repo", 1, "", nil)
 
 	before := store.Get("owner/repo-1").LastTickAt
@@ -863,7 +863,7 @@ func checkFixtureConfig(t *testing.T) *config.Config {
 
 func checkScenarioConfig(t *testing.T, heartbeatBudget int) *config.Config {
 	t.Helper()
-	return writeWorkflowFixture(t, t.TempDir(), "default", []taskFixture{{
+	return writeWorkflowFixture(t, "default", []taskFixture{{
 		id:    "work",
 		scope: contract.TaskScopeSession,
 		extra: fmt.Sprintf(`
@@ -1004,7 +1004,7 @@ func TestTickSession_EscalatesAfterHeartbeatBudget_PushesToParent(t *testing.T) 
 
 func checkStatusOnlyConfig(t *testing.T, heartbeatBudget int) *config.Config {
 	t.Helper()
-	return writeWorkflowFixture(t, t.TempDir(), "default", []taskFixture{{
+	return writeWorkflowFixture(t, "default", []taskFixture{{
 		id:    "work",
 		scope: contract.TaskScopeSession,
 		extra: fmt.Sprintf(`

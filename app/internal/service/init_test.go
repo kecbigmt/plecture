@@ -14,7 +14,6 @@ func TestWriteInitConfig_WritesOnlyAnsweredFields(t *testing.T) {
 	path := filepath.Join(dir, "config.toml")
 
 	if err := WriteInitConfig(path, InitConfigValues{
-		WorkspaceDirsRoot: "/home/user/workdirs",
 		ResourceAllowlist: []string{"^acme/"},
 	}); err != nil {
 		t.Fatalf("WriteInitConfig: unexpected error: %v", err)
@@ -28,8 +27,8 @@ func TestWriteInitConfig_WritesOnlyAnsweredFields(t *testing.T) {
 	if !strings.Contains(got, "schema_version = 2") {
 		t.Errorf("config.toml missing schema_version:\n%s", got)
 	}
-	if !strings.Contains(got, `workspace_dirs_root = "/home/user/workdirs"`) {
-		t.Errorf("config.toml missing workspace_dirs_root:\n%s", got)
+	if strings.Contains(got, "workspace_dirs_root") {
+		t.Errorf("config.toml must not carry the retired workspace_dirs_root:\n%s", got)
 	}
 	if !strings.Contains(got, "^acme/") {
 		t.Errorf("config.toml missing resource_allowlist entry:\n%s", got)
@@ -43,7 +42,7 @@ func TestWriteInitConfig_OmitsEmptyAllowlist(t *testing.T) {
 	dir := t.TempDir()
 	path := filepath.Join(dir, "config.toml")
 
-	if err := WriteInitConfig(path, InitConfigValues{WorkspaceDirsRoot: "/home/user/workdirs"}); err != nil {
+	if err := WriteInitConfig(path, InitConfigValues{}); err != nil {
 		t.Fatalf("WriteInitConfig: unexpected error: %v", err)
 	}
 
@@ -59,11 +58,11 @@ func TestWriteInitConfig_OmitsEmptyAllowlist(t *testing.T) {
 func TestWriteInitConfig_RefusesToOverwriteExistingFile(t *testing.T) {
 	dir := t.TempDir()
 	path := filepath.Join(dir, "config.toml")
-	if err := os.WriteFile(path, []byte("workspace_dirs_root = \"/existing\"\n"), 0o644); err != nil {
+	if err := os.WriteFile(path, []byte("resource_allowlist = [\"^existing/\"]\n"), 0o644); err != nil {
 		t.Fatal(err)
 	}
 
-	err := WriteInitConfig(path, InitConfigValues{WorkspaceDirsRoot: "/new"})
+	err := WriteInitConfig(path, InitConfigValues{ResourceAllowlist: []string{"^new/"}})
 	if err == nil {
 		t.Fatal("want error overwriting an existing config.toml, got nil")
 	}
@@ -72,7 +71,7 @@ func TestWriteInitConfig_RefusesToOverwriteExistingFile(t *testing.T) {
 	if readErr != nil {
 		t.Fatal(readErr)
 	}
-	if !strings.Contains(string(data), "/existing") {
+	if !strings.Contains(string(data), "^existing/") {
 		t.Errorf("existing config.toml was clobbered: %s", data)
 	}
 }

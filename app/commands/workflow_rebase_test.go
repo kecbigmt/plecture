@@ -29,8 +29,8 @@ func TestWorkflowRebaseAllFiltersAndContinuesAfterFailure(t *testing.T) {
 	})
 	for path, body := range map[string]string{
 		"config.toml":          "schema_version = 2\n",
-		"workflows/work.toml":  "[work]\nkind = \"workflow\"\n[[work.nodes]]\nuses = \"runtime\"\n",
-		"workflows/other.toml": "[other]\nkind = \"workflow\"\n",
+		"workflows/work.toml":  "[work]\nkind = \"workflow\"\nresource = \"issue\"\n[[work.nodes]]\nuses = \"runtime\"\n",
+		"workflows/other.toml": "[other]\nkind = \"workflow\"\nresource = \"issue\"\n",
 		"tasks/runtime.toml":   "[runtime]\nkind = \"effect\"\nscope = \"run\"\n[runtime.setup]\ntype = \"shell\"\nscript = \"echo '{}'\"\n[runtime.health.alive]\ntype = \"shell\"\nscript = \"true\"\n",
 	} {
 		full := filepath.Join(configHome, path)

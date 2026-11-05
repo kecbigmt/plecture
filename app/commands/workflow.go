@@ -101,14 +101,8 @@ func writeWorkflowList(out io.Writer, workflows []service.WorkflowSummary, noHea
 var workflowShowCmd = &cobra.Command{
 	Use:   "show <id>",
 	Short: "Show full information about a workflow",
-	Long: `Show full information about a workflow: identity, workspace provider,
-inputs schema, node DAG, event channels, and populations.
-
-Exit code is nonzero when the workflow's referenced workspace provider is
-declared but fails to load — the failure is still printed (or included in
---json as workspace_provider_error) alongside everything else that resolved
-cleanly.`,
-	Args: cobra.ExactArgs(1),
+	Long:  `Show full information about a workflow: identity, entry resource, work directory, inputs schema, node DAG, event channels, and populations.`,
+	Args:  cobra.ExactArgs(1),
 	RunE: func(cmd *cobra.Command, args []string) error {
 		cfg, err := config.Load()
 		if err != nil {
@@ -130,9 +124,6 @@ cleanly.`,
 			fmt.Fprintln(cmd.OutOrStdout(), string(b))
 		} else if err := printWorkflowDetail(cmd.OutOrStdout(), detail); err != nil {
 			return err
-		}
-		if detail.WorkspaceProviderError != "" {
-			return fmt.Errorf("workspace provider %q failed to load: %s", detail.WorkspaceProvider, detail.WorkspaceProviderError)
 		}
 		return nil
 	},
@@ -238,29 +229,12 @@ func printWorkflowDetail(out io.Writer, d *service.WorkflowDetail) error {
 	if d.Description != "" {
 		fmt.Fprintf(w, "Description:\t%s\n", d.Description)
 	}
-	if d.WorkspaceProvider != "" {
-		fmt.Fprintf(w, "Workspace provider:\t%s\n", d.WorkspaceProvider)
+	fmt.Fprintf(w, "Resource:\t%s\n", d.Resource)
+	if d.Workdir != "" {
+		fmt.Fprintf(w, "Workdir:\t%s\n", d.Workdir)
 	}
 	if !d.AutoSelect {
 		fmt.Fprintln(w, "Auto-select:\tfalse")
-	}
-	if d.WorkspaceProviderInfo != nil {
-		if d.WorkspaceProviderInfo.Match != "" {
-			fmt.Fprintf(w, "Resolver:\t%s → %s\n", d.WorkspaceProviderInfo.Match, d.WorkspaceProviderInfo.Name.Source())
-		}
-		var hooks []string
-		if d.WorkspaceProviderInfo.Setup != nil {
-			hooks = append(hooks, "setup")
-		}
-		if d.WorkspaceProviderInfo.Cleanup != nil {
-			hooks = append(hooks, "cleanup")
-		}
-		if len(hooks) > 0 {
-			fmt.Fprintf(w, "Workspace provider hooks:\t%s (use --json for the scripts)\n", strings.Join(hooks, ", "))
-		}
-	}
-	if d.WorkspaceProviderError != "" {
-		fmt.Fprintf(w, "Workspace provider error:\t%s\n", d.WorkspaceProviderError)
 	}
 	if d.Tick != nil {
 		if len(d.Tick.On) > 0 {

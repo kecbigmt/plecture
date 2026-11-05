@@ -20,13 +20,12 @@ import (
 const statusFlowLimit = 5
 
 // StatusIdentity is layer 1: what this session is, independent of whether it
-// is currently running. No workspace-provider-shaped field belongs here —
-// ResourceID is an opaque string any workspace provider can own.
+// is currently running. No plugin-shaped field belongs here — ResourceID is
+// an opaque string any resource can own.
 type StatusIdentity struct {
 	SessionName   string                         `json:"session_name"`
 	ResourceID    string                         `json:"resource_id,omitempty"`
 	Title         string                         `json:"title,omitempty"`
-	Branch        string                         `json:"branch,omitempty"`
 	Workflow      string                         `json:"workflow,omitempty"`
 	Revision      string                         `json:"revision,omitempty"`
 	Population    *contract.PopulationProvenance `json:"population,omitempty"`
@@ -48,20 +47,24 @@ type StatusRuntimeTask struct {
 
 // StatusRuntime is layer 2: whether the session is actually alive right now.
 type StatusRuntime struct {
-	Run                domain.RunState     `json:"run"`
-	Sleep              string              `json:"sleep,omitempty"`
-	QueuePosition      int                 `json:"queue_position,omitempty"`
-	WakeReason         string              `json:"wake_reason,omitempty"`
-	Health             domain.HealthState  `json:"health,omitempty"`
-	RepairStatus       string              `json:"repair_status,omitempty"`
-	RepairReason       string              `json:"repair_reason,omitempty"`
-	LastCheckedAt      time.Time           `json:"last_checked_at,omitzero"`
-	LastActivityAt     time.Time           `json:"last_activity_at,omitzero"`
-	Tasks              []StatusRuntimeTask `json:"tasks,omitempty"`
-	WorkspaceDirPath   string              `json:"workspace_dir_path,omitempty"`
-	WorkspaceDirExists bool                `json:"workspace_dir_exists"`
-	Message            *domain.Message     `json:"message,omitempty"`
-	AttachCommand      string              `json:"attach_command,omitempty"`
+	Run            domain.RunState     `json:"run"`
+	Sleep          string              `json:"sleep,omitempty"`
+	QueuePosition  int                 `json:"queue_position,omitempty"`
+	WakeReason     string              `json:"wake_reason,omitempty"`
+	Health         domain.HealthState  `json:"health,omitempty"`
+	RepairStatus   string              `json:"repair_status,omitempty"`
+	RepairReason   string              `json:"repair_reason,omitempty"`
+	LastCheckedAt  time.Time           `json:"last_checked_at,omitzero"`
+	LastActivityAt time.Time           `json:"last_activity_at,omitzero"`
+	Tasks          []StatusRuntimeTask `json:"tasks,omitempty"`
+	// Workdir is the directory the workflow's `workdir` evaluates to against
+	// the nodes produced right now, and WorkdirExists whether it is present
+	// on disk. Both are omitted for a workflow that declares none, and
+	// neither is stored.
+	Workdir       string          `json:"workdir,omitempty"`
+	WorkdirExists *bool           `json:"workdir_exists,omitempty"`
+	Message       *domain.Message `json:"message,omitempty"`
+	AttachCommand string          `json:"attach_command,omitempty"`
 }
 
 // StatusChain is one [[chains]] evaluation against a task instance's facts —
@@ -121,7 +124,7 @@ type StatusFlow struct {
 }
 
 // StatusResult is the pure fact renderer `plect status` reports: four layers of
-// state, no workspace-provider-shaped field among them.
+// state, no plugin-shaped field among them.
 type StatusResult struct {
 	Identity StatusIdentity `json:"identity"`
 	Runtime  StatusRuntime  `json:"runtime"`
@@ -164,7 +167,7 @@ func Status(cfg *config.Config, store *state.Store, identifier string) (*StatusR
 		return nil, err
 	}
 
-	wtExists := fileExists(session.WorkspaceDirPath)
+	workdir, workdirExists := statusWorkdir(cfg, session)
 	runState := sessionRunState(cfg, session)
 	sleep, queuePosition, err := sleepVisibility(cfg, store, session)
 	if err != nil {
@@ -228,7 +231,6 @@ func Status(cfg *config.Config, store *state.Store, identifier string) (*StatusR
 			SessionName:   sessionName,
 			ResourceID:    identityResourceID(session),
 			Title:         displayTitle,
-			Branch:        domain.SessionBranch(session),
 			Workflow:      session.Workflow,
 			Revision:      shortWorkflowRevision(session.WorkflowRevision),
 			Population:    session.Population,
@@ -239,20 +241,20 @@ func Status(cfg *config.Config, store *state.Store, identifier string) (*StatusR
 			CreatedAt:     session.CreatedAt,
 		},
 		Runtime: StatusRuntime{
-			Run:                runState,
-			Sleep:              sleep,
-			QueuePosition:      queuePosition,
-			WakeReason:         wakeReason,
-			Health:             healthState,
-			RepairStatus:       repairStatus,
-			RepairReason:       repairReason,
-			LastCheckedAt:      healthReport.LastCheckedAt,
-			LastActivityAt:     healthReport.LastActivityAt,
-			Tasks:              runtimeTaskViews(session),
-			WorkspaceDirPath:   session.WorkspaceDirPath,
-			WorkspaceDirExists: wtExists,
-			Message:            LatestStatusMessage(store, sessionName),
-			AttachCommand:      attachCommandFor(cfg, session),
+			Run:            runState,
+			Sleep:          sleep,
+			QueuePosition:  queuePosition,
+			WakeReason:     wakeReason,
+			Health:         healthState,
+			RepairStatus:   repairStatus,
+			RepairReason:   repairReason,
+			LastCheckedAt:  healthReport.LastCheckedAt,
+			LastActivityAt: healthReport.LastActivityAt,
+			Tasks:          runtimeTaskViews(session),
+			Workdir:        workdir,
+			WorkdirExists:  workdirExists,
+			Message:        LatestStatusMessage(store, sessionName),
+			AttachCommand:  attachCommandFor(cfg, session),
 		},
 		Work:     statusTaskViews(cfg, declarations, session, sessions, actionsByInstance, chainsByInstance),
 		Flow:     StatusFlow{Events: events},
@@ -260,11 +262,24 @@ func Status(cfg *config.Config, store *state.Store, identifier string) (*StatusR
 	}, nil
 }
 
+// statusWorkdir evaluates the session's workdir for display. A workdir that
+// cannot be evaluated yet (its producer is not produced) is reported as absent
+// rather than as an error: `plect status` reports facts, it doesn't fail on
+// them.
+func statusWorkdir(cfg *config.Config, session *domain.Session) (string, *bool) {
+	dir, err := sessionWorkdir(cfg, session)
+	if err != nil || dir == "" {
+		return "", nil
+	}
+	exists := fileExists(dir)
+	return dir, &exists
+}
+
 // attachCommandFor resolves the declared attach command for display, mirroring
 // Attach's lookup but degrading to "" (no attach target, or not yet produced)
 // instead of an error — `plect status` reports facts, it doesn't fail on them.
 func attachCommandFor(cfg *config.Config, session *domain.Session) string {
-	plan, err := buildPlanForSession(cfg, session.WorkspaceDirPath, session)
+	plan, err := buildPlanForSession(cfg, session)
 	if err != nil {
 		return ""
 	}
@@ -306,7 +321,7 @@ func runtimeTaskViews(session *domain.Session) []StatusRuntimeTask {
 	var out []StatusRuntimeTask
 	for _, key := range sortedTaskKeys(merged) {
 		st := merged[key]
-		if st == nil || st.Scope != contract.TaskScopeRun || key == contract.WorkflowPseudoNodeID {
+		if st == nil || st.Scope != contract.TaskScopeRun {
 			continue
 		}
 		out = append(out, StatusRuntimeTask{Instance: key, Status: st.Status})
