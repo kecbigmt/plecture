@@ -36,6 +36,23 @@ and in the explicit graph used to derive preparation nodes, before
 default-workdir edges are added. A workflow has no provider node or special
 lifecycle.
 
+A node may declare `subscription = { from = "self.outputs.<key>" }` to bind
+its session to the resource identifier produced at that output. This is a
+single projection, separate from the node's setup inputs; it reads no other
+node or value root and supplies an empty resource action input object. After
+setup produces the node, core persists the identifier and runs the matching
+resource's `subscribe` action. After successful cleanup, core runs its
+`unsubscribe` action when no entry resource, task, or other live node still
+needs that identifier. A failed subscription is queued for retry. A resource
+requiring action inputs cannot be bound this way: an identifier known at load
+time causes a load error, and a runtime identifier reports a subscription
+failure. Omitting `subscription` leaves the node's output available without
+binding delivery.
+
+Changing only `subscription` in a workflow revision follows the ordinary
+node-change classification: a session-scoped node requires recreation and a
+run-scoped node requires a down/up restart.
+
 `workdir`, when present, is exactly one projection from a node output and must
 resolve to an absolute local filesystem directory path. Environments without a
 local directory omit it:

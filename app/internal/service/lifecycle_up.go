@@ -68,6 +68,7 @@ func Up(cfg *config.Config, store *state.Store, params UpParams) (*UpResult, err
 		if upErr != nil {
 			return upErr
 		}
+		flushPendingDeliveryLogged(cfg, store, name)
 		if params.HumanInitiated {
 			if err := resetRepairStreak(store, name, "manual_up"); err != nil {
 				return &Error{Code: ErrExecutionFailed, Message: fmt.Sprintf("up completed but repair reset event failed: %v", err)}
@@ -265,7 +266,7 @@ func upUnlocked(cfg *config.Config, store *state.Store, params UpParams) (*UpRes
 			previousRunSetups[node.NodeID] = old.SetupAt
 		}
 	}
-	setupErr := runNodeSetup(context.Background(), plan.UpOrder(), sessionVars(cfg, session, plan), session, params.Observer)
+	wiredNodes, setupErr := runNodeSetup(context.Background(), cfg, store, plan.UpOrder(), sessionVars(cfg, session, plan), session, params.Observer)
 	session.UpdatedAt = time.Now()
 	// A run-scope node's setup script can itself shell out to a nested `plect
 	// task setup` against this same session (e.g. goal_bootstrap re-deriving
@@ -275,9 +276,10 @@ func upUnlocked(cfg *config.Config, store *state.Store, params UpParams) (*UpRes
 	// would then overwrite disk with our in-memory map, taken before the
 	// nested write landed, silently dropping it — the same hazard mergeTasks
 	// already exists to close for Create's initial_task dispatcher.
-	if err := mergeTasks(store, sessionName, session); err != nil {
+	if err := mergeTasksWithSubscriptions(store, sessionName, session, wiredNodes); err != nil {
 		return nil, &Error{Code: ErrExecutionFailed, Message: fmt.Sprintf("failed to save session state: %v", err)}
 	}
+	wireProducedNodeSubscriptions(cfg, store, sessionName, domain.SessionBranch(session), wiredNodes)
 	if setupErr != nil {
 		return nil, &Error{Code: ErrExecutionFailed, Message: setupErr.Error()}
 	}
@@ -361,7 +363,7 @@ func cleanupStaleWorkflowNodes(cfg *config.Config, store *state.Store, sessionNa
 	if len(stale) == 0 {
 		return nil
 	}
-	cleanupErr := runTaskCleanup(context.Background(), stale, sessionVars(cfg, session, plan), session, observer)
+	cleanupErr := runTaskCleanup(context.Background(), cfg, store, stale, sessionVars(cfg, session, plan), session, observer)
 	session.UpdatedAt = time.Now()
 	if err := persistStaleWorkflowCleanup(store, sessionName, session, stale); err != nil {
 		return &Error{Code: ErrExecutionFailed, Message: fmt.Sprintf("failed to save session state: %v", err)}
@@ -474,7 +476,7 @@ func recreateSessionRuntime(cfg *config.Config, store *state.Store, sessionName 
 	if teardownErr != nil {
 		return nil, &Error{Code: ErrExecutionFailed, Message: teardownErr.Error()}
 	}
-	cleanupErr := runTaskCleanup(context.Background(), teardown, sessionVars(cfg, session, teardownPlan), session, observer)
+	cleanupErr := runTaskCleanup(context.Background(), cfg, store, teardown, sessionVars(cfg, session, teardownPlan), session, observer)
 	session.UpdatedAt = time.Now()
 	if cleanupErr != nil {
 		if err := mergeTasks(store, sessionName, session); err != nil {
@@ -539,11 +541,12 @@ func recreateSessionRuntime(cfg *config.Config, store *state.Store, sessionName 
 	if err := replaceRuntimeState(store, sessionName, session); err != nil {
 		return nil, &Error{Code: ErrExecutionFailed, Message: fmt.Sprintf("failed to save session state: %v", err)}
 	}
-	setupErr = runNodeSetup(context.Background(), setupPlan.Session, sessionVars(cfg, session, setupPlan), session, observer)
+	wiredNodes, setupErr := runNodeSetup(context.Background(), cfg, store, setupPlan.Session, sessionVars(cfg, session, setupPlan), session, observer)
 	session.UpdatedAt = time.Now()
-	if err := mergeTasks(store, sessionName, session); err != nil {
+	if err := mergeTasksWithSubscriptions(store, sessionName, session, wiredNodes); err != nil {
 		return nil, &Error{Code: ErrExecutionFailed, Message: fmt.Sprintf("failed to save session state: %v", err)}
 	}
+	wireProducedNodeSubscriptions(cfg, store, sessionName, domain.SessionBranch(session), wiredNodes)
 	if setupErr != nil {
 		return nil, &Error{Code: ErrExecutionFailed, Message: setupErr.Error()}
 	}

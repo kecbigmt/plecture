@@ -110,6 +110,7 @@ CREATE TABLE node_executions (
     scope TEXT NOT NULL CHECK (scope IN ('session', 'run')),
     status TEXT NOT NULL CHECK (status IN ('produced', 'failed', 'cleaned')),
     resource TEXT,
+    subscription TEXT,
     inputs_json TEXT CHECK (inputs_json IS NULL OR json_valid(inputs_json)),
     outputs_json TEXT CHECK (outputs_json IS NULL OR json_valid(outputs_json)),
     state_json TEXT CHECK (state_json IS NULL OR json_valid(state_json)),

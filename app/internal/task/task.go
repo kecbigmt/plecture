@@ -56,6 +56,7 @@ type Resolved struct {
 	// time against the node-inputs surface and persisted as the instance's
 	// own inputs.
 	Inputs        map[string]*lang.Value
+	Subscription  string
 	InputsSchema  *jsonschema.Schema // optional: validated against resolved inputs
 	OutputsSchema *jsonschema.Schema
 	// MutableOutputs lists output keys declared `mutable = true` in the
@@ -256,6 +257,7 @@ func resolveWorkflowNodes(wf config.WorkflowFile, defs map[string]config.TaskDef
 		// (the address defs is actually keyed by) instead.
 		resolved.TaskID = node.Uses
 		resolved.Inputs = node.Inputs
+		resolved.Subscription = node.Subscription
 		out = append(out, resolved)
 	}
 	if err := deriveDependsOn(out, wf.Outputs); err != nil {

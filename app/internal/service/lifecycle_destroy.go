@@ -145,7 +145,7 @@ func destroyUnlocked(cfg *config.Config, store *state.Store, params DestroyParam
 	if teardownErr != nil {
 		return nil, &Error{Code: ErrExecutionFailed, Message: teardownErr.Error()}
 	}
-	if cleanupErr := runTaskCleanup(context.Background(), teardown, sessionVars(cfg, session, plan), session, params.Observer); cleanupErr != nil {
+	if cleanupErr := runTaskCleanup(context.Background(), cfg, store, teardown, sessionVars(cfg, session, plan), session, params.Observer); cleanupErr != nil {
 		session.UpdatedAt = time.Now()
 		putBestEffort(store, session, "run cleanup failure")
 		if !params.Force {

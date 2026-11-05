@@ -206,7 +206,7 @@ func cleanupRebasedNodes(cfg *config.Config, store *state.Store, session *domain
 		return nil
 	}
 	observer = withNodeResultRecording(store, session.Name, observer)
-	if err := runTaskCleanup(context.Background(), cleanup, sessionVars(cfg, session, plan), session, observer); err != nil {
+	if err := runTaskCleanup(context.Background(), cfg, store, cleanup, sessionVars(cfg, session, plan), session, observer); err != nil {
 		return err
 	}
 	session.UpdatedAt = time.Now()

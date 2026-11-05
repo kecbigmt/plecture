@@ -980,6 +980,17 @@
                   "$ref": "#/$defs/dataValue"
                 }
               },
+              "subscription": {
+                "type": "object",
+                "additionalProperties": false,
+                "required": ["from"],
+                "properties": {
+                  "from": {
+                    "type": "string",
+                    "pattern": "^self\\.outputs\\.[A-Za-z_][A-Za-z0-9_]*$"
+                  }
+                }
+              },
               "blocks": {
                 "type": "array",
                 "items": {

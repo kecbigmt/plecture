@@ -248,7 +248,7 @@ func setupTaskDocument(cfg *config.Config, store *state.Store, resolvedName stri
 	recordLifecycle(store, resolvedName, "task_setup", fmt.Sprintf("instantiated %s", key))
 	appendInstruction(store, resolvedName, key, params.Resource, instruction)
 
-	subscribed, subscribeErrMsg := wireDeliveryOnSetup(cfg, store, resolvedName, params.Resource, domain.SessionBranch(session))
+	subscribed, subscribeErrMsg := wireDeliveryOnSetup(cfg, store, resolvedName, params.Resource, domain.SessionBranch(session), false)
 
 	return &TaskSetupResult{
 		SessionName: resolvedName,

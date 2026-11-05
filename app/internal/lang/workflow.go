@@ -13,10 +13,11 @@ import (
 // cascade layer may add a node whose inputs read a base layer's node, so
 // which ids resolve is a question only the merged definition answers.
 type WorkflowNode struct {
-	ID     string
-	Uses   string
-	Reads  []string
-	Blocks []string
+	ID           string
+	Uses         string
+	Reads        []string
+	Blocks       []string
+	Subscription string
 }
 
 // nodeReadPrefix is the projection that declares a dependency edge:
@@ -79,7 +80,7 @@ func WorkflowEventChannels(def *Definition) ([]map[string]any, error) {
 
 func workflowNode(entry map[string]any, pos Position, outputs map[string]*Value) (WorkflowNode, error) {
 	var node WorkflowNode
-	if err := rejectUnknownFields(entry, pos, "id", "uses", "inputs", "blocks"); err != nil {
+	if err := rejectUnknownFields(entry, pos, "id", "uses", "inputs", "blocks", "subscription"); err != nil {
 		return node, err
 	}
 	raw, declared := entry["uses"]
@@ -117,6 +118,21 @@ func workflowNode(entry map[string]any, pos Position, outputs map[string]*Value)
 		return node, err
 	}
 	node.Blocks = blocks
+	if raw, ok := entry["subscription"]; ok {
+		at := childPos(pos, "subscription")
+		tbl, err := table(raw, at)
+		if err != nil {
+			return node, err
+		}
+		if err := rejectUnknownFields(tbl, at, "from"); err != nil {
+			return node, err
+		}
+		path, ok := tbl["from"].(string)
+		if !ok || len(tbl) != 1 || !strings.HasPrefix(path, "self.outputs.") || !isValidID(strings.TrimPrefix(path, "self.outputs.")) {
+			return node, newDiag(CodeFromRoot, LayerSemantic, at, "subscription must project one of this node's own outputs as self.outputs.<key>")
+		}
+		node.Subscription = strings.TrimPrefix(path, "self.outputs.")
+	}
 	return node, nil
 }
 

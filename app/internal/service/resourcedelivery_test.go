@@ -109,6 +109,14 @@ args = ["`+record+`"]
 			}
 		})
 	}
+	store := testStore(t)
+	seedSessionWithNodes(t, store, "s", "org/repo", 1, "work", nil)
+	if subscribed, msg := wireDeliveryOnSetup(cfg, store, "s", resource, "", false); subscribed || msg != "" {
+		t.Fatalf("automatic delivery subscribed=%v message=%q, want a quiet skip", subscribed, msg)
+	}
+	if got := subscriptionRetryCount(t, store, "s", retrySubscribe, resource, false); got != 0 {
+		t.Fatalf("automatic delivery queued %d retries for invalid empty inputs", got)
+	}
 }
 
 func TestSubscribeIfWired_IdempotentOnRepeatedCall(t *testing.T) {

@@ -52,14 +52,24 @@ func dequeuePendingDelivery(store *state.Store, retry persistence.SubscriptionRe
 	return db.DeleteSubscriptionRetry(context.Background(), retry.SessionID, retry.Action, retry.ResourceID)
 }
 
-// flushPendingDeliveryLogged is TaskSetup's/TaskCleanup's/Destroy's own call
-// site for flushPendingDelivery, logging what it could not resolve since
-// none of them has a result field for an unrelated resource's retry failure.
+func dequeuePendingSubscribe(store *state.Store, sessionName, resourceID string) error {
+	db, err := retryStore(store)
+	if err != nil {
+		return err
+	}
+	return db.DeleteSubscriptionRetryForLiveSession(context.Background(), sessionName, retrySubscribe, resourceID)
+}
+
 func flushPendingDeliveryLogged(cfg *config.Config, store *state.Store, sessionName string) {
+	RetryPendingDelivery(cfg, store, sessionName)
+	sweepOrphanedPendingDeliveries(cfg, store)
+}
+
+// Sessions without task activity still need their pending subscriptions retried.
+func RetryPendingDelivery(cfg *config.Config, store *state.Store, sessionName string) {
 	for _, err := range flushPendingDelivery(cfg, store, sessionName) {
 		slog.Default().Warn("subscription retry flush failed", "session", sessionName, "error", err)
 	}
-	sweepOrphanedPendingDeliveries(cfg, store)
 }
 
 // sweepOrphanedPendingDeliveries handles retries owned by retained destroyed
@@ -110,9 +120,6 @@ func sweepOrphanedPendingDeliveries(cfg *config.Config, store *state.Store) {
 	}
 }
 
-// flushPendingDelivery retries every operation owned by sessionName's live
-// incarnation under its delivery lock. Ordinary activity, not a background
-// worker, drains live retries.
 func flushPendingDelivery(cfg *config.Config, store *state.Store, sessionName string) []error {
 	var errs []error
 	if lockErr := withDeliveryLock(store, sessionName, func() {
@@ -147,7 +154,7 @@ func flushOnePendingDelivery(cfg *config.Config, store *state.Store, retry persi
 		if fresh == nil || !resourceStillNeededBySession(fresh, retry.ResourceID) {
 			return dequeuePendingDelivery(store, retry)
 		}
-		subscribed, err := subscribeIfWired(cfg, retry.Session, retry.ResourceID, domain.SessionBranch(fresh))
+		subscribed, err := subscribeIfWiredWithPolicy(cfg, retry.Session, retry.ResourceID, domain.SessionBranch(fresh), nodeSubscriptionNeededBySession(fresh, retry.ResourceID))
 		if err != nil || !subscribed {
 			return err
 		}

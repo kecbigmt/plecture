@@ -153,6 +153,14 @@ func (s *Store) Update(name string, fn func(*domain.Session) error) error {
 	return db.UpdateSession(context.Background(), name, fn)
 }
 
+func (s *Store) UpdateWithSubscriptionRetries(name string, fn func(*domain.Session) error, resources []string) error {
+	db, err := s.dbHandle()
+	if err != nil {
+		return fmt.Errorf("state: update %q: %w", name, err)
+	}
+	return db.UpdateSessionWithSubscriptionRetries(context.Background(), name, fn, resources)
+}
+
 // PruneReleasedNode reports whether name's node_id row was pruned; see
 // persistence.DB.PruneReleasedNode.
 func (s *Store) PruneReleasedNode(name, nodeID string) (bool, error) {

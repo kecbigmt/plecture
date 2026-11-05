@@ -284,10 +284,11 @@ func workflowNodesFrom(def *lang.Definition, pos lang.Position) ([]WorkflowNode,
 			return nil, err
 		}
 		out = append(out, WorkflowNode{
-			ID:     node.ID,
-			Uses:   node.Uses,
-			Inputs: inputs,
-			Blocks: node.Blocks,
+			ID:           node.ID,
+			Uses:         node.Uses,
+			Inputs:       inputs,
+			Blocks:       node.Blocks,
+			Subscription: node.Subscription,
 		})
 	}
 	return out, nil

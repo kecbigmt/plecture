@@ -214,15 +214,16 @@ func createWithWorkflowSetup(cfg *config.Config, store *state.Store, params Crea
 	if err != nil {
 		return nil, &Error{Code: ErrExecutionFailed, Message: err.Error()}
 	}
-	tasksErr := runNodeSetup(context.Background(), plan.Session, sessionVars(cfg, session, plan), session, params.Observer)
+	wiredNodes, tasksErr := runNodeSetup(context.Background(), cfg, store, plan.Session, sessionVars(cfg, session, plan), session, params.Observer)
 	session.UpdatedAt = time.Now()
 	// A session node (the initial_task dispatcher) can shell out to a nested
 	// `plect task setup` subprocess that writes its instance straight to disk.
 	// Overlay our in-memory task entries onto the freshly-read session instead
 	// of a blind Put so that nested write (e.g. the `initial` task) survives.
-	if err := mergeTasks(store, sessionName, session); err != nil {
+	if err := mergeTasksWithSubscriptions(store, sessionName, session, wiredNodes); err != nil {
 		return nil, &Error{Code: ErrExecutionFailed, Message: fmt.Sprintf("failed to save session state: %v", err)}
 	}
+	wireProducedNodeSubscriptions(cfg, store, sessionName, domain.SessionBranch(session), wiredNodes)
 	if tasksErr != nil {
 		return nil, &Error{Code: ErrExecutionFailed, Message: tasksErr.Error()}
 	}
@@ -236,9 +237,10 @@ func createWithWorkflowSetup(cfg *config.Config, store *state.Store, params Crea
 
 	// Binding implies delivery for the session's own resource too, not just
 	// a dynamic task setup's own bound one.
-	if _, errMsg := wireDeliveryOnSetup(cfg, store, sessionName, resource, domain.SessionBranch(session)); errMsg != "" {
+	if _, errMsg := wireDeliveryOnSetup(cfg, store, sessionName, resource, domain.SessionBranch(session), false); errMsg != "" {
 		slog.Warn("resource delivery wiring failed at session create", "session", sessionName, "resource", resource, "error", errMsg)
 	}
+	flushPendingDeliveryLogged(cfg, store, sessionName)
 
 	// Record lifecycle.created on the first successful create (idempotent across
 	// retries of a partial failure and re-runs of an already-created session).
