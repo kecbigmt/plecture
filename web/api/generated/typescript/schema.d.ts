@@ -177,8 +177,8 @@ export interface components {
             /** Format: date-time */
             lastActivityAt?: string;
             tasks?: components["schemas"]["SessionTaskSummary"][];
-            workspaceDirPath?: string;
-            workspaceDirExists: boolean;
+            workdir?: string;
+            workdirExists?: boolean;
             message?: components["schemas"]["SessionMessage"];
             warnings?: string[];
             destroyed?: boolean;
@@ -192,7 +192,6 @@ export interface components {
             /** @description Absent and empty are equivalent for every optional field on this model: the API omits an unset value rather than emitting it as `null` or `""`, mirroring the Go source's `omitempty` struct tags. */
             resourceId?: string;
             title?: string;
-            branch?: string;
             workflow?: string;
             tag?: string;
             parentSession?: string;
@@ -224,8 +223,8 @@ export interface components {
             /** Format: date-time */
             lastActivityAt?: string;
             tasks?: components["schemas"]["SessionTaskSummary"][];
-            workspaceDirPath?: string;
-            workspaceDirExists: boolean;
+            workdir?: string;
+            workdirExists?: boolean;
             message?: components["schemas"]["SessionMessage"];
         };
         SessionSummary: {
@@ -239,7 +238,6 @@ export interface components {
             /** Format: date-time */
             lastActiveAt?: string;
             message?: components["schemas"]["SessionMessage"];
-            branch?: string;
             parentSession?: string;
             tasks?: components["schemas"]["SessionTaskSummary"][];
         };

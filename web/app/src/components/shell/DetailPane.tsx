@@ -58,7 +58,6 @@ function SessionDetailContent({ sessionName }: { sessionName: string }) {
             </span>
           </Row>
         )}
-        {s.branch && <Row label="branch">{s.branch}</Row>}
         {s.workflow && <Row label="workflow">{s.workflow}</Row>}
         {s.tag && <Row label="tag">{s.tag}</Row>}
         {s.parentSession && <Row label="parent">{s.parentSession}</Row>}
@@ -66,10 +65,11 @@ function SessionDetailContent({ sessionName }: { sessionName: string }) {
           <Row label="children">{s.children.join(", ")}</Row>
         )}
         <Row label="created">{new Date(s.createdAt).toLocaleString()}</Row>
-        <Row label="workspace">
-          {s.workspaceDirExists ? "present" : "absent"}
-          {s.workspaceDirPath ? ` (${s.workspaceDirPath})` : ""}
-        </Row>
+        {s.workdir && (
+          <Row label="workdir">
+            {s.workdirExists ? "present" : "absent"} ({s.workdir})
+          </Row>
+        )}
         {s.destroyed && (
           <Row label="destroyed">
             {s.destroyedAt ? new Date(s.destroyedAt).toLocaleString() : "yes"}
