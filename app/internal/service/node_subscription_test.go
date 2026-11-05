@@ -370,7 +370,7 @@ func TestNodeSubscriptionMissingOutputFailsSetup(t *testing.T) {
 }
 
 func TestRunNodeSetupReportsBothSetupAndSubscriptionErrors(t *testing.T) {
-	cfg := writeWorkflowFixture(t, t.TempDir(), "work", []taskFixture{
+	cfg := writeWorkflowFixture(t, "work", []taskFixture{
 		{id: "bad", scope: "run", setup: `echo '{}'`, cleanup: "true"},
 		{id: "broken", scope: "run", setup: "echo setup-broke >&2; exit 1", cleanup: "true"},
 	}, []nodeFixture{
@@ -380,7 +380,7 @@ func TestRunNodeSetupReportsBothSetupAndSubscriptionErrors(t *testing.T) {
 	store := testStore(t)
 	seedSessionWithNodes(t, store, "one", "org/repo", 1, "work", nil)
 	session := store.Get("one")
-	plan, err := buildPlanForSession(cfg, session.WorkspaceDirPath, session)
+	plan, err := buildPlanForSession(cfg, session)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -397,7 +397,7 @@ func TestRunNodeSetupReportsBothSetupAndSubscriptionErrors(t *testing.T) {
 }
 
 func TestRunNodeSetupWiresRemainingNodesWhenOneSubscriptionOutputIsInvalid(t *testing.T) {
-	cfg := writeWorkflowFixture(t, t.TempDir(), "work", []taskFixture{
+	cfg := writeWorkflowFixture(t, "work", []taskFixture{
 		{id: "bad", scope: "run", setup: `echo '{}'`, cleanup: "true"},
 		{id: "good", scope: "run", setup: `echo '{"permalink":"thread://good"}'`, cleanup: "true"},
 		{id: "blank", scope: "run", setup: `echo '{"permalink":"  "}'`, cleanup: "true"},
@@ -411,7 +411,7 @@ func TestRunNodeSetupWiresRemainingNodesWhenOneSubscriptionOutputIsInvalid(t *te
 	store := testStore(t)
 	seedSessionWithNodes(t, store, "one", "org/repo", 1, "work", nil)
 	session := store.Get("one")
-	plan, err := buildPlanForSession(cfg, session.WorkspaceDirPath, session)
+	plan, err := buildPlanForSession(cfg, session)
 	if err != nil {
 		t.Fatal(err)
 	}
