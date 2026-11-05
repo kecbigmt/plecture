@@ -2,6 +2,7 @@ package service
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"log/slog"
 	"os"
@@ -64,6 +65,7 @@ func runNodeSetup(ctx context.Context, cfg *config.Config, store *state.Store, o
 		}
 	}
 	wired := make(map[string]string)
+	errs := []error{err}
 	for _, r := range nodesOnly {
 		st := session.Nodes[r.NodeID]
 		if st == nil || st.Status != contract.TaskStatusProduced || r.Subscription == "" {
@@ -72,7 +74,8 @@ func runNodeSetup(ctx context.Context, cfg *config.Config, store *state.Store, o
 		if st.Subscription == "" {
 			resource, ok := st.Outputs[r.Subscription].(string)
 			if !ok || strings.TrimSpace(resource) == "" {
-				return wired, fmt.Errorf("node %q subscription output %q must be a non-empty resource ID", r.NodeID, r.Subscription)
+				errs = append(errs, fmt.Errorf("node %q subscription output %q must be a non-empty resource ID", r.NodeID, r.Subscription))
+				continue
 			}
 			st.Subscription = resource
 		}
@@ -80,7 +83,7 @@ func runNodeSetup(ctx context.Context, cfg *config.Config, store *state.Store, o
 			wired[r.NodeID] = st.Subscription
 		}
 	}
-	return wired, err
+	return wired, errors.Join(errs...)
 }
 
 func runTaskCleanup(ctx context.Context, cfg *config.Config, store *state.Store, ordered []task.Resolved, vars task.SessionVars, session *domain.Session, observer task.Observer) error {
