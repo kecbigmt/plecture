@@ -627,7 +627,27 @@ uses = "runner"
 }
 
 func TestUp_ProducerLivenessFailureDoesNotReleaseTheWorkdirUnderADynamicInstance(t *testing.T) {
-	f := newWDFixture(t, wdWorkdirWorkflow)
+	const producerOnly = `
+[review]
+kind     = "workflow"
+resource = "issue"
+workdir  = { from = "nodes.checkout.outputs.workspace_dir" }
+
+[[review.nodes]]
+uses = "checkout"
+`
+	for name, workflow := range map[string]string{
+		"with a consumer node":      wdWorkdirWorkflow,
+		"producer is the only node": producerOnly,
+	} {
+		t.Run(name, func(t *testing.T) {
+			testProducerLivenessUnderDynamicInstance(t, workflow)
+		})
+	}
+}
+
+func testProducerLivenessUnderDynamicInstance(t *testing.T, workflow string) {
+	f := newWDFixture(t, workflow)
 	wdWrite(t, filepath.Join(f.base, "tasks", "checkout.toml"), `
 [checkout]
 kind  = "effect"

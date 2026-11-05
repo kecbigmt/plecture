@@ -78,6 +78,7 @@ type Resolved struct {
 	Layers              []effect.Layer
 	Prep                bool
 	Workdir             *lang.WorkdirRef
+	WorkdirProducer     bool
 	CleanupInputsSchema map[string]any
 	// Unresolved marks a teardown-only entry whose current definition could
 	// not be found by TaskID, so there is no cleanup recipe to run at all.

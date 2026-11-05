@@ -120,15 +120,9 @@ func invalidateProducedNode(goCtx context.Context, r Resolved, ordered []Resolve
 // include the workdir's producer. Only the service layer knows how to clean a
 // dynamic instance, so the release is refused instead.
 func dynamicWorkdirHolder(release, ordered []Resolved, tasks map[string]*contract.TaskState) string {
-	producers := map[string]bool{}
-	for _, n := range ordered {
-		if n.Workdir != nil {
-			producers[n.Workdir.Node] = true
-		}
-	}
 	releasesProducer := false
 	for _, n := range release {
-		releasesProducer = releasesProducer || producers[n.NodeID]
+		releasesProducer = releasesProducer || n.WorkdirProducer
 	}
 	if !releasesProducer {
 		return ""

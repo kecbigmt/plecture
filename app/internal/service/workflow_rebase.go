@@ -192,7 +192,7 @@ func cleanupRebasedNodes(cfg *config.Config, store *state.Store, session *domain
 // A node's recorded setup directory is part of its execution contract, so
 // changing where it runs is a change of the node itself.
 func sameExecutionDirectory(old, next task.Resolved) bool {
-	return old.Prep == next.Prep && reflect.DeepEqual(old.Workdir, next.Workdir)
+	return old.Prep == next.Prep && old.WorkdirProducer == next.WorkdirProducer && reflect.DeepEqual(old.Workdir, next.Workdir)
 }
 
 // rebaseReleaseSet is every old node a rebase releases: the recreated and

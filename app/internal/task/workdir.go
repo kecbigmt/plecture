@@ -41,6 +41,7 @@ func applyWorkdir(wf config.WorkflowFile, nodes []Resolved) error {
 	}
 	for i := range nodes {
 		n := &nodes[i]
+		n.WorkdirProducer = n.NodeID == ref.Node
 		if prep[n.NodeID] {
 			n.Prep = true
 			continue
