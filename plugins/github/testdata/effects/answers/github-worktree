@@ -1,0 +1,2 @@
+mkdir -p "$PLECT_EFFECT_STATE/worktree"
+printf '%s' "{\"workspace_dir\":\"$PLECT_EFFECT_STATE/worktree\",\"branch\":\"spy-branch\"}"

@@ -1,16 +1,16 @@
 #!/usr/bin/env bash
-# Extracts thread_workspace's setup script verbatim from the TOML and runs
+# Extracts thread_dir's setup script verbatim from the TOML and runs
 # it directly, so this test exercises the exact shell the plugin ships
 # rather than a hand-copied stand-in that could drift from it.
 set -euo pipefail
 
 here="$(cd "$(dirname "$0")" && pwd)"
-toml="$here/../config/workspaces/thread_workspace.toml"
+toml="$here/../config/tasks/thread_dir.toml"
 tmp="$(mktemp -d)"
 trap 'rm -rf "$tmp"' EXIT
 
 q="'''"
-setup_header_line=$(grep -n '^\[thread_workspace\.setup\]$' "$toml" | head -n 1 | cut -d: -f1)
+setup_header_line=$(grep -n '^\[thread_dir\.setup\]$' "$toml" | head -n 1 | cut -d: -f1)
 open_line=$(awk -v start="$setup_header_line" -v q="$q" 'NR>=start && $0=="script = " q {print NR; exit}' "$toml")
 close_line=$(awk -v start="$((open_line + 1))" -v q="$q" 'NR>=start && $0==q {print NR; exit}' "$toml")
 script="$tmp/setup.sh"
@@ -29,7 +29,7 @@ check() {
 
 run_setup() {
   local permalink="$1" session_name="$2"
-  permalink="$permalink" session_name="$session_name" workspace_dirs_root="$tmp/root" \
+  permalink="$permalink" session_name="$session_name" dirs_root="$tmp/root" \
     sh "$script"
 }
 
@@ -53,5 +53,11 @@ out=$(run_setup "$root_permalink" "slack/C0BUUGNP3SL-1788924553263429+ops_chat")
 check "a workflow-suffixed session name does not corrupt thread_ts" \
   "1788924553.263429" "$(jq -r '.thread_ts' <<<"$out")"
 
-[ "$fail" -eq 0 ] || { echo "thread_workspace selftest failed" >&2; exit 1; }
-echo "thread_workspace selftest passed"
+# An empty dirs_root means the documented default under HOME, not the
+# filesystem root.
+default_out=$(HOME="$tmp/home" permalink="$root_permalink" session_name="" dirs_root="" sh "$script")
+check "an empty dirs_root defaults to HOME/workspace_dirs" \
+  "$tmp/home/workspace_dirs/slack/C0BUUGNP3SL/1788924553.263429" "$(jq -r '.workspace_dir' <<<"$default_out")"
+
+[ "$fail" -eq 0 ] || { echo "thread_dir selftest failed" >&2; exit 1; }
+echo "thread_dir selftest passed"

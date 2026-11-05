@@ -1,44 +1,49 @@
-# local-okf workspace provider: resolves `local-okf://<owner>/<concept-id>`
-# into a session name and a read-context workspace over the owner's
-# knowledge bundle. This is the dispatch-time counterpart to
-# resources/okf_goal.toml's observe — same owner-alias resolution and
-# bundle-containment checks, but here they gate workspace acquisition
-# (`plect up` / `plect create --task`) instead of a status read, so a
-# missing or unresolvable bundle fails the dispatch outright rather than
-# folding into a resource-state field.
+# local-okf goal directory effect: a read-context scratch directory over the
+# owner's knowledge bundle for a session whose entry resource is a
+# `local-okf://<owner>/<concept-id>` concept. This is the dispatch-time
+# counterpart to resources/okf_goal.toml's observe — same owner-alias
+# resolution and bundle-containment checks, but here they gate directory
+# acquisition (`plect up` / `plect create --task`) instead of a status read,
+# so a missing or unresolvable bundle fails the dispatch outright rather
+# than folding into a resource-state field.
+#
+# The session identity comes from the resource declaration; a workflow
+# composes this effect as a node and names its `workspace_dir` output as the
+# workflow's `workdir`. The scratch directory is created under the owner
+# session's own workdir, so this effect takes no dirs root of its own.
+[goal_dir]
+kind  = "effect"
+scope = "session"
 
-# The leading path segment(s) before the final `<slug>.md` are optional and
-# unnamed, since the workspace provider is concept-kind agnostic (goals
-# today, other OKF concepts later); resources/okf_goal.toml narrows the
-# pattern to `goals/*.md` for the one concept kind this plugin currently
-# understands.
-[local_okf]
-kind  = "workspace_provider"
-match = '^local-okf://(?P<owner>[A-Za-z0-9][A-Za-z0-9-]*)/(?:[A-Za-z0-9._/-]*/)?(?P<slug>[A-Za-z0-9._-]+)\.md$'
-name  = { expr = "match.owner + '/okf-' + match.slug" }
-
-[local_okf.setup]
+[goal_dir.setup]
 type = "exec"
 bin  = "okf-bundle"
 args = ["setup", "--resource", { from = "resource.id" }, "--session", { from = "session.name" }]
 
-[local_okf.cleanup]
+[goal_dir.cleanup]
 type = "exec"
 bin  = "okf-bundle"
 args = ["cleanup", "--workspace-dir", { from = "self.outputs.workspace_dir" }]
 
-[local_okf.outputs_schema]
+# The scratch directory is the only thing this effect owns that can vanish
+# behind its back.
+[goal_dir.health.alive]
+type    = "exec"
+command = "test"
+args    = ["-d", { from = "self.outputs.workspace_dir" }]
+
+[goal_dir.outputs_schema]
 type     = "object"
 required = ["workspace_dir", "owner", "concept_id", "concept_path"]
 
-[local_okf.outputs_schema.properties.workspace_dir]
+[goal_dir.outputs_schema.properties.workspace_dir]
 type = "string"
 
-[local_okf.outputs_schema.properties.owner]
+[goal_dir.outputs_schema.properties.owner]
 type = "string"
 
-[local_okf.outputs_schema.properties.concept_id]
+[goal_dir.outputs_schema.properties.concept_id]
 type = "string"
 
-[local_okf.outputs_schema.properties.concept_path]
+[goal_dir.outputs_schema.properties.concept_path]
 type = "string"

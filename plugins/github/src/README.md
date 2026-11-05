@@ -5,7 +5,7 @@ The Go source for the `plugins/github` catalog plugin's three executables:
 below) and `github-watcher` (subscribe/serve/gh-api — see its own `--help`).
 
 This module is `plugins/github`'s build source, not something to install
-directly — see `plugins/github/README.md` for the workspace-provider/resource
+directly — see `plugins/github/README.md` for the worktree-effect/resource
 config that invokes these binaries and for install instructions. This README
 covers `github-worktree`'s and `github-issue-pr`'s own commands, for
 development and testing.
@@ -13,9 +13,9 @@ development and testing.
 ## Commands
 
 - `github-worktree setup --resource <id> --session <name> [--workspace-dirs-root <root>] [--watcher-bin <path>]`
-  — acquires the worktree for a GitHub resource and prints the workspace
-  provider outputs contract (JSON, carrying the reserved `workspace_dir`
-  key) on stdout. `--watcher-bin`, when given, routes title/state fetches
+  — acquires the worktree for a GitHub resource and prints the worktree
+  effect's outputs contract (JSON, carrying the `workspace_dir` key) on
+  stdout. An empty `--workspace-dirs-root` means `$HOME/workspace_dirs`. `--watcher-bin`, when given, routes title/state fetches
   through a `github-watcher gh-api` call so they share its poll loop's rate
   budget; omitted, it calls `gh api` directly.
 - `github-worktree cleanup --workspace-dir <path> --branch <branch> [--workspace-dirs-root <root>] [--force] [--delete-branch]`
@@ -25,7 +25,7 @@ development and testing.
   (`git branch -d`): a branch carrying unmerged commits survives as an
   orphan a later dispatch on the same resource reuses, rather than being
   discarded, regardless of `--delete-branch`.
-- `github-issue-pr observe --resource <id> [--workspace-dir-path <path>] [--watcher-bin <path>]`
+- `github-issue-pr observe --resource <id> [--watcher-bin <path>]`
   — fetches and classifies a GitHub resource's current state: resource kind,
   CI check rollup, issue completion, revision, linked PR (for an issue
   resource), and mergeability. Backs `resources/issue.toml`'s and
@@ -36,8 +36,8 @@ development and testing.
 A repository whose new work should start from a branch other than its
 actual GitHub default (a git-flow repo branching from `develop`) can record
 that choice at `<repoDir>/.plect/base-branch` — a plain file on the
-repository container, not workspace provider config, since workspace
-providers don't cascade to individual repo layers.
+repository container, not effect input, since an effect's inputs
+don't cascade to individual repo layers.
 
 ## Requirements
 

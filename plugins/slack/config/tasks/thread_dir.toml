@@ -1,31 +1,29 @@
-# Both permalink forms resolve to the same session because `name` prefers
-# the reply form's `thread_ts` query capture, dot stripped via CEL's
-# `replace`, and falls back to the root form's already-digit-only `ts16`
-# path capture; a capture unmatched under the branch a given permalink took
-# is present in `match` as the empty string, not absent, which is what
-# makes that fallback safe rather than an unresolved-root error.
+# A bare conversation directory for one Slack thread, with no repository
+# checkout and no `slack-adapter` call. The session identity and the
+# permalink forms it resolves from live on resources/thread.toml; a workflow
+# whose entry resource is that thread composes this effect as a node and
+# names its `workspace_dir` output as the workflow's `workdir`.
 #
-[thread_workspace]
-kind  = "workspace_provider"
-match = '^https://[A-Za-z0-9.-]+\.slack\.com/archives/(?P<channel_id>[A-Z0-9]+)/p(?P<ts16>\d{16})(?:\?thread_ts=(?P<thread_ts>\d{10}\.\d{6})&cid=[A-Z0-9]+)?$'
-name  = { expr = "'slack/' + match.channel_id + '-' + (match.thread_ts != '' ? match.thread_ts.replace('.', '') : match.ts16)" }
+[thread_dir]
+kind  = "effect"
+scope = "session"
 
-# `setup` has no `match` root — it runs once a session already exists, past
-# the point `name` resolved it — so it recovers channel_id and the root
-# timestamp by re-parsing `permalink`, the same string `match` parsed to
-# build `session.name` in the first place, rather than splitting
-# `session.name` itself. `session.name` carries a trailing `+<workflow-id>`
-# appended after resolution, which a positional slice of it can't tell apart
-# from the digits it's after; `permalink` carries no such suffix.
-[thread_workspace.setup]
+# `setup` has no `match` root, so it recovers channel_id and the root
+# timestamp by re-parsing `permalink`, the same string the thread resource's
+# `match` parsed to build `session.name` in the first place, rather than
+# splitting `session.name` itself. `session.name` carries a trailing
+# `+<workflow-id>` appended after resolution, which a positional slice of it
+# can't tell apart from the digits it's after; `permalink` carries no such
+# suffix.
+[thread_dir.setup]
 type = "shell"
 script = '''
 set -eu
 
-# workspace_dirs_root is operator config, not something this file's own
-# regex constrains, so it cannot be assumed JSON-safe the way a `match`
-# capture is. Escaping it by hand, rather than reaching for jq, keeps this
-# hook's dependencies at plect and a POSIX shell.
+# dirs_root is an operator-chosen input that nothing here constrains, so it
+# cannot be assumed JSON-safe the way a permalink capture is. Escaping it by
+# hand, rather than reaching for jq, keeps this action's dependencies at a
+# POSIX shell.
 json_escape() {
   value=$1
   ctrl=$(printf '\001\002\003\004\005\006\007\010\011\012\013\014\015\016\017\020\021\022\023\024\025\026\027\030\031\032\033\034\035\036\037')
@@ -72,7 +70,7 @@ if [ -z "$thread_ts" ]; then
   thread_ts="${ts16%??????}.${ts16#??????????}"
 fi
 
-workspace_dir="$workspace_dirs_root/slack/$channel_id/$thread_ts"
+workspace_dir="${dirs_root:-$HOME/workspace_dirs}/slack/$channel_id/$thread_ts"
 mkdir -p "$workspace_dir"
 
 printf '{"workspace_dir":"%s","channel_id":"%s","thread_ts":"%s","permalink":"%s"}\n' \
@@ -80,29 +78,43 @@ printf '{"workspace_dir":"%s","channel_id":"%s","thread_ts":"%s","permalink":"%s
   "$(json_escape "$thread_ts")" "$(json_escape "$permalink")"
 '''
 
-[thread_workspace.setup.bind]
-permalink           = { from = "resource.id" }
-workspace_dirs_root = { from = "config.workspace_dirs_root" }
+[thread_dir.setup.bind]
+permalink = { from = "resource.id" }
+dirs_root = { from = "inputs.dirs_root", default = "" }
 
-[thread_workspace.cleanup]
+[thread_dir.cleanup]
 type   = "shell"
 script = 'rm -rf "$workspace_dir"'
 
-[thread_workspace.cleanup.bind]
+[thread_dir.cleanup.bind]
 workspace_dir = { from = "self.outputs.workspace_dir" }
 
-[thread_workspace.outputs_schema]
+[thread_dir.health.alive]
+type    = "exec"
+command = "test"
+args    = ["-d", { from = "self.outputs.workspace_dir" }]
+
+# Empty or absent selects `$HOME/workspace_dirs`, which the setup script
+# itself resolves.
+[thread_dir.inputs_schema]
+type                 = "object"
+additionalProperties = false
+
+[thread_dir.inputs_schema.properties]
+dirs_root = { type = "string" }
+
+[thread_dir.outputs_schema]
 type     = "object"
 required = ["workspace_dir", "channel_id", "thread_ts", "permalink"]
 
-[thread_workspace.outputs_schema.properties.workspace_dir]
+[thread_dir.outputs_schema.properties.workspace_dir]
 type = "string"
 
-[thread_workspace.outputs_schema.properties.channel_id]
+[thread_dir.outputs_schema.properties.channel_id]
 type = "string"
 
-[thread_workspace.outputs_schema.properties.thread_ts]
+[thread_dir.outputs_schema.properties.thread_ts]
 type = "string"
 
-[thread_workspace.outputs_schema.properties.permalink]
+[thread_dir.outputs_schema.properties.permalink]
 type = "string"
