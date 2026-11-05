@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"reflect"
+	"slices"
 	"sort"
 	"strings"
 	"time"
@@ -426,8 +427,39 @@ func ClassifyWorkflowRebase(old, next config.WorkflowRevision, session *domain.S
 		}
 		result.RecreateNodes = nodes
 		sort.Strings(result.RecreateNodes)
+		if workdirReleased(old, next, result.RecreateNodes) && liveDynamicInstanceInWorkdir(session) {
+			result.raise(RebaseRecreate, "the workdir's producer would be released while a dynamic instance still runs in it; clean the instance up first or destroy and recreate the session")
+			result.RecreateNodes = nil
+		}
 	}
 	return result, nil
+}
+
+// workdirReleased reports whether the node producing the old workdir is
+// removed or recreated by the rebase, which releases the directory.
+func workdirReleased(old, next config.WorkflowRevision, recreate []string) bool {
+	if old.Workflow.Workdir == nil {
+		return false
+	}
+	producer := old.Workflow.Workdir.Node
+	if slices.Contains(recreate, producer) {
+		return true
+	}
+	for _, node := range next.Workflow.Nodes {
+		if node.ID == producer {
+			return false
+		}
+	}
+	return true
+}
+
+func liveDynamicInstanceInWorkdir(session *domain.Session) bool {
+	for _, st := range session.Tasks {
+		if st != nil && st.Status != contract.TaskStatusCleaned && st.Directory != "" {
+			return true
+		}
+	}
+	return false
 }
 
 func validateRebaseInputs(inputs map[string]*lang.Value, outputs map[string]map[string]any, wfOutputs map[string]any, publicBindings map[string]*lang.Value, vars task.SessionVars, deferred map[string]bool) error {

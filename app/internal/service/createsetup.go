@@ -64,7 +64,7 @@ func createWithWorkflowSetup(cfg *config.Config, store *state.Store, params Crea
 		if parentErr != nil {
 			return nil, parentErr
 		}
-		input, validateErr := resolveSessionInputs(cfg, "", wf.Address, params.Inputs)
+		input, validateErr := resolveSessionInputs(cfg, params.InvocationDir, wf.Address, params.Inputs)
 		if validateErr != nil {
 			return nil, validateErr
 		}

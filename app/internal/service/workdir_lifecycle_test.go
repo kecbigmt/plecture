@@ -496,3 +496,63 @@ uses = "agent"
 		t.Fatalf("a direct invocation below the overlay could not use its workflow: %v", err)
 	}
 }
+
+func TestUp_AncestorOverlayWorkflowInputsAreValidatedAgainstThatWorkflow(t *testing.T) {
+	f := newWDFixture(t, wdWorkdirWorkflow)
+	overlay := filepath.Join(f.home, "projects")
+	wdWrite(t, filepath.Join(overlay, ".plect", "workflows", "local.toml"), `
+[local]
+kind     = "workflow"
+resource = "issue"
+
+[local.inputs_schema]
+type     = "object"
+required = ["token"]
+
+[local.inputs_schema.properties]
+token = { type = "string" }
+
+[[local.nodes]]
+uses = "agent"
+`)
+	invocation := filepath.Join(overlay, "checkout-a")
+	if err := os.MkdirAll(invocation, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	_, err := Up(f.cfg, f.store, UpParams{Identifier: wdIssueURL, Workflow: "local", InvocationDir: invocation})
+	var svcErr *Error
+	if !errors.As(err, &svcErr) || svcErr.Code != ErrInvalidInput {
+		t.Fatalf("Up error = %v, want the workflow's required token input refused", err)
+	}
+	if _, err := Up(f.cfg, f.store, UpParams{Identifier: wdIssueURL, Workflow: "local", InvocationDir: invocation, Inputs: map[string]any{"token": "t"}}); err != nil {
+		t.Fatalf("Up with the required input: %v", err)
+	}
+}
+
+func TestWorkflowRebase_RefusesToReleaseTheWorkdirWhileADynamicInstanceRunsInIt(t *testing.T) {
+	f := newWDFixture(t, wdWorkdirWorkflow)
+	if _, err := Up(f.cfg, f.store, UpParams{Identifier: wdIssueURL}); err != nil {
+		t.Fatalf("Up: %v", err)
+	}
+	name, nodes := wdSession(t, f)
+	workdir, _ := nodes["checkout"].Outputs["workspace_dir"].(string)
+	if _, err := TaskSetup(f.cfg, f.store, TaskSetupParams{TaskID: "failing", SessionName: name}); err != nil {
+		t.Fatalf("TaskSetup: %v", err)
+	}
+	wdWrite(t, filepath.Join(f.base, "workflows", "review.toml"), `
+[review]
+kind     = "workflow"
+resource = "issue"
+
+[[review.nodes]]
+id   = "replacement"
+uses = "failing"
+`)
+
+	if _, err := WorkflowRebase(f.cfg, f.store, RebaseParams{Identifier: name}); err == nil {
+		t.Fatal("rebase released the workdir's producer while a dynamic instance ran in it")
+	}
+	if _, statErr := os.Stat(workdir); statErr != nil {
+		t.Errorf("the workdir was deleted by the refused rebase: %v", statErr)
+	}
+}
