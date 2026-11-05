@@ -100,22 +100,19 @@ func ResolveCleanupInputs(nodes []Resolved, invocation map[string]string) (map[s
 		typed[key] = value
 	}
 	for _, c := range contracts {
+		supplied := FilterCleanupInputs(c.schema, typed)
+		if supplied == nil {
+			continue
+		}
 		compiled, err := lang.CompileSchema(c.schema, "", "plect:cleanup:"+c.effect)
 		if err != nil {
 			return nil, fmt.Errorf("effect %q cleanup inputs schema: %w", c.effect, err)
 		}
-		if err := compiled.Validate(FilterCleanupInputs(c.schema, typed)); err != nil && !isNilObject(err, FilterCleanupInputs(c.schema, typed)) {
+		if err := compiled.Validate(supplied); err != nil {
 			return nil, fmt.Errorf("effect %q cleanup inputs: %w", c.effect, err)
 		}
 	}
 	return typed, nil
-}
-
-// isNilObject lets an effect that was supplied none of its inputs pass a
-// schema with required keys only when the whole object is absent; a partial
-// supply still fails the schema above.
-func isNilObject(_ error, subset map[string]any) bool {
-	return subset == nil
 }
 
 // coerceCleanupInput types a command-line string by its property's declared
