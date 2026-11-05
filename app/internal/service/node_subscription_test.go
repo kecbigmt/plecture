@@ -370,3 +370,64 @@ func TestNodeSubscriptionMissingOutputFailsSetup(t *testing.T) {
 		t.Fatalf("missing subscription output error = %v", err)
 	}
 }
+
+func TestRunNodeSetupReportsBothSetupAndSubscriptionErrors(t *testing.T) {
+	cfg := writeWorkflowFixture(t, t.TempDir(), "work", []taskFixture{
+		{id: "bad", scope: "run", setup: `echo '{}'`, cleanup: "true"},
+		{id: "broken", scope: "run", setup: "echo setup-broke >&2; exit 1", cleanup: "true"},
+	}, []nodeFixture{
+		{id: "bad", subscription: "self.outputs.permalink"},
+		{id: "broken"},
+	})
+	store := testStore(t)
+	seedSessionWithNodes(t, store, "one", "org/repo", 1, "work", nil)
+	session := store.Get("one")
+	plan, err := buildPlanForSession(cfg, session.WorkspaceDirPath, session)
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, err = runNodeSetup(t.Context(), cfg, store, plan.UpOrder(), sessionVars(cfg, session, plan), session, nil)
+	if err == nil {
+		t.Fatal("runNodeSetup returned no error")
+	}
+	if !strings.Contains(err.Error(), "subscription output") {
+		t.Errorf("subscription error missing from %q", err)
+	}
+	if !strings.Contains(err.Error(), `"broken"`) {
+		t.Errorf("setup error missing from %q", err)
+	}
+}
+
+func TestRunNodeSetupWiresRemainingNodesWhenOneSubscriptionOutputIsInvalid(t *testing.T) {
+	cfg := writeWorkflowFixture(t, t.TempDir(), "work", []taskFixture{
+		{id: "bad", scope: "run", setup: `echo '{}'`, cleanup: "true"},
+		{id: "good", scope: "run", setup: `echo '{"permalink":"thread://good"}'`, cleanup: "true"},
+		{id: "blank", scope: "run", setup: `echo '{"permalink":"  "}'`, cleanup: "true"},
+		{id: "other", scope: "run", setup: `echo '{"permalink":"thread://other"}'`, cleanup: "true"},
+	}, []nodeFixture{
+		{id: "bad", subscription: "self.outputs.permalink"},
+		{id: "good", subscription: "self.outputs.permalink"},
+		{id: "blank", subscription: "self.outputs.permalink"},
+		{id: "other", subscription: "self.outputs.permalink"},
+	})
+	store := testStore(t)
+	seedSessionWithNodes(t, store, "one", "org/repo", 1, "work", nil)
+	session := store.Get("one")
+	plan, err := buildPlanForSession(cfg, session.WorkspaceDirPath, session)
+	if err != nil {
+		t.Fatal(err)
+	}
+	wired, err := runNodeSetup(t.Context(), cfg, store, plan.UpOrder(), sessionVars(cfg, session, plan), session, nil)
+	if err == nil || !strings.Contains(err.Error(), `"bad"`) || !strings.Contains(err.Error(), `"blank"`) {
+		t.Fatalf("want both invalid nodes reported, got %v", err)
+	}
+	want := map[string]string{"good": "thread://good", "other": "thread://other"}
+	if len(wired) != len(want) {
+		t.Fatalf("wired = %v, want %v", wired, want)
+	}
+	for id, resource := range want {
+		if wired[id] != resource {
+			t.Errorf("wired[%q] = %q, want %q (wired = %v)", id, wired[id], resource, wired)
+		}
+	}
+}
