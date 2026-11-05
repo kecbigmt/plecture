@@ -36,12 +36,13 @@ outputs, and its inputs, so it has no invalidation of its own. A binding is
 evaluable once every node it reads is a source.
 
 One evaluation serves every reader, and a parameter selects which nodes count as
-a source. Display, instructions, event delivery, and rebase classification count
-a node only while it is produced, so they never show a value a released or
-failed node merely remembers. A setup or cleanup inside a run counts the last
-recorded outputs of any node that has a record, because a dependent of a node
-whose liveness failed, or that was left failed, is released after that failure
-is recorded and must still resolve its bindings.
+a source. Display, instructions, event delivery, rebase classification, and
+setup count a node only while it is produced, so they never read a value a
+released or failed node merely remembers, such as the socket of a runtime that
+no longer exists. Only a cleanup counts the last recorded outputs of any node
+that has a record, because a dependent of a node whose liveness failed, or that
+was left failed, is released after that failure is recorded and must still
+resolve its bindings. This includes the cleanup that liveness invalidation runs.
 
 A complete record must satisfy `outputs_schema`; a record that does not is not
 published. A binding that fails although every node it reads counts as a source

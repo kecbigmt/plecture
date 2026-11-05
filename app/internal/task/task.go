@@ -599,17 +599,17 @@ func orEmpty(m map[string]any) map[string]any {
 	return m
 }
 
-// workflowOutputs reads the last recorded outputs: a setup or cleanup in the
-// middle of a run can follow a failure recorded moments earlier.
-func workflowOutputs(session SessionVars, tasks map[string]*contract.TaskState) map[string]any {
-	outputs, _ := publicoutput.Evaluate(session.PublicOutputs, tasks, session.Inputs, publicoutput.LastRecorded)
+// workflowOutputs evaluates against the nodes of the run in progress, because
+// nothing is stored for it to read.
+func workflowOutputs(session SessionVars, tasks map[string]*contract.TaskState, sources publicoutput.Sources) map[string]any {
+	outputs, _ := publicoutput.Evaluate(session.PublicOutputs, tasks, session.Inputs, sources)
 	return outputs
 }
 
 // warnUnevaluablePublicOutputs names the cause a consumer would otherwise
 // report only as "resolved to nothing".
 func warnUnevaluablePublicOutputs(session SessionVars, tasks map[string]*contract.TaskState) {
-	if _, err := publicoutput.Evaluate(session.PublicOutputs, tasks, session.Inputs, publicoutput.LastRecorded); err != nil {
+	if _, err := publicoutput.Evaluate(session.PublicOutputs, tasks, session.Inputs, publicoutput.ProducedOnly); err != nil {
 		slog.Warn("public output binding failed", "session", session.Name, "error", err)
 	}
 }
@@ -801,7 +801,7 @@ func RunSetup(goCtx context.Context, ordered []Resolved, session SessionVars, ta
 			return st
 		}
 		deps := dependencyOutputs(r.DependsOn, tasks)
-		resolvedInputs, inputErr := ResolveNodeInputs(r.Inputs, deps, workflowOutputs(session, tasks), session)
+		resolvedInputs, inputErr := ResolveNodeInputs(r.Inputs, deps, workflowOutputs(session, tasks, publicoutput.ProducedOnly), session)
 		if inputErr != nil {
 			tasks[r.NodeID] = failed(inputErr.Error(), nil)
 			wrapped := fmt.Errorf("node %q input: %w", r.NodeID, inputErr)
@@ -819,7 +819,7 @@ func RunSetup(goCtx context.Context, ordered []Resolved, session SessionVars, ta
 			Prev:       prev,
 			Tasks:      deps,
 			Inputs:     resolvedInputs,
-			Workflow:   workflowOutputs(session, tasks),
+			Workflow:   workflowOutputs(session, tasks, publicoutput.ProducedOnly),
 			Session:    session,
 			SourcePath: r.SourcePath,
 		}
@@ -1090,7 +1090,7 @@ func RunCleanup(goCtx context.Context, ordered []Resolved, session SessionVars, 
 			base := RenderContext{
 				Process:  state.Process,
 				Tasks:    dependencyOutputs(r.DependsOn, tasks),
-				Workflow: workflowOutputs(session, tasks),
+				Workflow: workflowOutputs(session, tasks, publicoutput.LastRecorded),
 				Session:  sess,
 			}
 			stderr, nestErr := effect.RunLayerCleanup(goCtx, r.Layers, state.Layers, chainHost(base, obs, r.Scope, r.NodeID), base.Session.WorkspaceDirPath)
@@ -1134,7 +1134,7 @@ func RunCleanup(goCtx context.Context, ordered []Resolved, session SessionVars, 
 			Process:    state.Process,
 			Tasks:      dependencyOutputs(r.DependsOn, tasks),
 			Inputs:     state.Inputs,
-			Workflow:   workflowOutputs(session, tasks),
+			Workflow:   workflowOutputs(session, tasks, publicoutput.LastRecorded),
 			Session:    sess,
 			SourcePath: r.SourcePath,
 		}

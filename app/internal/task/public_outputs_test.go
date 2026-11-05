@@ -193,3 +193,54 @@ func TestRunCleanup_DependentOfAFailedSourceReadsItsLastRecordedOutput(t *testin
 		t.Fatalf("x's cleanup marker = %q, %v", got, err)
 	}
 }
+
+// A session-scoped instance can be set up while the session is down, when the
+// run-scoped node its public output reads is cleaned and only remembers a
+// value for a runtime that no longer exists.
+func TestExecuteTaskSetup_DoesNotReadAReleasedSourcesRecordedOutput(t *testing.T) {
+	exec := withScriptedExecutor(t, &scriptedExecutor{})
+	def := config.TaskDefinition{ID: "review", Scope: "session", Setup: &lang.Action{
+		Type:   lang.ActionShell,
+		Script: `echo "$k"`,
+		Bind:   map[string]*lang.Value{"k": {Form: lang.FormFrom, From: "workflow.outputs.k", Optional: true}},
+	}}
+	r := resolveDef(t, def, "review#1")
+	nodes := map[string]*contract.TaskState{
+		"y": {Scope: contract.TaskScopeRun, Status: contract.TaskStatusCleaned, Outputs: map[string]any{"k": "stale-socket"}},
+	}
+	vars := SessionVars{PublicOutputs: publicoutput.Declaration{Bindings: map[string]*lang.Value{"k": fromValue("nodes.y.outputs.k")}}}
+	if _, err := ExecuteTaskSetup(context.Background(), r, nil, vars, nodes); err != nil {
+		t.Fatalf("ExecuteTaskSetup: %v", err)
+	}
+	if len(exec.bindings) != 1 || strings.Contains(exec.bindings[0], "stale-socket") {
+		t.Fatalf("bindings = %v, want k unset rather than the released node's recorded value", exec.bindings)
+	}
+}
+
+func TestRunSetup_DoesNotReadAFailedSourcesRecordedOutput(t *testing.T) {
+	withScriptedExecutor(t, &scriptedExecutor{})
+	wf := config.WorkflowFile{
+		ID:      "release",
+		Outputs: map[string]*lang.Value{"k": fromValue("nodes.y.outputs.k")},
+		Nodes: []config.WorkflowNode{
+			{ID: "y", Uses: "y"},
+			{ID: "x", Uses: "x", Inputs: map[string]*lang.Value{"dep": fromValue("workflow.outputs.k")}},
+		},
+	}
+	defs := map[string]config.TaskDefinition{
+		"y": {ID: "y", Scope: "run", Setup: shellStub("echo '{}'")},
+		"x": {ID: "x", Scope: "run", Setup: shellStub("echo '{}'")},
+	}
+	plan, err := CompileWorkflow(wf, defs)
+	if err != nil {
+		t.Fatalf("CompileWorkflow: %v", err)
+	}
+	tasks := map[string]*contract.TaskState{
+		"y": {Scope: contract.TaskScopeRun, Status: contract.TaskStatusFailed, Outputs: map[string]any{"k": "stale"}},
+	}
+	vars := SessionVars{PublicOutputs: publicoutput.Declaration{Bindings: wf.Outputs}}
+	err = RunSetup(context.Background(), []Resolved{plan.Run[1]}, vars, tasks, nil)
+	if err == nil || !strings.Contains(err.Error(), "dep") {
+		t.Fatalf("RunSetup = %v, want x's input to stay unresolved while its source is failed", err)
+	}
+}

@@ -9,6 +9,7 @@ import (
 
 	"github.com/kecbigmt/plecture/app/internal/effect"
 	"github.com/kecbigmt/plecture/app/internal/lang"
+	"github.com/kecbigmt/plecture/app/internal/publicoutput"
 	contract "github.com/kecbigmt/plecture/contracts/state"
 )
 
@@ -99,7 +100,7 @@ func ExecuteTaskSetup(goCtx context.Context, r Resolved, inputs map[string]any, 
 	ctx := RenderContext{
 		Self:       map[string]any{},
 		Inputs:     inputs,
-		Workflow:   workflowOutputs(session, nodes),
+		Workflow:   workflowOutputs(session, nodes, publicoutput.ProducedOnly),
 		Session:    session,
 		SourcePath: r.SourcePath,
 	}

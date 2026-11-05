@@ -18,8 +18,8 @@ import (
 type Sources int
 
 const (
-	// ProducedOnly keeps a display, instruction, or delivery from showing a
-	// value a released or failed node merely remembers.
+	// ProducedOnly keeps a display, instruction, delivery, or setup from
+	// reading a value a released or failed node merely remembers.
 	ProducedOnly Sources = iota
 	// LastRecorded lets a cleanup release a dependent of a node whose failure
 	// is already recorded.

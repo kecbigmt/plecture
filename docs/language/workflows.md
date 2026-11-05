@@ -87,9 +87,9 @@ soon as its sources have been produced. The record is derived from the
 session's revision and node outputs, never stored: a binding follows its
 sources when a node is recreated and is unset while any source is not produced.
 Once every binding has a value, the record must satisfy `outputs_schema`; a
-record that does not is not published. A setup or cleanup inside a run also
+record that does not is not published. A cleanup also
 reads the last recorded outputs of a node that is no longer produced, so a
-dependent of a failed node can still be released.
+dependent of a failed node can still be released; a setup never does.
 `workflow.outputs.*` is the only workflow-output root for display,
 instructions, node inputs, and channel delivery. It replaces the former
 provider output path without creating an `@workflow` pseudo-node.
