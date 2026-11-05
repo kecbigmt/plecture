@@ -81,14 +81,11 @@ workspace_dir = { from = "nodes.checkout.outputs.workspace_dir" }
 
 The workdir producer and all its transitive prerequisites are preparation
 nodes. The graph determines that set before default-workdir dependencies are
-added. Session creation records a preparation directory separately from its
-configuration context: direct `plect up` records its caller's canonical working
-directory; a chain inherits the triggering session's recorded preparation
-directory; and a population inherits the directory recorded when its resident
-started. Preparation setup, liveness, and cleanup actions use that recorded
-directory, never a daemon's incidental cwd. Every other node's setup and
-liveness actions run in the declared directory and depend on its producer. If
-`workdir` is omitted, no node receives a default directory. There are no
+added. Preparation setup actions run in the current user's home directory,
+whichever way the session was created, so they never depend on the directory
+they are creating or on a daemon's incidental cwd. Every other node's setup
+and liveness actions run in the declared directory and depend on its producer.
+If `workdir` is omitted, no node receives a default directory. There are no
 per-node or per-action cwd overrides.
 
 Cleanup uses the directory chosen for its node setup. If that directory has
@@ -108,8 +105,7 @@ record that does not is not published. A cleanup also
 reads the last recorded outputs of a node that is no longer produced, so a
 dependent of a failed node can still be released; a setup never does.
 `workflow.outputs.*` is the only workflow-output root for display,
-instructions, node inputs, and channel delivery. It replaces the former
-provider output path without creating an `@workflow` pseudo-node.
+instructions, node inputs, and channel delivery.
 
 ```toml
 [pull_review.outputs]

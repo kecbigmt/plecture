@@ -1,12 +1,23 @@
-[fault_workspace]
-kind  = "workspace_provider"
+[fault_resource]
+kind  = "resource"
 match = '^fault://(?P<name>[a-z]+)$'
 name  = { expr = "'fault/' + match.name" }
+
+[fault_resource.observe]
+type   = "shell"
+script = "echo '{}'"
+
+[fault_resource.state_schema]
+type = "object"
+
+[fault_workspace]
+kind  = "effect"
+scope = "session"
 
 [fault_workspace.setup]
 type   = "shell"
 script = '''
-dir="$workspace_dirs_root/$session_name"
+dir="/var/lib/plect/workspace_dirs/$session_name"
 mkdir -p "$dir"
 if [ ! -d "$dir/.git" ]; then
   git -C "$dir" init -q
@@ -16,8 +27,12 @@ jq -nc --arg dir "$dir" '{workspace_dir:$dir}'
 '''
 
 [fault_workspace.setup.bind]
-workspace_dirs_root = { from = "config.workspace_dirs_root" }
-session_name        = { from = "session.name" }
+session_name = { from = "session.name" }
+
+[fault_workspace.health.alive]
+type    = "exec"
+command = "test"
+args    = ["-d", { from = "self.outputs.workspace_dir" }]
 
 [fault_workspace.outputs_schema]
 type     = "object"

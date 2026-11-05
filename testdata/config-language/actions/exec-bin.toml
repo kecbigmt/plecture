@@ -11,8 +11,6 @@ bin  = "okf-goal"
 args = [
   "task",
   "bootstrap",
-  "--workspace-dir",
-  { from = "workspace.dir" },
   "--owner",
   { from = "inputs.owner" },
   "--session",

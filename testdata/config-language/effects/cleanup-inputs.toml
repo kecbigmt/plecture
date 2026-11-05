@@ -1,0 +1,28 @@
+# plect-fixture: result=valid entry=definitions
+# reason: an effect declares the plugin-owned destruction inputs its cleanup reads, beside the core force intent.
+
+[checkout_effect]
+kind  = "effect"
+scope = "session"
+
+[checkout_effect.setup]
+type = "exec"
+command = "checkout-tool"
+args = ["create"]
+
+[checkout_effect.cleanup]
+type   = "shell"
+script = 'checkout-tool remove --force="$force" --delete-branch="$delete_branch"'
+
+[checkout_effect.cleanup.bind]
+force         = { from = "force" }
+delete_branch = { from = "cleanup.inputs.delete_branch", default = false }
+
+[checkout_effect.cleanup.inputs_schema]
+type = "object"
+
+[checkout_effect.cleanup.inputs_schema.properties]
+delete_branch = { type = "boolean" }
+
+[checkout_effect.health.alive]
+type = "noop"

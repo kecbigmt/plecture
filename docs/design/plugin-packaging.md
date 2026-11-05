@@ -2,7 +2,7 @@
 
 This document defines the plugin model for distributing reusable Plecture
 configuration and executable adapters. The goal is to reduce bootstrap cost
-without moving workspace-provider, tool, or domain knowledge into core.
+without moving tool, or domain knowledge into core.
 The plugin service lifecycle decision is recorded in
 [`../adr/2026-08-17-plugin-boundary-contracts.md`](../adr/2026-08-17-plugin-boundary-contracts.md).
 
@@ -16,10 +16,10 @@ configuration is still a plugin.
 
 - Core owns generic mechanics: fetch, verify, mount, resolve, and fail-loud
   compatibility checks.
-- Plugins own technology or domain commitments: workspace provider adapters,
-  resource observation, session runtime surfaces, and workflow packs.
+- Plugins own technology or domain commitments: session-scoped effects that acquire a
+  work directory, resource observation, session runtime surfaces, and workflow packs.
 - User-owned config remains the final authority.
-- No workspace-provider/resource/task/workflow contract changes are required by this
+- No effect/resource/task/workflow contract changes are required by this
   design. Any discovered gap must become a later contract issue, not an
   assumption in the package format.
 - No auto-update. Every add and update is pinned and explicit.
@@ -112,7 +112,7 @@ shipped config needs neither.
 schema_version = 2
 version = "0.3.0"
 plect_min_version = "0.8.0"
-description = "GitHub workspace provider, resource observation, and workflow support."
+description = "GitHub worktree effect, resource observation, and workflow support."
 
 [[executables]]
 name = "github-watcher"
@@ -204,7 +204,7 @@ Service entry fields:
 | `env` | no | Non-secret environment literals supplied to the child process. |
 | `required_env` | no | Environment variable names that must be present in user-owned configuration or the supervisor environment before the service can start. |
 | `restart` | no | Restart policy. `on-failure` restarts crashed children with bounded backoff; `never` leaves the service stopped after exit. |
-| `health` | no | Health policy. `type = "process"` treats a running child as healthy. Future health kinds must be workspace-provider-agnostic. |
+| `health` | no | Health policy. `type = "process"` treats a running child as healthy. Future health kinds must be technology-agnostic. |
 
 The plugin service supervisor starts services for enabled plugins when
 `plect serve` starts, stops them when the resident process stops, and restarts
@@ -227,7 +227,6 @@ The standard `config/` subdirectories with plugin-layer loader behavior are:
 
 | Directory | Mount behavior |
 |---|---|
-| `config/workspaces/` | Mounted as `workspaces/`. Trusted base layer only. Same-id conflicts between plugin layers are load errors; global user definitions replace plugin definitions. |
 | `config/resources/` | Mounted as `resources/`. Trusted base layer only. Same-id conflicts between plugin layers are load errors; global user definitions replace plugin definitions. |
 | `config/channels/` | Mounted as `channels/`. Trusted base layer only. Same-id conflicts between plugin layers are load errors; global user definitions replace plugin definitions. |
 | `config/tasks/` | Mounted as `tasks/`. Trusted layer plus trusted ancestor overlay. Same-id conflicts between plugin layers are load errors; user-owned layers replace whole definitions. |
@@ -239,7 +238,7 @@ the lockfile.
 
 Executable adapters are invoked from TOML hooks through normal command lines.
 Core does not gain a plugin-specific process protocol in this design. A plugin
-may ship a workspace-provider/resource/task config that calls a binary in `bin/`; the
+may ship effect, resource, or task config that calls a binary in `bin/`; the
 loader resolves those executable paths so a reference becomes a stable
 absolute path.
 
@@ -253,8 +252,11 @@ scope = "run"
 [agent_runtime.setup]
 type    = "exec"
 command = "agent-runtime"
-args    = ["launch", "--workspace-dir", { from = "workspace.dir" }]
+args    = ["launch"]
 ```
+
+A node that is not a preparation node runs in its workflow's `workdir`, so its
+action needs no directory argument.
 
 The same action against a plugin-shipped executable names the
 catalog-qualified plugin reference instead of a command:
@@ -263,7 +265,7 @@ catalog-qualified plugin reference instead of a command:
 [agent_runtime.setup]
 type = "exec"
 bin  = "official/session/runtime/agent-runtime"
-args = ["launch", "--workspace-dir", { from = "workspace.dir" }]
+args = ["launch"]
 ```
 
 `bin = "<catalog-alias>/<plugin-path>/<executable>"` is the full form. To
@@ -293,7 +295,7 @@ names them through `bin`.
 The fully-qualified form above names a catalog alias — but a plugin's own
 shipped config cannot know that alias in advance: `catalogs.toml` assigns it
 per-user, at registration time, and nothing constrains it to `official`. A
-plugin's workspace-provider/resource/task files that reference their own plugin's
+plugin's effect, resource, and task files that reference their own plugin's
 executables by the fully-qualified form are wrong the moment a user
 registers the catalog under any other alias.
 
@@ -310,7 +312,7 @@ alias simultaneously:
 [agent_runtime.setup]
 type = "exec"
 bin  = "agent-runtime"
-args = ["launch", "--workspace-dir", { from = "workspace.dir" }]
+args = ["launch"]
 
 [agent_runtime.cleanup]
 type = "exec"
@@ -348,7 +350,7 @@ Alternatives considered:
 ### Plugin Boundary Rule
 
 Plecture has no plugin dependency mechanism. `plugin.toml` has no field for
-naming another plugin, declaring capabilities, or requesting workspace-provider
+naming another plugin, declaring capabilities, or requesting
 resolution. plect does not acquire artifacts, resolve version ranges,
 auto-enable plugins, or build transitive plugin graphs.
 
@@ -411,7 +413,7 @@ config, not inside cloned workspace-dir content. The global declaration file liv
 
 `~/.config/plect` here is the default config home. `--config-home` overrides
 it for the whole config tree (`config.toml`, `catalogs.toml`, `plect.lock`, and
-the global `tasks/`, `workflows/`, `workspaces/`, `resources/`, and
+the global `tasks/`, `workflows/`, `resources/`, and
 `channels/` overlays); absent that flag, `PLECT_CONFIG_HOME` wins, then
 `$XDG_CONFIG_HOME/plect`, then the `~/.config/plect` default. The plugin
 cache and runtime state resolve independently of the config home, each
@@ -752,7 +754,7 @@ Alternatives considered:
 ## Trust boundary
 
 Plecture config can run shell on the user's machine. Plugin config has the same
-power because workspace provider setup, resource observe/finalize, task
+power because effect setup, resource observe/finalize, task
 setup/cleanup, and exec channels all execute commands.
 
 Threat model:
@@ -787,11 +789,11 @@ Threat model:
 - No auto-update exists. Plugin directories mounted by core are read-only during
   normal command execution.
 - Workspace-dir-owned cloned content cannot declare plugin references,
-  workspace providers, resources, channels, or task definitions.
+  resources, channels, or task definitions.
 
 Loader trust restrictions follow this shape:
 
-- Workspace providers, resources, and channels load only from plugin dirs and
+- Resources and channels load only from plugin dirs and
   global config.
 - Tasks reject definitions inside the workspace-dir layer.
 - Workflows allow workspace-dir files only to add nodes.
@@ -819,7 +821,7 @@ Same-id behavior by kind, within one namespace:
 
 | Kind | Same-id rule |
 |---|---|
-| Workspace providers, resources, channels | A deeper user-owned layer replaces the whole definition. No partial override. |
+| Resources, channels | A deeper user-owned layer replaces the whole definition. No partial override. |
 | Tasks | A deeper user-owned layer replaces the whole definition. No partial override. |
 | Workflows | User-owned layers merge by adding nodes. Every other field a shallower layer set cannot be redeclared, except runtime tuning tables where deeper trusted layers replace the whole table. |
 | Workflow input schemas | A workflow's input contract is stated by one layer. A deeper layer redeclaring it is a load error, since a contract no single layer states is one no author can read. |
@@ -830,7 +832,7 @@ Partial override model:
   in a trusted overlay that adds new `[[nodes]]` entries. A plugin's workflow is
   a separate address and is not extended this way; a workflow that starts from
   one is a copy.
-- To stand a task, workspace provider, resource, or channel in for a plugin's,
+- To stand a task, effect, resource, or channel in for a plugin's,
   declare your own and reference yours. Yours answers to its bare id and the
   plugin's to its address, so the reference is what chooses.
 - A plugin-provided task cannot be edited in place through a patch mechanism.
@@ -967,7 +969,7 @@ Residual user config:
 - Slack credentials or environment files. Without credentials, the Slack
   service remains inert.
 
-No workspace-provider, task, workflow, or channel contract change is required. The
+No task, workflow, or channel contract change is required. The
 workflow still references tasks and channels by their existing ids.
 The tmux plumbing is genuinely shared runtime logic with no agent-specific
 branch. Agent activity remains de-generalized: Claude and Codex each carry a
@@ -996,7 +998,7 @@ Catalog-owned files:
 ```text
 catalog.toml
 github/plugin.toml
-github/config/workspaces/worktree.toml
+github/config/tasks/worktree.toml
 github/config/resources/github.toml
 github/config/tasks/github_work.toml
 github/config/tasks/github_review.toml
@@ -1017,18 +1019,18 @@ Residual user config:
 
 - Resource allowlist entries for allowed owners or repositories.
 - Authentication outside Plecture, such as the GitHub CLI token.
-- Workspace dirs root choice.
+- Which directory root an effect that creates directories uses: those effects take a `dirs_root` input whose empty default the plugin resolves to `~/workspace_dirs`.
 - Which session-runtime task surface the user composes the GitHub workflow with.
 - Project-board or watcher subscriptions that are local operating policy.
 
-Core still sees only workspace provider, resource, task, workflow, and
+Core still sees only effect, resource, task, workflow, and
 channel contracts. It does not parse GitHub URLs or know GitHub exists.
 
 ### okf plugin
 
 The okf plugin is scoped by the OKF specification, not by one use case. Its
 first version owns the goal resource mechanics that have machine semantics
-(observation, finalization, and workspace dispatch) and the `goal_bootstrap`
+(observation, finalization, and the goal directory effect) and the `goal_bootstrap`
 effect that re-creates a dropped instance of a host-owned goal task. Bundle
 records that do not have machine semantics, such as retrospectives, stay
 plain files outside the plugin.
@@ -1050,7 +1052,7 @@ Catalog-owned files:
 ```text
 catalog.toml
 okf/plugin.toml
-okf/config/workspaces/local_okf.toml
+okf/config/tasks/goal_dir.toml
 okf/config/resources/okf_goal.toml
 okf/config/tasks/goal_bootstrap.toml
 okf/src/go.mod
@@ -1066,8 +1068,9 @@ section's `src`/`bin`/`scripts` split).
 Plugin-owned behavior:
 
 - Goal resource id syntax.
-- Workspace dispatch for a `local-okf://` resource: a read-context workspace
-  directory symlinked into the owner's bundle.
+- The `goal_dir` effect, a session-scoped node that creates a read-context
+  directory symlinked into the owner's bundle for a `local-okf://` resource; a
+  workflow names its output as `workdir`.
 - Goal observation and finalization entrypoints.
 - Revision and checklist status reporting for goal resources.
 - Idempotent completion logging for goal resources.
@@ -1105,6 +1108,6 @@ Residual user config:
   `docs/language/tasks.md`).
 - Any local overlay that maps goal review into the team's workflow shape.
 
-No workspace-provider/resource/task/workflow contract changes are needed. If the plugin
+No effect/resource/task/workflow contract changes are needed. If the plugin
 discovers that goal state needs data the existing resource observation contract
 cannot express, that belongs in a later contract issue.

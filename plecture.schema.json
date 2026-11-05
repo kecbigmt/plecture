@@ -30,7 +30,6 @@
             "task",
             "channel",
             "workflow",
-            "workspace_provider",
             "resource"
           ]
         }
@@ -47,9 +46,6 @@
         },
         {
           "$ref": "#/$defs/workflowDefinition"
-        },
-        {
-          "$ref": "#/$defs/workspaceProviderDefinition"
         },
         {
           "$ref": "#/$defs/resourceDefinition"
@@ -352,6 +348,10 @@
         "stdin": {
           "$ref": "#/$defs/bindingValue",
           "description": "A value written to the process's standard input instead of its argv, for data that must not be visible in the process table."
+        },
+        "inputs_schema": {
+          "$ref": "#/$defs/schemaDocument",
+          "description": "Only an effect's cleanup declares this: the plugin-owned destruction inputs it reads as cleanup.inputs.<key>."
         }
       },
       "oneOf": [
@@ -399,6 +399,10 @@
         },
         "bind": {
           "$ref": "#/$defs/bindTable"
+        },
+        "inputs_schema": {
+          "$ref": "#/$defs/schemaDocument",
+          "description": "Only an effect's cleanup declares this: the plugin-owned destruction inputs it reads as cleanup.inputs.<key>."
         }
       }
     },
@@ -918,15 +922,21 @@
         "description": {
           "type": "string"
         },
-        "workspace_provider": {
-          "$ref": "#/$defs/staticReference"
+        "resource": {
+          "$ref": "#/$defs/staticReference",
+          "description": "The one entry resource type this workflow accepts."
         },
-        "workspace_provider_inputs": {
+        "workdir": {
           "type": "object",
-          "additionalProperties": {
-            "$ref": "#/$defs/literalScalar"
+          "additionalProperties": false,
+          "required": ["from"],
+          "properties": {
+            "from": {
+              "type": "string"
+            }
           },
-          "description": "Literal data only: a workspace provider's hooks run before any node output exists."
+          "description": "Exactly one projection from a node output, resolving to an absolute local directory. The producer node and its transitive prerequisites are preparation nodes; every other node runs in this directory.",
+          "$comment": "PLECTURE-CFG-FROM-ROOT when it is anything other than a single node-output projection."
         },
         "display": {
           "type": "object",
@@ -1451,42 +1461,6 @@
         }
       ]
     },
-    "workspaceProviderDefinition": {
-      "type": "object",
-      "additionalProperties": false,
-      "required": [
-        "kind"
-      ],
-      "properties": {
-        "kind": {
-          "const": "workspace_provider"
-        },
-        "match": {
-          "type": "string"
-        },
-        "name": {
-          "$ref": "#/$defs/dataValue"
-        },
-        "setup": {
-          "$ref": "#/$defs/action"
-        },
-        "cleanup": {
-          "$ref": "#/$defs/action"
-        },
-        "inputs_schema": {
-          "$ref": "#/$defs/schemaDocument"
-        },
-        "inputs_schema_file": {
-          "type": "string"
-        },
-        "outputs_schema": {
-          "$ref": "#/$defs/schemaDocument"
-        },
-        "outputs_schema_file": {
-          "type": "string"
-        }
-      }
-    },
     "resourceDefinition": {
       "type": "object",
       "additionalProperties": false,
@@ -1616,9 +1590,6 @@
           "type": "integer",
           "description": "The dialect this user config tree is written in. It governs the whole tree \u2014 every definition document, split across any number of files, inherits it \u2014 and is orthogonal to plect_min_version, which is binary compatibility rather than language dialect.",
           "$comment": "PLECTURE-CFG-SCHEMA-VERSION-OLDER, PLECTURE-CFG-SCHEMA-VERSION-NEWER: which dialects are accepted is the loader's three-way comparison, not a structural bound, so no range is asserted here."
-        },
-        "workspace_dirs_root": {
-          "type": "string"
         },
         "max_up_children": {
           "type": "integer",
@@ -2010,7 +1981,7 @@
         },
         "resource": {
           "$ref": "#/$defs/staticReference",
-          "description": "The resource this task is written for. Named after the kind it references, the same way a workflow's workspace_provider field is. Declaring it is what lets every key a check or a chain input reads be resolved against that resource's published state at load time, and what lets instantiation reject an incompatible resource up front. An extension does not declare this: it inherits the base's."
+          "description": "The resource this task is written for. Named after the kind it references, the same way a workflow's resource field is. Declaring it is what lets every key a check or a chain input reads be resolved against that resource's published state at load time, and what lets instantiation reject an incompatible resource up front. An extension does not declare this: it inherits the base's."
         },
         "instructions": {
           "type": "array",

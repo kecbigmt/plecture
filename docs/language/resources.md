@@ -75,8 +75,7 @@ produces an identifier. If required inputs prevent that binding, a known
 identifier fails loading and a runtime identifier reports a subscription
 failure for retry; neither is silently skipped. Teardown runs `unsubscribe`
 when the resource is no longer needed by the session entry, any task, or any
-live node. A resource declaration needs no workspace provider to bind
-delivery. Workspace providers declare neither action.
+live node.
 
 ## Query
 

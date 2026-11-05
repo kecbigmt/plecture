@@ -1,0 +1,14 @@
+# plect-fixture: result=invalid layer=semantic diagnostic=PLECTURE-CFG-FROM-ROOT entry=definitions
+# reason: destruction inputs belong to cleanup, so setup does not observe cleanup.inputs.
+
+[checkout_effect]
+kind  = "effect"
+scope = "session"
+
+[checkout_effect.setup]
+type = "exec"
+command = "checkout-tool"
+args = ["create", { from = "cleanup.inputs.delete_branch" }]
+
+[checkout_effect.health.alive]
+type = "noop"

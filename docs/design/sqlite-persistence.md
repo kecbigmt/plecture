@@ -64,11 +64,11 @@ Process fan-out that shares the parent's own store (`plect serve` spawning a
 `app/internal/effect.ExecHook` (a task's setup/cleanup/health/capture,
 including a terminal-multiplexer pane's long-lived shell) and
 `app/internal/channel` (a channel delivery) use `IsolatedEnv`.
-`app/internal/effect.RunHook` (workspace-provider setup/cleanup/subscribe,
-resource observe/finalize), `app/internal/population`'s resource-observer
+`app/internal/effect.RunHook` (resource subscribe/unsubscribe, resource
+observe/finalize), `app/internal/population`'s resource-observer
 poll/subscribe query, and `app/internal/pluginservice` (a supervised
-service) use `InheritableEnv`: a workspace-provider hook, resource-observer
-query, or service may read `XDG_DATA_HOME` for on-disk state of its own,
+service) use `InheritableEnv`: a resource-observer
+query, resource subscription hook, or service may read `XDG_DATA_HOME` for on-disk state of its own,
 unrelated to plect's store.
 
 An `IsolatedEnv` child still needs to run `plect` against the daemon's own
@@ -143,7 +143,7 @@ variable-width fractional part, so lexical order equals time order; see
 
 A text column holding JSON carries the `_json` suffix. Every `_json` column
 is declaration-owned: its shape comes from a configuration-language or
-provider schema, and the database stores it opaquely, enforcing only
+plugin schema, and the database stores it opaquely, enforcing only
 well-formedness (`CHECK (col IS NULL OR json_valid(col))`, or `CHECK
 (json_valid(col))` for a `NOT NULL` one like `events.metadata_json`), never
 its internal structure. Core-owned structure is never stored as JSON — it
@@ -168,17 +168,17 @@ classifies every `_json` column by its owning declaration:
 | `node_executions.done_when_json` | core-owned shape, embedded as a narrow, documented exception (see above) rather than declaration-owned |
 | `node_execution_layers`/`task_instance_layers`.`inputs_json`, `.locals_json`, `.outputs_json` | the nesting layer's own effect declaration |
 | `node_execution_layers`/`task_instance_layers`.`env_json` | the workflow/effect's declared process environment for that layer |
-| `population_members.item_json` | the workspace provider's own resource-item map |
+| `population_members.item_json` | the resource observer's own item map |
 | `events.metadata_json` | the event producer's own map (a provider's change-type payload, a channel's delivery detail, ...) |
 
 | Table | Key and relational columns | JSON or scalar payload | Source |
 | --- | --- | --- | --- |
-| `sessions` | `id` (ULID) primary key; `name` (unique only among live rows — see "Session identity and lifecycle"); `status`, nullable `destroyed_at`; nullable `parent_session_id` and `root_session_id`, each referencing `sessions(id)`; nullable `resource_id`, `alias`, `workspace_dir`, `population_workflow`, `population_name` (the pair also references `populations(workflow, name)`); nullable lifecycle-configuration digest baseline; `workflow`, `created_at`, `updated_at` | inputs, health, tick backoff | `state.json` `sessions` entries |
+| `sessions` | `id` (ULID) primary key; `name` (unique only among live rows — see "Session identity and lifecycle"); `status`, nullable `destroyed_at`; nullable `parent_session_id` and `root_session_id`, each referencing `sessions(id)`; nullable `resource_id`, `alias`, `population_workflow`, `population_name` (the pair also references `populations(workflow, name)`); nullable lifecycle-configuration digest baseline; `workflow`, `created_at`, `updated_at` | inputs, health, tick backoff | `state.json` `sessions` entries |
 | `node_instances` | `(session_id, node_id)` primary key; session foreign key; no other columns | none — purely the logical node's identity | `state.json` `sessions.*.tasks` entries with `dynamic` unset (keys only) |
-| `node_executions` | `id` (ULID, minted per setup attempt) primary key; `(session_id, node_id)` foreign key to `node_instances`; `sequence`; nullable `task_id`, `name`, `resource`; `scope`, `status`, nullable `finalized_at`; release outcome and unavailable reason; at most one unreleased row per `(session_id, node_id)` — see "Node execution identity" | inputs, outputs, state, observed value, `done_when` (rare, not relationally queried), setup-time cleanup facts, error, lifecycle timestamps | `state.json` `sessions.*.tasks` entries with `dynamic` unset (per-attempt facts) |
+| `node_executions` | `id` (ULID, minted per setup attempt) primary key; `(session_id, node_id)` foreign key to `node_instances`; `sequence`; nullable `task_id`, `name`, `resource`; `scope`, `status`, nullable `finalized_at`; release outcome and unavailable reason; at most one unreleased row per `(session_id, node_id)` — see "Node execution identity" | inputs, outputs, state, observed value, `done_when` (rare, not relationally queried), setup-time cleanup facts, nullable `directory` (the directory the setup ran in; `NULL` when setup ran with no explicit directory), error, lifecycle timestamps | `state.json` `sessions.*.tasks` entries with `dynamic` unset (per-attempt facts) |
 | `node_execution_layers` | `(execution_id, position)` primary key; execution foreign key (`ON DELETE CASCADE`) | inputs, locals, outputs, env, heartbeat counters, lifecycle timestamps, error | `TaskState.Layers` (static node instances) |
 | `node_execution_dependencies` | `(execution_id, depends_on_execution_id)` primary key; both reference `node_executions(id)` (`ON DELETE CASCADE`) | none — the edge itself is the payload | snapshotted from `task.Resolved.DependsOn` at the dependent's own setup time — see "Node execution identity" |
-| `task_instances` | `id` (ULID, stable across every write that still names the same `(session_id, instance_name)`; re-minted only when a cleanup removes the row before a later setup recreates it) primary key; `(session_id, instance_name)` unique; session foreign key; `task_id`, `scope`, `status`, `sequence`, nullable `resource`, `named`, nullable `finalized_at` | inputs, outputs, state, observed value, extra completion data, error, lifecycle timestamps | `state.json` `sessions.*.tasks` entries with `dynamic: true` |
+| `task_instances` | `id` (ULID, stable across every write that still names the same `(session_id, instance_name)`; re-minted only when a cleanup removes the row before a later setup recreates it) primary key; `(session_id, instance_name)` unique; session foreign key; `task_id`, `scope`, `status`, `sequence`, nullable `resource`, `named`, nullable `finalized_at` | inputs, outputs, state, observed value, extra completion data, nullable `directory` (the directory the setup ran in; `NULL` when setup ran with no explicit directory), error, lifecycle timestamps | `state.json` `sessions.*.tasks` entries with `dynamic: true` |
 | `task_instance_layers` | `(task_instance_id, position)` primary key; task-instance foreign key | inputs, locals, outputs, env, heartbeat counters, lifecycle timestamps, error | `TaskState.Layers` (dynamic instances) |
 | `task_done_when_states` | `task_instance_id` primary key and foreign key | counters, fingerprints, reason/body, escalation data | `TaskState.DoneWhen` (dynamic instances only) |
 | `task_done_when_unsatisfied_items` | `(task_instance_id, position)` primary key; task-instance foreign key | one unsatisfied-leaf id per row | `DoneWhenState.LastUnsatisfied` |
@@ -219,11 +219,15 @@ replacement.
 self-reported status line is derived from the most recent
 `plect.status_message` event on its live row (an ordinary `events` row, no
 special table), read via one indexed query — see "Status message" below.
-`Session.Branch` is likewise not a stored field: a checked-out branch is git
-vocabulary, and core stays version-control-agnostic by identity, so the fact
-lives only in the `@workflow` pseudo-node's own `node_executions.outputs_json`
-(a git-backed workspace provider's own setup output), read through
-`domain.SessionBranch` by the handful of call sites that want it.
+A session's working directory is likewise not a stored field: the workflow's
+`workdir` projection is evaluated on read from the producing node's
+`node_executions.outputs_json`, so no second copy can disagree with the node
+output. The directory a node's setup actually ran in is a separate fact,
+recorded per execution in `node_executions.directory` (and per dynamic
+instance in `task_instances.directory`), because cleanup and liveness probes
+must run in that directory even after the workflow changes. Core stays
+version-control-agnostic: a checked-out branch is an ordinary node output, not
+a session field.
 
 `population_members.session_name` is a recorded fact, not an enforced foreign
 key: admission can record a member's intended session name before that
@@ -276,8 +280,7 @@ enforces that exactly one of the two holds. The sentinel itself
 the `state.Store`/`ReserveUpSlot` call-site boundary, translated to and
 from these two columns only inside the persistence package.
 
-`Session.Nodes` (static workflow-DAG nodes, including the `@workflow`
-pseudo-node) and `Session.Tasks` (dynamic instances created at runtime via
+`Session.Nodes` (static workflow-DAG nodes) and `Session.Tasks` (dynamic instances created at runtime via
 `plect task setup`) map onto `node_instances`/`node_executions` and
 `task_instances` respectively — one domain collection per identity table
 (plus, for nodes, the per-attempt `node_executions` child it now owns; see
@@ -573,7 +576,6 @@ CREATE TABLE sessions (
     resource_id TEXT,
     alias TEXT,
     workflow TEXT NOT NULL,
-    workspace_dir TEXT,
     population_workflow TEXT,
     population_name TEXT,
     created_at TEXT NOT NULL,
@@ -654,7 +656,7 @@ The existing state store serializes `Put`, `Update`, `UpdatePopulation`,
 whole `state.json` file under `state.json.lock`
 (`app/internal/state/store.go`). SQLite replaces each callback with the
 following short transaction. No transaction contains an agent invocation,
-hook, workspace action, network call, terminal operation, or channel delivery.
+hook, effect action, network call, terminal operation, or channel delivery.
 Every write transaction opens with `BEGIN IMMEDIATE` before reading rows. This
 reserves a write-capable SQLite snapshot for read-then-write callbacks;
 `busy_timeout` does not retry a deferred transaction's `SQLITE_BUSY_SNAPSHOT`
@@ -757,7 +759,7 @@ routes answer an unavailable/retryable response while a migration blocks an
 operation. `plect-web` performs the same startup check and its handlers use
 the same facade. Plugin executables never open core's database; a plugin that
 invokes `plect` or the local event service receives the same wait-or-refuse
-result. This keeps provider code outside migration coordination and prevents a
+result. This keeps plugin code outside migration coordination and prevents a
 second storage authority.
 
 ## Event positions and cursors
@@ -916,8 +918,8 @@ The database path resolution, connection settings, schema, query generation,
 transactions, migration gate, importer, and cursor validation are core
 responsibilities in `app/`. They provide durable identity, lifecycle,
 relationships, observation, and handoff without naming a provider. The schema
-contains no configuration syntax and adds no configuration key. Workspace
-providers, channel adapters, and other plugins continue to provide external
+contains no configuration syntax and adds no configuration key. Effect
+plugins, channel adapters, and other plugins continue to provide external
 effects and their own private persistence; they do not import the SQLite driver
 through `contracts/`.
 

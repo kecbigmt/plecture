@@ -1,0 +1,7 @@
+# plect-fixture: result=invalid layer=semantic diagnostic=PLECTURE-CFG-FROM-ROOT entry=definitions
+# reason: workdir is exactly one projection of a node output, because the preparation nodes are derived from the node it names before anything is evaluated.
+
+[pull_review]
+kind     = "workflow"
+resource = "pull_request"
+workdir  = { from = "session.inputs.dir" }

@@ -2,8 +2,8 @@
 # reason: an empty selection runs no query means at all.
 
 [bad_uses_empty]
-kind               = "workflow"
-workspace_provider = "query_provider"
+kind     = "workflow"
+resource = "query_source"
 
 [[bad_uses_empty.populations]]
 name              = "dispatch"
