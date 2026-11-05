@@ -5,7 +5,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"reflect"
-	"slices"
 	"sort"
 	"strings"
 	"time"
@@ -171,32 +170,8 @@ func cleanupRebasedNodes(cfg *config.Config, store *state.Store, session *domain
 	if err != nil {
 		return err
 	}
-	nextIDs := make(map[string]bool)
-	for _, node := range next.Workflow.Nodes {
-		nextIDs[node.ID] = true
-	}
-	selected := make(map[string]bool)
-	for _, id := range classification.RecreateNodes {
-		if !nextIDs[id] || session.Nodes[id] != nil {
-			selected[id] = true
-		}
-	}
-	for _, node := range old.Workflow.Nodes {
-		if !nextIDs[node.ID] {
-			selected[node.ID] = true
-		}
-	}
+	selected := rebaseReleaseSet(old, next, plan, classification.RecreateNodes, session)
 	ordered := plan.UpOrder()
-	for changed := true; changed; {
-		changed = false
-		for _, node := range ordered {
-			for _, dep := range node.DependsOn {
-				if selected[dep] && !selected[node.NodeID] {
-					selected[node.NodeID], changed = true, true
-				}
-			}
-		}
-	}
 	var cleanup []task.Resolved
 	for i := len(ordered) - 1; i >= 0; i-- {
 		if selected[ordered[i].NodeID] && session.Nodes[ordered[i].NodeID] != nil {
@@ -218,6 +193,38 @@ func cleanupRebasedNodes(cfg *config.Config, store *state.Store, session *domain
 // changing where it runs is a change of the node itself.
 func sameExecutionDirectory(old, next task.Resolved) bool {
 	return old.Prep == next.Prep && reflect.DeepEqual(old.Workdir, next.Workdir)
+}
+
+// rebaseReleaseSet is every old node a rebase releases: the recreated and
+// removed nodes plus everything that depends on them in the old graph. Both the
+// cleanup and the workdir guard read it, so they cannot disagree.
+func rebaseReleaseSet(old, next config.WorkflowRevision, oldPlan *task.Plan, recreate []string, session *domain.Session) map[string]bool {
+	nextIDs := make(map[string]bool)
+	for _, node := range next.Workflow.Nodes {
+		nextIDs[node.ID] = true
+	}
+	selected := make(map[string]bool)
+	for _, id := range recreate {
+		if !nextIDs[id] || session.Nodes[id] != nil {
+			selected[id] = true
+		}
+	}
+	for _, node := range old.Workflow.Nodes {
+		if !nextIDs[node.ID] {
+			selected[node.ID] = true
+		}
+	}
+	for changed := true; changed; {
+		changed = false
+		for _, node := range oldPlan.UpOrder() {
+			for _, dep := range node.DependsOn {
+				if selected[dep] && !selected[node.NodeID] {
+					selected[node.NodeID], changed = true, true
+				}
+			}
+		}
+	}
+	return selected
 }
 
 func ClassifyWorkflowRebase(old, next config.WorkflowRevision, session *domain.Session) (RebaseClassification, error) {
@@ -425,28 +432,12 @@ func ClassifyWorkflowRebase(old, next config.WorkflowRevision, session *domain.S
 		}
 		result.RecreateNodes = nodes
 		sort.Strings(result.RecreateNodes)
-		if workdirReleased(old, next, result.RecreateNodes) && liveDynamicInstanceInWorkdir(session) {
+		if old.Workflow.Workdir != nil && rebaseReleaseSet(old, next, oldPlan, result.RecreateNodes, session)[old.Workflow.Workdir.Node] && liveDynamicInstanceInWorkdir(session) {
 			result.raise(RebaseRecreate, "the workdir's producer would be released while a dynamic instance still runs in it; clean the instance up first or destroy and recreate the session")
 			result.RecreateNodes = nil
 		}
 	}
 	return result, nil
-}
-
-func workdirReleased(old, next config.WorkflowRevision, recreate []string) bool {
-	if old.Workflow.Workdir == nil {
-		return false
-	}
-	producer := old.Workflow.Workdir.Node
-	if slices.Contains(recreate, producer) {
-		return true
-	}
-	for _, node := range next.Workflow.Nodes {
-		if node.ID == producer {
-			return false
-		}
-	}
-	return true
 }
 
 func liveDynamicInstanceInWorkdir(session *domain.Session) bool {

@@ -556,3 +556,52 @@ uses = "failing"
 		t.Errorf("the workdir was deleted by the refused rebase: %v", statErr)
 	}
 }
+
+func TestWorkflowRebase_RefusesWhenRemovingAPrerequisiteWouldReleaseTheWorkdirIndirectly(t *testing.T) {
+	f := newWDFixture(t, `
+[review]
+kind     = "workflow"
+resource = "issue"
+workdir  = { from = "nodes.checkout.outputs.workspace_dir" }
+
+[[review.nodes]]
+id     = "prepare"
+uses   = "agent"
+blocks = ["checkout"]
+
+[[review.nodes]]
+uses = "checkout"
+
+[[review.nodes]]
+id   = "worker"
+uses = "agent"
+`)
+	if _, err := Up(f.cfg, f.store, UpParams{Identifier: wdIssueURL}); err != nil {
+		t.Fatalf("Up: %v", err)
+	}
+	name, nodes := wdSession(t, f)
+	workdir, _ := nodes["checkout"].Outputs["workspace_dir"].(string)
+	if _, err := TaskSetup(f.cfg, f.store, TaskSetupParams{TaskID: "failing", SessionName: name}); err != nil {
+		t.Fatalf("TaskSetup: %v", err)
+	}
+	wdWrite(t, filepath.Join(f.base, "workflows", "review.toml"), `
+[review]
+kind     = "workflow"
+resource = "issue"
+workdir  = { from = "nodes.checkout.outputs.workspace_dir" }
+
+[[review.nodes]]
+uses = "checkout"
+
+[[review.nodes]]
+id   = "worker"
+uses = "agent"
+`)
+
+	if _, err := WorkflowRebase(f.cfg, f.store, RebaseParams{Identifier: name}); err == nil {
+		t.Fatal("rebase succeeded although removing a prerequisite releases the checkout under a live dynamic instance")
+	}
+	if _, statErr := os.Stat(workdir); statErr != nil {
+		t.Errorf("the workdir was deleted by the refused rebase: %v", statErr)
+	}
+}
