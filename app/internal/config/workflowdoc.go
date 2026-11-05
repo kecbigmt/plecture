@@ -115,6 +115,16 @@ func workflowFrom(def *lang.Definition, sourcePath string) (WorkflowFile, error)
 	if w.Display, err = valueTableFrom(def.Body, "display", lang.ClassData, pos); err != nil {
 		return w, err
 	}
+	if w.Outputs, err = valueTableFrom(def.Body, "outputs", lang.ClassData, pos); err != nil {
+		return w, err
+	}
+	if raw, ok := def.Body["outputs_schema"]; ok {
+		schema, ok := raw.(map[string]any)
+		if !ok {
+			return w, fmt.Errorf("`outputs_schema` is a JSON Schema document")
+		}
+		w.OutputsSchema = schema
+	}
 	if w.WorkspaceProviderInputs, err = providerInputsFrom(def.Body, pos); err != nil {
 		return w, err
 	}

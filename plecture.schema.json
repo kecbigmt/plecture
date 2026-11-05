@@ -948,6 +948,16 @@
         "inputs_schema_file": {
           "type": "string"
         },
+        "outputs": {
+          "type": "object",
+          "additionalProperties": {
+            "$ref": "#/$defs/dataValue"
+          },
+          "description": "The workflow's public outputs: each value is evaluated from node outputs and session inputs once its sources exist, and `workflow.outputs.<key>` reads the result."
+        },
+        "outputs_schema": {
+          "$ref": "#/$defs/schemaDocument"
+        },
         "nodes": {
           "type": "array",
           "items": {

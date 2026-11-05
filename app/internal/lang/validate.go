@@ -260,6 +260,9 @@ func (v Validation) validateResource(def *Definition, pos Position) error {
 }
 
 func (v Validation) validateWorkflow(def *Definition, pos Position) error {
+	if err := v.valueTable(def.Body, "outputs", ClassData, surfaceWorkflowOutputs, pos); err != nil {
+		return err
+	}
 	if err := v.valueTable(def.Body, "display", ClassData, surfaceWorkflowDisplay, pos); err != nil {
 		return err
 	}

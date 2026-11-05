@@ -119,6 +119,8 @@ var (
 	surfaceResourceQuery = newSurface("resource.query", LayerSemantic,
 		"inputs.<key>")
 
+	surfaceWorkflowOutputs = newSurface("workflow.outputs", LayerSemantic,
+		"nodes.<id>.outputs.<key>", "session.inputs.<key>")
 	surfaceWorkflowDisplay = newSurface("workflow.display", LayerSemantic,
 		"workflow.outputs.<key>", "session.inputs.<key>")
 	// A workflow event channel's inputs read the same roots a node's do.

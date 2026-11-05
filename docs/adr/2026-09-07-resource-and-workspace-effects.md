@@ -1,6 +1,8 @@
 ---
 supersedes: 2026-08-17-workspace-provider-vocabulary
-superseded_by: 2026-09-08-minimum-cleanup-contract
+superseded_by:
+  - 2026-09-08-minimum-cleanup-contract
+  - 2026-11-05-public-outputs-derived-on-read
 ---
 
 # Resource entry points and ordinary environment effects

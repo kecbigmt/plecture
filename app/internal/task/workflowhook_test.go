@@ -11,6 +11,7 @@ import (
 	"github.com/kecbigmt/plecture/app/internal/effect"
 	"github.com/kecbigmt/plecture/app/internal/lang"
 	"github.com/kecbigmt/plecture/app/internal/plugins"
+	"github.com/kecbigmt/plecture/app/internal/publicoutput"
 	contract "github.com/kecbigmt/plecture/contracts/state"
 )
 
@@ -335,7 +336,8 @@ func TestRunWorkflowCleanup_FailureMarksFailed(t *testing.T) {
 	}
 }
 
-// A task node can reference the pseudo-node's outputs.
+// A task node reads the workflow's public outputs, evaluated from the nodes
+// already produced in the same run.
 func TestRunSetup_ExposesWorkflowOutputs(t *testing.T) {
 	resolved := []Resolved{{
 		NodeID: "echoer",
@@ -348,13 +350,17 @@ func TestRunSetup_ExposesWorkflowOutputs(t *testing.T) {
 		Inputs: map[string]*lang.Value{"wd": fromValue("workflow.outputs.workspace_dir")},
 	}}
 	tasks := map[string]*contract.TaskState{
-		contract.WorkflowPseudoNodeID: {
+		"checkout": {
 			Scope:   contract.TaskScopeSession,
 			Status:  contract.TaskStatusProduced,
-			Outputs: map[string]any{"workspace_dir": "/tmp/wd", "branch": "issue/9"},
+			Outputs: map[string]any{"workspace_dir": "/tmp/wd", "ref": "issue/9"},
 		},
 	}
-	if err := RunSetup(context.Background(), resolved, SessionVars{}, tasks, nil); err != nil {
+	vars := SessionVars{PublicOutputs: publicoutput.Declaration{Bindings: map[string]*lang.Value{
+		"workspace_dir": fromValue("nodes.checkout.outputs.workspace_dir"),
+		"branch":        fromValue("nodes.checkout.outputs.ref"),
+	}}}
+	if err := RunSetup(context.Background(), resolved, vars, tasks, nil); err != nil {
 		t.Fatal(err)
 	}
 	st := tasks["echoer"]
@@ -362,6 +368,6 @@ func TestRunSetup_ExposesWorkflowOutputs(t *testing.T) {
 		t.Errorf("workflow.outputs.branch = %v", st.Outputs["got"])
 	}
 	if st.Inputs["wd"] != "/tmp/wd" {
-		t.Errorf("input binding over .Workflow.outputs.workspace_dir = %v", st.Inputs["wd"])
+		t.Errorf("input binding over workflow.outputs.workspace_dir = %v", st.Inputs["wd"])
 	}
 }

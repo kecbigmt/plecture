@@ -7,6 +7,8 @@ import (
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/kecbigmt/plecture/app/internal/lang"
 )
 
 func writeFile(t *testing.T, path, content string) {
@@ -1704,5 +1706,81 @@ func TestLoadTaskDefinitions_RootReservedFileStillSkipped(t *testing.T) {
 	writeFile(t, filepath.Join(base, "config.toml"), "workspace_dirs_root = \"/tmp/x\"\n")
 	if _, err := (&Config{BaseDir: base}).LoadTaskDefinitions(""); err != nil {
 		t.Fatalf("LoadTaskDefinitions: %v", err)
+	}
+}
+
+func TestLoadWorkflows_ReadsPublicOutputsAndTheirSchema(t *testing.T) {
+	baseDir := t.TempDir()
+	writeFile(t, filepath.Join(baseDir, "workflows", "review.toml"), `
+[review]
+kind = "workflow"
+
+[review.outputs]
+endpoint = { from = "nodes.agent.outputs.endpoint" }
+label    = "fixed"
+
+[review.outputs_schema]
+type     = "object"
+required = ["endpoint"]
+
+[[review.nodes]]
+uses = "agent"
+`)
+	got, err := (&Config{BaseDir: baseDir}).LoadWorkflows("")
+	if err != nil {
+		t.Fatalf("LoadWorkflows: %v", err)
+	}
+	wf := got["review"]
+	if len(wf.Outputs) != 2 {
+		t.Fatalf("Outputs = %+v, want two bindings", wf.Outputs)
+	}
+	if endpoint := wf.Outputs["endpoint"]; endpoint == nil || endpoint.Form != lang.FormFrom || endpoint.From != "nodes.agent.outputs.endpoint" {
+		t.Fatalf("endpoint binding = %+v", endpoint)
+	}
+	if wf.OutputsSchema["type"] != "object" {
+		t.Fatalf("OutputsSchema = %+v", wf.OutputsSchema)
+	}
+}
+
+func TestLoadWorkflows_PublicOutputCycleIsALoadError(t *testing.T) {
+	baseDir := t.TempDir()
+	writeFile(t, filepath.Join(baseDir, "workflows", "review.toml"), `
+[review]
+kind = "workflow"
+
+[review.outputs]
+endpoint = { from = "nodes.agent.outputs.endpoint" }
+
+[[review.nodes]]
+uses = "agent"
+
+[review.nodes.inputs]
+peer = { from = "workflow.outputs.endpoint" }
+`)
+	_, err := (&Config{BaseDir: baseDir}).LoadWorkflows("")
+	if err == nil || !strings.Contains(err.Error(), "PLECTURE-CFG-WORKFLOW-CYCLE") {
+		t.Fatalf("LoadWorkflows = %v, want a cycle diagnostic", err)
+	}
+}
+
+func TestWorkflowRevisionCarriesPublicOutputs(t *testing.T) {
+	revision := WorkflowRevision{Workflow: WorkflowFile{
+		ID: "review", Address: "review",
+		Outputs:       map[string]*lang.Value{"endpoint": {Form: lang.FormFrom, From: "nodes.agent.outputs.endpoint"}},
+		OutputsSchema: map[string]any{"type": "object"},
+	}}
+	body, digest, err := revision.CanonicalBody()
+	if err != nil {
+		t.Fatal(err)
+	}
+	decoded, err := DecodeWorkflowRevision(body, digest)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := decoded.Workflow.Outputs["endpoint"]; got == nil || got.From != "nodes.agent.outputs.endpoint" {
+		t.Fatalf("decoded outputs = %+v", decoded.Workflow.Outputs)
+	}
+	if decoded.Workflow.OutputsSchema["type"] != "object" {
+		t.Fatalf("decoded outputs schema = %+v", decoded.Workflow.OutputsSchema)
 	}
 }

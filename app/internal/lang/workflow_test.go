@@ -229,3 +229,121 @@ func TestValidateWorkflow_EventChannelRequiresNameAndUses(t *testing.T) {
 		assertDiagnostic(t, Validation{}.ValidateDefinition(def), CodeFieldRequired, LayerStructural)
 	}
 }
+
+func TestValidateWorkflow_PublicOutputsAcceptedOverNodeOutputsAndSessionInputs(t *testing.T) {
+	def := workflowDef(t, `
+[session]
+kind = "workflow"
+
+[session.outputs]
+endpoint = { from = "nodes.worker.outputs.endpoint" }
+label    = { expr = "'run-' + session.inputs.label" }
+
+[session.outputs_schema]
+type = "object"
+
+[[session.nodes]]
+uses = "worker"
+`)
+	if err := (Validation{}).ValidateDefinition(def); err != nil {
+		t.Fatalf("ValidateDefinition: %v", err)
+	}
+}
+
+func TestValidateWorkflow_PublicOutputRejectsRootsOutsideItsSurface(t *testing.T) {
+	for _, binding := range []string{
+		`{ from = "workflow.outputs.other" }`,
+		`{ from = "self.outputs.pid" }`,
+		`{ expr = "workflow.outputs.other + 'x'" }`,
+	} {
+		def := workflowDef(t, "[session]\nkind = \"workflow\"\n\n[session.outputs]\nendpoint = "+binding+"\n")
+		if err := (Validation{}).ValidateDefinition(def); err == nil {
+			t.Fatalf("binding %s accepted, want a diagnostic", binding)
+		}
+	}
+}
+
+func TestWorkflowNodes_ReadOfPublicOutputExpandsToItsProducers(t *testing.T) {
+	def := workflowDef(t, `
+[session]
+kind = "workflow"
+
+[session.outputs]
+endpoint = { from = "nodes.orchestrator.outputs.endpoint" }
+combined = { expr = "nodes.agent.outputs.a + nodes.checkout.outputs.b" }
+
+[[session.nodes]]
+uses = "checkout"
+
+[[session.nodes]]
+uses = "agent"
+
+[[session.nodes]]
+uses = "orchestrator"
+
+[[session.nodes]]
+uses = "consumer"
+
+[session.nodes.inputs]
+peer = { from = "workflow.outputs.endpoint" }
+both = { json = { x = { from = "workflow.outputs.combined" } } }
+`)
+	nodes, err := WorkflowNodes(def)
+	if err != nil {
+		t.Fatalf("WorkflowNodes: %v", err)
+	}
+	got := nodes[3].Reads
+	want := []string{"orchestrator", "agent", "checkout"}
+	if len(got) != len(want) {
+		t.Fatalf("consumer reads = %v, want %v", got, want)
+	}
+	for _, id := range want {
+		found := false
+		for _, read := range got {
+			found = found || read == id
+		}
+		if !found {
+			t.Fatalf("consumer reads = %v, want it to include %q", got, id)
+		}
+	}
+}
+
+func TestValidateWorkflow_CycleThroughPublicOutputRejected(t *testing.T) {
+	def := workflowDef(t, `
+[session]
+kind = "workflow"
+
+[session.outputs]
+endpoint = { from = "nodes.agent.outputs.endpoint" }
+
+[[session.nodes]]
+uses = "agent"
+
+[session.nodes.inputs]
+peer = { from = "workflow.outputs.endpoint" }
+`)
+	assertDiagnostic(t, Validation{}.ValidateDefinition(def), CodeWorkflowCycle, LayerSemantic)
+}
+
+func TestValidateWorkflow_CycleAcrossNodesThroughPublicOutputRejected(t *testing.T) {
+	def := workflowDef(t, `
+[session]
+kind = "workflow"
+
+[session.outputs]
+from_second = { from = "nodes.second.outputs.value" }
+
+[[session.nodes]]
+uses = "first"
+
+[session.nodes.inputs]
+peer = { from = "workflow.outputs.from_second" }
+
+[[session.nodes]]
+uses = "second"
+
+[session.nodes.inputs]
+peer = { from = "nodes.first.outputs.value" }
+`)
+	assertDiagnostic(t, Validation{}.ValidateDefinition(def), CodeWorkflowCycle, LayerSemantic)
+}

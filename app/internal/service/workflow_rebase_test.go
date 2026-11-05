@@ -498,3 +498,66 @@ func TestClassifyWorkflowRebase(t *testing.T) {
 		})
 	}
 }
+
+func TestClassifyWorkflowRebaseConsumerOfAChangedPublicOutput(t *testing.T) {
+	from := func(path string) *lang.Value { return &lang.Value{Form: lang.FormFrom, From: path} }
+	base := func(scope string) config.WorkflowRevision {
+		return config.WorkflowRevision{
+			Workflow: config.WorkflowFile{
+				Address: "work",
+				Outputs: map[string]*lang.Value{"endpoint": from("nodes.agent.outputs.endpoint")},
+				Nodes: []config.WorkflowNode{
+					{ID: "agent", Uses: "agent"},
+					{ID: "other", Uses: "agent"},
+					{ID: "relay", Uses: "relay", Inputs: map[string]*lang.Value{"peer": from("workflow.outputs.endpoint")}},
+					{ID: "bystander", Uses: "agent"},
+				},
+			},
+			Effects: map[string]config.TaskDefinition{
+				"agent": {ID: "agent", Scope: scope, Setup: &lang.Action{Type: lang.ActionNoop}},
+				"relay": {ID: "relay", Scope: scope, Setup: &lang.Action{Type: lang.ActionNoop}},
+			},
+		}
+	}
+	sessionFor := func(scope string) *domain.Session {
+		return &domain.Session{Inputs: map[string]any{}, Nodes: map[string]*contract.TaskState{
+			"agent":     {Status: contract.TaskStatusProduced, Scope: scope, Outputs: map[string]any{"endpoint": "e1"}},
+			"other":     {Status: contract.TaskStatusProduced, Scope: scope, Outputs: map[string]any{"endpoint": "e2"}},
+			"relay":     {Status: contract.TaskStatusProduced, Scope: scope},
+			"bystander": {Status: contract.TaskStatusProduced, Scope: scope},
+		}}
+	}
+	for _, tc := range []struct {
+		name          string
+		consumerScope string
+		edit          func(*config.WorkflowRevision)
+		class         RebaseClass
+		recreate      []string
+	}{
+		{"binding unchanged", "run", func(*config.WorkflowRevision) {}, RebaseCompatible, nil},
+		{"binding repointed", "run", func(r *config.WorkflowRevision) {
+			r.Workflow.Outputs["endpoint"] = from("nodes.other.outputs.endpoint")
+		}, RebaseRestart, []string{"agent", "bystander", "other", "relay"}},
+		{"binding removed", "run", func(r *config.WorkflowRevision) {
+			delete(r.Workflow.Outputs, "endpoint")
+		}, RebaseRecreate, nil},
+		{"unrelated binding changed", "run", func(r *config.WorkflowRevision) {
+			r.Workflow.Outputs["unread"] = from("nodes.other.outputs.endpoint")
+		}, RebaseCompatible, nil},
+		{"session-scoped consumer", "session", func(r *config.WorkflowRevision) {
+			r.Workflow.Outputs["endpoint"] = from("nodes.other.outputs.endpoint")
+		}, RebaseRecreate, nil},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			old, next := base(tc.consumerScope), base(tc.consumerScope)
+			tc.edit(&next)
+			got, err := ClassifyWorkflowRebase(old, next, sessionFor(tc.consumerScope))
+			if err != nil {
+				t.Fatal(err)
+			}
+			if got.Class != tc.class || !reflect.DeepEqual(got.RecreateNodes, tc.recreate) {
+				t.Fatalf("class = %s, recreate = %v (%v); want %s, %v", got.Class, got.RecreateNodes, got.Reasons, tc.class, tc.recreate)
+			}
+		})
+	}
+}

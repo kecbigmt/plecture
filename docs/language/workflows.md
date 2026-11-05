@@ -30,8 +30,8 @@ Nodes are ordinary effects. A projection from `nodes.<id>.outputs.*` creates a
 dependency edge; `blocks` states a reverse edge. A reference to
 `workflow.outputs.*` expands to the producing node references in that public
 output's binding, so a consumer depends on those producing nodes too. Public
-outputs are evaluable as soon as their source node outputs exist; persistence
-does not add a lifecycle node. The expanded edges participate in cycle detection
+outputs are evaluable as soon as their source node outputs exist; evaluation
+adds no lifecycle node. The expanded edges participate in cycle detection
 and in the explicit graph used to derive preparation nodes, before
 default-workdir edges are added. A workflow has no provider node or special
 lifecycle.
@@ -83,7 +83,13 @@ directory; it never treats the missing directory as release evidence.
 
 `[<id>.outputs]` is the workflow's explicit public projection record;
 `outputs_schema` declares it. Each binding is evaluable from node outputs as
-soon as its sources have been produced and is persisted on the session.
+soon as its sources have been produced. The record is derived from the
+session's revision and node outputs, never stored: a binding follows its
+sources when a node is recreated and is unset while any source is not produced.
+Once every binding has a value, the record must satisfy `outputs_schema`; a
+record that does not is not published. A cleanup also
+reads the last recorded outputs of a node that is no longer produced, so a
+dependent of a failed node can still be released; a setup never does.
 `workflow.outputs.*` is the only workflow-output root for display,
 instructions, node inputs, and channel delivery. It replaces the former
 provider output path without creating an `@workflow` pseudo-node.
@@ -204,8 +210,8 @@ evidence that an external resource was released.
 ## Display
 
 `[<id>.display]` declares values the CLI and Plecture Web UI render. They read
-persisted public outputs only, never the network, so their freshness follows
-the output update cadence.
+public outputs derived from the session's revision and node outputs, never the
+network, so their freshness follows the node output update cadence.
 
 ## Clocks
 

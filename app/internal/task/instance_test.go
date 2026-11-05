@@ -11,6 +11,7 @@ import (
 
 	"github.com/kecbigmt/plecture/app/internal/config"
 	"github.com/kecbigmt/plecture/app/internal/lang"
+	"github.com/kecbigmt/plecture/app/internal/publicoutput"
 	contract "github.com/kecbigmt/plecture/contracts/state"
 )
 
@@ -155,7 +156,7 @@ func TestRunCleanup_DynamicInstanceReadsItsOwnOutputs(t *testing.T) {
 	}
 }
 
-func TestExecuteTaskSetup_SeesWorkflowOutputs(t *testing.T) {
+func TestExecuteTaskSetup_SeesPublicOutputs(t *testing.T) {
 	if _, err := exec.LookPath("bash"); err != nil {
 		t.Skip("bash not available")
 	}
@@ -165,15 +166,18 @@ func TestExecuteTaskSetup_SeesWorkflowOutputs(t *testing.T) {
 		Bind:   map[string]*lang.Value{"branch": {Form: lang.FormFrom, From: "workflow.outputs.branch"}},
 	}}
 	r := resolveDef(t, def, "review#1")
-	wfTasks := map[string]*contract.TaskState{
-		contract.WorkflowPseudoNodeID: {Status: contract.TaskStatusProduced, Outputs: map[string]any{"branch": "feat/x"}},
+	nodes := map[string]*contract.TaskState{
+		"checkout": {Status: contract.TaskStatusProduced, Outputs: map[string]any{"ref": "feat/x"}},
 	}
-	result, err := ExecuteTaskSetup(context.Background(), r, nil, SessionVars{}, wfTasks)
+	vars := SessionVars{PublicOutputs: publicoutput.Declaration{Bindings: map[string]*lang.Value{
+		"branch": {Form: lang.FormFrom, From: "nodes.checkout.outputs.ref"},
+	}}}
+	result, err := ExecuteTaskSetup(context.Background(), r, nil, vars, nodes)
 	if err != nil {
 		t.Fatalf("ExecuteTaskSetup: %v", err)
 	}
 	if result.Outputs["branch"] != "feat/x" {
-		t.Errorf("expected @workflow outputs visible, got %v", result.Outputs)
+		t.Errorf("expected public outputs visible, got %v", result.Outputs)
 	}
 }
 

@@ -252,6 +252,99 @@ sed -i "s/^superseded_by: .*/superseded_by: somewhere-else/" "$d/docs/adr/$old.m
 commit_all "$d" "repoint"
 expect changed-superseded-by fail "accepted ADR changed beyond" HEAD~1 HEAD
 
+third=2026-11-06-third-decision
+write_third_linked() {
+  cat >"$1/docs/adr/$third.md" <<EOF
+---
+supersedes: $old
+---
+
+# Third decision
+
+## Context
+
+Why.
+
+## Supersession scope
+
+Replaces another part of the original context.
+
+## Decision
+
+What.
+EOF
+}
+
+d="$(new_fixture append-to-scalar-superseded-by)"
+write_old_linked "$d"
+write_new_linked "$d"
+commit_all "$d" base
+write_third_linked "$d"
+printf -- '---\nsuperseded_by:\n  - %s\n  - %s\n---\n\n# Old decision\n\n## Context\n\nOriginal context.\n' "$new" "$third" >"$d/docs/adr/$old.md"
+commit_all "$d" "second superseder"
+expect append-to-scalar-superseded-by pass "" HEAD~1 HEAD
+
+d="$(new_fixture append-to-list-superseded-by)"
+printf -- '---\nsuperseded_by:\n  - %s\n---\n\n# Old decision\n\n## Context\n\nOriginal context.\n' "$new" >"$d/docs/adr/$old.md"
+write_new_linked "$d"
+commit_all "$d" base
+write_third_linked "$d"
+printf -- '---\nsuperseded_by:\n  - %s\n  - %s\n---\n\n# Old decision\n\n## Context\n\nOriginal context.\n' "$new" "$third" >"$d/docs/adr/$old.md"
+commit_all "$d" "second superseder"
+expect append-to-list-superseded-by pass "" HEAD~1 HEAD
+
+d="$(new_fixture append-keeps-other-frontmatter)"
+printf -- '---\nsupersedes: %s\nsuperseded_by: %s\n---\n\n# Old decision\n\n## Context\n\n## Supersession scope\n\nPart.\n\n## Decision\n' "$third" "$new" >"$d/docs/adr/$old.md"
+printf -- '---\nsuperseded_by: %s\n---\n\n# Third decision\n' "$old" >"$d/docs/adr/$third.md"
+write_new_linked "$d"
+commit_all "$d" base
+printf -- '---\nsupersedes: %s\nsuperseded_by:\n  - %s\n  - 2026-11-07-fourth\n---\n\n# Old decision\n\n## Context\n\n## Supersession scope\n\nPart.\n\n## Decision\n' "$third" "$new" >"$d/docs/adr/$old.md"
+printf -- '---\nsupersedes: %s\n---\n\n# Fourth\n\n## Context\n\n## Supersession scope\n\nPart.\n\n## Decision\n' "$old" >"$d/docs/adr/2026-11-07-fourth.md"
+commit_all "$d" "fourth superseder"
+expect append-keeps-other-frontmatter pass "" HEAD~1 HEAD
+
+d="$(new_fixture removed-superseded-by-entry)"
+printf -- '---\nsuperseded_by:\n  - %s\n  - %s\n---\n\n# Old decision\n\n## Context\n\nOriginal context.\n' "$new" "$third" >"$d/docs/adr/$old.md"
+write_new_linked "$d"
+write_third_linked "$d"
+commit_all "$d" base
+printf -- '---\nsuperseded_by:\n  - %s\n---\n\n# Old decision\n\n## Context\n\nOriginal context.\n' "$new" >"$d/docs/adr/$old.md"
+commit_all "$d" "drop an entry"
+expect removed-superseded-by-entry fail "docs/adr/$old.md: accepted ADR changed" HEAD~1 HEAD
+
+d="$(new_fixture append-with-body-edit)"
+write_old_linked "$d"
+write_new_linked "$d"
+commit_all "$d" base
+write_third_linked "$d"
+printf -- '---\nsuperseded_by:\n  - %s\n  - %s\n---\n\n# Old decision\n\n## Context\n\nOriginal context, reworded.\n' "$new" "$third" >"$d/docs/adr/$old.md"
+commit_all "$d" "second superseder and body edit"
+expect append-with-body-edit fail "docs/adr/$old.md: accepted ADR changed beyond" HEAD~1 HEAD
+
+d="$(new_fixture append-with-supersedes-edit)"
+write_old_linked "$d"
+write_new_linked "$d"
+commit_all "$d" base
+write_third_linked "$d"
+printf -- '---\nsupersedes: 2026-01-01-unrelated\nsuperseded_by:\n  - %s\n  - %s\n---\n\n# Old decision\n\n## Context\n\nOriginal context.\n' "$new" "$third" >"$d/docs/adr/$old.md"
+commit_all "$d" "second superseder and a supersedes line"
+expect append-with-supersedes-edit fail "docs/adr/$old.md: accepted ADR changed beyond" HEAD~1 HEAD
+
+d="$(new_fixture empty-frontmatter-added)"
+write_old_plain "$d"
+commit_all "$d" base
+printf -- '---\n---\n\n' | cat - "$d/docs/adr/$old.md" >"$d/tmp.md"
+mv "$d/tmp.md" "$d/docs/adr/$old.md"
+commit_all "$d" "prepend empty frontmatter"
+expect empty-frontmatter-added fail "docs/adr/$old.md: accepted ADR changed beyond" HEAD~1 HEAD
+
+d="$(new_fixture empty-frontmatter-kept)"
+printf -- '---\n---\n\n# Old decision\n\n## Context\n\nOriginal context.\n' >"$d/docs/adr/$old.md"
+commit_all "$d" base
+printf '\nA sentence.\n' >>"$d/docs/adr/$old.md"
+commit_all "$d" "body edit"
+expect empty-frontmatter-kept fail "docs/adr/$old.md: accepted ADR changed beyond" HEAD~1 HEAD
+
 d="$(new_fixture new-file)"
 write_old_plain "$d"
 commit_all "$d" base

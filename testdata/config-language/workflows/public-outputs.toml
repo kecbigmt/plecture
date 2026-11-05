@@ -1,0 +1,35 @@
+# plect-fixture: result=valid entry=definitions
+# reason: a workflow declares its public outputs over node outputs and session inputs, and a node reads one through workflow.outputs.
+
+[pull_review]
+kind = "workflow"
+
+[pull_review.outputs]
+owner_endpoint = { from = "nodes.orchestrator.outputs.endpoint" }
+instruction    = { from = "nodes.agent.outputs.instruction" }
+label          = { expr = "'review-' + session.inputs.number" }
+
+[pull_review.outputs_schema]
+type     = "object"
+required = ["owner_endpoint", "instruction"]
+
+[pull_review.outputs_schema.properties]
+owner_endpoint = { type = "string" }
+instruction    = { type = "string" }
+label          = { type = "string" }
+
+[pull_review.display]
+title  = { from = "workflow.outputs.instruction" }
+status = "review"
+
+[[pull_review.nodes]]
+uses = "agent"
+
+[[pull_review.nodes]]
+uses = "orchestrator"
+
+[[pull_review.nodes]]
+uses = "relay"
+
+[pull_review.nodes.inputs]
+peer = { from = "workflow.outputs.owner_endpoint" }
