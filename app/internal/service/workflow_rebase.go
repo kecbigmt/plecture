@@ -214,10 +214,8 @@ func cleanupRebasedNodes(cfg *config.Config, store *state.Store, session *domain
 	return persistStaleWorkflowCleanup(store, session.Name, session, cleanup)
 }
 
-// sameExecutionDirectory reports whether a node would run in the same kind of
-// directory under both declarations. A node's recorded setup directory is part
-// of its execution contract, so becoming a preparation node, leaving that set,
-// or following a different workdir output is a change of the node itself.
+// A node's recorded setup directory is part of its execution contract, so
+// changing where it runs is a change of the node itself.
 func sameExecutionDirectory(old, next task.Resolved) bool {
 	return old.Prep == next.Prep && reflect.DeepEqual(old.Workdir, next.Workdir)
 }
@@ -435,8 +433,6 @@ func ClassifyWorkflowRebase(old, next config.WorkflowRevision, session *domain.S
 	return result, nil
 }
 
-// workdirReleased reports whether the node producing the old workdir is
-// removed or recreated by the rebase, which releases the directory.
 func workdirReleased(old, next config.WorkflowRevision, recreate []string) bool {
 	if old.Workflow.Workdir == nil {
 		return false
