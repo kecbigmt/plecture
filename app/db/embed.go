@@ -1,7 +1,8 @@
 // Package db is the storage contract: the declarative schema, the query
 // definitions sqlc compiles, and the forward-only migration history with
-// its integrity manifest. It holds no Go logic, so the contract's files can
-// be owner-gated as one directory apart from the code that uses them.
+// its integrity manifest. The code that verifies those files lives here
+// too, apart from the code that uses the database, so a change that weakens
+// a check passes the same owner gate as a change to the files it guards.
 package db
 
 import "embed"
