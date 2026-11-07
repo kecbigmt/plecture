@@ -16,7 +16,6 @@ context  = { type = "string" }
 
 [[standing_cases.populations]]
 name              = "dispatch"
-resource_observer = "query_source"
 uses              = ["poll", "subscribe"]
 poll_every        = "5m"
 auto_down         = true

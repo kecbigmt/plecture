@@ -89,7 +89,6 @@ resource = "query_source"
 
 [[standing.populations]]
 name              = "dispatch"
-resource_observer = "query_source"
 uses              = ["poll"]
 poll_every        = "5m"
 
