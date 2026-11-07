@@ -1,4 +1,6 @@
-package main
+// Package migrationsum computes and verifies migrations.sum, the SHA-256
+// manifest of the migration history in sha256sum format.
+package migrationsum
 
 import (
 	"bufio"
@@ -13,9 +15,9 @@ import (
 	"strings"
 )
 
-// generate refuses a migration with a Down section instead of hashing it,
+// Generate refuses a migration with a Down section instead of hashing it,
 // so regenerating the manifest is never a way around the forward-only rule.
-func generate(migrations fs.FS) ([]byte, error) {
+func Generate(migrations fs.FS) ([]byte, error) {
 	sums, err := hashMigrations(migrations)
 	if err != nil {
 		return nil, err
@@ -33,9 +35,9 @@ func generate(migrations fs.FS) ([]byte, error) {
 	return b.Bytes(), nil
 }
 
-// verify reports every disagreement at once rather than the first, so one
+// Verify reports every disagreement at once rather than the first, so one
 // test run shows the whole set of files an edit touched.
-func verify(migrations fs.FS, manifest []byte) error {
+func Verify(migrations fs.FS, manifest []byte) error {
 	actual, err := hashMigrations(migrations)
 	if err != nil {
 		return err

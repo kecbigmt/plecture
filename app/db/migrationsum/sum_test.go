@@ -1,24 +1,10 @@
-package main
+package migrationsum
 
 import (
-	"os"
-	"path/filepath"
 	"strings"
 	"testing"
 	"testing/fstest"
 )
-
-const dbDir = "../../db"
-
-func TestMigrationsMatchTheirManifest(t *testing.T) {
-	manifest, err := os.ReadFile(filepath.Join(dbDir, "migrations.sum"))
-	if err != nil {
-		t.Fatalf("read migrations.sum: %v", err)
-	}
-	if err := verify(os.DirFS(filepath.Join(dbDir, "migrations")), manifest); err != nil {
-		t.Fatal(err)
-	}
-}
 
 func twoMigrations() fstest.MapFS {
 	return fstest.MapFS{
@@ -33,25 +19,25 @@ func TestGenerate_ListsEverySQLFileSortedByNameInSha256sumFormat(t *testing.T) {
 	fsys := twoMigrations()
 	fsys["README.txt"] = &fstest.MapFile{Data: []byte("not a migration")}
 
-	got, err := generate(fsys)
+	got, err := Generate(fsys)
 	if err != nil {
-		t.Fatalf("generate: %v", err)
+		t.Fatalf("Generate: %v", err)
 	}
 	want := "" +
 		"cb8ff0fd5fad6bdc73a467e5d649cc6d9cfc39f93206c255b197bdbcc6020a2b  20260101000000_first.sql\n" +
 		"265ef801e1a69e316dd68b31b2aead9e3b0ee84d23327cc9ab629e8ab4e7dbfc  20260102000000_second.sql\n"
 	if string(got) != want {
-		t.Fatalf("generate() =\n%s\nwant\n%s", got, want)
+		t.Fatalf("Generate() =\n%s\nwant\n%s", got, want)
 	}
 }
 
 func TestVerify_AcceptsTheManifestGenerateWrites(t *testing.T) {
 	fsys := twoMigrations()
-	manifest, err := generate(fsys)
+	manifest, err := Generate(fsys)
 	if err != nil {
-		t.Fatalf("generate: %v", err)
+		t.Fatalf("Generate: %v", err)
 	}
-	if err := verify(fsys, manifest); err != nil {
+	if err := Verify(fsys, manifest); err != nil {
 		t.Fatalf("verify rejected a freshly generated manifest: %v", err)
 	}
 }
@@ -84,12 +70,12 @@ func TestVerify_RejectsADriftedManifest(t *testing.T) {
 	for name, drift := range cases {
 		t.Run(name, func(t *testing.T) {
 			fsys := twoMigrations()
-			manifest, err := generate(fsys)
+			manifest, err := Generate(fsys)
 			if err != nil {
-				t.Fatalf("generate: %v", err)
+				t.Fatalf("Generate: %v", err)
 			}
 			fsys, drifted := drift(fsys, string(manifest))
-			if err := verify(fsys, []byte(drifted)); err == nil {
+			if err := Verify(fsys, []byte(drifted)); err == nil {
 				t.Fatal("verify accepted a manifest that no longer matches the migrations")
 			}
 		})
@@ -108,16 +94,16 @@ func TestDownSectionIsRejected(t *testing.T) {
 			fsys := twoMigrations()
 			fsys["20260102000000_second.sql"] = &fstest.MapFile{Data: []byte("-- +goose Up\nCREATE TABLE b (y INTEGER);\n\n" + annotation + "\nDROP TABLE b;\n")}
 
-			if _, err := generate(fsys); err == nil || !strings.Contains(err.Error(), "20260102000000_second.sql") {
+			if _, err := Generate(fsys); err == nil || !strings.Contains(err.Error(), "20260102000000_second.sql") {
 				t.Fatalf("generate error = %v, want a refusal naming the migration with a Down section", err)
 			}
 
 			clean := twoMigrations()
-			manifest, err := generate(clean)
+			manifest, err := Generate(clean)
 			if err != nil {
-				t.Fatalf("generate: %v", err)
+				t.Fatalf("Generate: %v", err)
 			}
-			if err := verify(fsys, manifest); err == nil || !strings.Contains(err.Error(), "20260102000000_second.sql") {
+			if err := Verify(fsys, manifest); err == nil || !strings.Contains(err.Error(), "20260102000000_second.sql") {
 				t.Fatalf("verify error = %v, want a refusal naming the migration with a Down section", err)
 			}
 		})
@@ -127,7 +113,7 @@ func TestDownSectionIsRejected(t *testing.T) {
 func TestDownSectionDetection_IgnoresTheWordInOrdinaryText(t *testing.T) {
 	fsys := twoMigrations()
 	fsys["20260102000000_second.sql"] = &fstest.MapFile{Data: []byte("-- +goose Up\n-- A capacity Down keeps the session; see the goose docs.\nCREATE TABLE b (y TEXT CHECK (y IN ('down', 'up')));\n")}
-	if _, err := generate(fsys); err != nil {
+	if _, err := Generate(fsys); err != nil {
 		t.Fatalf("generate rejected a migration with no Down section: %v", err)
 	}
 }

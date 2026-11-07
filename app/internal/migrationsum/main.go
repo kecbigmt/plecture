@@ -6,6 +6,8 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+
+	"github.com/kecbigmt/plecture/app/db/migrationsum"
 )
 
 func main() {
@@ -14,7 +16,7 @@ func main() {
 		os.Exit(2)
 	}
 	dir := os.Args[1]
-	manifest, err := generate(os.DirFS(filepath.Join(dir, "migrations")))
+	manifest, err := migrationsum.Generate(os.DirFS(filepath.Join(dir, "migrations")))
 	if err != nil {
 		fmt.Fprintln(os.Stderr, "migrationsum:", err)
 		os.Exit(1)
