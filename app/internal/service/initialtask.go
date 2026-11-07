@@ -10,23 +10,16 @@ import (
 	contract "github.com/kecbigmt/plecture/contracts/state"
 )
 
-// initialInstance is the instance name an initiating caller's task takes, so
-// a repeated selection finds the instance an earlier one created.
 const initialInstance = "initial"
 
-// InitialTask is an initiating caller's selection of the one task a session
-// starts with. Resource is the concrete resource the task binds; empty binds
-// the entry identifier.
+// InitialTask is an initiating caller's task selection; an empty Resource
+// binds the entry identifier.
 type InitialTask struct {
 	TaskID   string
 	Resource string
-	// ResourceInputs is the task binding's own action input object; a task
-	// bound to the entry identifier does not inherit the entry's.
 	ResourceInputs map[string]any
 }
 
-// InitialTaskSelection builds the selection a caller's task flags state, nil
-// when they state none, so every surface treats an empty flag as no task.
 func InitialTaskSelection(taskID, resource string, resourceInputs map[string]any) *InitialTask {
 	if taskID == "" && resource == "" && resourceInputs == nil {
 		return nil
@@ -34,9 +27,6 @@ func InitialTaskSelection(taskID, resource string, resourceInputs map[string]any
 	return &InitialTask{TaskID: taskID, Resource: resource, ResourceInputs: resourceInputs}
 }
 
-// initialTaskBinding is a selection checked against the configuration: the
-// task resolves to a task document and its concrete resource is one that
-// document's resource type claims.
 type initialTaskBinding struct {
 	TaskID         string
 	Resource       string
@@ -82,17 +72,14 @@ func checkInitialTask(cfg *config.Config, invocationDir, entry string, sel *Init
 	return &initialTaskBinding{TaskID: sel.TaskID, Resource: resource, ResourceInputs: sel.ResourceInputs}, nil
 }
 
-// EnsureInitialTask converges a session's initial instance on a selection a
-// caller already checked: a population checks its task against its entry
-// resource when it loads.
+// EnsureInitialTask skips checkInitialTask because a population checks its
+// task against its entry resource when it loads.
 func EnsureInitialTask(cfg *config.Config, store *state.Store, sessionName string, sel InitialTask) error {
 	return ensureInitialTask(cfg, store, sessionName, &initialTaskBinding{TaskID: sel.TaskID, Resource: sel.Resource, ResourceInputs: sel.ResourceInputs})
 }
 
-// ensureInitialTask converges the session's initial instance on the
-// binding: an instance already produced for the same task and resource is
-// kept, and any other existing instance must be cleaned by the caller,
-// because silently replacing it would discard its state and verdicts.
+// ensureInitialTask refuses to replace a different existing instance,
+// because doing so would discard its state and verdicts.
 func ensureInitialTask(cfg *config.Config, store *state.Store, sessionName string, binding *initialTaskBinding) error {
 	if binding == nil {
 		return nil

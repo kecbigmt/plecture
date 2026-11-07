@@ -24,21 +24,21 @@ type UpParams struct {
 	// valid when Identifier is a resource; combining Tag with a bare session
 	// name returns ErrInvalidTag so misuse surfaces immediately rather than
 	// silently ignoring the flag.
-	Tag      string
-	Workflow string         // forwarded to auto-create; rejected when state already exists
-	Inputs   map[string]any // forwarded to auto-create; rejected when state already exists
-	// ResourceInputs is the entry binding's resource action input object,
-	// forwarded to auto-create; rejected when state already exists.
-	ResourceInputs map[string]any
-	ParentSession  string // forwarded to auto-create; empty falls back to PLECT_SESSION_NAME when it exists and is not self.
-	Observer       task.Observer
-	Population     *contract.PopulationProvenance
+	Tag           string
+	Workflow      string         // forwarded to auto-create; rejected when state already exists
+	Inputs        map[string]any // forwarded to auto-create; rejected when state already exists
+	ParentSession string         // forwarded to auto-create; empty falls back to PLECT_SESSION_NAME when it exists and is not self.
+	Observer      task.Observer
+	Population    *contract.PopulationProvenance
 	// ForceRecreate rebuilds the runtime for an existing session while
 	// preserving durable identity and event log state.
 	ForceRecreate  bool
 	HumanInitiated bool
 	// InvocationDir is forwarded to auto-create; see CreateParams.
 	InvocationDir string
+	// ResourceInputs is the entry binding's resource action input object,
+	// recorded only when the session is created.
+	ResourceInputs map[string]any
 	// InitialTask is the caller's task selection, instantiated as the
 	// session's initial instance. Only valid with a resource identifier.
 	InitialTask *InitialTask

@@ -64,18 +64,16 @@ func ResourceStatus(defs map[string]config.ResourceDef, resourceID string, input
 	return state, def, true, err
 }
 
-// InputsError reports an action input object the resource's inputs_schema
-// refuses. It is the caller's mistake, never the action's failure, so callers
-// can tell it from an observation that ran and failed.
+// InputsError lets a caller tell refused inputs, its own mistake, from an
+// action that ran and failed.
 type InputsError struct{ Err error }
 
 func (e *InputsError) Error() string { return e.Err.Error() }
 func (e *InputsError) Unwrap() error { return e.Err }
 
-// ValidateResourceInputs checks a binding's action input object against the
-// resource's inputs_schema. A resource that declares no schema accepts only
-// the empty object, so a caller's inputs never reach an action that cannot
-// have declared a use for them.
+// ValidateResourceInputs accepts only the empty object for a resource that
+// declares no schema, because no action of it can have declared a use for
+// inputs.
 func ValidateResourceInputs(def config.ResourceDef, inputs map[string]any) error {
 	if inputs == nil {
 		inputs = map[string]any{}

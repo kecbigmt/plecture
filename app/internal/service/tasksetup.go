@@ -32,8 +32,6 @@ type TaskSetupParams struct {
 	// .ResourceID) — it is no longer part of the instance key, so the same
 	// task can be instantiated repeatedly regardless of resource.
 	Resource string
-	// ResourceInputs is this binding's own resource action input object,
-	// never inherited from the entry binding or another task's.
 	ResourceInputs    map[string]any
 	Inputs            map[string]string // raw --input k=v bindings
 	ExtraDoneWhenJSON string
@@ -364,10 +362,8 @@ func bindDynamicInputs(def config.TaskDefinition, cliInputs map[string]string, s
 	return out, nil
 }
 
-// validateEffectBindingInputs checks an effect instance's binding inputs
-// against the declaration that claims its resource. A resource no declaration
-// claims has no action to receive inputs, so supplying some is refused rather
-// than recorded where nothing reads them.
+// Inputs for a resource no declaration claims are refused rather than
+// recorded where no action reads them.
 func validateEffectBindingInputs(cfg *config.Config, resource string, inputs map[string]any) *Error {
 	if resource == "" {
 		if len(inputs) > 0 {
@@ -381,9 +377,7 @@ func validateEffectBindingInputs(cfg *config.Config, resource string, inputs map
 	}
 	_, def, matched, err := task.MatchResourceDef(defs, resource)
 	if err != nil {
-		// Delivery wiring reports an ambiguous match and queues its retry
-		// after configuration repair; only inputs that could reach no single
-		// declaration are refused here.
+		// Delivery wiring already reports an ambiguous match and queues a retry.
 		if len(inputs) == 0 {
 			return nil
 		}
