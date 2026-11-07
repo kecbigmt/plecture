@@ -36,7 +36,12 @@ fi
 # construction even when every sub-PR passed, yet skipping it would leave a
 # direct commit on the branch (a conflict fix, a merge) unchecked; scoring
 # each commit against its first parent checks exactly the reviewed units.
-mapfile -t commits < <(git -C "$root" rev-list --reverse "$1..$2")
+if ! revs="$(git -C "$root" rev-list --reverse "$1..$2")"; then
+  echo "check-comment-density.sh: cannot list commits in $1..$2" >&2
+  exit 2
+fi
+commits=()
+[ -z "$revs" ] || mapfile -t commits <<<"$revs"
 failed=()
 for c in "${commits[@]}"; do
   label="$(git -C "$root" log -1 --format='%h %s' "$c")"
