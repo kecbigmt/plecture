@@ -74,8 +74,9 @@ thread's last successful delivery watermark, followed by the mentioning
 message. Set `deliver_full_thread = true` to send the full thread on every
 mention. A transcript larger than 64 KiB keeps the root message, the newest
 replies that fit, and the mentioning message, and replaces the oldest replies
-with an `[N earlier messages omitted]` line; thread history catch-up is
-bounded the same way. Empty `allowed_user_ids` allows any channel member to drive this
+with an `[N earlier messages omitted]` line. If the root and mentioning
+messages alone exceed the budget, they share it, and each cut message ends in
+` [truncated]`. Thread history catch-up is bounded the same way. Empty `allowed_user_ids` allows any channel member to drive this
 mention and reply paths; setting it restricts both to the listed Slack users.
 
 ### `on_unbound_mention` hook

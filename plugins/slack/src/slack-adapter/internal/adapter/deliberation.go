@@ -8,6 +8,7 @@ import (
 	"strconv"
 	"strings"
 	"time"
+	"unicode/utf8"
 
 	"github.com/slack-go/slack"
 	"github.com/slack-go/slack/slackevents"
@@ -58,13 +59,14 @@ const maxTranscriptBytes = 64 << 10
 
 // fitTranscript drops the oldest replies rather than the root or the
 // mention, because those carry the thread's subject and the request itself.
+// When those alone still exceed the budget, they share it evenly instead of
+// the first one cut losing its text entirely.
 func fitTranscript(lines []string, keepHead, keepTail int) (string, int) {
-	body := strings.Join(lines, "\n")
-	middle := len(lines) - keepHead - keepTail
-	if len(body) <= maxTranscriptBytes || middle <= 0 {
-		return body, 0
+	size := transcriptSize(lines)
+	if size <= maxTranscriptBytes {
+		return strings.Join(lines, "\n"), 0
 	}
-	size := len(body)
+	middle := len(lines) - keepHead - keepTail
 	omitted := 0
 	for omitted < middle && size+len(omissionMarker(omitted))+1 > maxTranscriptBytes {
 		size -= len(lines[keepHead+omitted]) + 1
@@ -72,9 +74,56 @@ func fitTranscript(lines []string, keepHead, keepTail int) (string, int) {
 	}
 	kept := make([]string, 0, len(lines)-omitted+1)
 	kept = append(kept, lines[:keepHead]...)
-	kept = append(kept, omissionMarker(omitted))
+	if omitted > 0 {
+		kept = append(kept, omissionMarker(omitted))
+	}
 	kept = append(kept, lines[keepHead+omitted:]...)
+	if transcriptSize(kept) > maxTranscriptBytes {
+		shareBudget(kept, keepHead, keepTail)
+	}
 	return strings.Join(kept, "\n"), omitted
+}
+
+// shareBudget truncates the first keepHead and last keepTail lines in place,
+// shortest first, so a line under its share leaves the rest to longer ones.
+func shareBudget(kept []string, keepHead, keepTail int) {
+	retained := make([]int, 0, keepHead+keepTail)
+	for i := 0; i < keepHead; i++ {
+		retained = append(retained, i)
+	}
+	for i := len(kept) - keepTail; i < len(kept); i++ {
+		retained = append(retained, i)
+	}
+	sort.SliceStable(retained, func(x, y int) bool { return len(kept[retained[x]]) < len(kept[retained[y]]) })
+	remaining := maxTranscriptBytes - transcriptSize(kept)
+	for _, i := range retained {
+		remaining += len(kept[i])
+	}
+	for n, i := range retained {
+		kept[i] = truncateLine(kept[i], remaining/(len(retained)-n))
+		remaining -= len(kept[i])
+	}
+}
+
+func transcriptSize(lines []string) int {
+	size := max(len(lines)-1, 0)
+	for _, line := range lines {
+		size += len(line)
+	}
+	return size
+}
+
+const truncationMarker = " [truncated]"
+
+func truncateLine(line string, maxBytes int) string {
+	if len(line) <= maxBytes {
+		return line
+	}
+	cut := max(maxBytes-len(truncationMarker), 0)
+	for cut > 0 && !utf8.RuneStart(line[cut]) {
+		cut--
+	}
+	return line[:cut] + truncationMarker
 }
 
 func omissionMarker(omitted int) string {

@@ -188,13 +188,13 @@ func (a *Adapter) handleMessage(ev *slackevents.MessageEvent) {
 
 	// Ignore bot messages and subtypes (edits, deletes, etc.)
 	if ev.BotID != "" || ev.SubType != "" {
-		a.logger.Debug("dropping message", "reason", "bot_or_subtype", "bot_id", ev.BotID, "sub_type", ev.SubType)
+		a.logMessageDrop(ev, "bot_or_subtype", "bot_id", ev.BotID, "sub_type", ev.SubType)
 		return
 	}
 
 	// Sender gating
 	if !a.cfg.IsMentionUserAllowed(ev.User) {
-		a.logger.Debug("dropping message", "reason", "user_not_allowed", "user", ev.User)
+		a.logMessageDrop(ev, "user_not_allowed", "user", ev.User)
 		return
 	}
 
@@ -243,6 +243,19 @@ func (a *Adapter) handleMessage(ev *slackevents.MessageEvent) {
 	if delivered {
 		a.recordStreamRecipient(ev.Channel, threadTS, ev.User, ev.UserTeam)
 	}
+}
+
+// logMessageDrop keeps ordinary drops at Debug because bot posts and edits
+// arrive several times a minute, while a dropped mention must never be
+// invisible at the default level.
+func (a *Adapter) logMessageDrop(ev *slackevents.MessageEvent, reason string, attrs ...any) {
+	attrs = append([]any{"reason", reason}, attrs...)
+	if !a.isAppMentionMessage(ev.Text) {
+		a.logger.Debug("dropping message", attrs...)
+		return
+	}
+	attrs = append(attrs, "thread_ts", ev.ThreadTimeStamp, "ts", ev.TimeStamp, "channel_id", ev.Channel)
+	a.logger.Info("message mention skipped", attrs...)
 }
 
 func subscribedThreadInChannel(sub Subscriber, channelID string) bool {
