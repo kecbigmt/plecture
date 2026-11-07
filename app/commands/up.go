@@ -21,6 +21,7 @@ var (
 	upInputs     string
 	upInputsFile string
 	upTask       string
+	upTaskRes    string
 	upParent     string
 	upDetach     bool
 	upRecreate   bool
@@ -56,9 +57,13 @@ entry resource or tag is a collision, not the same session.
 the session does not yet exist; passing them against an already-created
 session returns an error (session inputs are set once, at create time).
 
---task <id> is shorthand for --inputs '{"task":"<id>"}' on the auto-create
-path. Workflows that require a task reject auto-create without it; pass
---task none for an ad-hoc session with no initial instruction.
+--task <id> selects the task document instantiated as the session's
+'initial' instance; omit it for a session a person works in with no task.
+The task binds the entry resource unless --task-resource names another
+concrete resource. Either way the task's resource type must claim that
+resource, or up fails before creating anything. Repeating the same
+selection against an existing session is a no-op; selecting a different one
+fails until 'plect task cleanup initial' removes the existing instance.
 
 --force-recreate rebuilds the session runtime for an existing session while
 keeping its durable identity and event log. It cleans and forgets workflow
@@ -73,10 +78,6 @@ queue position. --json reports result and queue_position for scripts.`,
 		if err != nil {
 			return err
 		}
-		inputs, err = service.MergeTaskInput(inputs, upTask)
-		if err != nil {
-			return err
-		}
 		cfg, err := config.Load()
 		if err != nil {
 			return err
@@ -87,6 +88,7 @@ queue position. --json reports result and queue_position for scripts.`,
 			Tag:            upTag,
 			Workflow:       upWorkflow,
 			Inputs:         inputs,
+			InitialTask:    service.InitialTaskSelection(upTask, upTaskRes),
 			ParentSession:  upParent,
 			Observer:       newTaskObserver(cfg),
 			ForceRecreate:  upRecreate,
@@ -152,7 +154,8 @@ func init() {
 	upCmd.Flags().StringVarP(&upWorkflow, "workflow", "w", "", "Workflow id (auto-create path only; must match session's frozen workflow)")
 	upCmd.Flags().StringVar(&upInputs, "inputs", "", "Session inputs as a JSON object string (auto-create path only)")
 	upCmd.Flags().StringVar(&upInputsFile, "inputs-file", "", "Path to a JSON file containing the session inputs object (auto-create path only)")
-	upCmd.Flags().StringVar(&upTask, "task", "", "Shorthand for --inputs '{\"task\":\"<id>\"}' (auto-create path only). Pass \"none\" for no initial task.")
+	upCmd.Flags().StringVar(&upTask, "task", "", "Task document to instantiate as the session's initial instance (resource-identifier only)")
+	upCmd.Flags().StringVar(&upTaskRes, "task-resource", "", "Concrete resource the initial task binds (default: the entry resource identifier; requires --task)")
 	upCmd.Flags().StringVar(&upParent, "parent", "", "Parent session name for auto-created sessions, or \"root:<session>\" to join that (possibly parentless) session's siblings; falls back to $PLECT_SESSION_NAME when it names an existing session")
 	upCmd.Flags().BoolVarP(&upDetach, "detach", "d", false, "Return after setup instead of attaching (docker-compose-style up -d)")
 	upCmd.Flags().BoolVar(&upRecreate, "force-recreate", false, "Rebuild the session runtime instead of resuming existing task outputs")

@@ -231,16 +231,12 @@ func (s *Server) handleSessionCreate(w http.ResponseWriter, r *http.Request) {
 		s.renderStatusError(w, http.StatusBadRequest, err.Error())
 		return
 	}
-	inputs, err = service.MergeTaskInput(inputs, strings.TrimSpace(r.FormValue("task")))
-	if err != nil {
-		s.renderStatusError(w, http.StatusBadRequest, err.Error())
-		return
-	}
 	res, err := s.svc.Up(service.UpParams{
 		Identifier:     rawURL,
 		Tag:            strings.TrimSpace(r.FormValue("tag")),
 		Workflow:       strings.TrimSpace(r.FormValue("workflow")),
 		Inputs:         inputs,
+		InitialTask:    service.InitialTaskSelection(strings.TrimSpace(r.FormValue("task")), ""),
 		HumanInitiated: true,
 	})
 	if err != nil {

@@ -73,7 +73,10 @@ var upTool = mcp.NewTool("plect_up",
 		mcp.Description("Workflow id forwarded to the auto-create path (resolver-less workflows need this). Rejected when the session already exists."),
 	),
 	mcp.WithString("task",
-		mcp.Description("Shorthand for inputs.task, forwarded to the auto-create path. Rejected when the session already exists."),
+		mcp.Description("Initial task to instantiate as the session's initial instance (resource-identifier only). Its resource type must claim the resource it binds; omit it for a session with no task."),
+	),
+	mcp.WithString("task_resource",
+		mcp.Description("Concrete resource the initial task binds. Defaults to the entry resource identifier; requires task."),
 	),
 	mcp.WithBoolean("force_recreate",
 		mcp.Description("Rebuild the session runtime for an existing session instead of resuming existing task outputs."),
@@ -237,17 +240,13 @@ func handleUp(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallToolRe
 		return mcp.NewToolResultError("session is required"), nil
 	}
 
-	inputs, err := service.MergeTaskInput(getObjectArg(request, "inputs"), request.GetString("task", ""))
-	if err != nil {
-		return mcp.NewToolResultError(err.Error()), nil
-	}
-
 	result, err := service.Up(cfg, store, service.UpParams{
 		Identifier:    identifier,
 		Tag:           request.GetString("tag", ""),
 		Workflow:      request.GetString("workflow", ""),
 		ParentSession: request.GetString("parent", ""),
-		Inputs:        inputs,
+		Inputs:        getObjectArg(request, "inputs"),
+		InitialTask:   service.InitialTaskSelection(request.GetString("task", ""), request.GetString("task_resource", "")),
 		ForceRecreate: request.GetBool("force_recreate", false),
 		InvocationDir: callerDir(),
 	})
