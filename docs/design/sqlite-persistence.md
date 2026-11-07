@@ -774,14 +774,15 @@ first two also run under a plain `go test`.
   case is folded outside string literals. String-literal contents compare
   byte for byte. goose's ledger table is excluded.
 - `TestMigrationsMatchTheirManifest` compares every migration file with
-  `app/db/migrations.sum`, through `app/db/migrationsum`. The
+  `app/db/migrations.sum`. The
   manifest is in `sha256sum` format: one `<sha256 hex>  <file name>` line
   per migration over its raw bytes, sorted by name, with no aggregate line.
   The test fails on a changed hash, an unlisted file, a listed file that no
   longer exists, and a migration with a `+goose Down` annotation.
-  `go generate ./internal/persistence/...` rewrites the manifest after an
-  intended edit of an unreleased migration, and refuses while any migration
-  has a Down section. `cd migrations && sha256sum -c ../migrations.sum`
+  `go test ./db -update` rewrites the manifest after an intended edit of an
+  unreleased migration, and refuses while any migration has a Down section.
+  The author of a migration change runs it and commits the manifest with the
+  change; CI and reviewers only verify, never rewrite. `cd migrations && sha256sum -c ../migrations.sum`
   checks it without Go.
 - `TestMigrate_UpgradesEveryReleasedSchema` (`app/internal/persistence`,
   `-tags integration`) loads one fixture per released schema version,
@@ -798,10 +799,11 @@ first two also run under a plain `go test`.
 2. Add a migration under `app/db/migrations/` that reaches the same
    structure, with an Up section only. Never edit a migration that has
    shipped in a release.
-3. In `app/`, run `go generate ./internal/persistence/...`. It regenerates
-   `app/internal/persistence/sqlcgen` and `app/db/migrations.sum`.
-4. Run `go test ./db/... ./internal/persistence/...`. The drift test fails
-   until the migration history reproduces `schema.sql`.
+3. In `app/`, run `go generate ./internal/persistence/...` to regenerate
+   `app/internal/persistence/sqlcgen`, and `go test ./db -update` to rewrite
+   `app/db/migrations.sum`. Commit both with the change.
+4. Run `go test ./db ./internal/persistence/...`. The drift test fails until
+   the migration history reproduces `schema.sql`.
 
 ### Adding an upgrade fixture
 

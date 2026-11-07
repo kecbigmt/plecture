@@ -75,7 +75,9 @@ Three Go tests replace Atlas's checks:
 - A checked-in `migrations.sum` holds the SHA-256 of every migration file in
   `sha256sum` format, sorted by name, with no aggregate line. A Go test fails
   on any edit it does not record, released or not, and on any migration with
-  a Down section. `go generate` rewrites it after an intended edit.
+  a Down section. The author of a migration change rewrites it with
+  `go test ./db -update` and commits it with the change; CI and reviewers
+  only verify.
 - One fixture per released schema version, a `sqlite3` dump built from that
   release tag's own migration files plus representative rows, is upgraded
   with the current migrations under `-tags integration`. The test asserts the
@@ -101,8 +103,8 @@ other rollback path. Development resets use a scratch `PLECT_DATA_HOME`.
   store deletes a ledger entry without changing the schema, so the ledger
   then describes a schema the store does not have. The documentation says it
   must never be used.
-- A migration edit costs one `go generate`; the release procedure has no
-  manifest step. A release with a new schema version adds one upgrade
+- A migration edit costs one `go test ./db -update`; the release procedure
+  has no manifest step. A release with a new schema version adds one upgrade
   fixture, following the recipe in the persistence package documentation.
 - Two migration PRs no longer conflict on the manifest unless they edit the
   same migration.

@@ -397,12 +397,10 @@ jobs:
         with:
           go-version: ${{ env.GO_VERSION }}
       - name: manifest
-        run: |
-          go test -count=1 ./db/migrationsum/
-          go test -count=1 ./db -run '^TestMigrationsMatchTheirManifest$'
+        run: go test -count=1 ./db -run '^TestMigrationsMatchTheirManifest$|^TestManifest_'
         working-directory: app
       - name: drift
-        run: go test -count=1 ./db -skip '^TestMigrationsMatchTheirManifest$'
+        run: go test -count=1 ./db -skip '^TestMigrationsMatchTheirManifest$|^TestManifest_'
         working-directory: app
       - name: sqlc
         run: |

@@ -1,6 +1,4 @@
-// Package migrationsum computes and verifies migrations.sum, the SHA-256
-// manifest of the migration history in sha256sum format.
-package migrationsum
+package db
 
 import (
 	"bufio"
@@ -15,9 +13,9 @@ import (
 	"strings"
 )
 
-// Generate refuses a migration with a Down section instead of hashing it,
+// generateManifest refuses a migration with a Down section instead of hashing it,
 // so regenerating the manifest is never a way around the forward-only rule.
-func Generate(migrations fs.FS) ([]byte, error) {
+func generateManifest(migrations fs.FS) ([]byte, error) {
 	sums, err := hashMigrations(migrations)
 	if err != nil {
 		return nil, err
@@ -35,9 +33,9 @@ func Generate(migrations fs.FS) ([]byte, error) {
 	return b.Bytes(), nil
 }
 
-// Verify reports every disagreement at once rather than the first, so one
+// verifyManifest reports every disagreement at once rather than the first, so one
 // test run shows the whole set of files an edit touched.
-func Verify(migrations fs.FS, manifest []byte) error {
+func verifyManifest(migrations fs.FS, manifest []byte) error {
 	actual, err := hashMigrations(migrations)
 	if err != nil {
 		return err
@@ -81,7 +79,7 @@ func Verify(migrations fs.FS, manifest []byte) error {
 	}
 	sort.Strings(problems)
 	return errors.New(strings.Join(problems, "\n") +
-		"\nA migration that has shipped must never change. After an intended edit to an unreleased one, run `go generate ./internal/persistence/...` in app and commit migrations.sum.")
+		"\nA migration that has shipped must never change. After an intended edit to an unreleased one, run `go test ./db -update` in app and commit migrations.sum with the change.")
 }
 
 func hashMigrations(migrations fs.FS) (map[string]string, error) {
