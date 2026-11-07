@@ -175,10 +175,12 @@ func handleWorkflowRebase(ctx context.Context, request mcp.CallToolRequest) (*mc
 	return jsonResult(map[string]any{"ok": true, "session_name": result.SessionName, "from": result.From, "to": result.To, "class": result.Class, "recreate_nodes": result.RecreateNodes, "reasons": result.Reasons})
 }
 
-// callerProjectRoot selects the configuration context of the MCP server's own
-// working directory. The server has no one to ask, so an untrusted root is an
-// error rather than a prompt.
+// callerProjectRoot reports an untrusted root as an error rather than a
+// prompt, because the server has no one to ask.
 func callerProjectRoot(cfg *config.Config) (string, error) {
+	if root, found, err := service.SessionProjectRoot(cfg, state.NewStore(""), os.Getwd); found || err != nil {
+		return root, err
+	}
 	dir, err := os.Getwd()
 	if err != nil {
 		return "", err
