@@ -107,6 +107,15 @@ func writeFile(t *testing.T, path, content string) {
 }
 
 func TestMigrate_BacksUpTheStoreAtItsFromVersionBeforeMigrating(t *testing.T) {
+	for _, mode := range []string{"WAL", "DELETE", "TRUNCATE"} {
+		t.Run(mode, func(t *testing.T) {
+			t.Setenv(JournalModeEnvVar, mode)
+			testBacksUpTheStoreAtItsFromVersion(t)
+		})
+	}
+}
+
+func testBacksUpTheStoreAtItsFromVersion(t *testing.T) {
 	dir := t.TempDir()
 	path := PathIn(dir)
 	seedFixtureStore(t, path, fixtureV1)
@@ -129,6 +138,11 @@ func TestMigrate_BacksUpTheStoreAtItsFromVersionBeforeMigrating(t *testing.T) {
 	}
 	if got := ledgerVersionOf(t, path); got != 2 {
 		t.Errorf("live ledger version = %d, want 2", got)
+	}
+	for _, suffix := range journalSuffixes {
+		if _, err := os.Stat(backupDB + suffix); !os.IsNotExist(err) {
+			t.Errorf("backup has %s (err %v), want one self-contained file", filepath.Base(backupDB+suffix), err)
+		}
 	}
 	for _, want := range []string{"schema 1", "to 2", filepath.Join(dir, "backups", names[0])} {
 		if !strings.Contains(diag, want) {

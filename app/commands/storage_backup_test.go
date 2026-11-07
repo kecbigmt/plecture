@@ -36,8 +36,8 @@ func TestStorageRestore_RollsBackAStoreThisBinaryRefusesAsTooNew(t *testing.T) {
 		t.Fatalf("simulate a store written by a newer binary: %v", err)
 	}
 	raw.Close()
-	if out, err := execRoot(t, "status"); err == nil || !strings.Contains(err.Error(), "newer than this binary supports") {
-		t.Fatalf("status against the newer store: err = %v, want the newer-than-supported refusal; output:\n%s", err, out)
+	if out, err := execRoot(t, "ls"); err == nil || !strings.Contains(err.Error(), "newer than this binary supports") {
+		t.Fatalf("ls against the newer store: err = %v, want the newer-than-supported refusal; output:\n%s", err, out)
 	}
 
 	listed, err := execRoot(t, "storage", "backups")

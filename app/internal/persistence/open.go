@@ -8,6 +8,8 @@ import (
 	"io/fs"
 	"os"
 	"strings"
+	"sync"
+	"syscall"
 
 	_ "github.com/mattn/go-sqlite3"
 )
@@ -64,7 +66,13 @@ type DB struct {
 	// concurrent migrations without touching the real migrations/ tree.
 	migrations fs.FS
 
+	path string
+
+	// diagnostics receives operator-facing notices such as a pre-migration
+	// backup's location.
 	diagnostics io.Writer
+
+	releaseHandle func()
 }
 
 // Open sets its journal mode (JournalModeEnvVar), a bounded busy timeout, and foreign-key
@@ -111,15 +119,35 @@ func Open(path string) (*DB, error) {
 		write.Close()
 		return nil, err
 	}
+	// Taken under the coordination lock so a restore, which holds that lock
+	// while it checks the handle lock, never misses a handle being opened.
+	releaseHandle, err := flockPath(gate.handleLockPath, syscall.LOCK_SH)
+	if err != nil {
+		unlockCoord()
+		read.Close()
+		write.Close()
+		return nil, fmt.Errorf("persistence: acquire handle lock: %w", err)
+	}
 	pingErr := pingBoth(read, write)
 	unlockCoord()
 	if pingErr != nil {
+		releaseHandle()
 		read.Close()
 		write.Close()
 		return nil, pingErr
 	}
 
-	return &DB{read: read, write: write, gate: gate, migrations: migrationsSourceFS()}, nil
+	return &DB{
+		read:        read,
+		write:       write,
+		gate:        gate,
+		migrations:  migrationsSourceFS(),
+		path:        path,
+		diagnostics: os.Stderr,
+		// A second Close must not unlock a descriptor number the first
+		// Close freed and another file may since have been given.
+		releaseHandle: sync.OnceFunc(releaseHandle),
+	}, nil
 }
 
 func pingBoth(read, write *sql.DB) error {
@@ -135,6 +163,7 @@ func pingBoth(read, write *sql.DB) error {
 func (db *DB) Close() error {
 	readErr := db.read.Close()
 	writeErr := db.write.Close()
+	db.releaseHandle()
 	if readErr != nil {
 		return readErr
 	}
