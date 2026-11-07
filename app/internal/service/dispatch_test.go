@@ -52,8 +52,8 @@ func TestDispatchResource_AmbiguousIsError(t *testing.T) {
 	if err == nil {
 		t.Fatal("expected ambiguity error")
 	}
-	if !strings.Contains(err.Error(), "--workflow") {
-		t.Errorf("error should suggest --workflow: %v", err)
+	if !strings.Contains(err.Error(), "--workflow") || !strings.Contains(err.Error(), "(a, b)") {
+		t.Errorf("error should list both candidates and suggest --workflow: %v", err)
 	}
 }
 
@@ -126,8 +126,28 @@ func TestDispatchResource_NoWorkflowAcceptingResourceIsError(t *testing.T) {
 	addWorkflowFields(t, cfg, "gh", "auto_select = false\n")
 
 	_, _, err := dispatchResource(cfg, "", "", "https://github.com/org/repo/issues/1")
-	if err == nil || !strings.Contains(err.Error(), "no workflow accepts resource") {
-		t.Fatalf("err = %v, want no-workflow error", err)
+	if err == nil || !strings.Contains(err.Error(), "no workflow is selected for resource") || !strings.Contains(err.Error(), "--workflow gh") {
+		t.Fatalf("err = %v, want a no-workflow error naming gh as a --workflow candidate", err)
+	}
+}
+
+func TestDispatchResource_NoWorkflowOfTheTypeListsWhatTheWorkflowsAccept(t *testing.T) {
+	cfg := writeWorkflowFixture(t, "gh",
+		[]taskFixture{{id: "noop", scope: "session", setup: "echo '{}'"}},
+		[]nodeFixture{{id: "noop"}})
+	writeResourceDoc(t, cfg, "other", `[other]
+kind  = "resource"
+match = '^other://'
+name  = { expr = "'o'" }
+
+[other.observe]
+type   = "shell"
+script = "echo '{}'"
+`)
+
+	_, _, err := dispatchResource(cfg, "", "", "other://x")
+	if err == nil || !strings.Contains(err.Error(), `no workflow accepts resource "other"`) || !strings.Contains(err.Error(), `gh (resource "issue")`) {
+		t.Fatalf("err = %v, want a no-workflow error listing gh and the type it accepts", err)
 	}
 }
 
@@ -160,10 +180,10 @@ func TestCreate_ResolverPath(t *testing.T) {
 	}
 	// No --tag: the workflow id ("gh") is the default session-identity tag,
 	// so cross-tool sessions on one resource never share a session.
-	if result.SessionName != "org/repo-42+gh" {
-		t.Errorf("SessionName = %q, want org/repo-42+gh", result.SessionName)
+	if result.SessionName != "org/repo-42" {
+		t.Errorf("SessionName = %q, want org/repo-42", result.SessionName)
 	}
-	s := store.Get("org/repo-42+gh")
+	s := store.Get("org/repo-42")
 	if s.ResourceID != url || s.Alias != url {
 		t.Errorf("ResourceID/Alias = %q/%q, want both %q", s.ResourceID, s.Alias, url)
 	}
@@ -219,12 +239,12 @@ func TestResolveSession_ByAliasAndResolver(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	// By name (the workflow-id default tag is part of the session name).
-	if name, _, err := resolveSession(cfg, store, "org/repo-77+gh"); err != nil || name != "org/repo-77+gh" {
+	// By name.
+	if name, _, err := resolveSession(cfg, store, "org/repo-77"); err != nil || name != "org/repo-77" {
 		t.Errorf("by name: %v / %q", err, name)
 	}
 	// By alias (the original input is the create-time alias).
-	if name, _, err := resolveSession(cfg, store, url); err != nil || name != "org/repo-77+gh" {
+	if name, _, err := resolveSession(cfg, store, url); err != nil || name != "org/repo-77" {
 		t.Errorf("by alias: %v / %q", err, name)
 	}
 }
@@ -263,10 +283,10 @@ func TestUp_ResolverAutoCreate(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Up: %v", err)
 	}
-	if result.SessionName != "org/repo-88+gh" {
-		t.Errorf("SessionName = %q, want org/repo-88+gh (workflow-id default tag)", result.SessionName)
+	if result.SessionName != "org/repo-88" {
+		t.Errorf("SessionName = %q, want org/repo-88", result.SessionName)
 	}
-	s := store.Get("org/repo-88+gh")
+	s := store.Get("org/repo-88")
 	if st := s.Nodes[workdirEffectID]; st == nil || st.Status != contract.TaskStatusProduced {
 		t.Fatalf("auto-create did not run the session nodes: %+v", st)
 	}
@@ -303,7 +323,7 @@ func TestCreate_SetsResourceIDAndAlias(t *testing.T) {
 	if _, err := Create(cfg, store, CreateParams{URL: url}); err != nil {
 		t.Fatal(err)
 	}
-	s := store.Get("org/repo-55+bridge")
+	s := store.Get("org/repo-55")
 	if s.ResourceID != url || s.Alias != url {
 		t.Errorf("ResourceID/Alias = %q/%q, want %q", s.ResourceID, s.Alias, url)
 	}
@@ -324,10 +344,7 @@ func TestWorkdir_ResolverAndAliasLookup(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	// A tagged session resolves by its full name or its create-time alias; a
-	// bare resource base no longer resolves because it cannot disambiguate the
-	// session-identity tag (which workflow's session?).
-	for _, id := range []string{"org/repo-66+gh", url} {
+	for _, id := range []string{"org/repo-66", url} {
 		got, err := Workdir(cfg, store, id)
 		if err != nil {
 			t.Errorf("Workdir(%q): %v", id, err)

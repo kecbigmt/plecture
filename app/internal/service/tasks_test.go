@@ -87,6 +87,13 @@ func seedSessionSplit(t *testing.T, store interface {
 		CreatedAt:  now,
 		UpdatedAt:  now,
 	}
+	// The seed records the entry a resource-addressed up of its issue would
+	// have recorded, so a later up of that issue finds the same entry.
+	if instance := fmt.Sprintf("%s-%d", ownerRepo, number); sessionName == instance || strings.HasPrefix(sessionName, instance+"+") {
+		session.ResourceType = "issue"
+		session.InstanceName = instance
+		session.Tag = strings.TrimPrefix(strings.TrimPrefix(sessionName, instance), "+")
+	}
 	if workflow != "" {
 		if cfg := fixtureConfig(t); cfg != nil {
 			pinSessionRevision(t, cfg, session)

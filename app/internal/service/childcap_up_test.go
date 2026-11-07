@@ -62,7 +62,7 @@ func TestUp_AcceptsThirdChildAtCapAsQueuedSleep(t *testing.T) {
 	}
 
 	url := "https://example.test/cases/reject"
-	newChildName := "case_reject+capwf"
+	newChildName := "case_reject"
 	result, err := Up(cfg, store, UpParams{Identifier: url, ParentSession: "parent1"})
 	if err != nil {
 		t.Fatal(err)
@@ -92,7 +92,7 @@ func TestUp_ManualParentlessAdmissionQueuesAtVirtualRootCap(t *testing.T) {
 	if result.Result != "sleeping" || result.QueuePosition != 1 {
 		t.Fatalf("Up result = %+v, want queued sleep", result)
 	}
-	if got := store.Get("case_manual+capwf"); got == nil || got.SleepSince.IsZero() {
+	if got := store.Get("case_manual"); got == nil || got.SleepSince.IsZero() {
 		t.Fatalf("session = %+v, want persisted sleep", got)
 	}
 }

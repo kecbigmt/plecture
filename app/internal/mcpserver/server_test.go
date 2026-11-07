@@ -76,28 +76,27 @@ func TestNewServer_RemovesRemovedTools(t *testing.T) {
 	}
 }
 
-// A "<name>+<tag>" session name is not a resource id any declaration
-// recognizes, so plect_up resolves it as an existing session rather than
-// creating one.
+// A session name is not a resource id any declaration recognizes, so plect_up
+// resolves it as an existing session rather than creating one.
 func TestHandleUp_ExistingSessionByName(t *testing.T) {
 	setUpConfigHome(t)
 
 	createPlainSession(t, "my-session")
 
 	result, err := handleUp(context.Background(), reqWith(map[string]any{
-		"session":  "my-session+plain",
+		"session":  "my-session",
 		"workflow": "plain",
 	}))
 	if err != nil {
 		t.Fatalf("handleUp: %v", err)
 	}
 	out := decodeJSONResult(t, result)
-	if out["session_name"] != "my-session+plain" {
-		t.Fatalf("session_name = %v, want my-session+plain", out["session_name"])
+	if out["session_name"] != "my-session" {
+		t.Fatalf("session_name = %v, want my-session", out["session_name"])
 	}
 
 	store := state.NewStore("")
-	s := store.Get("my-session+plain")
+	s := store.Get("my-session")
 	if s == nil {
 		t.Fatal("session not persisted")
 	}

@@ -41,12 +41,16 @@ behaved before. Non-TTY stdout (MCP, cron, scripts) is treated as --detach
 automatically; the MCP plect_up tool is always detached. Workflows without an
 attach target return after setup regardless of TTY.
 
---tag selects the session's session-identity label. Omitted, it defaults to
-the workflow id, so repeated 'plect up <resource-id> --workflow X' calls
-converge on the same session. Pass --tag to
-resolve a specifically-labelled session (e.g. 'plect up <resource-id> --tag X'
-reuses that tagged session). --tag is only valid with a
-resource identifier, not a bare session name (the name already encodes the tag).
+A resource identifier selects the one workflow whose entry resource is the
+identifier's resource type; pass --workflow when several accept it. The
+session is named after the resource's instance name, so repeated
+'plect up <resource-id>' calls converge on the same session.
+
+--tag appends one segment to that name ('<instance>+<tag>', the tag matching
+[A-Za-z0-9_-]+) to run a second session for the same resource. --tag is only
+valid with a resource identifier, not a bare session name (the name already
+encodes the tag). An existing session with the composed name but a different
+entry resource or tag is a collision, not the same session.
 
 --inputs / --inputs-file forward session inputs to the auto-create path when
 the session does not yet exist; passing them against an already-created
@@ -144,7 +148,7 @@ func stdoutIsTerminal() bool {
 }
 
 func init() {
-	upCmd.Flags().StringVar(&upTag, "tag", "", "Session-identity label of the session to resolve/auto-create (resource-identifier only). Defaults to the workflow id.")
+	upCmd.Flags().StringVar(&upTag, "tag", "", "Segment appended to the resource instance name to distinguish another session for the same resource (resource-identifier only).")
 	upCmd.Flags().StringVarP(&upWorkflow, "workflow", "w", "", "Workflow id (auto-create path only; must match session's frozen workflow)")
 	upCmd.Flags().StringVar(&upInputs, "inputs", "", "Session inputs as a JSON object string (auto-create path only)")
 	upCmd.Flags().StringVar(&upInputsFile, "inputs-file", "", "Path to a JSON file containing the session inputs object (auto-create path only)")

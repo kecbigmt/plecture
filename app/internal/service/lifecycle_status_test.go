@@ -40,7 +40,7 @@ func TestCreate_LeavesSessionStatusDown(t *testing.T) {
 		t.Fatalf("Create: %v", err)
 	}
 
-	s := store.Get("sess-acct-9+wf")
+	s := store.Get("sess-acct-9")
 	if s == nil {
 		t.Fatal("session not persisted")
 	}

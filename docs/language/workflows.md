@@ -9,13 +9,18 @@ caller may bind the entry resource or another concrete resource type.
 `plect up <resource>` resolves the concrete identifier to a resource type and
 accepts `--workflow <id>` and optional `--tag <tag>`. The selected workflow's
 `resource` must equal the resolved type. Without `--workflow`, exactly one
-workflow accepting that type is required; zero or more than one is an error.
+workflow accepting that type is required; zero or more than one is an error
+that lists the candidates.
 
 The resource's `name` creates its instance name. Without a tag, that value is
-the session name. A tag appends one validated non-empty session-name segment;
-the resulting name must either be new or name the same entry-resource and tag
-record. Tags distinguish concurrent sessions for one resource without making a
-task, plugin, or working-directory detail part of core identity.
+the session name. A tag appends one validated non-empty session-name segment,
+`<instance>+<tag>` with the tag matching `[A-Za-z0-9_-]+`. The resulting name
+must either be new or name the same entry-resource and tag record: a live
+session with that name whose entry resource type, instance name, or tag
+differs is a collision, not the same session. The session records its entry
+resource type, the concrete identifier, the instance name, and the tag. Tags
+distinguish concurrent sessions for one resource without making a task,
+plugin, workflow, or working-directory detail part of core identity.
 
 The caller optionally selects an initial task and its concrete resource
 binding. The task is compatible when its declared resource type matches that

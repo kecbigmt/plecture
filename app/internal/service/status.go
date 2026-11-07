@@ -25,6 +25,8 @@ const statusFlowLimit = 5
 type StatusIdentity struct {
 	SessionName   string                         `json:"session_name"`
 	ResourceID    string                         `json:"resource_id,omitempty"`
+	ResourceType  string                         `json:"resource_type,omitempty"`
+	InstanceName  string                         `json:"instance_name,omitempty"`
 	Title         string                         `json:"title,omitempty"`
 	Workflow      string                         `json:"workflow,omitempty"`
 	Revision      string                         `json:"revision,omitempty"`
@@ -231,7 +233,9 @@ func Status(cfg *config.Config, store *state.Store, identifier string) (*StatusR
 			Workflow:      session.Workflow,
 			Revision:      shortWorkflowRevision(session.WorkflowRevision),
 			Population:    session.Population,
-			Tag:           sessionTag(sessionName),
+			ResourceType:  session.ResourceType,
+			InstanceName:  session.InstanceName,
+			Tag:           session.Tag,
 			ParentSession: session.ParentSession,
 			Children:      childNames(sessions, sessionName),
 			Inputs:        session.Inputs,
@@ -406,7 +410,9 @@ func tombstoneStatusResult(tomb *contract.Tombstone) *StatusResult {
 			SessionName:   tomb.Name,
 			ResourceID:    identityResourceID(&tomb.Session),
 			Workflow:      tomb.Workflow,
-			Tag:           sessionTag(tomb.Name),
+			ResourceType:  tomb.ResourceType,
+			InstanceName:  tomb.InstanceName,
+			Tag:           tomb.Tag,
 			ParentSession: tomb.ParentSession,
 			CreatedAt:     tomb.CreatedAt,
 		},
@@ -419,16 +425,6 @@ func tombstoneStatusResult(tomb *contract.Tombstone) *StatusResult {
 // identityResourceID is the session's canonical resource identifier.
 func identityResourceID(s *domain.Session) string {
 	return s.ResourceID
-}
-
-// sessionTag extracts the session-identity tag from a session name's
-// "<resource>+<tag>" convention (effectiveTag, chainSpawnTag) — provider-
-// agnostic string parsing over a name plect itself produced.
-func sessionTag(name string) string {
-	if idx := strings.LastIndex(name, "+"); idx >= 0 {
-		return name[idx+1:]
-	}
-	return ""
 }
 
 // StatusSummary is the default `plect status --json` shape: identity plus, per

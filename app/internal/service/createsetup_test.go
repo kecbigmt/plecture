@@ -34,7 +34,7 @@ func TestCreate_WorkflowSetupPath(t *testing.T) {
 		t.Fatalf("Create: %v", err)
 	}
 
-	s := store.Get("org/repo-5+wf")
+	s := store.Get("org/repo-5")
 	if s == nil {
 		t.Fatal("session not persisted")
 	}
@@ -89,7 +89,7 @@ func TestCreate_RecordsParentSession(t *testing.T) {
 		t.Fatalf("Create: %v", err)
 	}
 
-	child := store.Get("org/repo-6+wf")
+	child := store.Get("org/repo-6")
 	if child == nil {
 		t.Fatal("child session not persisted")
 	}
@@ -103,7 +103,7 @@ func TestCreate_RecordsParentSession(t *testing.T) {
 	if parent == nil {
 		t.Fatal("parent session missing")
 	}
-	if got, want := parent.Children, []string{"org/repo-6+wf"}; fmt.Sprint(got) != fmt.Sprint(want) {
+	if got, want := parent.Children, []string{"org/repo-6"}; fmt.Sprint(got) != fmt.Sprint(want) {
 		t.Fatalf("parent.Children = %v, want %v", got, want)
 	}
 }
@@ -122,7 +122,7 @@ func TestCreate_SessionNodeNestedWriteSurvives(t *testing.T) {
 
 	// dispatcher writes a sibling "initial" key straight to the store
 	// (mimicking the nested `plect task setup`), then produces normally.
-	dispatcher := nestedWriteCommand(t, store.Dir(), "org/repo-11+claude", nestedWritePatch{
+	dispatcher := nestedWriteCommand(t, store.Dir(), "org/repo-11", nestedWritePatch{
 		Tasks: map[string]*contract.TaskState{
 			"initial": {Scope: contract.TaskScopeSession, Status: contract.TaskStatusProduced, TaskID: "work", Name: "initial", Outputs: map[string]any{"instruction": "start work"}},
 		},
@@ -138,7 +138,7 @@ echo '{}'`
 		t.Fatalf("Create: %v", err)
 	}
 
-	session := store.Get("org/repo-11+claude")
+	session := store.Get("org/repo-11")
 	if session == nil {
 		t.Fatal("session not persisted")
 	}
@@ -193,7 +193,7 @@ args    = ["-c", 'printf "%s\n%s\n" "$1" "$2" > "$3"', "provider",
 	if readErr != nil {
 		t.Fatalf("subscribe hook did not run: %v", readErr)
 	}
-	want := "org/repo-9+wf\n" + url + "\n"
+	want := "org/repo-9\n" + url + "\n"
 	if string(got) != want {
 		t.Errorf("subscribe hook recorded %q, want %q", got, want)
 	}
@@ -215,13 +215,13 @@ func TestCreate_NoDeliverableResourceBehavesAsBefore(t *testing.T) {
 		t.Fatalf("Create: %v", err)
 	}
 
-	if s := store.Get("org/repo-10+wf"); s == nil {
+	if s := store.Get("org/repo-10"); s == nil {
 		t.Fatal("session not persisted")
 	}
-	if got := subscriptionRetryCount(t, store, "org/repo-10+wf", retrySubscribe, url, false); got != 0 {
+	if got := subscriptionRetryCount(t, store, "org/repo-10", retrySubscribe, url, false); got != 0 {
 		t.Fatalf("pending subscribe count = %d, want 0 without a failed hook", got)
 	}
-	if got := subscriptionRetryCount(t, store, "org/repo-10+wf", retryUnsubscribe, url, false); got != 0 {
+	if got := subscriptionRetryCount(t, store, "org/repo-10", retryUnsubscribe, url, false); got != 0 {
 		t.Fatalf("pending unsubscribe count = %d, want 0 without a failed hook", got)
 	}
 }
@@ -278,7 +278,7 @@ func TestCreate_WorkflowSetupFailureLeavesRetryableState(t *testing.T) {
 	if _, err := Create(cfg, store, CreateParams{URL: url}); err == nil {
 		t.Fatal("expected first create to fail")
 	}
-	s := store.Get("org/repo-6+wf")
+	s := store.Get("org/repo-6")
 	if s == nil {
 		t.Fatal("failed setup must still leave an inspectable state entry")
 	}
@@ -292,7 +292,7 @@ func TestCreate_WorkflowSetupFailureLeavesRetryableState(t *testing.T) {
 	if _, err := Create(cfg, store, CreateParams{URL: url}); err != nil {
 		t.Fatalf("retry should succeed: %v", err)
 	}
-	s = store.Get("org/repo-6+wf")
+	s = store.Get("org/repo-6")
 	if st := s.Nodes[workdirEffectID]; st == nil || st.Status != contract.TaskStatusProduced {
 		t.Fatalf("workdir node after retry = %+v, want produced", st)
 	}
@@ -352,7 +352,7 @@ args    = ["-c", 'printf "%s\n%s\n" "$1" "$2" > "$3"', "provider",
 		t.Fatalf("precondition: subscribe hook did not run at create: %v", err)
 	}
 
-	if _, err := Destroy(cfg, store, DestroyParams{Identifier: "org/repo-12+wf"}); err != nil {
+	if _, err := Destroy(cfg, store, DestroyParams{Identifier: "org/repo-12"}); err != nil {
 		t.Fatalf("Destroy: %v", err)
 	}
 
@@ -360,7 +360,7 @@ args    = ["-c", 'printf "%s\n%s\n" "$1" "$2" > "$3"', "provider",
 	if readErr != nil {
 		t.Fatalf("unsubscribe hook did not run: %v", readErr)
 	}
-	want := "org/repo-12+wf\n" + url + "\n"
+	want := "org/repo-12\n" + url + "\n"
 	if string(got) != want {
 		t.Errorf("unsubscribe hook recorded %q, want %q", got, want)
 	}
@@ -404,7 +404,7 @@ args    = ["-c", 'test -e "$1" || exit 3; echo done > "$2"', "provider", "` + to
 
 	// toggle is absent, so the unsubscribe hook fails.
 	url := "https://github.com/org/repo/issues/13"
-	deadSession := "org/repo-13+wf"
+	deadSession := "org/repo-13"
 	if _, err := Create(cfg, store, CreateParams{URL: url}); err != nil {
 		t.Fatalf("Create: %v", err)
 	}
@@ -426,7 +426,7 @@ args    = ["-c", 'test -e "$1" || exit 3; echo done > "$2"', "provider", "` + to
 	if _, err := Create(cfg, store, CreateParams{URL: "https://github.com/org/repo/issues/14"}); err != nil {
 		t.Fatalf("Create (unrelated session): %v", err)
 	}
-	if _, err := TaskSetup(cfg, store, TaskSetupParams{TaskID: "work", SessionName: "org/repo-14+wf"}); err != nil {
+	if _, err := TaskSetup(cfg, store, TaskSetupParams{TaskID: "work", SessionName: "org/repo-14"}); err != nil {
 		t.Fatalf("TaskSetup (unrelated session): %v", err)
 	}
 
@@ -459,7 +459,7 @@ func TestDestroy_RunsSessionEffectCleanup(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	if _, err := Destroy(cfg, store, DestroyParams{Identifier: "org/repo-7+wf"}); err != nil {
+	if _, err := Destroy(cfg, store, DestroyParams{Identifier: "org/repo-7"}); err != nil {
 		t.Fatalf("Destroy: %v", err)
 	}
 	if _, err := os.Stat(marker); err != nil {
@@ -468,7 +468,7 @@ func TestDestroy_RunsSessionEffectCleanup(t *testing.T) {
 	if _, err := os.Stat(workdir); !os.IsNotExist(err) {
 		t.Errorf("workdir should have been removed by its producer's cleanup: %v", err)
 	}
-	if store.Get("org/repo-7+wf") != nil {
+	if store.Get("org/repo-7") != nil {
 		t.Error("state entry should be deleted")
 	}
 }
@@ -503,7 +503,7 @@ delete_branch = { type = "boolean" }
 	}
 
 	if _, err := Destroy(cfg, store, DestroyParams{
-		Identifier:    "org/repo-8+wf",
+		Identifier:    "org/repo-8",
 		CleanupInputs: map[string]string{"delete_branch": "true"},
 	}); err != nil {
 		t.Fatalf("Destroy: %v", err)
@@ -530,13 +530,13 @@ func TestDestroy_RejectsCleanupInputNoEffectDeclares(t *testing.T) {
 	}
 
 	_, err := Destroy(cfg, store, DestroyParams{
-		Identifier:    "org/repo-8+wf",
+		Identifier:    "org/repo-8",
 		CleanupInputs: map[string]string{"unknown_key": "true"},
 	})
 	if err == nil || !strings.Contains(err.Error(), "unknown_key") {
 		t.Fatalf("err = %v, want rejection naming unknown_key", err)
 	}
-	if store.Get("org/repo-8+wf") == nil {
+	if store.Get("org/repo-8") == nil {
 		t.Error("a rejected cleanup input must leave the session in place")
 	}
 	if _, statErr := os.Stat(workdir); statErr != nil {
@@ -558,25 +558,25 @@ func TestDestroy_EffectCleanupFailureBlocksWithoutForce(t *testing.T) {
 		t.Fatalf("Create: %v", err)
 	}
 
-	_, err := Destroy(cfg, store, DestroyParams{Identifier: "org/repo-8+wf"})
+	_, err := Destroy(cfg, store, DestroyParams{Identifier: "org/repo-8"})
 	if err == nil {
 		t.Fatal("expected destroy to fail-fast on cleanup error")
 	}
 	if !strings.Contains(err.Error(), workdirEffectID) {
 		t.Errorf("error should name the failing node: %v", err)
 	}
-	if store.Get("org/repo-8+wf") == nil {
+	if store.Get("org/repo-8") == nil {
 		t.Error("state entry must survive a blocked destroy")
 	}
 
-	result, err := Destroy(cfg, store, DestroyParams{Identifier: "org/repo-8+wf", Force: true})
+	result, err := Destroy(cfg, store, DestroyParams{Identifier: "org/repo-8", Force: true})
 	if err != nil {
 		t.Fatalf("forced destroy: %v", err)
 	}
 	if len(result.CleanupWarnings) == 0 {
 		t.Error("forced destroy should surface the cleanup failure as a warning")
 	}
-	if store.Get("org/repo-8+wf") != nil {
+	if store.Get("org/repo-8") != nil {
 		t.Error("forced destroy should delete the state entry")
 	}
 }
@@ -602,7 +602,7 @@ func TestUp_RecoversFailedWorkflowSetup(t *testing.T) {
 	if _, err := Up(cfg, store, UpParams{Identifier: url}); err != nil {
 		t.Fatalf("Up should recover the partial create: %v", err)
 	}
-	s := store.Get("org/repo-9+wf")
+	s := store.Get("org/repo-9")
 	if st := s.Nodes[workdirEffectID]; st == nil || st.Status != contract.TaskStatusProduced {
 		t.Fatalf("workdir node = %+v, want produced after Up recovery", st)
 	}

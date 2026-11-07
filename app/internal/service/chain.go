@@ -132,9 +132,9 @@ func resolveSpawnSessionName(cfg *config.Config, resource, workflow, tag string)
 	if !matched {
 		return "", &Error{Code: ErrInvalidInput, Message: fmt.Sprintf("no resource declaration recognizes %q", resource)}
 	}
-	name := disp.Name
-	if tag != "" {
-		name = name + "+" + tag
+	name, nameErr := disp.sessionName(tag)
+	if nameErr != nil {
+		return "", nameErr
 	}
 	return name, nil
 }
