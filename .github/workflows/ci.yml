@@ -81,6 +81,9 @@ jobs:
       - uses: actions/setup-go@v5
         with:
           go-version: ${{ env.GO_VERSION }}
+          cache-dependency-path: |
+            go.work.sum
+            **/go.sum
       - name: Check gofmt
         run: |
           unformatted=$(gofmt -l $(find . -name '*.go' -not -path './app/internal/webui/*'))
@@ -108,6 +111,9 @@ jobs:
       - uses: actions/setup-go@v5
         with:
           go-version: ${{ env.GO_VERSION }}
+          cache-dependency-path: |
+            go.work.sum
+            **/go.sum
       - name: go build ./app/... from a fresh checkout, no Node installed
         run: go build ./...
         working-directory: app
@@ -129,6 +135,9 @@ jobs:
       - uses: actions/setup-go@v5
         with:
           go-version: ${{ env.GO_VERSION }}
+          cache-dependency-path: |
+            go.work.sum
+            **/go.sum
       - name: Prove the SQLite driver boundary checker catches a seeded requirement
         run: ./scripts/check-sqlite-driver-boundary_selftest.sh
       - name: Check the SQLite driver stays out of contracts/ and plugins/ build lists
@@ -173,6 +182,9 @@ jobs:
       - uses: actions/setup-go@v5
         with:
           go-version: ${{ env.GO_VERSION }}
+          cache-dependency-path: |
+            go.work.sum
+            **/go.sum
       - name: Prove the checker catches a seeded orphaned sidecar
         run: ./scripts/check-instruction-orphans_selftest.sh
       - name: Check every task instruction sidecar is referenced
@@ -197,6 +209,9 @@ jobs:
       - uses: actions/setup-go@v5
         with:
           go-version: ${{ env.GO_VERSION }}
+          cache-dependency-path: |
+            go.work.sum
+            **/go.sum
       - uses: actions/setup-python@v5
         with:
           python-version: ${{ env.PYTHON_VERSION }}
@@ -272,6 +287,9 @@ jobs:
       - uses: actions/setup-go@v5
         with:
           go-version: ${{ env.GO_VERSION }}
+          cache-dependency-path: |
+            go.work.sum
+            **/go.sum
       - name: Regenerate Go types and check for drift
         run: |
           go tool oapi-codegen -config oapi-codegen.yaml ../../../web/api/generated/openapi.yaml
@@ -354,6 +372,9 @@ jobs:
       - uses: actions/setup-go@v5
         with:
           go-version: ${{ env.GO_VERSION }}
+          cache-dependency-path: |
+            go.work.sum
+            **/go.sum
       - name: Install the pinned Playwright driver + Chromium
         run: go run github.com/mxschmitt/playwright-go/cmd/playwright@v0.6201.1 install --with-deps chromium
         working-directory: app
@@ -396,6 +417,9 @@ jobs:
       - uses: actions/setup-go@v5
         with:
           go-version: ${{ env.GO_VERSION }}
+          cache-dependency-path: |
+            go.work.sum
+            **/go.sum
       - name: manifest
         run: go test -count=1 ./db -run '^TestMigrationsMatchTheirManifest$|^TestManifest_'
         working-directory: app
@@ -427,6 +451,9 @@ jobs:
       - uses: actions/setup-go@v5
         with:
           go-version: ${{ env.GO_VERSION }}
+          cache-dependency-path: |
+            go.work.sum
+            **/go.sum
       # release.yml's darwin-arm64 build job runs this same `go test ./...`
       # against the app module before packaging.
       - name: go test
@@ -452,6 +479,9 @@ jobs:
       - uses: actions/setup-go@v5
         with:
           go-version: ${{ env.GO_VERSION }}
+          cache-dependency-path: |
+            go.work.sum
+            **/go.sum
       - name: go build
         run: go build ./...
         working-directory: ${{ matrix.module }}
@@ -472,6 +502,9 @@ jobs:
       - uses: actions/setup-go@v5
         with:
           go-version: ${{ env.GO_VERSION }}
+          cache-dependency-path: |
+            go.work.sum
+            **/go.sum
       # The integration-tagged tests (app/internal/service, app/internal/webui)
       # spin up real git repos and worktrees and, for the shipped
       # worktree-effect cases, build the plect/github-worktree/
@@ -511,6 +544,9 @@ jobs:
       - uses: actions/setup-go@v5
         with:
           go-version: ${{ env.GO_VERSION }}
+          cache-dependency-path: |
+            go.work.sum
+            **/go.sum
       - name: Run README build commands
         run: |
           go build ./app/...
