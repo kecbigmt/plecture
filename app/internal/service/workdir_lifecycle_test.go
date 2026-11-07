@@ -6,8 +6,10 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/kecbigmt/plecture/app/internal/config"
+	"github.com/kecbigmt/plecture/app/internal/domain"
 	"github.com/kecbigmt/plecture/app/internal/state"
 	contract "github.com/kecbigmt/plecture/contracts/state"
 )
@@ -141,6 +143,24 @@ type = "noop"
 `)
 	wdWrite(t, filepath.Join(base, "workflows", "review.toml"), workflowBody)
 	return &wdFixture{home: home, base: base, store: state.NewStore(t.TempDir()), cfg: &config.Config{BaseDir: base}}
+}
+
+// wdPutSession stores a session with no workflow revision, the state a
+// destroy guard sees before any cleanup could run.
+func wdPutSession(t *testing.T, store *state.Store, name, workflow string) {
+	t.Helper()
+	now := time.Now()
+	if err := store.Put(&domain.Session{
+		Name:       name,
+		ResourceID: wdIssueURL,
+		Workflow:   workflow,
+		Nodes:      map[string]*contract.TaskState{},
+		Tasks:      map[string]*contract.TaskState{},
+		CreatedAt:  now,
+		UpdatedAt:  now,
+	}); err != nil {
+		t.Fatal(err)
+	}
 }
 
 func realPath(t *testing.T, path string) string {
@@ -422,18 +442,18 @@ uses = "failing"
 	})
 	t.Run("child sessions", func(t *testing.T) {
 		store := testStore(t)
-		seedSession(t, store, "org/repo-1", "org/repo", 1, "default", nil)
-		seedSession(t, store, "org/repo-2", "org/repo", 2, "default", nil)
-		setParent(t, store, "org/repo-2", "org/repo-1")
-		_, err := Destroy(&config.Config{}, store, DestroyParams{Identifier: "org/repo-1"})
+		wdPutSession(t, store, "parent", "default")
+		wdPutSession(t, store, "child", "default")
+		setParent(t, store, "child", "parent")
+		_, err := Destroy(&config.Config{}, store, DestroyParams{Identifier: "parent"})
 		if err == nil || !strings.Contains(err.Error(), "--force") || !strings.Contains(err.Error(), forceRequiresConfirmation) {
 			t.Fatalf("Destroy error = %v, want the --force hint to ask for human confirmation first", err)
 		}
 	})
 	t.Run("no stored workflow revision", func(t *testing.T) {
 		store := testStore(t)
-		seedSession(t, store, "org/repo-1", "org/repo", 1, "default", nil)
-		_, err := Destroy(&config.Config{}, store, DestroyParams{Identifier: "org/repo-1"})
+		wdPutSession(t, store, "unpinned", "default")
+		_, err := Destroy(&config.Config{}, store, DestroyParams{Identifier: "unpinned"})
 		if err == nil || !strings.Contains(err.Error(), "--force") || !strings.Contains(err.Error(), forceRequiresConfirmation) {
 			t.Fatalf("Destroy error = %v, want the --force hint to ask for human confirmation first", err)
 		}
