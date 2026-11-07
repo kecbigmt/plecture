@@ -1,10 +1,11 @@
-package persistence
+package db
 
 import (
 	"context"
 	"database/sql"
 	"fmt"
 	"io/fs"
+	"path/filepath"
 	"sort"
 	"strconv"
 	"strings"
@@ -14,11 +15,15 @@ import (
 
 	"github.com/pressly/goose/v3"
 
-	appdb "github.com/kecbigmt/plecture/app/db"
+	_ "github.com/mattn/go-sqlite3"
 )
 
 func TestSchemaSQL_MatchesMigrationHistory(t *testing.T) {
-	if diff := schemaDrift(t, appdb.Schema, migrationsSourceFS()); diff != "" {
+	migrations, err := fs.Sub(Migrations, "migrations")
+	if err != nil {
+		t.Fatalf("migrations subtree: %v", err)
+	}
+	if diff := schemaDrift(t, Schema, migrations); diff != "" {
 		t.Fatalf("schema.sql and the migration history disagree:\n%s", diff)
 	}
 }
@@ -127,22 +132,38 @@ func schemaDrift(t *testing.T, schemaSQL string, migrations fs.FS) string {
 	t.Helper()
 	ctx := context.Background()
 
-	declaredDB := openTestDB(t)
-	if _, err := declaredDB.write.ExecContext(ctx, schemaSQL); err != nil {
+	declaredDB := openSQLite(t)
+	if _, err := declaredDB.ExecContext(ctx, schemaSQL); err != nil {
 		t.Fatalf("apply schema.sql: %v", err)
 	}
 
-	migratedDB := openTestDB(t)
-	migratedDB.migrations = migrations
-	if err := migratedDB.Migrate(ctx); err != nil {
-		t.Fatalf("Migrate: %v", err)
+	migratedDB := openSQLite(t)
+	provider, err := goose.NewProvider(goose.DialectSQLite3, migratedDB, migrations)
+	if err != nil {
+		t.Fatalf("goose provider: %v", err)
+	}
+	if _, err := provider.Up(ctx); err != nil {
+		t.Fatalf("apply migrations: %v", err)
 	}
 
-	declared := introspect(t, ctx, declaredDB.write)
-	migrated := introspect(t, ctx, migratedDB.write)
+	declared := introspect(t, ctx, declaredDB)
+	migrated := introspect(t, ctx, migratedDB)
 	delete(migrated, goose.DefaultTablename)
 	return diffTableSets(declared, migrated) +
-		diffObjectSets(triggersAndViews(t, ctx, declaredDB.write), triggersAndViews(t, ctx, migratedDB.write))
+		diffObjectSets(triggersAndViews(t, ctx, declaredDB), triggersAndViews(t, ctx, migratedDB))
+}
+
+// openSQLite is capped at one connection like the runtime's write handle,
+// which is the connection every migration runs on.
+func openSQLite(t *testing.T) *sql.DB {
+	t.Helper()
+	handle, err := sql.Open("sqlite3", filepath.Join(t.TempDir(), "storage.db")+"?_foreign_keys=on")
+	if err != nil {
+		t.Fatalf("open sqlite: %v", err)
+	}
+	handle.SetMaxOpenConns(1)
+	t.Cleanup(func() { handle.Close() })
+	return handle
 }
 
 // schemaObject is a trigger or view, compared by its normalized CREATE
@@ -376,8 +397,8 @@ func tableIndexes(t *testing.T, ctx context.Context, handle *sql.DB, table strin
 
 	// The per-index detail queries below (indexColumns, indexPredicate)
 	// run only after this function's own listIndexes call has returned,
-	// so its PRAGMA index_list cursor is already closed: db.write caps its
-	// pool at one connection (see open.go), so a nested query issued
+	// so its PRAGMA index_list cursor is already closed: openSQLite caps
+	// its pool at one connection, so a nested query issued
 	// while that cursor is still open would deadlock waiting for a
 	// connection this same, still-iterating cursor is holding.
 	for i := range indexes {
@@ -1035,7 +1056,7 @@ func TestStripSQLComments_KeepsCommentMarkersInsideStringLiterals(t *testing.T) 
 }
 
 func TestIndexPredicate_IgnoresWhereInsideStringLiteral(t *testing.T) {
-	db := openTestDB(t)
+	db := openSQLite(t)
 	ctx := context.Background()
 
 	const ddl = `
@@ -1043,12 +1064,12 @@ func TestIndexPredicate_IgnoresWhereInsideStringLiteral(t *testing.T) {
 		CREATE UNIQUE INDEX t_a_idx ON t(note) WHERE note <> 'anywhere';
 		CREATE UNIQUE INDEX t_b_idx ON t(note) WHERE note <> 'elsewhere';
 	`
-	if _, err := db.write.ExecContext(ctx, ddl); err != nil {
+	if _, err := db.ExecContext(ctx, ddl); err != nil {
 		t.Fatalf("apply fixture DDL: %v", err)
 	}
 
-	a := indexPredicate(t, ctx, db.write, "t_a_idx")
-	b := indexPredicate(t, ctx, db.write, "t_b_idx")
+	a := indexPredicate(t, ctx, db, "t_a_idx")
+	b := indexPredicate(t, ctx, db, "t_b_idx")
 
 	if a != "note <> 'anywhere'" {
 		t.Errorf("t_a_idx predicate = %q, want %q", a, "note <> 'anywhere'")
@@ -1067,7 +1088,7 @@ func TestIndexPredicate_IgnoresWhereInsideStringLiteral(t *testing.T) {
 // database, not just that diffTable notices when two already-parsed
 // tableSchema values differ.
 func TestIntrospect_ExtractsRealConstraintsFromSQLite(t *testing.T) {
-	db := openTestDB(t)
+	db := openSQLite(t)
 	ctx := context.Background()
 
 	const ddl = `
@@ -1083,11 +1104,11 @@ func TestIntrospect_ExtractsRealConstraintsFromSQLite(t *testing.T) {
 		);
 		CREATE UNIQUE INDEX child_label_idx ON child(label) WHERE label <> 'draft';
 	`
-	if _, err := db.write.ExecContext(ctx, ddl); err != nil {
+	if _, err := db.ExecContext(ctx, ddl); err != nil {
 		t.Fatalf("apply fixture DDL: %v", err)
 	}
 
-	schema := introspect(t, ctx, db.write)["child"]
+	schema := introspect(t, ctx, db)["child"]
 
 	wantForeignKeys := []foreignKeyInfo{
 		{columns: []fkColumnPair{{fromColumn: "composite_a", toColumn: "id"}, {fromColumn: "composite_b", toColumn: "code"}}, toTable: "parent", onUpdate: "NO ACTION", onDelete: "NO ACTION"},
