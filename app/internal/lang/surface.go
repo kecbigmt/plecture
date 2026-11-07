@@ -1,6 +1,7 @@
 package lang
 
 import (
+	"fmt"
 	"sort"
 	"strings"
 	"sync"
@@ -90,6 +91,16 @@ func (s *Surface) identifiers() []string {
 	return out
 }
 
+// retiredRoot reports a root an earlier dialect offered, with a message naming
+// the migration guide, because a declaration that was valid before the root
+// was removed deserves more than "not a root this surface offers".
+func retiredRoot(path string) (string, bool) {
+	if head, _, _ := strings.Cut(path, "."); head == "cleanup" {
+		return fmt.Sprintf("%q is retired: destroy takes no plugin inputs, so cleanup reads what setup recorded in self.outputs instead; see %s", path, WorkspaceProviderMigrationGuide), true
+	}
+	return "", false
+}
+
 func withRootCode(s *Surface, code Code) *Surface {
 	s.rootCode = code
 	return s
@@ -131,7 +142,7 @@ var (
 		"inputs.<key>", "prev.<key>", "nodes.<id>.outputs.<key>", "workflow.outputs.<key>",
 		"session.*", "session.inputs.<key>", "resource.id")
 	surfaceEffectCleanup = newSurface("effect.cleanup", LayerSemantic,
-		"self.outputs.<key>", "self.process.identity", "inputs.<key>", "cleanup.inputs.<key>", "force",
+		"self.outputs.<key>", "self.process.identity", "inputs.<key>", "force",
 		"nodes.<id>.outputs.<key>", "workflow.outputs.<key>", "session.*")
 	surfaceEffectHealth = newSurface("effect.health", LayerSemantic,
 		"self.outputs.<key>", "inputs.<key>", "session.*")

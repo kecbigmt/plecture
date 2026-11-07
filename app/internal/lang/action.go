@@ -108,36 +108,17 @@ func ParseAliveAction(raw any, pos Position) (*Action, error) {
 	return action, nil
 }
 
-// ParseCleanup reads an effect's `cleanup` table: an action plus its optional
-// `inputs_schema`, a contract on the invocation that is split off before the
-// action's own closed surface applies.
-func ParseCleanup(raw any, pos Position) (*Action, map[string]any, error) {
+// ParseCleanup reads an effect's `cleanup` action.
+func ParseCleanup(raw any, pos Position) (*Action, error) {
 	tbl, ok := raw.(map[string]any)
 	if !ok {
-		return nil, nil, newDiag(CodeFieldType, LayerStructural, pos, "an action is a table")
+		return nil, newDiag(CodeFieldType, LayerStructural, pos, "an action is a table")
 	}
-	var schema map[string]any
-	if rawSchema, ok := tbl["inputs_schema"]; ok {
-		schema, ok = rawSchema.(map[string]any)
-		if !ok {
-			return nil, nil, newDiag(CodeFieldType, LayerStructural, childPos(pos, "inputs_schema"), "inputs_schema is a JSON Schema document")
-		}
-		if err := checkNoTaggedValues(schema, childPos(pos, "inputs_schema")); err != nil {
-			return nil, nil, err
-		}
-		rest := make(map[string]any, len(tbl))
-		for k, v := range tbl {
-			if k != "inputs_schema" {
-				rest[k] = v
-			}
-		}
-		tbl = rest
+	if _, ok := tbl["inputs_schema"]; ok {
+		return nil, newDiag(CodeFieldUnknown, LayerStructural, childPos(pos, "inputs_schema"),
+			fmt.Sprintf("cleanup inputs are retired: what a cleanup releases is decided when the session is created, through the effect's inputs and mutable outputs; see %s", WorkspaceProviderMigrationGuide))
 	}
-	action, err := ParseAction(tbl, pos)
-	if err != nil {
-		return nil, nil, err
-	}
-	return action, schema, nil
+	return ParseAction(tbl, pos)
 }
 
 // The reference is a bare string rather than a tagged value because the only

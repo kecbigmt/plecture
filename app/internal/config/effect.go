@@ -45,7 +45,7 @@ func effectFrom(def *lang.Definition, path string, fromPlugin bool) (TaskDefinit
 		return d, err
 	}
 	if raw, ok := def.Body["cleanup"]; ok {
-		d.Cleanup, d.CleanupInputsSchema, err = lang.ParseCleanup(raw, lang.Position{File: path, Path: def.ID + ".cleanup"})
+		d.Cleanup, err = lang.ParseCleanup(raw, lang.Position{File: path, Path: def.ID + ".cleanup"})
 		if err != nil {
 			return d, err
 		}

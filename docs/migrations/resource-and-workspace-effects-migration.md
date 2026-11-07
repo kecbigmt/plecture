@@ -10,8 +10,11 @@ Read the whole procedure before making changes. Perform it with the release
 that removes the workspace provider. The loader refuses each retired spelling
 with a diagnostic that points here: a `kind = "workspace_provider"`
 declaration, a workflow's `workspace_provider` or `workspace_provider_inputs`
-field, a population's `resource_observer`, and `workspace_dirs_root` in
-`config.toml`.
+field, a population's `resource_observer`, `workspace_dirs_root` in
+`config.toml`, an effect's `[<id>.cleanup.inputs_schema]`, a
+`cleanup.inputs.<key>` reference, and a population's `session.destroy.inputs`.
+`plect destroy --input` and the `cleanup_inputs` argument of the MCP
+`plect_destroy` tool are refused the same way.
 
 ## Backup
 
@@ -57,7 +60,8 @@ workflow's `workdir` and never stored.
 2. Rewrite every `workspace_provider` as a resource declaration plus one or
    more ordinary `scope = "session"` effects. Move worktree, Slack-thread,
    and local environment setup, cleanup, liveness, and outputs to those
-   effects. Preserve cleanup inputs such as `force` and plugin-owned options.
+   effects. Cleanup still receives `force`; a release option the provider took
+   becomes a creation-time input, as step 5 describes.
 3. Replace a workflow provider field with its entry `resource`, add nodes for
    its effects, and add one `workdir = { from = "nodes.<id>.outputs.<key>" }`
    where the workflow needs a directory. Do not create per-node cwd settings.
@@ -69,11 +73,21 @@ workflow's `workdir` and never stored.
 4. Replace `@workflow` output consumers with explicit workflow public
    outputs and `outputs_schema`; rewrite display, instructions, channel, and
    downstream bindings to `workflow.outputs.*`.
-5. Move a destruction option a provider took (such as a branch to delete) to
-   the effect's `[<id>.cleanup.inputs_schema]`, and read it in cleanup as
-   `cleanup.inputs.<key>`; `plect destroy --input key=value` supplies it, and
-   an input no released effect declares is an error. `force` is a cleanup root
-   of every effect.
+5. Move a release option a provider took (such as whether to delete a branch),
+   or a key of an effect's `[<id>.cleanup.inputs_schema]`, to a creation-time
+   input of the effect. Setup records it as a `mutable` output and cleanup
+   reads it as `self.outputs.<key>`. Remove every
+   `[<id>.cleanup.inputs_schema]`, every `cleanup.inputs.<key>` reference, and
+   every population `session.destroy.inputs` table. Where a script ran
+   `plect destroy --input key=value`, set the policy as the node's input when
+   the session is created, or rewrite it for one session before destroying it:
+   `plect state set-output <session> --node <id> '{"key":value}'`. For the
+   shipped `github` `worktree` effect, the node input `delete_branch_default =
+   "true"` becomes `delete_branch = true`, and `plect destroy <session> --input
+   delete_branch=true` becomes `plect state set-output <session> --node
+   worktree '{"delete_branch":true}'` followed by `plect destroy <session>`.
+   `force` remains a cleanup root of every effect; an agent that uses
+   `plect_destroy` asks a human before setting it.
 6. A direct invocation reads the `.plect/` overlay of its own directory or of
    an ancestor directory only when that directory is listed in `trusted_project_roots` in the
    machine configuration; nothing is trusted implicitly, because an overlay can
@@ -159,8 +173,8 @@ use.
 
 ## Recover a residual allocation
 
-When a required definition, trusted configuration, recorded directory, cleanup
-input, credential, environment, or reliable target identity is unavailable,
+When a required definition, trusted configuration, recorded directory,
+credential, environment, or reliable target identity is unavailable,
 automatic reconstruction stops and reports operator recovery required. A
 lifecycle-configuration warning alone does not have this outcome. Do not create
 an empty directory or infer release from current configuration: neither proves

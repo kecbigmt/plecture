@@ -6,8 +6,10 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/kecbigmt/plecture/app/internal/config"
+	"github.com/kecbigmt/plecture/app/internal/domain"
 	"github.com/kecbigmt/plecture/app/internal/state"
 	contract "github.com/kecbigmt/plecture/contracts/state"
 )
@@ -68,20 +70,13 @@ name = { from = "session.name" }
 [checkout.cleanup]
 type   = "shell"
 script = '''
-printf '%s %s\n' "$force" "$delete_branch" > "$HOME/cleanup-intent"
+printf '%s\n' "$force" > "$HOME/cleanup-intent"
 rm -rf "$dir"
 '''
 
 [checkout.cleanup.bind]
-dir           = { from = "self.outputs.workspace_dir" }
-force         = { from = "force" }
-delete_branch = { from = "cleanup.inputs.delete_branch", default = "unset" }
-
-[checkout.cleanup.inputs_schema]
-type = "object"
-
-[checkout.cleanup.inputs_schema.properties]
-delete_branch = { type = "boolean" }
+dir   = { from = "self.outputs.workspace_dir" }
+force = { from = "force" }
 
 [checkout.health.alive]
 type   = "shell"
@@ -148,6 +143,24 @@ type = "noop"
 `)
 	wdWrite(t, filepath.Join(base, "workflows", "review.toml"), workflowBody)
 	return &wdFixture{home: home, base: base, store: state.NewStore(t.TempDir()), cfg: &config.Config{BaseDir: base}}
+}
+
+// wdPutSession stores a session with no workflow revision, the state a
+// destroy guard sees before any cleanup could run.
+func wdPutSession(t *testing.T, store *state.Store, name, workflow string) {
+	t.Helper()
+	now := time.Now()
+	if err := store.Put(&domain.Session{
+		Name:       name,
+		ResourceID: wdIssueURL,
+		Workflow:   workflow,
+		Nodes:      map[string]*contract.TaskState{},
+		Tasks:      map[string]*contract.TaskState{},
+		CreatedAt:  now,
+		UpdatedAt:  now,
+	}); err != nil {
+		t.Fatal(err)
+	}
 }
 
 func realPath(t *testing.T, path string) string {
@@ -297,50 +310,150 @@ func TestUp_VanishedWorkdirInvalidatesTheNodeAndKeepsItsReleaseObligation(t *tes
 	}
 }
 
-func TestDestroy_CleanupInputsReachOnlyTheEffectsThatDeclareThem(t *testing.T) {
-	t.Run("a declared input and force are handed to cleanup", func(t *testing.T) {
-		f := newWDFixture(t, wdWorkdirWorkflow)
+func TestDestroy_HandsTheForceIntentToEffectCleanup(t *testing.T) {
+	tests := []struct {
+		name  string
+		force bool
+		want  string
+	}{
+		{name: "plect destroy", force: false, want: "false"},
+		{name: "plect destroy --force", force: true, want: "true"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			f := newWDFixture(t, wdWorkdirWorkflow)
+			if _, err := Up(f.cfg, f.store, UpParams{Identifier: wdIssueURL}); err != nil {
+				t.Fatalf("Up: %v", err)
+			}
+			name, _ := wdSession(t, f)
+			if _, err := Destroy(f.cfg, f.store, DestroyParams{Identifier: name, Force: tt.force}); err != nil {
+				t.Fatalf("Destroy: %v", err)
+			}
+			raw, err := os.ReadFile(filepath.Join(f.home, "cleanup-intent"))
+			if err != nil {
+				t.Fatal(err)
+			}
+			if got := strings.TrimSpace(string(raw)); got != tt.want {
+				t.Errorf("cleanup saw force = %q, want %q", got, tt.want)
+			}
+		})
+	}
+}
+
+func TestDestroy_CleanupReadsAMutableOutputRewrittenBySetOutput(t *testing.T) {
+	tests := []struct {
+		name    string
+		rewrite map[string]any
+		want    string
+	}{
+		{name: "the policy recorded at creation", want: "true"},
+		{name: "the policy rewritten before destroy", rewrite: map[string]any{"release_more": false}, want: "false"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			f := newWDFixture(t, `
+[review]
+kind     = "workflow"
+resource = "issue"
+
+[[review.nodes]]
+uses   = "policy"
+inputs = { release_more = true }
+`)
+			wdWrite(t, filepath.Join(f.base, "tasks", "policy.toml"), `
+[policy]
+kind  = "effect"
+scope = "session"
+
+[policy.setup]
+type   = "shell"
+script = '''
+printf '{"release_more":%s}' "$release_more"
+'''
+
+[policy.setup.bind]
+release_more = { from = "inputs.release_more" }
+
+[policy.cleanup]
+type   = "shell"
+script = 'echo "$release_more" > "$HOME/cleanup-policy"'
+
+[policy.cleanup.bind]
+release_more = { from = "self.outputs.release_more" }
+
+[policy.health.alive]
+type = "noop"
+
+[policy.inputs_schema]
+type = "object"
+
+[policy.inputs_schema.properties]
+release_more = { type = "boolean" }
+
+[policy.outputs_schema]
+type     = "object"
+required = ["release_more"]
+
+[policy.outputs_schema.properties.release_more]
+type    = "boolean"
+mutable = true
+`)
+			if _, err := Up(f.cfg, f.store, UpParams{Identifier: wdIssueURL}); err != nil {
+				t.Fatalf("Up: %v", err)
+			}
+			name, _ := wdSession(t, f)
+			if tt.rewrite != nil {
+				if _, err := SetOutput(f.cfg, f.store, SetOutputParams{Identifier: name, Node: "policy", Outputs: tt.rewrite}); err != nil {
+					t.Fatalf("SetOutput: %v", err)
+				}
+			}
+			if _, err := Destroy(f.cfg, f.store, DestroyParams{Identifier: name}); err != nil {
+				t.Fatalf("Destroy: %v", err)
+			}
+			raw, err := os.ReadFile(filepath.Join(f.home, "cleanup-policy"))
+			if err != nil {
+				t.Fatal(err)
+			}
+			if got := strings.TrimSpace(string(raw)); got != tt.want {
+				t.Errorf("cleanup saw release_more = %q, want %q", got, tt.want)
+			}
+		})
+	}
+}
+
+// An agent reading only the error must not take the --force hint as license
+// to retry on its own.
+func TestDestroy_ForceRetryHintAsksForHumanConfirmationFirst(t *testing.T) {
+	t.Run("a failed cleanup", func(t *testing.T) {
+		f := newWDFixture(t, wdWorkdirWorkflow+`
+[[review.nodes]]
+uses = "failing"
+`)
 		if _, err := Up(f.cfg, f.store, UpParams{Identifier: wdIssueURL}); err != nil {
 			t.Fatalf("Up: %v", err)
 		}
 		name, _ := wdSession(t, f)
-		if _, err := Destroy(f.cfg, f.store, DestroyParams{Identifier: name, Force: true, CleanupInputs: map[string]string{"delete_branch": "true"}}); err != nil {
-			t.Fatalf("Destroy: %v", err)
-		}
-		raw, err := os.ReadFile(filepath.Join(f.home, "cleanup-intent"))
-		if err != nil {
-			t.Fatal(err)
-		}
-		if got := strings.TrimSpace(string(raw)); got != "true true" {
-			t.Errorf("cleanup saw force and delete_branch = %q, want %q", got, "true true")
+		_, err := Destroy(f.cfg, f.store, DestroyParams{Identifier: name})
+		if err == nil || !strings.Contains(err.Error(), "--force") || !strings.Contains(err.Error(), forceRequiresConfirmation) {
+			t.Fatalf("Destroy error = %v, want the --force hint to ask for human confirmation first", err)
 		}
 	})
-	t.Run("an input no released effect declares is refused before anything is released", func(t *testing.T) {
-		f := newWDFixture(t, wdWorkdirWorkflow)
-		if _, err := Up(f.cfg, f.store, UpParams{Identifier: wdIssueURL}); err != nil {
-			t.Fatalf("Up: %v", err)
-		}
-		name, nodes := wdSession(t, f)
-		workdir, _ := nodes["checkout"].Outputs["workspace_dir"].(string)
-		_, err := Destroy(f.cfg, f.store, DestroyParams{Identifier: name, CleanupInputs: map[string]string{"delete_brnach": "true"}})
-		var svcErr *Error
-		if !errors.As(err, &svcErr) || svcErr.Code != ErrInvalidInput {
-			t.Fatalf("Destroy error = %v, want an invalid-input error naming the undeclared key", err)
-		}
-		if _, statErr := os.Stat(workdir); statErr != nil {
-			t.Errorf("the workdir was released although the destroy was refused: %v", statErr)
+	t.Run("child sessions", func(t *testing.T) {
+		store := testStore(t)
+		wdPutSession(t, store, "parent", "default")
+		wdPutSession(t, store, "child", "default")
+		setParent(t, store, "child", "parent")
+		_, err := Destroy(&config.Config{}, store, DestroyParams{Identifier: "parent"})
+		if err == nil || !strings.Contains(err.Error(), "--force") || !strings.Contains(err.Error(), forceRequiresConfirmation) {
+			t.Fatalf("Destroy error = %v, want the --force hint to ask for human confirmation first", err)
 		}
 	})
-	t.Run("an input with the wrong type is refused", func(t *testing.T) {
-		f := newWDFixture(t, wdWorkdirWorkflow)
-		if _, err := Up(f.cfg, f.store, UpParams{Identifier: wdIssueURL}); err != nil {
-			t.Fatalf("Up: %v", err)
-		}
-		name, _ := wdSession(t, f)
-		_, err := Destroy(f.cfg, f.store, DestroyParams{Identifier: name, CleanupInputs: map[string]string{"delete_branch": "maybe"}})
-		var svcErr *Error
-		if !errors.As(err, &svcErr) || svcErr.Code != ErrInvalidInput {
-			t.Fatalf("Destroy error = %v, want an invalid-input error for a non-boolean delete_branch", err)
+	t.Run("no stored workflow revision", func(t *testing.T) {
+		store := testStore(t)
+		wdPutSession(t, store, "unpinned", "default")
+		_, err := Destroy(&config.Config{}, store, DestroyParams{Identifier: "unpinned"})
+		if err == nil || !strings.Contains(err.Error(), "--force") || !strings.Contains(err.Error(), forceRequiresConfirmation) {
+			t.Fatalf("Destroy error = %v, want the --force hint to ask for human confirmation first", err)
 		}
 	})
 }

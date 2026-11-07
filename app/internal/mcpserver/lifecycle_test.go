@@ -4,9 +4,11 @@ import (
 	"context"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/kecbigmt/plecture/app/internal/config"
+	"github.com/kecbigmt/plecture/app/internal/lang"
 	"github.com/kecbigmt/plecture/app/internal/service"
 	"github.com/kecbigmt/plecture/app/internal/state"
 )
@@ -38,12 +40,6 @@ script = "echo '{}'"
 [noop.cleanup]
 type   = "shell"
 script = "true"
-
-[noop.cleanup.inputs_schema]
-type = "object"
-
-[noop.cleanup.inputs_schema.properties]
-delete_branch = { type = "boolean" }
 
 [noop.health.alive]
 type = "noop"
@@ -157,37 +153,57 @@ func TestHandleDestroy_MissingSessionArg(t *testing.T) {
 	}
 }
 
-func TestHandleDestroy_ForceAndCleanupInputsForwarded(t *testing.T) {
+func TestHandleDestroy_ForceForwarded(t *testing.T) {
 	setUpConfigHomeWithCapture(t)
 	name := createPlainSession(t, "destroy-force-session")
 
 	result, err := handleDestroy(context.Background(), reqWith(map[string]any{
-		"session":        name,
-		"force":          true,
-		"cleanup_inputs": map[string]any{"delete_branch": "true"},
+		"session": name,
+		"force":   true,
 	}))
 	if err != nil {
 		t.Fatalf("handleDestroy: %v", err)
 	}
 	decodeJSONResult(t, result)
+	if state.NewStore("").Get(name) != nil {
+		t.Fatalf("session %q survived a forced destroy", name)
+	}
 }
 
-func TestHandleDestroy_UndeclaredCleanupInputIsRejectedAndKeepsTheSession(t *testing.T) {
+func TestHandleDestroy_RetiredCleanupInputsArePointedAtTheMigrationGuideAndKeepTheSession(t *testing.T) {
 	setUpConfigHomeWithCapture(t)
-	name := createPlainSession(t, "destroy-undeclared-input-session")
+	name := createPlainSession(t, "destroy-retired-input-session")
 
 	result, err := handleDestroy(context.Background(), reqWith(map[string]any{
 		"session":        name,
-		"cleanup_inputs": map[string]any{"not_declared": "x"},
+		"cleanup_inputs": map[string]any{"delete_branch": "true"},
 	}))
 	if err != nil {
 		t.Fatalf("handleDestroy: %v", err)
 	}
 	if !result.IsError {
-		t.Fatal("expected an error result for a cleanup input no effect declares")
+		t.Fatal("expected an error result for the retired cleanup_inputs argument")
+	}
+	if text := extractErrorText(result); !strings.Contains(text, lang.WorkspaceProviderMigrationGuide) {
+		t.Errorf("error %q does not point at the migration guide", text)
 	}
 	if state.NewStore("").Get(name) == nil {
-		t.Fatalf("session %q was destroyed despite the rejected cleanup input", name)
+		t.Fatalf("session %q was destroyed despite the refused argument", name)
+	}
+}
+
+// force can discard an agent's own uncommitted work, so the tool tells the
+// agent to put the decision to a human rather than retry with it on its own.
+func TestDestroyTool_AsksForHumanConfirmationBeforeForce(t *testing.T) {
+	if !strings.Contains(destroyTool.Description, forceConfirmation) {
+		t.Errorf("plect_destroy description does not ask for human confirmation before force: %q", destroyTool.Description)
+	}
+	force, _ := destroyTool.InputSchema.Properties["force"].(map[string]any)
+	if desc, _ := force["description"].(string); !strings.Contains(desc, forceConfirmation) {
+		t.Errorf("force argument description does not ask for human confirmation: %q", desc)
+	}
+	if _, ok := destroyTool.InputSchema.Properties["cleanup_inputs"]; ok {
+		t.Error("plect_destroy still declares cleanup_inputs")
 	}
 }
 

@@ -75,11 +75,10 @@ type Resolved struct {
 	// Layers is the node's nesting chain, outermost first, when its task
 	// definition declares `inner`. Empty for a plain task, which is the one
 	// distinction the lifecycle runners make between the two.
-	Layers              []effect.Layer
-	Prep                bool
-	Workdir             *lang.WorkdirRef
-	WorkdirProducer     bool
-	CleanupInputsSchema map[string]any
+	Layers          []effect.Layer
+	Prep            bool
+	Workdir         *lang.WorkdirRef
+	WorkdirProducer bool
 	// Unresolved marks a teardown-only entry whose current definition could
 	// not be found by TaskID, so there is no cleanup recipe to run at all.
 	// RunCleanup reports it as an error and leaves the record unreleased,
@@ -316,20 +315,19 @@ func ResolveDefinition(def config.TaskDefinition, nodeID string) (Resolved, erro
 		}
 	}
 	return Resolved{
-		NodeID:              nodeID,
-		TaskID:              def.ID,
-		Scope:               scope,
-		Setup:               def.Setup,
-		Cleanup:             def.Cleanup,
-		CleanupInputsSchema: def.CleanupInputsSchema,
-		Health:              def.Health,
-		SourcePath:          def.SourcePath,
-		From:                def.Ownership(),
-		Terminal:            terminal,
-		InputsSchema:        inputsSchema,
-		OutputsSchema:       outputsSchema,
-		MutableOutputs:      mutableOutputs,
-		Layers:              layers,
+		NodeID:         nodeID,
+		TaskID:         def.ID,
+		Scope:          scope,
+		Setup:          def.Setup,
+		Cleanup:        def.Cleanup,
+		Health:         def.Health,
+		SourcePath:     def.SourcePath,
+		From:           def.Ownership(),
+		Terminal:       terminal,
+		InputsSchema:   inputsSchema,
+		OutputsSchema:  outputsSchema,
+		MutableOutputs: mutableOutputs,
+		Layers:         layers,
 	}, nil
 }
 
@@ -551,8 +549,7 @@ type RenderContext struct {
 	// Locals are the private intermediates one layer of a nesting chain
 	// emitted from its own setup, visible to that layer's cleanup and to its
 	// own binding templates and nowhere else. Empty for a plain task.
-	Locals        map[string]any
-	CleanupInputs map[string]any
+	Locals map[string]any
 	// SourcePath is the absolute path of the file the rendered template
 	// (Setup/Cleanup/...) came from. It feeds the bare-name `bin = "<name>"`
 	// reading only — plugins.ResolveBin uses it to find the containing plugin — so a
@@ -567,10 +564,9 @@ type SessionVars struct {
 	ResourceID    string
 	ParentSession string
 	Inputs        map[string]any
-	// Force and CleanupInputs are the destruction operation's own intent, read
-	// only by cleanup actions.
-	Force         bool
-	CleanupInputs map[string]any
+	// Force is the destruction operation's own intent, read only by cleanup
+	// actions.
+	Force bool
 	// Without ReleaseAfterFailure the prerequisites of a node whose cleanup
 	// failed stay retained: releasing what it still depends on would strand
 	// its own retry.
@@ -1179,14 +1175,13 @@ func RunCleanup(goCtx context.Context, ordered []Resolved, session SessionVars, 
 			sess.ResourceID = state.Resource
 		}
 		ctx := RenderContext{
-			Self:          state.Outputs,
-			Process:       state.Process,
-			Tasks:         dependencyOutputs(r.DependsOn, tasks),
-			Inputs:        state.Inputs,
-			Workflow:      workflowOutputs(session, tasks, publicoutput.LastRecorded),
-			Session:       sess,
-			SourcePath:    r.SourcePath,
-			CleanupInputs: FilterCleanupInputs(r.CleanupInputsSchema, sess.CleanupInputs),
+			Self:       state.Outputs,
+			Process:    state.Process,
+			Tasks:      dependencyOutputs(r.DependsOn, tasks),
+			Inputs:     state.Inputs,
+			Workflow:   workflowOutputs(session, tasks, publicoutput.LastRecorded),
+			Session:    sess,
+			SourcePath: r.SourcePath,
 		}
 		resolved, resolveErr := resolveEffect(r.Cleanup, cleanupRoots(ctx), ctx, r.From, nil)
 		if resolveErr != nil {

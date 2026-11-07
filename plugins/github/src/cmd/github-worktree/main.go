@@ -9,6 +9,7 @@ import (
 	"flag"
 	"fmt"
 	"os"
+	"strconv"
 
 	"github.com/kecbigmt/plecture/plugins/github/src/internal/ghapi"
 	"github.com/kecbigmt/plecture/plugins/github/src/internal/github"
@@ -46,6 +47,7 @@ func run(args []string) error {
 		layoutRoot := fs.String("workspace-layout-root", "", "root this effect lays repository worktree containers out under (default: the dirs root)")
 		issueBranchTemplate := fs.String("issue-branch-template", "", "branch name for an issue resource, with {owner}/{repo}/{number} placeholders (default: issue/{number})")
 		taggedBranchSuffix := fs.String("tagged-branch-suffix", "", "suffix appended to the branch for a tagged session, with a {tag} placeholder (default: +{tag})")
+		deleteBranch := fs.String("delete-branch", "false", "\"true\" to have cleanup delete the branch once the worktree is removed; recorded as the delete_branch output")
 		appTokenBin := fs.String("app-token-bin", "", "path to gh-app-token; used only when app auth inputs are set, as the git credential helper")
 		appID := fs.String("app-id", "", "GitHub App id for git and metadata-fetch authentication")
 		installationID := fs.String("installation-id", "", "GitHub App installation id for git and metadata-fetch authentication")
@@ -58,6 +60,12 @@ func run(args []string) error {
 		if *resource == "" || *session == "" {
 			return fmt.Errorf("setup requires --resource and --session")
 		}
+		// A string flag, because the effect passes the value as its own
+		// argument and a boolean flag only reads the --name=value form.
+		deleteBranchSet, err := strconv.ParseBool(*deleteBranch)
+		if err != nil {
+			return fmt.Errorf("--delete-branch: %q is not a boolean", *deleteBranch)
+		}
 		outputs, err := worktree.Setup(ctx, worktree.SetupOptions{
 			ResourceID:          *resource,
 			SessionName:         *session,
@@ -65,6 +73,7 @@ func run(args []string) error {
 			WorkspaceLayoutRoot: *layoutRoot,
 			IssueBranchTemplate: *issueBranchTemplate,
 			TaggedBranchSuffix:  *taggedBranchSuffix,
+			DeleteBranch:        deleteBranchSet,
 			AppTokenBin:         *appTokenBin,
 			AppID:               *appID,
 			InstallationID:      *installationID,
@@ -85,8 +94,7 @@ func run(args []string) error {
 		branch := fs.String("branch", "", "branch recorded by setup")
 		workspaceDirsRoot := fs.String("workspace-dirs-root", "", "dirs root worktree containers are laid out under (default: $HOME/workspace_dirs)")
 		force := fs.Bool("force", false, "remove the workspace directory even when it carries uncommitted changes")
-		deleteBranch := fs.String("delete-branch", "", "\"true\"/\"false\" to also delete the branch recorded by setup; empty defers to --delete-branch-default")
-		deleteBranchDefault := fs.String("delete-branch-default", "", "\"true\" to delete the branch when the caller expressed no intent")
+		deleteBranch := fs.Bool("delete-branch", false, "also delete the branch recorded by setup, with a safe delete that keeps unmerged work")
 		layoutRoot := fs.String("workspace-layout-root", "", "root this effect lays repository worktree containers out under (default: the dirs root)")
 		if err := fs.Parse(args[1:]); err != nil {
 			return err
@@ -98,7 +106,6 @@ func run(args []string) error {
 			WorkspaceLayoutRoot: *layoutRoot,
 			Force:               *force,
 			DeleteBranch:        *deleteBranch,
-			DeleteBranchDefault: *deleteBranchDefault,
 		})
 	default:
 		return fmt.Errorf("unknown subcommand %q; expected setup or cleanup", args[0])

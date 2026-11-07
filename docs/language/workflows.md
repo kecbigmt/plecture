@@ -186,8 +186,8 @@ workflow: an old agent depending on an old checkout is cleaned up before that
 checkout is released. This preserves the lifetime boundaries of allocations
 whose declarations were removed or changed.
 
-The current operation supplies `force` and plugin-owned cleanup inputs; they
-do not replace setup-time facts. A record that still matches a desired node
+The current operation supplies only `force`; it does not replace setup-time
+facts. A record that still matches a desired node
 remains in use. New nodes are set up from the latest desired
 workflow. A changed node effect, resolved setup inputs, scope, or execution
 directory requires reconstruction; the diagnostic directs the caller to
@@ -220,9 +220,22 @@ successful cleanup and cannot release another generation.
 Ordinary `up` can retry cleanup but cannot reconstruct an allocation or a
 required prerequisite while its release obligation remains outstanding.
 `--force-recreate` follows the same release-then-new-generation path and never
-acknowledges or discards an obligation. `destroy --force` is the separate,
-explicit record-discard operation: it warns and records that release was not
-verified, then removes the session's remaining execution records. It is not
+acknowledges or discards an obligation; the cleanup it runs receives
+`force = true`, because the node is rebuilt right after.
+
+`destroy --force` ignores destroy's safeguards and errors and runs it to the
+end:
+
+- It destroys a session that has child sessions, orphaning them.
+- It removes a session with no stored workflow revision, without cleanup.
+- A failed cleanup becomes a warning. Destroy records that release was not
+  verified and removes the session's remaining execution records.
+- The prerequisites of a node whose cleanup failed are released anyway.
+- Every effect's cleanup receives `force = true`, so it may override its own
+  safeguards as well; see [effects](effects.md#cleanup-and-force).
+
+Whatever those safeguards protected — uncommitted changes, child sessions, an
+allocation whose release nobody verified — can be lost. `destroy --force` is not
 evidence that an external resource was released.
 
 ## Display
@@ -380,7 +393,6 @@ mutation or destruction.
 | `session.task` | Optional caller-selected initial task, compatible with the entry resource. |
 | `session.inputs` | Optional values over literals, `resource.id`, and `item.*` properties. |
 | `session.destroy.force` | Whether automatic destruction uses force; default false. |
-| `session.destroy.inputs` | Optional plugin-owned cleanup input object. |
 | `poll_every` | Required positive duration when `uses` selects `poll`; forbidden otherwise. |
 | `expire_after` | Required positive quiescence duration without `poll`; forbidden with it. |
 | `auto_down` | Permits capacity-pressure down selection; default false. |
@@ -437,9 +449,6 @@ context = { from = "item.context", optional = true }
 
 [standing_cases.populations.session.destroy]
 force = false
-
-[standing_cases.populations.session.destroy.inputs]
-delete_branch = false
 ```
 
 Population decisions are durable events:
@@ -551,7 +560,5 @@ neither turns the issue into the session's entry resource.
 - Node dependencies plus derived default-workdir edges have no cycle.
 - A population uses its containing workflow's resource and its query contract.
 - An initial task is caller-selected and compatible with its concrete binding.
-- Population cleanup inputs satisfy the cleanup schemas of the effects they
-  address.
 - Workflow public outputs satisfy `outputs_schema` and bind only declared node
   outputs or allowed session inputs.

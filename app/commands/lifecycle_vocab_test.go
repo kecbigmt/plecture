@@ -3,6 +3,8 @@ package commands
 import (
 	"strings"
 	"testing"
+
+	"github.com/kecbigmt/plecture/app/internal/lang"
 )
 
 func TestLifecycleCommandsRemoveCreateOnly(t *testing.T) {
@@ -19,10 +21,8 @@ func TestLifecycleCommandsRemoveCreateOnly(t *testing.T) {
 	if downCmd.Flags().Lookup("rm") != nil {
 		t.Fatal("down command unexpectedly exposes rm")
 	}
-	for _, name := range []string{"force", "input"} {
-		if destroyCmd.Flags().Lookup(name) == nil {
-			t.Fatalf("destroy command missing %q flag", name)
-		}
+	if destroyCmd.Flags().Lookup("force") == nil {
+		t.Fatal("destroy command missing \"force\" flag")
 	}
 	if destroyCmd.Flags().Lookup("delete-branch") != nil {
 		t.Fatal("destroy command must not expose delete-branch: core carries no branch vocabulary, branch deletion moved to provider cleanup")
@@ -60,5 +60,27 @@ func TestRemovedLifecycleCommandHintForCreateOnly(t *testing.T) {
 				t.Fatalf("hint = %q, want %q", got, tt.want)
 			}
 		})
+	}
+}
+
+func TestDestroyRefusesTheRetiredInputFlagWithAPointerToTheMigrationGuide(t *testing.T) {
+	t.Setenv("PLECT_CONFIG_HOME", t.TempDir())
+	t.Setenv("PLECT_DATA_HOME", t.TempDir())
+	t.Setenv("PLECT_SESSION_NAME", "")
+	flag := destroyCmd.Flags().Lookup("input")
+	if flag == nil {
+		t.Fatal("destroy no longer recognizes --input, so its refusal cannot name the migration guide")
+	}
+	if err := flag.Value.Set("delete_branch=true"); err != nil {
+		t.Fatal(err)
+	}
+	flag.Changed = true
+	t.Cleanup(func() {
+		flag.Changed = false
+		_ = flag.Value.(interface{ Replace([]string) error }).Replace(nil)
+	})
+	err := destroyCmd.RunE(destroyCmd, []string{"session"})
+	if err == nil || !strings.Contains(err.Error(), lang.WorkspaceProviderMigrationGuide) {
+		t.Fatalf("destroy --input error = %v, want a refusal naming the migration guide", err)
 	}
 }

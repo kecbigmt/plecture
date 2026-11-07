@@ -1,0 +1,38 @@
+# plect-fixture: result=invalid layer=structural diagnostic=PLECTURE-CFG-FIELD-UNKNOWN entry=definitions
+# reason: an automatic destroy passes only force, so a population declares no cleanup inputs for it.
+
+[standing_cases]
+kind     = "workflow"
+resource = "query_source"
+
+[standing_cases.inputs_schema]
+type                 = "object"
+required             = ["resource"]
+additionalProperties = false
+
+[standing_cases.inputs_schema.properties]
+resource = { type = "string" }
+context  = { type = "string" }
+
+[[standing_cases.populations]]
+name              = "dispatch"
+uses              = ["poll", "subscribe"]
+poll_every        = "5m"
+auto_down         = true
+auto_destroy      = false
+
+[standing_cases.populations.query]
+scope = "open"
+
+[standing_cases.populations.session]
+task = "population_task"
+
+[standing_cases.populations.session.inputs]
+resource = { from = "resource.id" }
+context  = { from = "item.context", optional = true }
+
+[standing_cases.populations.session.destroy]
+force = false
+
+[standing_cases.populations.session.destroy.inputs]
+delete_branch = false

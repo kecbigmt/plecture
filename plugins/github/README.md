@@ -79,18 +79,60 @@ where this is a live change.
 
 ## Cleanup
 
-`plect destroy` always releases the worktree it acquired. To also delete the
-local branch, pass the cleanup input the `worktree` effect declares:
+`plect destroy` always releases the worktree it acquired. Whether it also
+deletes the session's local branch is decided when the session is created, like
+GitHub's "automatically delete head branches" repository setting: the
+`worktree` node's `delete_branch` input (default `false`, keep the branch).
+Setup records it as the node's `delete_branch` output, and cleanup reads that
+output.
+
+Deletion is local only, and it uses a safe `git branch -d`: a branch carrying
+commits that are not merged survives regardless of `delete_branch`, so
+unmerged work is never deleted. The remote branch is never touched.
+
+`plect destroy --force` removes the worktree even when it has uncommitted
+changes, and those changes are lost. It does not turn branch deletion on or
+make it unsafe.
+
+### Change the policy for one session
+
+The `delete_branch` output is mutable. To change one session's policy without
+changing its workflow, rewrite the output before destroying it:
 
 ```bash
-plect destroy <session> --input delete_branch=true
+plect state set-output <session> --node <id> '{"delete_branch":false}'
+plect destroy <session>
 ```
 
-Left off, the branch decision falls through to the `worktree` effect's
-`delete_branch_default` parameter below, which is itself off unless a
-workflow says otherwise (the safer default for a review-only or
-shared-branch session). Branch deletion uses a safe `git branch -d`, so it
-still refuses a branch carrying unmerged commits regardless of this flag.
+`<id>` is the `worktree` node's id in the session's workflow (`worktree` in the
+example below).
+
+The rewrite holds only until the worktree node is set up again. A rebuilt node
+records the creation-time `delete_branch` again. A rebuild can come from a
+command (`plect up --force-recreate`, or a rebase that rebuilds the node) or
+happen on its own (an invalidated prerequisite, or a rebuild after the
+worktree's liveness check fails). Check the output with `plect status <session>` before destroying,
+and re-apply the rewrite after a rebuild.
+
+### Restore a deleted branch
+
+Only the local branch is deleted, and only once it is merged, so its commits
+are still reachable. Run these in the repository's primary checkout. While the
+remote branch still exists, recreate the local one from it:
+
+```bash
+git fetch origin <branch>
+git branch <branch> FETCH_HEAD
+```
+
+Otherwise recreate it at the commit it pointed at. `plect destroy` prints git's
+`Deleted branch <branch> (was <commit>)` under the worktree node's line; when
+the branch was merged in the primary checkout, `git reflog` lists that merge
+with the same commit:
+
+```bash
+git branch <branch> <commit>
+```
 
 ## Query (population source)
 
@@ -144,7 +186,7 @@ effect's parameters go in its workflow node's `inputs`:
 | `workspace_layout_root` | Root the `github.com/<owner>/<repo>/<branch>` worktree containers are laid out under. Empty = `dirs_root`. |
 | `issue_branch_template` | Branch name an issue resource maps to. Placeholders: `{owner}`, `{repo}`, `{number}`. Default `issue/{number}`. A pull request's branch always comes from its head ref. |
 | `tagged_branch_suffix` | Suffix appended for a tagged session, separator included. Placeholder: `{tag}`. Default `+{tag}`. |
-| `delete_branch_default` | `"true"` to reclaim the branch on destroy when the caller expressed no `delete_branch` intent. Default off. |
+| `delete_branch` | `true` to delete the session's local branch (safely, `git branch -d`) when the session is destroyed. Default `false`. Recorded as the mutable `delete_branch` output; see Cleanup. |
 
 ## Workflow example
 
@@ -166,7 +208,7 @@ uses = "official.github.worktree"
 [pull_review.nodes.inputs]
 workspace_layout_root = "~/worktrees"
 issue_branch_template = "work/{number}"
-delete_branch_default = "true"
+delete_branch         = true
 ```
 
 ## App auth

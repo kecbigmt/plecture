@@ -54,7 +54,7 @@ func (v Validation) validateEffect(def *Definition, pos Position) error {
 	}
 	if raw, ok := def.Body["cleanup"]; ok {
 		at := childPos(pos, "cleanup")
-		action, _, err := ParseCleanup(raw, at)
+		action, err := ParseCleanup(raw, at)
 		if err != nil {
 			return err
 		}
@@ -569,6 +569,9 @@ func (v Validation) value(raw any, class ValueClass, s *Surface, pos Position) e
 func (v Validation) checkValue(value *Value, s *Surface, pos Position) error {
 	switch value.Form {
 	case FormFrom:
+		if msg, retired := retiredRoot(value.From); retired {
+			return newDiag(s.rootCode, s.rootLayer, pos, msg)
+		}
 		if !s.offers(value.From) {
 			return newDiag(s.rootCode, s.rootLayer, pos,
 				fmt.Sprintf("%q is not a root the %s surface offers", value.From, s.Name))

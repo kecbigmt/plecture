@@ -21,7 +21,7 @@ func TestSurfaceRootsMatchValuesTable(t *testing.T) {
 		{surfaceChannelDelivery, []string{"event.type", "event.body", "event.metadata.url", "inputs.queue_dir"}, []string{"workflow.outputs.branch", "session.name"}},
 		{surfaceChannelTimeout, []string{"inputs.enqueue_timeout"}, []string{"event.metadata.timeout", "session.name"}},
 		{surfaceEffectSetup, []string{"inputs.owner", "prev.x", "nodes.pane.outputs.session_name", "workflow.outputs.x", "session.name", "session.inputs.owner", "resource.id"}, []string{"workspace.dir", "event.metadata.owner", "self.outputs.x", "locals.x", "resource.state.checks_status"}},
-		{surfaceEffectCleanup, []string{"self.outputs.session_name", "self.process.identity", "inputs.x", "cleanup.inputs.delete_branch", "force", "nodes.pane.outputs.x", "workflow.outputs.x", "session.name"}, []string{"resource.id", "prev.x", "workspace.dir"}},
+		{surfaceEffectCleanup, []string{"self.outputs.session_name", "self.process.identity", "inputs.x", "force", "nodes.pane.outputs.x", "workflow.outputs.x", "session.name"}, []string{"resource.id", "prev.x", "workspace.dir", "cleanup.inputs.delete_branch"}},
 		{surfaceEffectHealth, []string{"self.outputs.session_name", "inputs.x", "session.name"}, []string{"nodes.pane.outputs.x", "resource.id", "self.process.identity", "workspace.dir"}},
 		{surfaceEffectTerminal, []string{"self.outputs.session_name", "session.name"}, []string{"inputs.x", "workspace.dir"}},
 		{surfaceEffectInner, []string{"inputs.tmux_session", "locals.guard_dir", "nodes.pane.outputs.session_name", "workflow.outputs.x", "session.name"}, []string{"inner.outputs.pid", "resource.id", "workspace.dir"}},

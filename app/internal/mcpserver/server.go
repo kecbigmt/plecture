@@ -10,6 +10,7 @@ import (
 	"github.com/mark3labs/mcp-go/server"
 
 	"github.com/kecbigmt/plecture/app/internal/config"
+	"github.com/kecbigmt/plecture/app/internal/lang"
 	"github.com/kecbigmt/plecture/app/internal/service"
 	"github.com/kecbigmt/plecture/app/internal/state"
 )
@@ -88,18 +89,21 @@ var downTool = mcp.NewTool("plect_down",
 	mcp.WithBoolean("sleep", mcp.Description("Wake on the next inbound event, subject to available capacity")),
 )
 
+// forceConfirmation is stated on both the tool and its force argument because
+// a client may surface either one alone.
+const forceConfirmation = "Before setting force, tell a human why destroy without it failed and get their confirmation."
+
+const forceEffect = "force runs destroy to the end whatever stands in the way: it orphans child sessions, removes a session with no stored workflow revision, demotes cleanup failures to warnings and deletes the record without verifying the release, releases the prerequisites of a node whose cleanup failed, and tells each effect's cleanup it may override its own safeguards, such as discarding uncommitted changes in a directory it created. What those safeguards protected can be lost."
+
 var destroyTool = mcp.NewTool("plect_destroy",
-	mcp.WithDescription("Tear down a session: run-scoped cleanup (auto-down) → session-scoped cleanup → state entry deletion. Fail-fast by default; --force demotes cleanup errors to warnings so a stuck session can be freed. Also fails closed (code has_children) if the session has child sessions, since deleting it would orphan them; --force orphans them instead, reported via cleanup_warnings."),
+	mcp.WithDescription("Tear down a session: run-scoped cleanup (auto-down) → session-scoped cleanup → state entry deletion. Fails fast on a cleanup error and keeps the session, and fails closed (code has_children) if the session has child sessions. "+forceEffect+" "+forceConfirmation),
 	mcp.WithToolAnnotation(mcp.ToolAnnotation{DestructiveHint: boolPtr(true)}),
 	mcp.WithString("session",
 		mcp.Required(),
 		mcp.Description("Resource identifier or session name (e.g. session-123)"),
 	),
 	mcp.WithBoolean("force",
-		mcp.Description("Demote cleanup errors to warnings so teardown continues through every effect's cleanup and state deletion; also passes the force intent to cleanup actions and proceeds when the session has child sessions, orphaning them instead of aborting"),
-	),
-	mcp.WithObject("cleanup_inputs",
-		mcp.Description("Cleanup intents validated against the cleanup input schemas of the effects being released and handed only to the effects that declare them; consult an effect's own docs for which keys it reads"),
+		mcp.Description("Ignore destroy's safeguards and errors and run it to the end; can lose uncommitted changes, orphan child sessions, and delete records whose release was never verified. "+forceConfirmation),
 	),
 )
 
@@ -296,10 +300,13 @@ func handleDestroy(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallT
 		return mcp.NewToolResultError("session is required"), nil
 	}
 
+	if _, ok := request.GetArguments()["cleanup_inputs"]; ok {
+		return mcp.NewToolResultError(fmt.Sprintf("cleanup_inputs is retired: what a cleanup releases is decided when the session is created; see %s", lang.WorkspaceProviderMigrationGuide)), nil
+	}
+
 	result, err := service.Destroy(cfg, store, service.DestroyParams{
-		Identifier:    identifier,
-		Force:         request.GetBool("force", false),
-		CleanupInputs: getStringMapArg(request, "cleanup_inputs"),
+		Identifier: identifier,
+		Force:      request.GetBool("force", false),
 	})
 	if err != nil {
 		return errorResult(err), nil

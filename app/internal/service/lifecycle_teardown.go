@@ -77,7 +77,6 @@ func unifiedTeardownList(cfg *config.Config, session *domain.Session, runOnly bo
 		}
 		if def, ok := defs[taskID]; ok {
 			r.Cleanup = def.Cleanup
-			r.CleanupInputsSchema = def.CleanupInputsSchema
 			r.SourcePath = def.SourcePath
 			r.Layers = effect.CleanupLayers(def)
 		}
@@ -95,7 +94,6 @@ func resolveNodeCleanup(r *task.Resolved, defs map[string]config.TaskDefinition)
 		return false
 	}
 	r.Cleanup = def.Cleanup
-	r.CleanupInputsSchema = def.CleanupInputsSchema
 	r.SourcePath = def.SourcePath
 	r.Layers = effect.CleanupLayers(def)
 	return true

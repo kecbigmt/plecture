@@ -24,4 +24,14 @@ output = "dir"
 path   = "gh"
 
 [[worktree]]
-inputs = { dirs_root = "/spy/workspace_dirs", workspace_layout_root = "/spy/layout", issue_branch_template = "work/{number}", tagged_branch_suffix = "-{tag}", delete_branch_default = "true" }
+name   = "policy-set-at-creation"
+inputs = { dirs_root = "/spy/workspace_dirs", workspace_layout_root = "/spy/layout", issue_branch_template = "work/{number}", tagged_branch_suffix = "-{tag}", delete_branch = true }
+
+[[worktree]]
+name  = "policy-defaults-to-keep"
+hooks = ["setup", "cleanup"]
+
+[[worktree]]
+name  = "policy-rewritten-before-destroy"
+self  = { workspace_dir = "/spy/layout/issue-1", branch = "spy-branch", delete_branch = "false" }
+hooks = ["cleanup"]
