@@ -615,3 +615,30 @@ func TestMigrate_EntryResourceLeavesExistingSessionsUnrecorded(t *testing.T) {
 		t.Errorf("entry = (%v, %v) for a pre-existing session, want both NULL", resourceType, tag)
 	}
 }
+
+func TestMigrate_BindingInputsLeaveExistingRowsUnrecorded(t *testing.T) {
+	db, provider, sessionID := workdirMigrationFixture(t, "up", "cleaned")
+	ctx := context.Background()
+	if _, err := db.write.ExecContext(ctx,
+		`INSERT INTO task_instances (id, session_id, instance_name, task_id, scope, status, sequence, named) VALUES ('ti-1', ?, 'initial', 'work', 'session', 'produced', 1, 1)`, sessionID,
+	); err != nil {
+		t.Fatalf("seed task_instances: %v", err)
+	}
+	if _, err := provider.Up(ctx); err != nil {
+		t.Fatalf("Up: %v", err)
+	}
+	var inputs sql.NullString
+	if err := db.write.QueryRow(`SELECT resource_inputs_json FROM sessions WHERE id = ?`, sessionID).Scan(&inputs); err != nil {
+		t.Fatalf("read sessions.resource_inputs_json: %v", err)
+	}
+	if inputs.Valid {
+		t.Errorf("sessions.resource_inputs_json = %q for a pre-existing session, want NULL", inputs.String)
+	}
+	var taskInputs sql.NullString
+	if err := db.write.QueryRow(`SELECT resource_inputs_json FROM task_instances WHERE id = 'ti-1'`).Scan(&taskInputs); err != nil {
+		t.Fatalf("read task_instances.resource_inputs_json: %v", err)
+	}
+	if taskInputs.Valid {
+		t.Errorf("task_instances.resource_inputs_json = %q for a pre-existing instance, want NULL", taskInputs.String)
+	}
+}

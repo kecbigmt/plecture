@@ -49,7 +49,7 @@ func TestSubscriptionRetryForDestroyedIncarnationDoesNotAttachToNameReuse(t *tes
 	if err := db.DestroySession(ctx, "same-name", now); err != nil {
 		t.Fatal(err)
 	}
-	if err := db.QueueSubscriptionRetryByID(ctx, oldID, subscriptionRetryUnsubscribe, "resource://old"); err != nil {
+	if err := db.QueueSubscriptionRetryByID(ctx, oldID, subscriptionRetryUnsubscribe, "resource://old", nil); err != nil {
 		t.Fatal(err)
 	}
 	if err := db.PutSession(ctx, &domain.Session{Name: "same-name", CreatedAt: now, UpdatedAt: now}); err != nil {
@@ -69,5 +69,40 @@ func TestSubscriptionRetryForDestroyedIncarnationDoesNotAttachToNameReuse(t *tes
 	}
 	if len(destroyed) != 1 || destroyed[0].SessionID != oldID {
 		t.Fatalf("destroyed retries = %+v, want old incarnation", destroyed)
+	}
+}
+
+func TestSubscriptionRetryCarriesTheLatestQueuedBindingInputs(t *testing.T) {
+	ctx := context.Background()
+	db := migratedTestDB(t)
+	now := time.Now().UTC()
+	if err := db.PutSession(ctx, &domain.Session{Name: "s1", CreatedAt: now, UpdatedAt: now}); err != nil {
+		t.Fatal(err)
+	}
+	if err := db.QueueSubscriptionRetry(ctx, "s1", subscriptionRetrySubscribe, "resource://one", map[string]any{"token": "first"}); err != nil {
+		t.Fatal(err)
+	}
+	if err := db.QueueSubscriptionRetry(ctx, "s1", subscriptionRetrySubscribe, "resource://one", map[string]any{"token": "second"}); err != nil {
+		t.Fatal(err)
+	}
+	if err := db.QueueSubscriptionRetry(ctx, "s1", subscriptionRetryUnsubscribe, "resource://two", nil); err != nil {
+		t.Fatal(err)
+	}
+	retries, err := db.SubscriptionRetriesForLiveSession(ctx, "s1")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(retries) != 2 {
+		t.Fatalf("retries = %+v, want one per (action, resource)", retries)
+	}
+	byResource := map[string]SubscriptionRetry{}
+	for _, r := range retries {
+		byResource[r.ResourceID] = r
+	}
+	if got := byResource["resource://one"].Inputs["token"]; got != "second" {
+		t.Errorf("resource://one inputs token = %v, want the last queued object", got)
+	}
+	if got := byResource["resource://two"].Inputs; len(got) != 0 {
+		t.Errorf("resource://two inputs = %v, want empty", got)
 	}
 }

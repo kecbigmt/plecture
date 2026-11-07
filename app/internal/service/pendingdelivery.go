@@ -24,7 +24,7 @@ func queuePendingSubscribe(store *state.Store, sessionName, resourceID string) e
 	if err != nil {
 		return err
 	}
-	return db.QueueSubscriptionRetry(context.Background(), sessionName, retrySubscribe, resourceID)
+	return db.QueueSubscriptionRetry(context.Background(), sessionName, retrySubscribe, resourceID, nil)
 }
 
 func queuePendingUnsubscribe(store *state.Store, sessionName, resourceID string) error {
@@ -32,7 +32,7 @@ func queuePendingUnsubscribe(store *state.Store, sessionName, resourceID string)
 	if err != nil {
 		return err
 	}
-	return db.QueueSubscriptionRetry(context.Background(), sessionName, retryUnsubscribe, resourceID)
+	return db.QueueSubscriptionRetry(context.Background(), sessionName, retryUnsubscribe, resourceID, nil)
 }
 
 func queuePendingUnsubscribeForSessionID(store *state.Store, sessionID, resourceID string) error {
@@ -40,7 +40,7 @@ func queuePendingUnsubscribeForSessionID(store *state.Store, sessionID, resource
 	if err != nil {
 		return err
 	}
-	return db.QueueSubscriptionRetryByID(context.Background(), sessionID, retryUnsubscribe, resourceID)
+	return db.QueueSubscriptionRetryByID(context.Background(), sessionID, retryUnsubscribe, resourceID, nil)
 }
 
 func dequeuePendingDelivery(store *state.Store, retry persistence.SubscriptionRetry) error {

@@ -1312,3 +1312,47 @@ func TestPutSession_RoundTripsTheEntryResourceAcrossLaterWrites(t *testing.T) {
 		t.Errorf("entry = (%q, %q) after an update, want (case, review)", again.ResourceType, again.Tag)
 	}
 }
+
+func TestPutSession_RoundTripsBindingInputsApartFromSessionAndTaskInputs(t *testing.T) {
+	db := migratedTestDB(t)
+	ctx := context.Background()
+	now := time.Now().UTC().Truncate(time.Second)
+	seed := &domain.Session{
+		Name: "case-1", Workflow: "review", ResourceID: "urn:case:1", CreatedAt: now, UpdatedAt: now,
+		Inputs:         map[string]any{"model": "large"},
+		ResourceInputs: map[string]any{"token": "entry"},
+		Tasks: map[string]*contract.TaskState{
+			"initial": {
+				Scope: contract.TaskScopeSession, Status: contract.TaskStatusProduced, TaskID: "work", Name: "initial",
+				Resource:       "urn:case:2",
+				Inputs:         map[string]any{"focus": "tests"},
+				ResourceInputs: map[string]any{"token": "task"},
+			},
+		},
+	}
+	if err := db.PutSession(ctx, seed); err != nil {
+		t.Fatalf("PutSession: %v", err)
+	}
+	got, err := db.GetSession(ctx, "case-1")
+	if err != nil || got == nil {
+		t.Fatalf("GetSession: %v, %v", got, err)
+	}
+	got.Status = contract.SessionStatusUp
+	if err := db.PutSession(ctx, got); err != nil {
+		t.Fatalf("PutSession (update): %v", err)
+	}
+	again, err := db.GetSession(ctx, "case-1")
+	if err != nil || again == nil {
+		t.Fatalf("GetSession: %v, %v", again, err)
+	}
+	if again.ResourceInputs["token"] != "entry" || again.Inputs["token"] != nil || again.Inputs["model"] != "large" {
+		t.Errorf("session inputs = %v, resource inputs = %v; want them kept apart", again.Inputs, again.ResourceInputs)
+	}
+	task := again.Tasks["initial"]
+	if task == nil {
+		t.Fatal("initial instance missing")
+	}
+	if task.ResourceInputs["token"] != "task" || task.Inputs["token"] != nil || task.Inputs["focus"] != "tests" {
+		t.Errorf("task inputs = %v, resource inputs = %v; want them kept apart", task.Inputs, task.ResourceInputs)
+	}
+}

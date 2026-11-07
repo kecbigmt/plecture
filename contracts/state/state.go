@@ -121,15 +121,19 @@ type TaskState struct {
 	// referenced definition's own id, and omits it when that equals the node
 	// id; either way the workflow is what names the node's declaration, so a
 	// node's value is not an address and is not resolved as one.
-	TaskID       string         `json:"task_id,omitempty"`
-	Status       string         `json:"status"`                 // "produced" | "failed" | "cleaned"
-	Inputs       map[string]any `json:"inputs,omitempty"`       // resolved node inputs (post-template), persisted for cleanup
-	Outputs      map[string]any `json:"outputs,omitempty"`      // parsed JSON from setup stdout
-	Seq          int            `json:"seq,omitempty"`          // instantiation order; 0 = legacy/unset
-	Resource     string         `json:"resource,omitempty"`     // bound --resource at instantiation
-	Subscription string         `json:"subscription,omitempty"` // resource id bound by a workflow node's subscription
-	Name         string         `json:"name,omitempty"`         // --name instance identity (key == name when set)
-	Layers       []LayerState   `json:"layers,omitempty"`       // per-layer record for a nested task; empty for a plain one
+	TaskID string         `json:"task_id,omitempty"`
+	Status string         `json:"status"`           // "produced" | "failed" | "cleaned"
+	Inputs map[string]any `json:"inputs,omitempty"` // resolved node inputs (post-template), persisted for cleanup
+	// ResourceInputs is the action input object this instance's resource
+	// binding supplied, kept apart from Inputs because a resource action
+	// never reads task inputs; nil means the empty object.
+	ResourceInputs map[string]any `json:"resource_inputs,omitempty"`
+	Outputs        map[string]any `json:"outputs,omitempty"`      // parsed JSON from setup stdout
+	Seq            int            `json:"seq,omitempty"`          // instantiation order; 0 = legacy/unset
+	Resource       string         `json:"resource,omitempty"`     // bound --resource at instantiation
+	Subscription   string         `json:"subscription,omitempty"` // resource id bound by a workflow node's subscription
+	Name           string         `json:"name,omitempty"`         // --name instance identity (key == name when set)
+	Layers         []LayerState   `json:"layers,omitempty"`       // per-layer record for a nested task; empty for a plain one
 	// Directory is the directory this instance's setup ran in, recorded so
 	// cleanup runs there. Empty when setup ran with no explicit directory.
 	Directory string `json:"directory,omitempty"`
@@ -282,6 +286,10 @@ type Session struct {
 	InvocationDir string                `json:"-"`
 	Population    *PopulationProvenance `json:"population,omitempty"`
 	Inputs        map[string]any        `json:"inputs,omitempty"`
+	// ResourceInputs is the action input object the entry binding supplied
+	// to its resource. It is kept apart from Inputs because a resource
+	// action never reads workflow inputs, and nil means the empty object.
+	ResourceInputs map[string]any `json:"resource_inputs,omitempty"`
 	// Nodes holds workflow DAG node production records, keyed by node id.
 	// Tasks holds
 	// `plect task setup` instances, keyed by instance handle (a `--name` or

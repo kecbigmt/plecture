@@ -22,6 +22,7 @@ type SubscriptionRetry struct {
 	Session    string
 	Action     string
 	ResourceID string
+	Inputs     map[string]any
 }
 
 // Tombstone returns name's most recently destroyed incarnation. The retained
@@ -121,41 +122,48 @@ func (db *DB) ClearChainAttempts(ctx context.Context, sessionID string) error {
 }
 
 // QueueSubscriptionRetry queues an operation against the live incarnation.
-func (db *DB) QueueSubscriptionRetry(ctx context.Context, session, action, resourceID string) error {
+func (db *DB) QueueSubscriptionRetry(ctx context.Context, session, action, resourceID string, inputs map[string]any) error {
 	return db.WithImmediateTx(ctx, func(tx *sql.Tx) error {
 		id, err := currentSessionID(ctx, sqlcgen.New(tx), session)
 		if err != nil {
 			return err
 		}
-		return queueSubscriptionRetryTx(ctx, tx, id, action, resourceID)
+		return queueSubscriptionRetryTx(ctx, tx, id, action, resourceID, inputs)
 	})
 }
 
 // QueueSubscriptionRetryByID records a teardown retry against the destroyed
 // incarnation that owned the original provider registration.
-func (db *DB) QueueSubscriptionRetryByID(ctx context.Context, sessionID, action, resourceID string) error {
+func (db *DB) QueueSubscriptionRetryByID(ctx context.Context, sessionID, action, resourceID string, inputs map[string]any) error {
 	return db.WithImmediateTx(ctx, func(tx *sql.Tx) error {
-		return queueSubscriptionRetryTx(ctx, tx, sessionID, action, resourceID)
+		return queueSubscriptionRetryTx(ctx, tx, sessionID, action, resourceID, inputs)
 	})
 }
 
-func queueSubscriptionRetryTx(ctx context.Context, tx *sql.Tx, sessionID, action, resourceID string) error {
+// A later attempt for the same session, action and resource replaces the
+// queued inputs, because the retry must repeat the most recent binding's
+// call rather than one it superseded.
+func queueSubscriptionRetryTx(ctx context.Context, tx *sql.Tx, sessionID, action, resourceID string, inputs map[string]any) error {
 	if action != subscriptionRetrySubscribe && action != subscriptionRetryUnsubscribe {
 		return fmt.Errorf("invalid subscription retry action %q", action)
 	}
-	_, err := tx.ExecContext(ctx, `INSERT INTO subscription_retries (session_id, action, resource_id) VALUES (?, ?, ?) ON CONFLICT(session_id, action, resource_id) DO NOTHING`, sessionID, action, resourceID)
+	inputsJSON, err := marshalJSONMap(inputs)
+	if err != nil {
+		return fmt.Errorf("marshal subscription retry inputs: %w", err)
+	}
+	_, err = tx.ExecContext(ctx, `INSERT INTO subscription_retries (session_id, action, resource_id, inputs_json) VALUES (?, ?, ?, ?) ON CONFLICT(session_id, action, resource_id) DO UPDATE SET inputs_json = excluded.inputs_json`, sessionID, action, resourceID, inputsJSON)
 	return err
 }
 
 // SubscriptionRetriesForLiveSession returns retries for name's live row.
 func (db *DB) SubscriptionRetriesForLiveSession(ctx context.Context, name string) ([]SubscriptionRetry, error) {
-	return db.subscriptionRetries(ctx, `SELECT r.session_id, s.name, r.action, r.resource_id FROM subscription_retries r JOIN sessions s ON s.id = r.session_id WHERE s.name = ? AND s.status <> 'destroyed' ORDER BY r.action, r.resource_id`, name)
+	return db.subscriptionRetries(ctx, `SELECT r.session_id, s.name, r.action, r.resource_id, r.inputs_json FROM subscription_retries r JOIN sessions s ON s.id = r.session_id WHERE s.name = ? AND s.status <> 'destroyed' ORDER BY r.action, r.resource_id`, name)
 }
 
 // DestroyedSubscriptionRetries returns retries whose retained session row is
 // destroyed. Callers drop subscribe attempts and retry unsubscribe attempts.
 func (db *DB) DestroyedSubscriptionRetries(ctx context.Context) ([]SubscriptionRetry, error) {
-	return db.subscriptionRetries(ctx, `SELECT r.session_id, s.name, r.action, r.resource_id FROM subscription_retries r JOIN sessions s ON s.id = r.session_id WHERE s.status = 'destroyed' ORDER BY s.name, r.action, r.resource_id`)
+	return db.subscriptionRetries(ctx, `SELECT r.session_id, s.name, r.action, r.resource_id, r.inputs_json FROM subscription_retries r JOIN sessions s ON s.id = r.session_id WHERE s.status = 'destroyed' ORDER BY s.name, r.action, r.resource_id`)
 }
 
 func (db *DB) subscriptionRetries(ctx context.Context, query string, args ...any) ([]SubscriptionRetry, error) {
@@ -168,9 +176,15 @@ func (db *DB) subscriptionRetries(ctx context.Context, query string, args ...any
 		defer rows.Close()
 		for rows.Next() {
 			var retry SubscriptionRetry
-			if err := rows.Scan(&retry.SessionID, &retry.Session, &retry.Action, &retry.ResourceID); err != nil {
+			var inputsJSON sql.NullString
+			if err := rows.Scan(&retry.SessionID, &retry.Session, &retry.Action, &retry.ResourceID, &inputsJSON); err != nil {
 				return err
 			}
+			inputs, err := unmarshalJSONMap(inputsJSON)
+			if err != nil {
+				return fmt.Errorf("parse subscription retry inputs for %q: %w", retry.ResourceID, err)
+			}
+			retry.Inputs = inputs
 			retries = append(retries, retry)
 		}
 		return rows.Err()

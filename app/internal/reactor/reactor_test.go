@@ -657,7 +657,7 @@ script = "if test -f '`+ready+`'; then touch '`+registered+`'; else touch '`+fai
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := db.QueueSubscriptionRetry(context.Background(), "o/r-1", "subscribe", "thread://one"); err != nil {
+	if err := db.QueueSubscriptionRetry(context.Background(), "o/r-1", "subscribe", "thread://one", nil); err != nil {
 		t.Fatal(err)
 	}
 	stop := startReactor(t, r)

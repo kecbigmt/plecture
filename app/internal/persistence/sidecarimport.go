@@ -232,7 +232,7 @@ func importSidecarsTx(ctx context.Context, tx *sql.Tx, chains []sidecarChainAtte
 		if err != nil {
 			return err
 		}
-		if err := queueSubscriptionRetryTx(ctx, tx, id, retry.action, retry.resourceID); err != nil {
+		if err := queueSubscriptionRetryTx(ctx, tx, id, retry.action, retry.resourceID, nil); err != nil {
 			return fmt.Errorf("import subscription retry: %w", err)
 		}
 	}

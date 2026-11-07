@@ -50,6 +50,9 @@ CREATE TABLE sessions (
     population_workflow TEXT,
     population_name TEXT,
     inputs_json TEXT CHECK (inputs_json IS NULL OR json_valid(inputs_json)),
+    -- The entry binding's resource action inputs, apart from the session's
+    -- workflow inputs. NULL means the empty object.
+    resource_inputs_json TEXT CHECK (resource_inputs_json IS NULL OR json_valid(resource_inputs_json)),
     -- health_* is a derived runtime observation, not a lifecycle status;
     -- see docs/design/sqlite-persistence.md.
     health_last_checked_at TEXT,
@@ -94,6 +97,8 @@ CREATE TABLE subscription_retries (
     session_id TEXT NOT NULL REFERENCES sessions(id) ON DELETE CASCADE,
     action TEXT NOT NULL CHECK (action IN ('subscribe', 'unsubscribe')),
     resource_id TEXT NOT NULL,
+    -- The resource action inputs of the binding that queued the retry.
+    inputs_json TEXT CHECK (inputs_json IS NULL OR json_valid(inputs_json)),
     PRIMARY KEY (session_id, action, resource_id)
 );
 
@@ -188,7 +193,8 @@ CREATE TABLE task_instances (
     cleaned_at TEXT,
     finalized_at TEXT,
     process_json TEXT CHECK (process_json IS NULL OR json_valid(process_json)),
-    directory TEXT
+    directory TEXT,
+    resource_inputs_json TEXT CHECK (resource_inputs_json IS NULL OR json_valid(resource_inputs_json))
 );
 
 CREATE UNIQUE INDEX task_instances_session_id_instance_name ON task_instances(session_id, instance_name);
