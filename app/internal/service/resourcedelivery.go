@@ -202,36 +202,14 @@ func resourceStillNeededBySession(cfg *config.Config, s *domain.Session, resourc
 			return true
 		}
 	}
-	return nodeSubscriptionNeededBySession(cfg, s, resource)
+	return nodeSubscriptionNeededBySession(s, resource)
 }
 
-// A node subscription is still an identifier, so it is compared through the
-// name its declaration derives: another spelling of the resource is the same
-// subscription.
-func nodeSubscriptionNeededBySession(cfg *config.Config, s *domain.Session, resource contract.Resource) bool {
+func nodeSubscriptionNeededBySession(s *domain.Session, resource contract.Resource) bool {
 	for _, node := range s.Nodes {
-		if node == nil || node.Status == contract.TaskStatusCleaned || node.Subscription == "" {
-			continue
-		}
-		if node.Subscription == resource.Locator || subscriptionNames(cfg, node.Subscription, resource) {
+		if node != nil && node.Status != contract.TaskStatusCleaned && sameResource(node.Subscription, &resource) {
 			return true
 		}
 	}
 	return false
-}
-
-func subscriptionNames(cfg *config.Config, subscription string, resource contract.Resource) bool {
-	if cfg == nil || resource.Type == "" {
-		return false
-	}
-	defs, err := cfg.LoadResourceDefs()
-	if err != nil {
-		return false
-	}
-	def, ok := defs[resource.Type]
-	if !ok {
-		return false
-	}
-	name, matched, err := def.InstanceName(subscription)
-	return err == nil && matched && name == resource.Name
 }

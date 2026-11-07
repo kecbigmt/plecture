@@ -44,7 +44,7 @@ type NodeExecution struct {
 	Scope                   string
 	Status                  string
 	ResourceID              sql.NullString
-	Subscription            sql.NullString
+	SubscriptionID          sql.NullString
 	InputsJson              sql.NullString
 	OutputsJson             sql.NullString
 	StateJson               sql.NullString

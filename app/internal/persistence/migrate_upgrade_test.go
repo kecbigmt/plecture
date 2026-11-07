@@ -635,7 +635,7 @@ func TestMigrate_ResourcesRecordEveryExistingIdentifierOnceAndRepointEachReferen
 		`INSERT INTO sessions (id, name, status, workflow, created_at, updated_at) VALUES ('s-bare', 'bare', 'down', 'wf', '` + now + `', '` + now + `')`,
 		`INSERT INTO task_instances (id, session_id, instance_name, task_id, scope, status, sequence, resource, named) VALUES ('ti-1', 's-live', 'initial', 'work', 'session', 'produced', 1, 'case://2', 1)`,
 		`INSERT INTO node_instances (session_id, node_id) VALUES ('s-live', 'n1')`,
-		`INSERT INTO node_executions (id, session_id, node_id, sequence, scope, status, resource) VALUES ('ne-1', 's-live', 'n1', 1, 'session', 'produced', 'case://3')`,
+		`INSERT INTO node_executions (id, session_id, node_id, sequence, scope, status, resource, subscription) VALUES ('ne-1', 's-live', 'n1', 1, 'session', 'produced', 'case://3', 'case://5')`,
 		`INSERT INTO populations (workflow, name) VALUES ('wf', 'pop')`,
 		`INSERT INTO population_members (workflow, name, resource_id, generation) VALUES ('wf', 'pop', 'case://2', 1)`,
 		`INSERT INTO population_member_blockers (workflow, name, resource_id, position, reason) VALUES ('wf', 'pop', 'case://2', 0, 'busy')`,
@@ -672,8 +672,8 @@ func TestMigrate_ResourcesRecordEveryExistingIdentifierOnceAndRepointEachReferen
 	if err := rows.Err(); err != nil {
 		t.Fatal(err)
 	}
-	if len(byLocator) != 4 {
-		t.Fatalf("resources = %v, want one row for each of case://1..4", byLocator)
+	if len(byLocator) != 5 {
+		t.Fatalf("resources = %v, want one row for each of case://1..5", byLocator)
 	}
 
 	references := []struct {
@@ -684,6 +684,7 @@ func TestMigrate_ResourcesRecordEveryExistingIdentifierOnceAndRepointEachReferen
 		{`SELECT resource_id FROM sessions WHERE id = 's-gone'`, "case://1"},
 		{`SELECT resource_id FROM task_instances WHERE id = 'ti-1'`, "case://2"},
 		{`SELECT resource_id FROM node_executions WHERE id = 'ne-1'`, "case://3"},
+		{`SELECT subscription_id FROM node_executions WHERE id = 'ne-1'`, "case://5"},
 		{`SELECT resource_id FROM population_members WHERE workflow = 'wf'`, "case://2"},
 		{`SELECT resource_id FROM population_member_blockers WHERE workflow = 'wf'`, "case://2"},
 		{`SELECT resource_id FROM subscription_retries WHERE session_id = 's-live'`, "case://4"},

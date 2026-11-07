@@ -50,67 +50,46 @@ func releaseNodeSubscriptions(cfg *config.Config, store *state.Store, sessionNam
 	}); err != nil {
 		return err
 	}
-	resources := make(map[string]bool)
-	for _, st := range released {
-		if st.Status == contract.TaskStatusCleaned && st.Subscription != "" {
-			resources[st.Subscription] = true
+	subscribed := make(map[string]*contract.Resource)
+	for id, st := range released {
+		if st.Status == contract.TaskStatusCleaned && st.Subscription != nil {
+			subscribed[id] = st.Subscription
 		}
 	}
-	for _, identifier := range sortedResources(resources) {
-		resource, err := boundResource(cfg, store, identifier)
-		if err != nil {
-			slog.Warn("node subscription teardown failed", "session", sessionName, "resource", identifier, "error", err.Message)
-			continue
-		}
+	for _, resource := range distinctResources(subscribed) {
 		if _, msg := unwireDeliveryOnTeardown(cfg, store, sessionName, resource, ""); msg != "" {
-			slog.Warn("node subscription teardown failed", "session", sessionName, "resource", identifier, "error", msg)
+			slog.Warn("node subscription teardown failed", "session", sessionName, "resource", resource.Locator, "error", msg)
 		}
 	}
 	return nil
 }
 
-func wireProducedNodeSubscriptions(cfg *config.Config, store *state.Store, sessionName string, nodes map[string]string) {
-	resources := make(map[string]bool)
-	for _, resource := range nodes {
-		resources[resource] = true
+func wireProducedNodeSubscriptions(cfg *config.Config, store *state.Store, sessionName string, nodes map[string]*contract.Resource) {
+	for _, resource := range distinctResources(nodes) {
+		if _, msg := wireDeliveryOnSetup(cfg, store, sessionName, resource, true); msg != "" {
+			slog.Warn("node subscription setup failed", "session", sessionName, "resource", resource.Locator, "error", msg)
+		} else if err := dequeuePendingSubscribe(store, sessionName, *resource); err != nil {
+			slog.Warn("node subscription retry cleanup failed", "session", sessionName, "resource", resource.Locator, "error", err)
+		}
 	}
-	for _, identifier := range sortedResources(resources) {
-		resource, err := boundResource(cfg, store, identifier)
-		if err != nil {
-			slog.Warn("node subscription setup failed", "session", sessionName, "resource", identifier, "error", err.Message)
+}
+
+// Nodes subscribing to one resource in different spellings share one
+// registration, so each resource is wired or unwired once.
+func distinctResources(byNode map[string]*contract.Resource) []*contract.Resource {
+	var out []*contract.Resource
+	for _, resource := range byNode {
+		if resource == nil {
 			continue
 		}
-		if _, msg := wireDeliveryOnSetup(cfg, store, sessionName, resource, true); msg != "" {
-			slog.Warn("node subscription setup failed", "session", sessionName, "resource", identifier, "error", msg)
-		} else if err := dequeuePendingSubscribe(store, sessionName, *resource); err != nil {
-			slog.Warn("node subscription retry cleanup failed", "session", sessionName, "resource", identifier, "error", err)
+		duplicate := false
+		for _, seen := range out {
+			duplicate = duplicate || sameResource(seen, resource)
+		}
+		if !duplicate {
+			out = append(out, resource)
 		}
 	}
-}
-
-// nodeSubscriptionResources resolves the identifiers node bindings subscribed
-// to, so their retries can reference recorded resources.
-func nodeSubscriptionResources(cfg *config.Config, store *state.Store, subscriptions map[string]string) ([]contract.Resource, error) {
-	identifiers := make(map[string]bool, len(subscriptions))
-	for _, identifier := range subscriptions {
-		identifiers[identifier] = true
-	}
-	resources := make([]contract.Resource, 0, len(identifiers))
-	for _, identifier := range sortedResources(identifiers) {
-		resource, err := boundResource(cfg, store, identifier)
-		if err != nil {
-			return nil, err
-		}
-		resources = append(resources, *resource)
-	}
-	return resources, nil
-}
-
-func sortedResources(resources map[string]bool) []string {
-	out := make([]string, 0, len(resources))
-	for resource := range resources {
-		out = append(out, resource)
-	}
-	sort.Strings(out)
+	sort.Slice(out, func(i, j int) bool { return out[i].Locator < out[j].Locator })
 	return out
 }

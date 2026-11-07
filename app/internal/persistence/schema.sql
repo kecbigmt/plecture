@@ -132,7 +132,7 @@ CREATE TABLE node_executions (
     scope TEXT NOT NULL CHECK (scope IN ('session', 'run')),
     status TEXT NOT NULL CHECK (status IN ('produced', 'failed', 'cleaned')),
     resource_id TEXT REFERENCES resources(id),
-    subscription TEXT,
+    subscription_id TEXT REFERENCES resources(id),
     inputs_json TEXT CHECK (inputs_json IS NULL OR json_valid(inputs_json)),
     outputs_json TEXT CHECK (outputs_json IS NULL OR json_valid(outputs_json)),
     state_json TEXT CHECK (state_json IS NULL OR json_valid(state_json)),
@@ -153,6 +153,7 @@ CREATE TABLE node_executions (
 CREATE INDEX node_executions_session_node_idx ON node_executions(session_id, node_id, sequence);
 CREATE UNIQUE INDEX node_executions_one_unreleased_idx ON node_executions(session_id, node_id) WHERE status <> 'cleaned';
 CREATE INDEX node_executions_resource_idx ON node_executions(resource_id);
+CREATE INDEX node_executions_subscription_idx ON node_executions(subscription_id);
 
 -- One row per layer of one execution's nested effect chain.
 CREATE TABLE node_execution_layers (

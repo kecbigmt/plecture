@@ -486,8 +486,10 @@ func upsertNodeExecutionTx(ctx context.Context, q *sqlcgen.Queries, sessionID, n
 		return fmt.Errorf("marshal node %q/%q done_when: %w", sessionID, nodeID, err)
 	}
 
-	if err := recordResourceTx(ctx, q, ts.Resource); err != nil {
-		return fmt.Errorf("node %q/%q: %w", sessionID, nodeID, err)
+	for _, r := range []*contract.Resource{ts.Resource, ts.Subscription} {
+		if err := recordResourceTx(ctx, q, r); err != nil {
+			return fmt.Errorf("node %q/%q: %w", sessionID, nodeID, err)
+		}
 	}
 	if err := q.EnsureNodeInstance(ctx, sqlcgen.EnsureNodeInstanceParams{SessionID: sessionID, NodeID: nodeID}); err != nil {
 		return fmt.Errorf("ensure node instance %q/%q: %w", sessionID, nodeID, err)
@@ -520,7 +522,7 @@ func upsertNodeExecutionTx(ctx context.Context, q *sqlcgen.Queries, sessionID, n
 			Scope:                   ts.Scope,
 			Status:                  ts.Status,
 			ResourceID:              resourceID(ts.Resource),
-			Subscription:            nullString(ts.Subscription),
+			SubscriptionID:          resourceID(ts.Subscription),
 			InputsJson:              inputsJSON,
 			OutputsJson:             outputsJSON,
 			StateJson:               stateJSON,
@@ -555,7 +557,7 @@ func upsertNodeExecutionTx(ctx context.Context, q *sqlcgen.Queries, sessionID, n
 				Scope:                   ts.Scope,
 				Status:                  ts.Status,
 				ResourceID:              resourceID(ts.Resource),
-				Subscription:            nullString(ts.Subscription),
+				SubscriptionID:          resourceID(ts.Subscription),
 				InputsJson:              inputsJSON,
 				OutputsJson:             outputsJSON,
 				StateJson:               stateJSON,
@@ -588,7 +590,7 @@ func upsertNodeExecutionTx(ctx context.Context, q *sqlcgen.Queries, sessionID, n
 				Scope:                   ts.Scope,
 				Status:                  ts.Status,
 				ResourceID:              resourceID(ts.Resource),
-				Subscription:            nullString(ts.Subscription),
+				SubscriptionID:          resourceID(ts.Subscription),
 				InputsJson:              inputsJSON,
 				OutputsJson:             outputsJSON,
 				StateJson:               stateJSON,
@@ -695,7 +697,7 @@ func nodeExecutionFromRow(row sqlcgen.NodeExecution) (*contract.TaskState, error
 		Status:        row.Status,
 		Seq:           int(row.Sequence),
 		Resource:      resourceRef(row.ResourceID),
-		Subscription:  row.Subscription.String,
+		Subscription:  resourceRef(row.SubscriptionID),
 		Directory:     row.Directory.String,
 		ExecutionID:   row.ID,
 		Inputs:        inputs,

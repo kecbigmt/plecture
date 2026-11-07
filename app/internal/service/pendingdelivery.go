@@ -165,7 +165,7 @@ func flushOnePendingDelivery(cfg *config.Config, store *state.Store, retry persi
 		if fresh == nil || !resourceStillNeededBySession(cfg, fresh, retry.Resource) {
 			return dequeuePendingDelivery(store, retry)
 		}
-		subscribed, err := subscribeIfWiredWithPolicy(cfg, retry.Session, retry.Resource.Locator, nodeSubscriptionNeededBySession(cfg, fresh, retry.Resource))
+		subscribed, err := subscribeIfWiredWithPolicy(cfg, retry.Session, retry.Resource.Locator, nodeSubscriptionNeededBySession(fresh, retry.Resource))
 		if err != nil || !subscribed {
 			return err
 		}

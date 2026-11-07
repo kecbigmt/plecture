@@ -166,7 +166,7 @@ AND NOT EXISTS (
 );
 
 -- name: CurrentNodeExecution :one
-SELECT id, session_id, node_id, sequence, task_id, name, scope, status, resource_id, subscription,
+SELECT id, session_id, node_id, sequence, task_id, name, scope, status, resource_id, subscription_id,
        inputs_json, outputs_json, state_json,
        resource_observation_json, resource_observed_at, done_when_json,
        extra_done_when_json, error, setup_at,
@@ -174,7 +174,7 @@ SELECT id, session_id, node_id, sequence, task_id, name, scope, status, resource
 FROM node_executions WHERE session_id = ? AND node_id = ? AND status <> 'cleaned';
 
 -- name: NodeExecutionByID :one
-SELECT id, session_id, node_id, sequence, task_id, name, scope, status, resource_id, subscription,
+SELECT id, session_id, node_id, sequence, task_id, name, scope, status, resource_id, subscription_id,
        inputs_json, outputs_json, state_json,
        resource_observation_json, resource_observed_at, done_when_json,
        extra_done_when_json, error, setup_at,
@@ -183,7 +183,7 @@ FROM node_executions WHERE id = ?;
 
 -- name: InsertNodeExecution :one
 INSERT INTO node_executions (
-    id, session_id, node_id, sequence, task_id, name, scope, status, resource_id, subscription,
+    id, session_id, node_id, sequence, task_id, name, scope, status, resource_id, subscription_id,
     inputs_json, outputs_json, state_json,
     resource_observation_json, resource_observed_at, done_when_json,
     extra_done_when_json, error, setup_at,
@@ -193,7 +193,7 @@ RETURNING id;
 
 -- name: UpdateNodeExecution :exec
 UPDATE node_executions SET
-    sequence = ?, task_id = ?, name = ?, scope = ?, status = ?, resource_id = ?, subscription = ?,
+    sequence = ?, task_id = ?, name = ?, scope = ?, status = ?, resource_id = ?, subscription_id = ?,
     inputs_json = ?, outputs_json = ?, state_json = ?,
     resource_observation_json = ?, resource_observed_at = ?, done_when_json = ?,
     extra_done_when_json = ?, error = ?,
@@ -202,7 +202,7 @@ WHERE id = ?;
 
 -- name: ListCurrentNodeExecutions :many
 SELECT ne.id, ne.session_id, ne.node_id, ne.sequence, ne.task_id, ne.name,
-       ne.scope, ne.status, ne.resource_id, ne.subscription, ne.inputs_json,
+       ne.scope, ne.status, ne.resource_id, ne.subscription_id, ne.inputs_json,
        ne.outputs_json, ne.state_json, ne.resource_observation_json,
        ne.resource_observed_at, ne.done_when_json, ne.extra_done_when_json,
        ne.error, ne.setup_at, ne.failed_at,
@@ -218,7 +218,7 @@ ORDER BY ne.node_id;
 
 -- name: ListCurrentNodeExecutionsForSessions :many
 SELECT ne.id, ne.session_id, ne.node_id, ne.sequence, ne.task_id, ne.name,
-       ne.scope, ne.status, ne.resource_id, ne.subscription, ne.inputs_json,
+       ne.scope, ne.status, ne.resource_id, ne.subscription_id, ne.inputs_json,
        ne.outputs_json, ne.state_json, ne.resource_observation_json,
        ne.resource_observed_at, ne.done_when_json, ne.extra_done_when_json,
        ne.error, ne.setup_at, ne.failed_at,
@@ -603,7 +603,7 @@ DELETE FROM resources
 WHERE resources.id = ?1
   AND NOT EXISTS (SELECT 1 FROM sessions WHERE sessions.resource_id = ?1)
   AND NOT EXISTS (SELECT 1 FROM task_instances WHERE task_instances.resource_id = ?1)
-  AND NOT EXISTS (SELECT 1 FROM node_executions WHERE node_executions.resource_id = ?1)
+  AND NOT EXISTS (SELECT 1 FROM node_executions WHERE node_executions.resource_id = ?1 OR node_executions.subscription_id = ?1)
   AND NOT EXISTS (SELECT 1 FROM population_members WHERE population_members.resource_id = ?1)
   AND NOT EXISTS (SELECT 1 FROM subscription_retries WHERE subscription_retries.resource_id = ?1);
 
@@ -611,4 +611,5 @@ WHERE resources.id = ?1
 SELECT resource_id FROM sessions WHERE sessions.id = sqlc.arg(session_id) AND resource_id IS NOT NULL
 UNION SELECT resource_id FROM task_instances WHERE task_instances.session_id = sqlc.arg(session_id) AND resource_id IS NOT NULL
 UNION SELECT resource_id FROM node_executions WHERE node_executions.session_id = sqlc.arg(session_id) AND resource_id IS NOT NULL
+UNION SELECT subscription_id FROM node_executions WHERE node_executions.session_id = sqlc.arg(session_id) AND subscription_id IS NOT NULL
 UNION SELECT resource_id FROM subscription_retries WHERE subscription_retries.session_id = sqlc.arg(session_id);

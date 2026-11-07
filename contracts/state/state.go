@@ -127,7 +127,7 @@ type TaskState struct {
 	Outputs      map[string]any `json:"outputs,omitempty"`      // parsed JSON from setup stdout
 	Seq          int            `json:"seq,omitempty"`          // instantiation order; 0 = legacy/unset
 	Resource     *Resource      `json:"resource,omitempty"`     // bound --resource at instantiation
-	Subscription string         `json:"subscription,omitempty"` // resource id bound by a workflow node's subscription
+	Subscription *Resource      `json:"subscription,omitempty"` // resource a workflow node's subscription bound
 	Name         string         `json:"name,omitempty"`         // --name instance identity (key == name when set)
 	Layers       []LayerState   `json:"layers,omitempty"`       // per-layer record for a nested task; empty for a plain one
 	// Directory is the directory this instance's setup ran in, recorded so

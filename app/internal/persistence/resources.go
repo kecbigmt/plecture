@@ -191,7 +191,7 @@ func sessionResourceRefs(sessions []*contract.Session) []*contract.Resource {
 		for _, states := range []map[string]*contract.TaskState{s.Nodes, s.Tasks} {
 			for _, ts := range states {
 				if ts != nil {
-					refs = append(refs, ts.Resource)
+					refs = append(refs, ts.Resource, ts.Subscription)
 				}
 			}
 		}

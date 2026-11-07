@@ -119,6 +119,17 @@ func TestResources_ARowIsRemovedOnceNothingReferencesIt(t *testing.T) {
 			},
 		},
 		{
+			name: "node subscription released",
+			seed: func(t *testing.T, db *DB) {
+				s := sessionWithResource("s1", nil)
+				s.Nodes = map[string]*contract.TaskState{"n": {Scope: "session", Status: contract.TaskStatusCleaned, Subscription: caseResource("case://1")}}
+				mustPut(t, db, s)
+			},
+			release: func(t *testing.T, db *DB) {
+				mustUpdate(t, db, "s1", func(s *domain.Session) { s.Nodes = nil })
+			},
+		},
+		{
 			name: "population member dropped",
 			seed: func(t *testing.T, db *DB) {
 				mustUpdatePopulation(t, db, func(p *domain.PopulationState) {

@@ -28,7 +28,7 @@ func nameCollides(s *domain.Session, name string) bool {
 // is ever produced (nameCollides only checks existing state), so runNodeSetup
 // excludes any such id from ordered before running or writing back setup
 // results — its merged entry is really that instance's record, not a node's.
-func runNodeSetup(ctx context.Context, cfg *config.Config, store *state.Store, ordered []task.Resolved, vars task.SessionVars, session *domain.Session, observer task.Observer) (map[string]string, error) {
+func runNodeSetup(ctx context.Context, cfg *config.Config, store *state.Store, ordered []task.Resolved, vars task.SessionVars, session *domain.Session, observer task.Observer) (map[string]*contract.Resource, error) {
 	nodesOnly := make([]task.Resolved, 0, len(ordered))
 	previous := make(map[string]time.Time, len(ordered))
 	for _, r := range ordered {
@@ -52,17 +52,22 @@ func runNodeSetup(ctx context.Context, cfg *config.Config, store *state.Store, o
 			session.Nodes[r.NodeID] = st
 		}
 	}
-	wired := make(map[string]string)
+	wired := make(map[string]*contract.Resource)
 	errs := []error{err}
 	for _, r := range nodesOnly {
 		st := session.Nodes[r.NodeID]
 		if st == nil || st.Status != contract.TaskStatusProduced || r.Subscription == "" {
 			continue
 		}
-		if st.Subscription == "" {
-			resource, ok := st.Outputs[r.Subscription].(string)
-			if !ok || strings.TrimSpace(resource) == "" {
+		if st.Subscription == nil {
+			identifier, ok := st.Outputs[r.Subscription].(string)
+			if !ok || strings.TrimSpace(identifier) == "" {
 				errs = append(errs, fmt.Errorf("node %q subscription output %q must be a non-empty resource ID", r.NodeID, r.Subscription))
+				continue
+			}
+			resource, boundErr := boundResource(cfg, store, identifier)
+			if boundErr != nil {
+				errs = append(errs, fmt.Errorf("node %q subscription: %w", r.NodeID, boundErr))
 				continue
 			}
 			st.Subscription = resource
@@ -84,7 +89,7 @@ func runTaskCleanup(ctx context.Context, cfg *config.Config, store *state.Store,
 	err := task.RunCleanup(ctx, ordered, vars, domain.MergedTasks(session), observer)
 	released := make(map[string]*contract.TaskState)
 	for id := range before {
-		if st := session.Nodes[id]; st != nil && st.Status == contract.TaskStatusCleaned && st.Subscription != "" {
+		if st := session.Nodes[id]; st != nil && st.Status == contract.TaskStatusCleaned && st.Subscription != nil {
 			released[id] = st
 		}
 	}
@@ -101,10 +106,10 @@ func mergeTasks(store *state.Store, sessionName string, session *domain.Session)
 	return mergeTasksWithSubscriptions(nil, store, sessionName, session, nil)
 }
 
-func mergeTasksWithSubscriptions(cfg *config.Config, store *state.Store, sessionName string, session *domain.Session, subscriptions map[string]string) error {
-	resources, err := nodeSubscriptionResources(cfg, store, subscriptions)
-	if err != nil {
-		return err
+func mergeTasksWithSubscriptions(cfg *config.Config, store *state.Store, sessionName string, session *domain.Session, subscriptions map[string]*contract.Resource) error {
+	var resources []contract.Resource
+	for _, resource := range distinctResources(subscriptions) {
+		resources = append(resources, *resource)
 	}
 	if err := store.UpdateWithSubscriptionRetries(sessionName, func(s *domain.Session) error {
 		if s.Nodes == nil {

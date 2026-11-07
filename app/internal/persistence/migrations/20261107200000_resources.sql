@@ -14,6 +14,7 @@ FROM (
     SELECT `resource_id` AS `locator` FROM `sessions` WHERE `resource_id` IS NOT NULL
     UNION SELECT `resource` FROM `task_instances` WHERE `resource` IS NOT NULL
     UNION SELECT `resource` FROM `node_executions` WHERE `resource` IS NOT NULL
+    UNION SELECT `subscription` FROM `node_executions` WHERE `subscription` IS NOT NULL
     UNION SELECT `resource_id` FROM `population_members`
     UNION SELECT `resource_id` FROM `subscription_retries`
 );
@@ -35,6 +36,10 @@ ALTER TABLE `node_executions` ADD COLUMN `resource_id` text NULL REFERENCES `res
 UPDATE `node_executions` SET `resource_id` = (SELECT `id` FROM `resources` WHERE `locator` = `node_executions`.`resource`) WHERE `resource` IS NOT NULL;
 ALTER TABLE `node_executions` DROP COLUMN `resource`;
 CREATE INDEX `node_executions_resource_idx` ON `node_executions` (`resource_id`);
+ALTER TABLE `node_executions` ADD COLUMN `subscription_id` text NULL REFERENCES `resources` (`id`);
+UPDATE `node_executions` SET `subscription_id` = (SELECT `id` FROM `resources` WHERE `locator` = `node_executions`.`subscription`) WHERE `subscription` IS NOT NULL;
+ALTER TABLE `node_executions` DROP COLUMN `subscription`;
+CREATE INDEX `node_executions_subscription_idx` ON `node_executions` (`subscription_id`);
 
 CREATE TABLE `new_subscription_retries` (`session_id` text NOT NULL, `action` text NOT NULL, `resource_id` text NOT NULL, PRIMARY KEY (`session_id`, `action`, `resource_id`), CONSTRAINT `0` FOREIGN KEY (`resource_id`) REFERENCES `resources` (`id`) ON UPDATE NO ACTION ON DELETE NO ACTION, CONSTRAINT `1` FOREIGN KEY (`session_id`) REFERENCES `sessions` (`id`) ON UPDATE NO ACTION ON DELETE CASCADE, CHECK (action IN ('subscribe', 'unsubscribe')));
 INSERT INTO `new_subscription_retries` (`session_id`, `action`, `resource_id`)
@@ -81,6 +86,10 @@ FROM `subscription_retries` AS `r` JOIN `resources` AS `res` ON `res`.`id` = `r`
 DROP TABLE `subscription_retries`;
 ALTER TABLE `old_subscription_retries` RENAME TO `subscription_retries`;
 
+DROP INDEX `node_executions_subscription_idx`;
+ALTER TABLE `node_executions` ADD COLUMN `subscription` text NULL;
+UPDATE `node_executions` SET `subscription` = (SELECT `locator` FROM `resources` WHERE `id` = `node_executions`.`subscription_id`);
+ALTER TABLE `node_executions` DROP COLUMN `subscription_id`;
 DROP INDEX `node_executions_resource_idx`;
 ALTER TABLE `node_executions` ADD COLUMN `resource` text NULL;
 UPDATE `node_executions` SET `resource` = (SELECT `locator` FROM `resources` WHERE `id` = `node_executions`.`resource_id`);
