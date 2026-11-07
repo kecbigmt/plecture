@@ -121,7 +121,7 @@ func mergeTasksWithSubscriptions(cfg *config.Config, store *state.Store, session
 		}
 		s.UpdatedAt = session.UpdatedAt
 		return nil
-	}, resources); err != nil {
+	}, retrySubscribe, resources); err != nil {
 		return err
 	}
 	return refreshNodeIdentities(store, sessionName, session)

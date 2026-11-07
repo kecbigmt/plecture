@@ -118,12 +118,12 @@ func (db *DB) FindSessionsByAlias(ctx context.Context, alias string) ([]*domain.
 // the result back in one transaction. A session is destroyed the same
 // way: fn sets Status to SessionStatusDestroyed on the same row.
 func (db *DB) UpdateSession(ctx context.Context, name string, fn func(*domain.Session) error) error {
-	return db.UpdateSessionWithSubscriptionRetries(ctx, name, fn, nil)
+	return db.UpdateSessionWithSubscriptionRetries(ctx, name, fn, "", nil)
 }
 
 // A committed node binding needs a durable retry if the process exits before
 // its subscribe hook runs.
-func (db *DB) UpdateSessionWithSubscriptionRetries(ctx context.Context, name string, fn func(*domain.Session) error, resources []contract.Resource) error {
+func (db *DB) UpdateSessionWithSubscriptionRetries(ctx context.Context, name string, fn func(*domain.Session) error, action string, resources []contract.Resource) error {
 	return db.WithImmediateTx(ctx, func(tx *sql.Tx) error {
 		row, err := sqlcgen.New(tx).GetLiveSession(ctx, name)
 		if err != nil {
@@ -148,7 +148,7 @@ func (db *DB) UpdateSessionWithSubscriptionRetries(ctx context.Context, name str
 			return err
 		}
 		for i := range resources {
-			if err := queueSubscriptionRetryTx(ctx, tx, s.ID, subscriptionRetrySubscribe, &resources[i]); err != nil {
+			if err := queueSubscriptionRetryTx(ctx, tx, s.ID, action, &resources[i]); err != nil {
 				return err
 			}
 		}

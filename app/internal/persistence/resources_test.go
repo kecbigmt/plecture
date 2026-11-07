@@ -249,3 +249,34 @@ func TestResources_APendingUnsubscribeRetryKeepsTheRowAfterItsBindingIsGone(t *t
 		t.Errorf("resources rows = %d once the retry is gone, want 0", n)
 	}
 }
+
+func TestQueueSubscriptionRetry_AdoptsTheRowAnotherBindingRecordedAfterItsOwnWasReleased(t *testing.T) {
+	db := migratedTestDB(t)
+	ctx := context.Background()
+	s1 := sessionWithResource("s1", nil)
+	s1.Tasks = map[string]*contract.TaskState{"t#1": {Scope: "run", Status: contract.TaskStatusProduced, TaskID: "t", Resource: caseResource("case://1")}}
+	mustPut(t, db, s1)
+	stored, err := db.GetSession(ctx, "s1")
+	if err != nil {
+		t.Fatal(err)
+	}
+	retained := *stored.Tasks["t#1"].Resource
+
+	mustUpdate(t, db, "s1", func(s *domain.Session) { s.Tasks = nil })
+	mustPut(t, db, sessionWithResource("s2", caseResource("case://1?reply=2")))
+
+	if err := db.QueueSubscriptionRetry(ctx, "s1", subscriptionRetryUnsubscribe, retained); err != nil {
+		t.Fatalf("queue unsubscribe with the released row's id: %v", err)
+	}
+	retries, err := db.SubscriptionRetriesForLiveSession(ctx, "s1")
+	if err != nil || len(retries) != 1 {
+		t.Fatalf("retries = %+v, %v; want the pending unsubscribe", retries, err)
+	}
+	s2, err := db.GetSession(ctx, "s2")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if retries[0].Resource.ID != s2.Resource.ID {
+		t.Errorf("retry references %s, want the row now recorded under the name (%s)", retries[0].Resource.ID, s2.Resource.ID)
+	}
+}

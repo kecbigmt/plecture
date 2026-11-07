@@ -52,6 +52,14 @@ func dequeuePendingDelivery(store *state.Store, retry persistence.SubscriptionRe
 	return db.DeleteSubscriptionRetry(context.Background(), retry.SessionID, retry.Action, retry.Resource.ID)
 }
 
+func dequeuePendingUnsubscribe(store *state.Store, sessionName string, resource contract.Resource) error {
+	db, err := retryStore(store)
+	if err != nil {
+		return err
+	}
+	return db.DeleteSubscriptionRetryForLiveSession(context.Background(), sessionName, retryUnsubscribe, resource.ID)
+}
+
 func dequeuePendingSubscribe(store *state.Store, sessionName string, resource contract.Resource) error {
 	if resource.ID == "" {
 		return nil

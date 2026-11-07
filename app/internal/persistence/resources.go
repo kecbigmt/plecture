@@ -47,7 +47,8 @@ func (db *DB) ResourceByName(ctx context.Context, name string) (*contract.Resour
 
 // recordResourceTx runs inside the write that references r, so no release in
 // another transaction can delete the row between recording and referencing it.
-// The recorded row wins over r: a later spelling keeps the first locator.
+// The row recorded under r's name wins over r, even over an id r carries from a
+// row since released and recorded again, because the name is the identity.
 func recordResourceTx(ctx context.Context, q *sqlcgen.Queries, r *contract.Resource) error {
 	if r == nil {
 		return nil
@@ -79,9 +80,6 @@ func recordResourceTx(ctx context.Context, q *sqlcgen.Queries, r *contract.Resou
 	}
 	if row.Type != r.Type {
 		return &ResourceTypeConflictError{Name: r.Name, Recorded: row.Type, Requested: r.Type}
-	}
-	if r.ID != "" && r.ID != row.ID {
-		return fmt.Errorf("resource %q is recorded as %s, not %s", r.Name, row.ID, r.ID)
 	}
 	*r = *resourceFromRow(row)
 	return nil
