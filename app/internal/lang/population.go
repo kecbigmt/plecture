@@ -360,27 +360,13 @@ func parsePopulationDuration(value string) (time.Duration, error) {
 func (v Validation) validatePopulationSessionContracts(entry map[string]any, observer *Definition, query map[string]any, registry *Registry, at Position) error {
 	session, _ := entry["session"].(map[string]any)
 	if taskRef, ok := session["task"].(string); ok {
-		task, err := registry.ExpectKind(taskRef, v.From, KindTask, at.Path+".session.task")
+		taskObserver, err := v.taskDocumentResource(taskRef, registry, at.Path+".session.task")
 		if err != nil {
 			return err
 		}
-		taskValidation := Validation{From: registry.OwnerOf(task)}
-		chain, err := taskValidation.ExtendsChain(task, registry)
-		if err != nil {
-			return err
-		}
-		root := task
-		if len(chain) > 0 {
-			root = chain[0]
-		}
-		taskObserverRef, ok := root.Body["resource"].(string)
-		if !ok {
+		if taskObserver == nil {
 			return newDiag(CodePopulationContract, LayerSemantic, childPos(at, "session.task"),
 				fmt.Sprintf("task %q declares no resource", taskRef))
-		}
-		taskObserver, err := registry.ExpectKind(taskObserverRef, registry.OwnerOf(root), KindResource, root.ID+".resource")
-		if err != nil {
-			return err
 		}
 		if taskObserver != observer {
 			return newDiag(CodePopulationContract, LayerSemantic, childPos(at, "session.task"),
@@ -448,4 +434,29 @@ func (v Validation) validatePopulationSession(entry map[string]any, pos Position
 		}
 	}
 	return nil
+}
+
+// taskDocumentResource resolves the resource a selected task document is
+// written for, following extends to the root that declares it. A document
+// whose root declares no resource yields nil, which each selecting surface
+// reports in its own terms.
+func (v Validation) taskDocumentResource(taskRef string, registry *Registry, site string) (*Definition, error) {
+	task, err := registry.ExpectKind(taskRef, v.From, KindTask, site)
+	if err != nil {
+		return nil, err
+	}
+	taskValidation := Validation{From: registry.OwnerOf(task)}
+	chain, err := taskValidation.ExtendsChain(task, registry)
+	if err != nil {
+		return nil, err
+	}
+	root := task
+	if len(chain) > 0 {
+		root = chain[0]
+	}
+	ref, ok := root.Body["resource"].(string)
+	if !ok {
+		return nil, nil
+	}
+	return registry.ExpectKind(ref, registry.OwnerOf(root), KindResource, root.ID+".resource")
 }
