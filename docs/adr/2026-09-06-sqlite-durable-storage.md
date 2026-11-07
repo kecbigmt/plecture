@@ -1,3 +1,7 @@
+---
+superseded_by: 2026-11-07-forward-only-migrations
+---
+
 # Use SQLite with a declarative schema and versioned migrations
 
 ## Context
