@@ -393,7 +393,7 @@ include = ["github.*"]
 	if err != nil {
 		t.Fatal(err)
 	}
-	_, err = cfg.LoadWorkflows(filepath.Join(workdirDir, "cwd"))
+	_, err = trustAncestors(cfg, filepath.Join(workdirDir, "cwd")).LoadWorkflows(filepath.Join(workdirDir, "cwd"))
 	if err == nil || !strings.Contains(err.Error(), `field "event" is set by a shallower layer`) {
 		t.Fatalf("LoadWorkflows = %v, want a redeclaration error naming `event`", err)
 	}

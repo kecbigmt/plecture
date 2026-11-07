@@ -477,6 +477,7 @@ func TestUp_OutstandingReleaseBlocksReconstruction(t *testing.T) {
 func TestUp_DirectInvocationSeesWorkflowsOfAncestorOverlays(t *testing.T) {
 	f := newWDFixture(t, wdWorkdirWorkflow)
 	overlay := filepath.Join(f.home, "projects")
+	f.cfg.TrustedProjectRoots = []string{overlay}
 	wdWrite(t, filepath.Join(overlay, ".plect", "workflows", "local.toml"), `
 [local]
 kind     = "workflow"
@@ -500,6 +501,7 @@ uses = "agent"
 func TestUp_AncestorOverlayWorkflowInputsAreValidatedAgainstThatWorkflow(t *testing.T) {
 	f := newWDFixture(t, wdWorkdirWorkflow)
 	overlay := filepath.Join(f.home, "projects")
+	f.cfg.TrustedProjectRoots = []string{overlay}
 	wdWrite(t, filepath.Join(overlay, ".plect", "workflows", "local.toml"), `
 [local]
 kind     = "workflow"

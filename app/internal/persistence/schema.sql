@@ -41,6 +41,7 @@ CREATE TABLE sessions (
     alias TEXT,
     workflow TEXT NOT NULL,
     workflow_revision TEXT,
+    invocation_dir TEXT,
     population_workflow TEXT,
     population_name TEXT,
     inputs_json TEXT CHECK (inputs_json IS NULL OR json_valid(inputs_json)),

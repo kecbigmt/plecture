@@ -94,6 +94,7 @@ func createWithWorkflowSetup(cfg *config.Config, store *state.Store, params Crea
 		if err := setSessionRevision(session, revision, true); err != nil {
 			return nil, &Error{Code: ErrExecutionFailed, Message: fmt.Sprintf("capture workflow revision: %v", err)}
 		}
+		session.InvocationDir = params.InvocationDir
 	}
 
 	existingBeforePut := existing != nil

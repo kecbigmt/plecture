@@ -654,9 +654,29 @@ func (c *Config) definitionRoots(invocationDir string) []layerDir {
 		dirs = append(dirs, layerDir{dir: c.BaseDir, global: true})
 	}
 	for _, anc := range cascadeAncestors(invocationDir) {
-		dirs = append(dirs, layerDir{dir: filepath.Join(anc, ".plect")})
+		if c.trustsProjectRoot(anc) {
+			dirs = append(dirs, layerDir{dir: filepath.Join(anc, ".plect")})
+		}
 	}
 	return dirs
+}
+
+// trustsProjectRoot counts only listed roots, because a checkout the caller
+// stands in may be third-party content whose `.plect/` runs shell.
+func (c *Config) trustsProjectRoot(dir string) bool {
+	canonical := func(path string) string {
+		if real, err := filepath.EvalSymlinks(path); err == nil {
+			return real
+		}
+		return filepath.Clean(path)
+	}
+	want := canonical(dir)
+	for _, root := range c.TrustedProjectRoots {
+		if canonical(root) == want {
+			return true
+		}
+	}
+	return false
 }
 
 // cascadeAncestors walks up from invocationDir, excluding it, ordered outermost-first.

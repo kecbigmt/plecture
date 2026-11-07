@@ -11,6 +11,14 @@ import (
 	"github.com/kecbigmt/plecture/app/internal/lang"
 )
 
+// trustAncestors lists every ancestor of dir as a trusted project root, for
+// tests that exercise how overlay layers compose rather than whether one is
+// trusted.
+func trustAncestors(c *Config, dir string) *Config {
+	c.TrustedProjectRoots = cascadeAncestors(dir)
+	return c
+}
+
 func writeFile(t *testing.T, path, content string) {
 	t.Helper()
 	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
@@ -36,7 +44,7 @@ session_name = { from = "session.name" }
 `)
 
 	cfg := &Config{}
-	got, err := cfg.LoadWorkflows(filepath.Join(repoDir, "cwd"))
+	got, err := trustAncestors(cfg, filepath.Join(repoDir, "cwd")).LoadWorkflows(filepath.Join(repoDir, "cwd"))
 	if err != nil {
 		t.Fatalf("LoadWorkflows: %v", err)
 	}
@@ -70,7 +78,7 @@ uses = "tmux"
 `)
 
 	cfg := &Config{}
-	got, err := cfg.LoadWorkflows(filepath.Join(repoDir, "cwd"))
+	got, err := trustAncestors(cfg, filepath.Join(repoDir, "cwd")).LoadWorkflows(filepath.Join(repoDir, "cwd"))
 	if err != nil {
 		t.Fatalf("LoadWorkflows: %v", err)
 	}
@@ -115,7 +123,7 @@ uses = "session_extra"
 	if err != nil {
 		t.Fatal(err)
 	}
-	got, err := cfg.LoadWorkflows(filepath.Join(workspaceDirPath, "cwd"))
+	got, err := trustAncestors(cfg, filepath.Join(workspaceDirPath, "cwd")).LoadWorkflows(filepath.Join(workspaceDirPath, "cwd"))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -170,7 +178,7 @@ uses = "s"
 	if err != nil {
 		t.Fatal(err)
 	}
-	got, err := cfg.LoadWorkflows(filepath.Join(sessionDir, "cwd"))
+	got, err := trustAncestors(cfg, filepath.Join(sessionDir, "cwd")).LoadWorkflows(filepath.Join(sessionDir, "cwd"))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -215,7 +223,7 @@ uses = "tmux"
 	if err != nil {
 		t.Fatal(err)
 	}
-	_, err = cfg.LoadWorkflows(filepath.Join(workspaceDirPath, "cwd"))
+	_, err = trustAncestors(cfg, filepath.Join(workspaceDirPath, "cwd")).LoadWorkflows(filepath.Join(workspaceDirPath, "cwd"))
 	if err == nil {
 		t.Fatal("expected error for duplicate node id across cascade layers")
 	}
@@ -236,7 +244,7 @@ uses = "should_not_load"
 		t.Fatal(err)
 	}
 	cfg := &Config{}
-	got, err := cfg.LoadWorkflows(filepath.Join(workspaceDirPath, "cwd"))
+	got, err := trustAncestors(cfg, filepath.Join(workspaceDirPath, "cwd")).LoadWorkflows(filepath.Join(workspaceDirPath, "cwd"))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -264,7 +272,7 @@ resource = "issue"
 uses = "b_node"
 `)
 	cfg := &Config{}
-	got, err := cfg.LoadWorkflows(filepath.Join(workspaceDirPath, "cwd"))
+	got, err := trustAncestors(cfg, filepath.Join(workspaceDirPath, "cwd")).LoadWorkflows(filepath.Join(workspaceDirPath, "cwd"))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -316,7 +324,7 @@ required = ["x"]
 	if err != nil {
 		t.Fatal(err)
 	}
-	_, err = cfg.LoadWorkflows(filepath.Join(workspaceDirPath, "cwd"))
+	_, err = trustAncestors(cfg, filepath.Join(workspaceDirPath, "cwd")).LoadWorkflows(filepath.Join(workspaceDirPath, "cwd"))
 	if err == nil || !strings.Contains(err.Error(), `field "inputs_schema" is set by a shallower layer`) {
 		t.Fatalf("LoadWorkflows = %v, want a redeclaration error naming inputs_schema", err)
 	}
@@ -335,7 +343,7 @@ resource = "issue"
 uses = "tmux"
 `)
 	cfg := &Config{}
-	_, err := cfg.LoadWorkflows(filepath.Join(repoDir, "cwd"))
+	_, err := trustAncestors(cfg, filepath.Join(repoDir, "cwd")).LoadWorkflows(filepath.Join(repoDir, "cwd"))
 	if err == nil || !strings.Contains(err.Error(), "PLECTURE-CFG-ID-INVALID") {
 		t.Fatalf("LoadWorkflows = %v, want an invalid-id diagnostic", err)
 	}
@@ -421,7 +429,7 @@ uses = "tmux"
 		t.Fatal(err)
 	}
 	cfg := &Config{}
-	got, err := cfg.LoadWorkflows(filepath.Join(workspaceDirPath, "cwd"))
+	got, err := trustAncestors(cfg, filepath.Join(workspaceDirPath, "cwd")).LoadWorkflows(filepath.Join(workspaceDirPath, "cwd"))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -469,7 +477,7 @@ uses = "s"
 	if err != nil {
 		t.Fatal(err)
 	}
-	got, err := cfg.LoadWorkflows(filepath.Join(workspaceDirPath, "cwd"))
+	got, err := trustAncestors(cfg, filepath.Join(workspaceDirPath, "cwd")).LoadWorkflows(filepath.Join(workspaceDirPath, "cwd"))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -515,7 +523,7 @@ uses = "s"
 	if err != nil {
 		t.Fatal(err)
 	}
-	_, err = cfg.LoadWorkflows(filepath.Join(workspaceDirPath, "cwd"))
+	_, err = trustAncestors(cfg, filepath.Join(workspaceDirPath, "cwd")).LoadWorkflows(filepath.Join(workspaceDirPath, "cwd"))
 	if err == nil {
 		t.Fatal("expected error when `name` is redeclared across cascade layers")
 	}
@@ -542,7 +550,7 @@ type = "noop"
 		t.Fatal(err)
 	}
 	cfg := &Config{}
-	got, err := cfg.LoadTaskDefinitions(filepath.Join(workspaceDirPath, "cwd"))
+	got, err := trustAncestors(cfg, filepath.Join(workspaceDirPath, "cwd")).LoadTaskDefinitions(filepath.Join(workspaceDirPath, "cwd"))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -601,7 +609,7 @@ type = "noop"
 	if err != nil {
 		t.Fatal(err)
 	}
-	got, err := cfg.LoadTaskDefinitions(filepath.Join(workspaceDirPath, "cwd"))
+	got, err := trustAncestors(cfg, filepath.Join(workspaceDirPath, "cwd")).LoadTaskDefinitions(filepath.Join(workspaceDirPath, "cwd"))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -666,7 +674,7 @@ script = "true"
 		t.Fatal(err)
 	}
 	cfg := &Config{}
-	_, err := cfg.LoadTaskDefinitions(filepath.Join(workspaceDirPath, "cwd"))
+	_, err := trustAncestors(cfg, filepath.Join(workspaceDirPath, "cwd")).LoadTaskDefinitions(filepath.Join(workspaceDirPath, "cwd"))
 	if err == nil {
 		t.Fatal("expected error when a definition id contains a hyphen")
 	}
@@ -710,7 +718,7 @@ uses = "r"
 	if err != nil {
 		t.Fatal(err)
 	}
-	_, err = cfg.LoadWorkflows(filepath.Join(workspaceDirPath, "cwd"))
+	_, err = trustAncestors(cfg, filepath.Join(workspaceDirPath, "cwd")).LoadWorkflows(filepath.Join(workspaceDirPath, "cwd"))
 	if err == nil {
 		t.Fatal("expected error: workflow-level done_when is retired")
 	}
@@ -774,7 +782,7 @@ max_stale_when = "1h"
 			if err != nil {
 				t.Fatal(err)
 			}
-			_, err = cfg.LoadWorkflows(filepath.Join(workspaceDirPath, "cwd"))
+			_, err = trustAncestors(cfg, filepath.Join(workspaceDirPath, "cwd")).LoadWorkflows(filepath.Join(workspaceDirPath, "cwd"))
 			if err == nil {
 				t.Fatalf("expected error: %s is retired", tt.name)
 			}
@@ -822,7 +830,7 @@ heartbeat = "5m"
 	if err != nil {
 		t.Fatal(err)
 	}
-	got, err := cfg.LoadWorkflows(filepath.Join(workspaceDirPath, "cwd"))
+	got, err := trustAncestors(cfg, filepath.Join(workspaceDirPath, "cwd")).LoadWorkflows(filepath.Join(workspaceDirPath, "cwd"))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -875,7 +883,7 @@ heartbeat = "30m"
 	if err != nil {
 		t.Fatal(err)
 	}
-	got, err := cfg.LoadWorkflows(filepath.Join(workspaceDirPath, "cwd"))
+	got, err := trustAncestors(cfg, filepath.Join(workspaceDirPath, "cwd")).LoadWorkflows(filepath.Join(workspaceDirPath, "cwd"))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -1008,7 +1016,7 @@ period = "2m"
 	if err != nil {
 		t.Fatal(err)
 	}
-	got, err := cfg.LoadWorkflows(filepath.Join(workspaceDirPath, "cwd"))
+	got, err := trustAncestors(cfg, filepath.Join(workspaceDirPath, "cwd")).LoadWorkflows(filepath.Join(workspaceDirPath, "cwd"))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -1115,7 +1123,7 @@ func TestLoadWorkflows_HealthRepairOverlayCanDisableInheritedPermission(t *testi
 			if err != nil {
 				t.Fatal(err)
 			}
-			got, err := cfg.LoadWorkflows(filepath.Join(workspace, "cwd"))
+			got, err := trustAncestors(cfg, filepath.Join(workspace, "cwd")).LoadWorkflows(filepath.Join(workspace, "cwd"))
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -1159,7 +1167,7 @@ type = "noop"
 	if err != nil {
 		t.Fatal(err)
 	}
-	defs, err := cfg.LoadTaskDefinitions(filepath.Join(workspaceDirPath, "cwd"))
+	defs, err := trustAncestors(cfg, filepath.Join(workspaceDirPath, "cwd")).LoadTaskDefinitions(filepath.Join(workspaceDirPath, "cwd"))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -1330,7 +1338,7 @@ type = "noop"
 		if err := os.MkdirAll(workspaceDirPath, 0o755); err != nil {
 			t.Fatal(err)
 		}
-		defs, err := (&Config{}).LoadTaskDefinitions(filepath.Join(workspaceDirPath, "cwd"))
+		defs, err := trustAncestors(&Config{}, filepath.Join(workspaceDirPath, "cwd")).LoadTaskDefinitions(filepath.Join(workspaceDirPath, "cwd"))
 		if err != nil {
 			t.Fatalf("LoadTaskDefinitions: %v", err)
 		}
@@ -1706,7 +1714,7 @@ func TestLoadDefinitions_InvocationDirsOwnLayerIsNotRead(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	workflows, err := cfg.LoadWorkflows(invocation)
+	workflows, err := trustAncestors(cfg, invocation).LoadWorkflows(invocation)
 	if err != nil {
 		t.Fatalf("LoadWorkflows: %v", err)
 	}
@@ -1717,7 +1725,7 @@ func TestLoadDefinitions_InvocationDirsOwnLayerIsNotRead(t *testing.T) {
 	if strings.Join(uses, ",") != "base,overlay" {
 		t.Errorf("nodes = %v, want the global layer then the ancestor overlay, and nothing from the invocation directory", uses)
 	}
-	effects, err := cfg.LoadTaskDefinitions(invocation)
+	effects, err := trustAncestors(cfg, invocation).LoadTaskDefinitions(invocation)
 	if err != nil {
 		t.Fatalf("LoadTaskDefinitions: an effect under the invocation directory must be ignored, not refused: %v", err)
 	}
@@ -1745,5 +1753,50 @@ func TestLoadDefinitions_NoInvocationDirReadsNoOverlay(t *testing.T) {
 	}
 	if got := workflows["shared"].Nodes; len(got) != 1 || got[0].Uses != "base" {
 		t.Errorf("nodes = %+v, want only the global layer's", got)
+	}
+}
+
+func TestLoadDefinitions_TrustedProjectRootMatchesThroughASymlink(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	real := filepath.Join(home, "projects", "real")
+	writeFile(t, filepath.Join(real, ".plect", "workflows", "shared.toml"), "[shared]\nkind = \"workflow\"\n[[shared.nodes]]\nuses = \"overlay\"\n")
+	if err := os.MkdirAll(filepath.Join(real, "src"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	alias := filepath.Join(home, "alias")
+	if err := os.Symlink(real, alias); err != nil {
+		t.Fatal(err)
+	}
+	base := t.TempDir()
+	writeFile(t, filepath.Join(base, "workflows", "shared.toml"), "[shared]\nkind = \"workflow\"\nresource = \"issue\"\n[[shared.nodes]]\nuses = \"base\"\n")
+
+	for name, tc := range map[string]struct {
+		trusted    string
+		invocation string
+	}{
+		"trusted by its alias, invoked by its real path": {alias, filepath.Join(real, "src")},
+		"trusted by its real path, invoked by its alias": {real, filepath.Join(alias, "src")},
+	} {
+		t.Run(name, func(t *testing.T) {
+			cfg := &Config{BaseDir: base, TrustedProjectRoots: []string{tc.trusted}}
+			workflows, err := cfg.LoadWorkflows(tc.invocation)
+			if err != nil {
+				t.Fatalf("LoadWorkflows: %v", err)
+			}
+			if got := len(workflows["shared"].Nodes); got != 2 {
+				t.Errorf("nodes = %d, want the trusted overlay's node appended to the global one", got)
+			}
+		})
+	}
+}
+
+func TestLoad_RelativeTrustedProjectRootIsRefused(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	writeFile(t, filepath.Join(home, ".config", "plect", "config.toml"), "schema_version = 2\ntrusted_project_roots = [\"projects/widgets\"]\n")
+
+	if _, err := Load(); err == nil || !strings.Contains(err.Error(), "trusted_project_roots") {
+		t.Fatalf("Load = %v, want an error naming trusted_project_roots", err)
 	}
 }

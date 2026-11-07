@@ -40,9 +40,6 @@ type RebaseParams struct {
 	DryRun      bool
 	WithRestart bool
 	Observer    task.Observer
-	// InvocationDir is the caller's working directory, whose ancestors'
-	// `.plect/` overlays contribute the revision being rebased onto.
-	InvocationDir string
 }
 
 type RebaseResult struct {
@@ -84,7 +81,7 @@ func workflowRebaseUnlocked(cfg *config.Config, store *state.Store, name string,
 	if err != nil {
 		return nil, err
 	}
-	next, err := cfg.CaptureWorkflowRevision(params.InvocationDir, session.Workflow)
+	next, err := cfg.CaptureWorkflowRevision(session.InvocationDir, session.Workflow)
 	if err != nil {
 		return nil, err
 	}

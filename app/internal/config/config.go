@@ -89,6 +89,10 @@ type Config struct {
 	// global layer and ancestor overlays stack on top of them. Entries are
 	// trusted — only the user or the system's config-management tooling writes config.toml.
 	PluginDirs []string `toml:"plugin_dirs"`
+	// TrustedProjectRoots lists the directories whose `.plect/` may layer over
+	// a direct invocation made below them. Project definitions can run shell,
+	// so no directory is trusted implicitly.
+	TrustedProjectRoots []string `toml:"trusted_project_roots"`
 	// Plugins is the resolved catalog-qualified identity + manifest for
 	// every plugin folded into PluginDirs by resolveDeclaredPlugins (empty
 	// for hand-authored plugin_dirs entries, which carry no catalog
@@ -179,6 +183,11 @@ func Load() (*Config, error) {
 	}
 	if cfg.MaxUpChildren != nil && *cfg.MaxUpChildren < 1 {
 		return nil, fmt.Errorf("config.toml: max_up_children must be at least 1, got %d", *cfg.MaxUpChildren)
+	}
+	for _, root := range cfg.TrustedProjectRoots {
+		if !filepath.IsAbs(root) {
+			return nil, fmt.Errorf("config.toml: trusted_project_roots entry %q is not an absolute path", root)
+		}
 	}
 	if meta.IsDefined("workspace_dirs_root") {
 		return nil, fmt.Errorf("config.toml: workspace_dirs_root is retired: a directory-creating effect takes its root as an input; see %s", lang.WorkspaceProviderMigrationGuide)

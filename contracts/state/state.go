@@ -262,14 +262,20 @@ type Session struct {
 	// ParentSession is a read-side projection of the above onto the
 	// referenced session's current name ("root:"-prefixed for
 	// RootSessionID), not itself a write-time identity.
-	ParentSession        string                `json:"parent_session,omitempty"`
-	Children             []string              `json:"children,omitempty"`
-	Alias                string                `json:"alias,omitempty"`
-	Workflow             string                `json:"workflow,omitempty"`
-	WorkflowRevision     string                `json:"workflow_revision,omitempty"`
-	WorkflowRevisionBody string                `json:"-"`
-	Population           *PopulationProvenance `json:"population,omitempty"`
-	Inputs               map[string]any        `json:"inputs,omitempty"`
+	ParentSession        string   `json:"parent_session,omitempty"`
+	Children             []string `json:"children,omitempty"`
+	Alias                string   `json:"alias,omitempty"`
+	Workflow             string   `json:"workflow,omitempty"`
+	WorkflowRevision     string   `json:"workflow_revision,omitempty"`
+	WorkflowRevisionBody string   `json:"-"`
+	// InvocationDir is the directory whose trusted ancestor `.plect/` overlays
+	// were layered when the session was created, and empty when none were.
+	// Later operations expand configuration from it rather than from their
+	// caller's cwd, so where an operator happens to stand cannot change which
+	// nodes a session has.
+	InvocationDir string                `json:"-"`
+	Population    *PopulationProvenance `json:"population,omitempty"`
+	Inputs        map[string]any        `json:"inputs,omitempty"`
 	// Nodes holds workflow DAG node production records, keyed by node id.
 	// Tasks holds
 	// `plect task setup` instances, keyed by instance handle (a `--name` or

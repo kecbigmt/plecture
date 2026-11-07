@@ -1620,6 +1620,15 @@
         },
         "inputs_schema_file": {
           "type": "string"
+        },
+        "trusted_project_roots": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "pattern": "^/"
+          },
+          "description": "Absolute directories whose `.plect/` definitions may layer over an invocation made below them.",
+          "$comment": "PLECTURE-CFG-FIELD-TYPE: a trusted project root is an absolute path."
         }
       },
       "required": [

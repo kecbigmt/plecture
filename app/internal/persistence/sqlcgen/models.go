@@ -134,6 +134,7 @@ type Session struct {
 	Alias                    sql.NullString
 	Workflow                 string
 	WorkflowRevision         sql.NullString
+	InvocationDir            sql.NullString
 	PopulationWorkflow       sql.NullString
 	PopulationName           sql.NullString
 	InputsJson               sql.NullString

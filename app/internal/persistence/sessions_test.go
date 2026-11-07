@@ -1260,3 +1260,31 @@ func TestPurgeSessionByName_MissingNameIsANoOp(t *testing.T) {
 		t.Fatalf("PurgeSessionByName on a name with no row: %v", err)
 	}
 }
+
+func TestPutSession_RoundTripsTheInvocationDirAcrossLaterWrites(t *testing.T) {
+	db := migratedTestDB(t)
+	ctx := context.Background()
+	now := time.Now().UTC().Truncate(time.Second)
+	if err := db.PutSession(ctx, &domain.Session{Name: "review-1", Workflow: "review", InvocationDir: "/projects/widgets/src", CreatedAt: now, UpdatedAt: now}); err != nil {
+		t.Fatalf("PutSession: %v", err)
+	}
+	got, err := db.GetSession(ctx, "review-1")
+	if err != nil || got == nil {
+		t.Fatalf("GetSession: %v, %v", got, err)
+	}
+	if got.InvocationDir != "/projects/widgets/src" {
+		t.Fatalf("InvocationDir = %q after create, want the recorded directory", got.InvocationDir)
+	}
+
+	got.Status = contract.SessionStatusUp
+	if err := db.PutSession(ctx, got); err != nil {
+		t.Fatalf("PutSession (update): %v", err)
+	}
+	again, err := db.GetSession(ctx, "review-1")
+	if err != nil || again == nil {
+		t.Fatalf("GetSession: %v, %v", again, err)
+	}
+	if again.InvocationDir != "/projects/widgets/src" {
+		t.Errorf("InvocationDir = %q after an update, want it kept", again.InvocationDir)
+	}
+}
