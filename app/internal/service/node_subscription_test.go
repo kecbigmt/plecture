@@ -463,3 +463,41 @@ script = "touch '`+log+`'"
 		t.Fatalf("node subscription = %+v, want the recorded thread resource", node)
 	}
 }
+
+func TestNodeSubscriptionThatFailedToResolveIsWiredOnceItResolves(t *testing.T) {
+	cfg := writeWorkflowFixture(t, "work", []taskFixture{{
+		id: "thread", scope: "run", setup: `echo '{"permalink":"thread://one"}'`, cleanup: "true",
+	}}, []nodeFixture{{id: "thread", subscription: "self.outputs.permalink"}})
+	log := filepath.Join(t.TempDir(), "hooks")
+	writeNodeSubscriptionResource(t, cfg.BaseDir, `
+[thread_resource.subscribe]
+type = "shell"
+script = "printf 'subscribe\\n' >> '`+log+`'"
+`)
+	path := filepath.Join(cfg.BaseDir, "resources", "thread.toml")
+	valid, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(path, []byte(strings.Replace(string(valid), `name = "thread"`, `name = "bad.name"`, 1)), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	store := testStore(t)
+	seedSessionWithNodes(t, store, "one", "org/repo", 1, "work", nil)
+	if _, err := Up(cfg, store, UpParams{Identifier: "one"}); err == nil {
+		t.Fatal("up with an unresolvable subscription succeeded")
+	}
+
+	if err := os.WriteFile(path, valid, 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := Up(cfg, store, UpParams{Identifier: "one"}); err != nil {
+		t.Fatalf("up after the name was corrected: %v", err)
+	}
+	if node := store.Get("one").Nodes["thread"]; node == nil || node.Subscription == nil {
+		t.Fatalf("node = %+v, want its subscription resolved", node)
+	}
+	if data, err := os.ReadFile(log); err != nil || strings.TrimSpace(string(data)) != "subscribe" {
+		t.Fatalf("subscribe hook output = %q, %v; want one subscribe once the subscription resolved", data, err)
+	}
+}

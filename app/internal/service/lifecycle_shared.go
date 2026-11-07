@@ -59,7 +59,8 @@ func runNodeSetup(ctx context.Context, cfg *config.Config, store *state.Store, o
 		if st == nil || st.Status != contract.TaskStatusProduced || r.Subscription == "" {
 			continue
 		}
-		if st.Subscription == nil {
+		resolvedNow := st.Subscription == nil
+		if resolvedNow {
 			identifier, ok := st.Outputs[r.Subscription].(string)
 			if !ok || strings.TrimSpace(identifier) == "" {
 				errs = append(errs, fmt.Errorf("node %q subscription output %q must be a non-empty resource ID", r.NodeID, r.Subscription))
@@ -72,7 +73,9 @@ func runNodeSetup(ctx context.Context, cfg *config.Config, store *state.Store, o
 			}
 			st.Subscription = resource
 		}
-		if st.SetupAt != previous[r.NodeID] {
+		// A subscription that failed to resolve on an earlier pass was never
+		// wired, even though the node's setup did not run again.
+		if resolvedNow || st.SetupAt != previous[r.NodeID] {
 			wired[r.NodeID] = st.Subscription
 		}
 	}
