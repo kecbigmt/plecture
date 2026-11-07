@@ -98,3 +98,39 @@ func TestVerify_RejectsADriftedManifest(t *testing.T) {
 		})
 	}
 }
+
+func TestDownSectionIsRejected(t *testing.T) {
+	annotations := []string{
+		"-- +goose Down",
+		"--+goose Down",
+		"-- +goose down",
+		"-- +goose DOWN  ",
+	}
+	for _, annotation := range annotations {
+		t.Run(annotation, func(t *testing.T) {
+			fsys := twoMigrations()
+			fsys["20260102000000_second.sql"] = &fstest.MapFile{Data: []byte("-- +goose Up\nCREATE TABLE b (y INTEGER);\n\n" + annotation + "\nDROP TABLE b;\n")}
+
+			if _, err := generate(fsys); err == nil || !strings.Contains(err.Error(), "20260102000000_second.sql") {
+				t.Fatalf("generate error = %v, want a refusal naming the migration with a Down section", err)
+			}
+
+			clean := twoMigrations()
+			manifest, err := generate(clean)
+			if err != nil {
+				t.Fatalf("generate: %v", err)
+			}
+			if err := verify(fsys, manifest); err == nil || !strings.Contains(err.Error(), "20260102000000_second.sql") {
+				t.Fatalf("verify error = %v, want a refusal naming the migration with a Down section", err)
+			}
+		})
+	}
+}
+
+func TestDownSectionDetection_IgnoresTheWordInOrdinaryText(t *testing.T) {
+	fsys := twoMigrations()
+	fsys["20260102000000_second.sql"] = &fstest.MapFile{Data: []byte("-- +goose Up\n-- A capacity Down keeps the session; see the goose docs.\nCREATE TABLE b (y TEXT CHECK (y IN ('down', 'up')));\n")}
+	if _, err := generate(fsys); err != nil {
+		t.Fatalf("generate rejected a migration with no Down section: %v", err)
+	}
+}

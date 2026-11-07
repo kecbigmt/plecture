@@ -8,10 +8,13 @@ import (
 	"errors"
 	"fmt"
 	"io/fs"
+	"path"
 	"sort"
 	"strings"
 )
 
+// generate refuses a migration with a Down section instead of hashing it,
+// so regenerating the manifest is never a way around the forward-only rule.
 func generate(migrations fs.FS) ([]byte, error) {
 	sums, err := hashMigrations(migrations)
 	if err != nil {
@@ -85,13 +88,37 @@ func hashMigrations(migrations fs.FS) (map[string]string, error) {
 		return nil, fmt.Errorf("list migrations: %w", err)
 	}
 	sums := make(map[string]string, len(names))
+	var downs []string
 	for _, name := range names {
 		content, err := fs.ReadFile(migrations, name)
 		if err != nil {
 			return nil, fmt.Errorf("read %s: %w", name, err)
 		}
+		if hasDownSection(content) {
+			downs = append(downs, path.Base(name))
+		}
 		sum := sha256.Sum256(content)
 		sums[name] = hex.EncodeToString(sum[:])
 	}
+	if len(downs) > 0 {
+		return nil, fmt.Errorf("migrations are forward-only, but these have a `-- +goose Down` section: %s; delete the section, and fix a problem found after an upgrade with a new migration instead", strings.Join(downs, ", "))
+	}
 	return sums, nil
+}
+
+// hasDownSection recognizes an annotation line the way goose's own parser
+// does — any comment line naming +goose, with the remaining word compared
+// case-insensitively — so a spelling goose would run as Down cannot slip
+// past a stricter literal match.
+func hasDownSection(content []byte) bool {
+	for _, line := range strings.Split(string(content), "\n") {
+		if !strings.HasPrefix(strings.TrimSpace(line), "--") || !strings.Contains(line, "+goose") {
+			continue
+		}
+		annotation := strings.Replace(strings.ReplaceAll(line, "--", ""), "+goose", "", 1)
+		if strings.EqualFold(strings.TrimSpace(annotation), "Down") {
+			return true
+		}
+	}
+	return false
 }
