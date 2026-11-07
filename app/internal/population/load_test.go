@@ -64,7 +64,6 @@ id = "runtime"
 uses = "runtime"
 [[agent.populations]]
 name = "dispatch"
-resource_observer = "source"
 `+timing+`
 [agent.populations.query]
 scope = "all"
@@ -83,7 +82,7 @@ command = "printf"
 	if err != nil {
 		t.Fatalf("Load: %v", err)
 	}
-	if len(defs) != 1 || defs[0].Workflow.Address != "agent" || defs[0].Observer.ID != "source" {
+	if len(defs) != 1 || defs[0].Workflow.Address != "agent" || defs[0].Entry.ID != "source" {
 		t.Fatalf("definitions = %+v", defs)
 	}
 }

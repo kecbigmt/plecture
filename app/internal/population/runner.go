@@ -27,7 +27,7 @@ type actionRunner struct {
 }
 
 func (r actionRunner) Poll(ctx context.Context, def Definition) ([]map[string]any, error) {
-	execution, cleanup, err := r.resolve(def, def.Observer.Query.Poll)
+	execution, cleanup, err := r.resolve(def, def.Entry.Query.Poll)
 	if err != nil {
 		return nil, err
 	}
@@ -50,7 +50,7 @@ func (r actionRunner) Poll(ctx context.Context, def Definition) ([]map[string]an
 }
 
 func (r actionRunner) Subscribe(ctx context.Context, def Definition, emit func(map[string]any) error) error {
-	execution, cleanup, err := r.resolve(def, def.Observer.Query.Subscribe)
+	execution, cleanup, err := r.resolve(def, def.Entry.Query.Subscribe)
 	if err != nil {
 		return err
 	}
@@ -97,11 +97,11 @@ func (r actionRunner) resolve(def Definition, action *lang.Action) (*lang.Execut
 		return nil, func() {}, err
 	}
 	cleanup := func() { _ = os.RemoveAll(dir) }
-	bins := config.MountedBins{Mounted: r.cfg.Plugins, SourcePath: def.Observer.SourcePath}
+	bins := config.MountedBins{Mounted: r.cfg.Plugins, SourcePath: def.Entry.SourcePath}
 	eval := lang.Eval{
 		Roots: lang.Roots{"inputs": def.Population.Query},
 		Bin: func(ref string) (string, error) {
-			return bins.ResolveBin(ref, def.Observer.Ownership())
+			return bins.ResolveBin(ref, def.Entry.Ownership())
 		},
 	}
 	execution, err := eval.Run(filepath.Join(dir, "action"), action, nil)

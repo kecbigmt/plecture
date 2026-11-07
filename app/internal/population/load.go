@@ -15,10 +15,9 @@ import (
 type Definition struct {
 	Workflow   config.WorkflowFile
 	Population config.WorkflowPopulation
-	Observer   config.ResourceDef
-	// Entry is the workflow's entry resource: every item the population
-	// admits must be recognized by it, because a session is created from the
-	// item through that resource.
+	// Entry is the workflow's entry resource. It is both the query the
+	// population runs and the type every admitted item must resolve to, so the
+	// two can never name different resources.
 	Entry         config.ResourceDef
 	InitialTask   *config.TaskDocument
 	ItemSchema    *jsonschema.Schema
@@ -63,15 +62,13 @@ func Load(cfg *config.Config) ([]Definition, error) {
 
 func resolveDefinition(wf config.WorkflowFile, p config.WorkflowPopulation, observers map[string]config.ResourceDef, docs map[string]config.TaskDocument) (Definition, error) {
 	def := Definition{Workflow: wf, Population: p}
-	observer := observers[p.ResourceObserver]
-	def.Observer = observer
 	entry, ok := observers[wf.Resource]
 	if !ok {
 		return def, fmt.Errorf("workflow resource names unknown definition %q", wf.Resource)
 	}
 	def.Entry = entry
 
-	query := observer.Query
+	query := entry.Query
 	var err error
 	def.ItemSchema, err = lang.CompileInlineSchema(query.ItemSchema, "plect:population:"+wf.Address+":"+p.Name+":items")
 	if err != nil {

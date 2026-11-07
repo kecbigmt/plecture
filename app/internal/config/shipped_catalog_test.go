@@ -423,7 +423,6 @@ resource = "official.github.pull_request"
 
 [[agent.populations]]
 name              = "dispatch"
-resource_observer = "official.github.pull_request"
 uses              = ["poll"]
 poll_every        = "1m"
 auto_down         = true
@@ -440,7 +439,7 @@ draft        = false
 		t.Fatalf("LoadWorkflows: %v", err)
 	}
 	populations := workflows["agent"].Populations
-	if len(populations) != 1 || populations[0].ResourceObserver != "official.github.pull_request" {
+	if len(populations) != 1 {
 		t.Fatalf("populations = %+v", populations)
 	}
 }
@@ -457,7 +456,6 @@ resource = "official.slack.thread"
 
 [[ops.populations]]
 name              = "mentions"
-resource_observer = "official.slack.thread"
 uses              = ["subscribe"]
 expire_after      = "8h"
 auto_down         = true
@@ -475,7 +473,7 @@ denied_channel_message = "Use the other channel."
 		t.Fatalf("LoadWorkflows: %v", err)
 	}
 	populations := workflows["ops"].Populations
-	if len(populations) != 1 || populations[0].ResourceObserver != "official.slack.thread" {
+	if len(populations) != 1 {
 		t.Fatalf("populations = %+v", populations)
 	}
 }

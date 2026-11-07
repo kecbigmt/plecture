@@ -150,10 +150,14 @@ func (v Validation) validateWorkflowPopulations(def *Definition, pos Position) e
 	names := make(map[string]bool, len(entries))
 	for i, entry := range entries {
 		at := childPos(childPos(pos, "populations"), fmt.Sprintf("[%d]", i))
-		if err := rejectUnknownFields(entry, at, "name", "resource_observer", "query", "session", "uses", "poll_every", "expire_after", "auto_down", "auto_destroy"); err != nil {
+		if _, declared := entry["resource_observer"]; declared {
+			return newDiag(CodeFieldUnknown, LayerStructural, childPos(at, "resource_observer"),
+				"`resource_observer` is retired: a population uses its workflow's entry `resource`; see "+WorkspaceProviderMigrationGuide)
+		}
+		if err := rejectUnknownFields(entry, at, "name", "query", "session", "uses", "poll_every", "expire_after", "auto_down", "auto_destroy"); err != nil {
 			return err
 		}
-		for _, field := range []string{"name", "resource_observer", "query", "uses"} {
+		for _, field := range []string{"name", "query", "uses"} {
 			if _, ok := entry[field]; !ok {
 				return newDiag(CodeFieldRequired, LayerStructural, childPos(at, field),
 					fmt.Sprintf("a population declares `%s`", field))
@@ -175,9 +179,6 @@ func (v Validation) validateWorkflowPopulations(def *Definition, pos Position) e
 				fmt.Sprintf("population name %q is declared more than once in workflow %q", name, def.ID))
 		}
 		names[name] = true
-		if _, err := staticRef(entry["resource_observer"], childPos(at, "resource_observer").Path); err != nil {
-			return err
-		}
 		query, err := table(entry["query"], childPos(at, "query"))
 		if err != nil {
 			return err
@@ -207,17 +208,22 @@ func (v Validation) ValidatePopulationContracts(workflow *Definition, registry *
 	if err != nil || len(entries) == 0 {
 		return err
 	}
+	workflowPos := Position{File: workflow.File, Path: workflow.ID}
+	entryRef, ok := workflow.Body["resource"].(string)
+	if !ok {
+		return newDiag(CodeFieldRequired, LayerStructural, childPos(workflowPos, "resource"),
+			"a workflow with populations declares its entry `resource`")
+	}
+	observer, err := registry.ExpectKind(entryRef, v.From, KindResource, workflow.ID+".resource")
+	if err != nil {
+		return err
+	}
 	for i, entry := range entries {
 		at := Position{File: workflow.File, Path: fmt.Sprintf("%s.populations.[%d]", workflow.ID, i)}
-		observerRef := entry["resource_observer"].(string)
-		observer, err := registry.ExpectKind(observerRef, v.From, KindResource, at.Path+".resource_observer")
-		if err != nil {
-			return err
-		}
 		query, ok := observer.Body["query"].(map[string]any)
 		if !ok {
-			return newDiag(CodePopulationContract, LayerSemantic, childPos(at, "resource_observer"),
-				fmt.Sprintf("resource %q declares no query face", observerRef))
+			return newDiag(CodePopulationContract, LayerSemantic, childPos(workflowPos, "resource"),
+				fmt.Sprintf("entry resource %q declares no query face, so the workflow cannot declare a population", entryRef))
 		}
 		inputSchema, err := CompileInlineSchema(query["inputs_schema"].(map[string]any), "plect:population-query-inputs")
 		if err != nil {
@@ -225,7 +231,7 @@ func (v Validation) ValidatePopulationContracts(workflow *Definition, registry *
 		}
 		if err := inputSchema.Validate(entry["query"]); err != nil {
 			return newDiag(CodePopulationContract, LayerSemantic, childPos(at, "query"),
-				"population query parameters do not satisfy the observer query inputs_schema: "+err.Error())
+				"population query parameters do not satisfy the entry resource's query inputs_schema: "+err.Error())
 		}
 		if err := validatePopulationUsesContract(entry, query, at); err != nil {
 			return err

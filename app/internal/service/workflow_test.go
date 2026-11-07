@@ -23,7 +23,7 @@ func writeFile(t *testing.T, path, content string) {
 
 func TestWorkflowPopulationViewsExposeResolvedPolicy(t *testing.T) {
 	views := workflowPopulationViews([]config.WorkflowPopulation{{
-		Name: "dispatch", ResourceObserver: "source", Query: map[string]any{"scope": "open"},
+		Name: "dispatch", Query: map[string]any{"scope": "open"},
 		Session: config.PopulationSession{
 			Task: "work", Inputs: map[string]*lang.Value{"resource": {Form: lang.FormFrom, From: "resource.id"}},
 			Destroy: config.PopulationDestroy{Force: true},

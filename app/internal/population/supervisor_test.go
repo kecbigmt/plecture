@@ -73,7 +73,7 @@ func TestRunEvaluatorOnlyStartsSelectedMeans(t *testing.T) {
 			Uses:      []string{"poll"},
 			PollEvery: config.Duration{Duration: 10 * time.Millisecond},
 		},
-		Observer: config.ResourceDef{Query: &config.ResourceQuery{Poll: &lang.Action{}, Subscribe: &lang.Action{}}},
+		Entry: config.ResourceDef{Query: &config.ResourceQuery{Poll: &lang.Action{}, Subscribe: &lang.Action{}}},
 	}
 	logStore := eventlog.NewStore(store.Dir())
 	engine := NewEngine(def, store, logStore, admitstatus.NewCache(logStore), Hooks{})

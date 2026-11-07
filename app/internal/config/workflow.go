@@ -218,15 +218,14 @@ type WorkflowNode struct {
 // WorkflowPopulation declares one desired set of sessions owned by its
 // containing workflow and identified below it by Name.
 type WorkflowPopulation struct {
-	Name             string
-	ResourceObserver string
-	Query            map[string]any
-	Session          PopulationSession
-	Uses             []string
-	PollEvery        Duration
-	ExpireAfter      Duration
-	AutoDown         bool
-	AutoDestroy      bool
+	Name        string
+	Query       map[string]any
+	Session     PopulationSession
+	Uses        []string
+	PollEvery   Duration
+	ExpireAfter Duration
+	AutoDown    bool
+	AutoDestroy bool
 }
 
 func (p WorkflowPopulation) UsesPoll() bool {

@@ -7,7 +7,6 @@ resource = "query_source"
 
 [[bad_timing.populations]]
 name              = "dispatch"
-resource_observer = "query_source"
 uses              = ["poll"]
 
 [bad_timing.populations.query]

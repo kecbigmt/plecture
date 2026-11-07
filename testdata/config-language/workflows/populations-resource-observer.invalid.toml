@@ -1,0 +1,15 @@
+# plect-fixture: result=invalid layer=structural diagnostic=PLECTURE-CFG-FIELD-UNKNOWN entry=definitions
+# reason: a population derives its resource from the workflow's entry resource, so it cannot declare one of its own.
+
+[standing_cases]
+kind     = "workflow"
+resource = "query_source"
+
+[[standing_cases.populations]]
+name              = "dispatch"
+resource_observer = "query_source"
+uses              = ["poll"]
+poll_every        = "5m"
+
+[standing_cases.populations.query]
+scope = "open"

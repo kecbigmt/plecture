@@ -10,7 +10,8 @@ Read the whole procedure before making changes. Perform it with the release
 that removes the workspace provider. The loader refuses each retired spelling
 with a diagnostic that points here: a `kind = "workspace_provider"`
 declaration, a workflow's `workspace_provider` or `workspace_provider_inputs`
-field, and `workspace_dirs_root` in `config.toml`.
+field, a population's `resource_observer`, and `workspace_dirs_root` in
+`config.toml`.
 
 ## Backup
 
@@ -82,8 +83,13 @@ workflow's `workdir` and never stored.
    a session created before this release has no record and expands from the
    plugin and global layers alone.
 7. Move a workflow's initial task selection to each invocation, chain, or
-   population. Ensure each task's concrete resource matches the task document
-   and ensure a population derives its resource from its workflow.
+   population. Ensure each task's concrete resource matches the task document.
+8. Delete `resource_observer` from every `[[<workflow>.populations]]` entry.
+   A population queries its workflow's entry `resource` and validates `query`
+   against that resource's query `inputs_schema`; the loader refuses the
+   retired field with a diagnostic that points here. A population whose
+   `resource_observer` named a different resource than its workflow's
+   `resource` moves to a workflow whose entry resource is that resource.
 
 ## Establish project contexts
 

@@ -161,7 +161,6 @@ kind = "workflow"
 resource = "source"
 [[agent.populations]]
 name = "dispatch"
-resource_observer = "source"
 uses = ["poll"]
 poll_every = "1m"
 [agent.populations.query]
@@ -186,19 +185,16 @@ context = { from = "item.context", optional = true }
 	}
 }
 
-func TestWorkflowPopulationRequiresUniqueNameObserverAndQuery(t *testing.T) {
+func TestWorkflowPopulationRequiresUniqueNameAndQuery(t *testing.T) {
 	tests := []struct {
 		name string
 		body string
 	}{
-		{"name", `resource_observer = "source"
-[agent.populations.query]
-scope = "all"`},
-		{"observer", `name = "dispatch"
+		{"name", `uses = ["poll"]
 [agent.populations.query]
 scope = "all"`},
 		{"query", `name = "dispatch"
-resource_observer = "source"`},
+uses = ["poll"]`},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -219,12 +215,10 @@ kind = "workflow"
 resource = "issue"
 [[agent.populations]]
 name = "dispatch"
-resource_observer = "source"
 uses = ["poll"]
 [agent.populations.query]
 [[agent.populations]]
 name = "dispatch"
-resource_observer = "source"
 uses = ["poll"]
 [agent.populations.query]
 `)
@@ -259,7 +253,6 @@ kind = "workflow"
 resource = "source"
 [[agent.populations]]
 name = "dispatch"
-resource_observer = "source"
 uses = ["poll"]
 poll_every = "1m"
 [agent.populations.query]

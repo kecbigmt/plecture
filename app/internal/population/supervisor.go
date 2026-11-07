@@ -105,10 +105,9 @@ func definitionFingerprint(def Definition) [32]byte {
 	raw, _ := json.Marshal(struct {
 		Workflow   *lang.Definition
 		Population config.WorkflowPopulation
-		Observer   *lang.Definition
 		Entry      *lang.Definition
 		Task       *lang.Definition
-	}{def.Workflow.Definition, def.Population, def.Observer.Definition, def.Entry.Definition, taskDefinition(def.InitialTask)})
+	}{def.Workflow.Definition, def.Population, def.Entry.Definition, taskDefinition(def.InitialTask)})
 	return sha256.Sum256(raw)
 }
 
@@ -127,12 +126,12 @@ type sourceResult struct {
 func (s *Supervisor) runEvaluator(ctx context.Context, engine *Engine, runner queryRunner) {
 	def := engine.definition
 	source := make(chan sourceResult)
-	if def.Observer.Query.Subscribe != nil && def.Population.UsesSubscribe() {
+	if def.Entry.Query.Subscribe != nil && def.Population.UsesSubscribe() {
 		go s.runSubscription(ctx, runner, def, source)
 	}
 	var poll <-chan time.Time
 	var pollTicker *time.Ticker
-	if def.Observer.Query.Poll != nil && def.Population.UsesPoll() {
+	if def.Entry.Query.Poll != nil && def.Population.UsesPoll() {
 		pollTicker = time.NewTicker(def.Population.PollEvery.Duration)
 		defer pollTicker.Stop()
 		immediate := make(chan time.Time, 1)
