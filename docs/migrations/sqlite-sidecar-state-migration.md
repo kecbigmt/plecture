@@ -7,14 +7,11 @@ schema migration and performs the import when it first opens the database.
 
 ## Before upgrading
 
-Stop every plect process that uses the data directory. Back up the whole data
-directory before starting the updated binary:
-
-```sh
-DATA_DIR="${PLECT_DATA_HOME:-${XDG_DATA_HOME:-$HOME/.local/share}/plect}"
-STAMP="$(date -u +%Y%m%dT%H%M%SZ)"
-cp -a "$DATA_DIR" "$DATA_DIR.sidecar-state-backup.$STAMP"
-```
+Stop every plect process that uses the data directory, then follow
+[storage upgrade backup and rollback](storage-upgrade-backup-and-rollback.md#before-upgrading).
+Before applying the schema migration, the updated binary backs up `storage.db`
+together with the `pending_delivery.json` and `events/` sidecars that this
+migration imports and removes.
 
 The importer maps each chain-attempt or subscription-retry session name to
 its live `sessions.id`, or to the most recently destroyed row of that name.
@@ -30,7 +27,7 @@ including an events-only tombstone that the earlier import intentionally
 skipped. A name with neither row in a sidecar that requires import, a malformed
 sidecar, a chain-attempt generation that identifies another session, or an
 unexpected path in `events/` stops the import and leaves every source sidecar
-in place. Correct the source or restore the backup before retrying.
+in place. Correct the source, or restore the backup, before retrying.
 
 ## Upgrade and verify
 
@@ -40,24 +37,21 @@ source sidecars. An interrupted cleanup is safe to rerun because the rows use
 primary-key upserts before files are removed.
 
 ```sh
+DATA_DIR="${PLECT_DATA_HOME:-${XDG_DATA_HOME:-$HOME/.local/share}/plect}"
 plect status
-find "$DATA_DIR" -maxdepth 3 -type f | sort
+find "$DATA_DIR" -maxdepth 3 -type f -not -path "$DATA_DIR/backups/*" | sort
 ```
 
 The listing contains `storage.db`, its SQLite and persistence-gate sidecars,
-and any `delivery-locks/<escaped-session>.lock` files. It contains no
+and any `delivery-locks/<escaped-session>.lock` files. Files under `backups/`
+are left out of the listing on purpose: they are the pre-migration backup. It contains no
 `events/` tree, `pending_delivery.json`, `tombstone.json`, or
 `chain_attempts.json`.
 
 ## Rollback
 
-Stop plect again, move the migrated data directory aside, and restore the
-backup created before the upgrade:
-
-```sh
-mv "$DATA_DIR" "$DATA_DIR.sidecar-state-failed.$STAMP"
-mv "$DATA_DIR.sidecar-state-backup.$STAMP" "$DATA_DIR"
-```
-
-The schema migration is append-only, so restoring the backup is the rollback
-mechanism for both the database schema and the removed sidecars.
+Follow [storage upgrade backup and rollback](storage-upgrade-backup-and-rollback.md#rollback).
+The backup taken before the migration holds the sidecars that the import
+removed, and `plect storage restore` puts them back along with `storage.db`.
+The schema migration is append-only, so restoring the backup is the only
+rollback for both the database schema and the removed sidecars.
