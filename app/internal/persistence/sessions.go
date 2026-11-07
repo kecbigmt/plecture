@@ -214,16 +214,12 @@ func (db *DB) PruneReleasedNode(ctx context.Context, sessionName, nodeID string)
 			}
 			return fmt.Errorf("resolve session %q: %w", sessionName, err)
 		}
-		referenced, err := sessionResourceIDsTx(ctx, q, sessionID)
-		if err != nil {
-			return err
-		}
 		affected, err := q.DeleteReleasedNodeInstance(ctx, sqlcgen.DeleteReleasedNodeInstanceParams{SessionID: sessionID, NodeID: nodeID})
 		if err != nil {
 			return fmt.Errorf("prune released node %q/%q: %w", sessionName, nodeID, err)
 		}
 		pruned = affected > 0
-		return releaseResourcesTx(ctx, q, referenced)
+		return nil
 	})
 	if err != nil {
 		return false, err
@@ -245,14 +241,10 @@ func (db *DB) ResetNodes(ctx context.Context, sessionName string) error {
 			}
 			return fmt.Errorf("resolve session %q: %w", sessionName, err)
 		}
-		referenced, err := sessionResourceIDsTx(ctx, q, sessionID)
-		if err != nil {
-			return err
-		}
 		if err := q.DeleteNodeInstancesForSession(ctx, sessionID); err != nil {
 			return fmt.Errorf("reset nodes for %q: %w", sessionName, err)
 		}
-		return releaseResourcesTx(ctx, q, referenced)
+		return nil
 	})
 }
 
@@ -286,13 +278,7 @@ func (db *DB) PurgeSessionByName(ctx context.Context, name string) error {
 		if err != nil {
 			return fmt.Errorf("purge session %q: list incarnations: %w", name, err)
 		}
-		var referenced []string
 		for _, id := range ids {
-			held, err := sessionResourceIDsTx(ctx, q, id)
-			if err != nil {
-				return err
-			}
-			referenced = append(referenced, held...)
 			// A kept row's parent/root id can legitimately point at this
 			// id; ON DELETE NO ACTION would reject the delete below.
 			ref := sql.NullString{String: id, Valid: true}
@@ -312,7 +298,7 @@ func (db *DB) PurgeSessionByName(ctx context.Context, name string) error {
 		if err := q.DeleteUpReservation(ctx, name); err != nil {
 			return fmt.Errorf("purge session %q: delete up-slot reservation: %w", name, err)
 		}
-		return releaseResourcesTx(ctx, q, referenced)
+		return nil
 	})
 }
 
@@ -331,11 +317,8 @@ func (db *DB) writeSessionTx(ctx context.Context, tx *sql.Tx, s *domain.Session)
 	}
 
 	candidateID := existingID
-	var referenced []string
 	if candidateID == "" {
 		candidateID = newULID()
-	} else if referenced, err = sessionResourceIDsTx(ctx, q, existingID); err != nil {
-		return err
 	}
 	if err := recordResourceTx(ctx, q, s.Resource); err != nil {
 		return fmt.Errorf("session %q: %w", s.Name, err)
@@ -419,10 +402,7 @@ func (db *DB) writeSessionTx(ctx context.Context, tx *sql.Tx, s *domain.Session)
 	if err := db.writeTasksTx(ctx, tx, candidateID, s.Nodes, s.Tasks); err != nil {
 		return err
 	}
-	if err := writeChannelHealthTx(ctx, q, candidateID, s.ChannelValidationHealth, s.ChannelDeliveryHealth); err != nil {
-		return err
-	}
-	return releaseResourcesTx(ctx, q, referenced)
+	return writeChannelHealthTx(ctx, q, candidateID, s.ChannelValidationHealth, s.ChannelDeliveryHealth)
 }
 
 // insertSessionParams builds InsertSession's parameters from already-resolved
