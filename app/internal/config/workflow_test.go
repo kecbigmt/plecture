@@ -600,7 +600,7 @@ func TestLoadWorkflows_ResumeInstruction(t *testing.T) {
 		name, value, want string
 		fail              bool
 	}{
-		{"default", "", DefaultResumeInstruction, false},
+		{"default", "", "The runtime was restarted; your previous turn may have been interrupted. Check the state of your work and of the resources you were acting on before continuing, and do not repeat operations that are already complete.", false},
 		{"override", `resume_instruction = "Check before continuing."`, "Check before continuing.", false},
 		{"disabled", `resume_instruction = ""`, "", false},
 		{"wrong type", `resume_instruction = 1`, "", true},

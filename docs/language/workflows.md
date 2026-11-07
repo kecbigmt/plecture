@@ -322,9 +322,12 @@ not individual keys.
 `[<id>.health]` optionally permits automatic repair with
 `auto_repair_attempts`, a required non-negative integer when the table is
 declared. The default is `0`, which disables repair. `resume_instruction` is an
-optional string. Its default instructs the agent to check the worktree and
-related PRs and threads before continuing after an interrupted runtime.
-An empty string disables the instruction. A later workflow table replaces an
+optional string. Its default instructs the agent to check the state of its
+work and of the resources it was acting on before continuing after an
+interrupted runtime, and names no particular tool or service; wording specific
+to a VCS, forge, or chat service belongs in the workflow's own
+`resume_instruction`, as in the example below. An empty string disables the
+instruction. A later workflow table replaces an
 inherited `[health]` table as a whole; setting `auto_repair_attempts` to `0`
 disables inherited permission, while omitting `resume_instruction` selects the
 default text. For example:
