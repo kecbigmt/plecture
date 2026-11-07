@@ -54,13 +54,16 @@ def run_git(root, args):
 
 
 def changed_files(root, base, head):
+    """Return (path, source) pairs; source is the pre-rename path of a
+    renamed file and None otherwise, so a rename is scored against its
+    source rather than as a wholly added file."""
     result = run_git(
         root,
         [
             "diff",
-            "--no-renames",
-            "--diff-filter=AM",
-            "--name-only",
+            "--find-renames",
+            "--diff-filter=AMR",
+            "--name-status",
             base,
             head,
             "--",
@@ -74,8 +77,16 @@ def changed_files(root, base, head):
     if result.returncode != 0:
         sys.stderr.write(result.stderr.decode("utf-8", "replace"))
         sys.exit(2)
-    paths = [p for p in result.stdout.decode("utf-8").splitlines() if p]
-    return [p for p in paths if not excluded(root, p)]
+    files = []
+    for entry in result.stdout.decode("utf-8").splitlines():
+        fields = entry.split("\t")
+        if fields[0].startswith("R"):
+            source, path = fields[1], fields[2]
+        else:
+            source, path = None, fields[1]
+        if not excluded(root, path):
+            files.append((path, source))
+    return files
 
 
 def excluded(root, path):
@@ -109,8 +120,12 @@ def merge_base(root, base, head):
 HUNK_HEADER_RE = re.compile(r"^@@ -\d+(?:,\d+)? \+(\d+)(?:,(\d+))? @@")
 
 
-def added_line_numbers(root, base, head, path):
-    result = run_git(root, ["diff", "--no-renames", "-U0", base, head, "--", path])
+def added_line_numbers(root, base, head, path, source):
+    if source is None:
+        args = ["diff", "--no-renames", "-U0", base, head, "--", path]
+    else:
+        args = ["diff", "--find-renames", "-U0", base, head, "--", source, path]
+    result = run_git(root, args)
     if result.returncode != 0:
         sys.stderr.write(result.stderr.decode("utf-8", "replace"))
         sys.exit(2)
@@ -550,14 +565,14 @@ def main(argv):
     violations = []
     sentence_index = {}
 
-    for path in changed_files(root, base, head):
+    for path, source in changed_files(root, base, head):
         ext = ext_of(path)
-        added = added_line_numbers(root, base, head, path)
+        added = added_line_numbers(root, base, head, path, source)
         if not added:
             continue
         lines = file_lines(root, head, path)
         kinds, comment_text = classify_file(lines, ext)
-        new_file = is_new_file(root, base, path)
+        new_file = source is None and is_new_file(root, base, path)
 
         check_density(path, added, kinds, violations)
         check_block_length(path, added, kinds, lines, new_file, violations)
