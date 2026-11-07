@@ -274,8 +274,6 @@ func TestMessageEventMentionEntryGuardsLogTheirReason(t *testing.T) {
 	}
 }
 
-// Ordinary bot posts and edits arrive constantly; only a dropped mention is
-// worth an INFO line.
 func TestNonMentionMessageDropStaysOutOfInfoLog(t *testing.T) {
 	a := newTestAdapter(&Config{})
 	a.botUserID = "U-bot"
@@ -289,18 +287,22 @@ func TestNonMentionMessageDropStaysOutOfInfoLog(t *testing.T) {
 	}
 }
 
-// Each "あ" is one three-byte UTF-8 character, so these texts exercise
-// a byte budget that a character count would underestimate.
+// multibyteText is unicode test data: the escape is a three-byte UTF-8
+// character (the Japanese hiragana letter "a"), so a byte budget sees three
+// times its character count.
+func multibyteText(n int) string {
+	return strings.Repeat("\u3042", n)
+}
+
 func TestOversizedRetainedLinesStayWithinTranscriptBudget(t *testing.T) {
-	huge := func(n int) string { return strings.Repeat("あ", n) }
 	for _, tc := range []struct {
 		name    string
 		root    string
 		mention string
 	}{
-		{name: "root", root: "Root " + huge(45000), mention: "<@U-bot> act"},
-		{name: "mention", root: "Root", mention: "<@U-bot> act " + huge(45000)},
-		{name: "root and mention", root: "Root " + huge(30000), mention: "<@U-bot> act " + huge(15000)},
+		{name: "root", root: "Root " + multibyteText(45000), mention: "<@U-bot> act"},
+		{name: "mention", root: "Root", mention: "<@U-bot> act " + multibyteText(45000)},
+		{name: "root and mention", root: "Root " + multibyteText(30000), mention: "<@U-bot> act " + multibyteText(15000)},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			argsPath := installRecordingPlect(t)
@@ -330,7 +332,7 @@ func TestCatchUpWithOversizedRootStaysWithinTranscriptBudget(t *testing.T) {
 	a := newTestAdapter(&Config{})
 	a.eventPublisher = cliEventPublisher{}
 	a.threadFetcher = &fakeThreadFetcher{messages: []slack.Message{
-		slackMessage(longThreadTS, "U-root", "Root "+strings.Repeat("あ", 45000)),
+		slackMessage(longThreadTS, "U-root", "Root "+multibyteText(45000)),
 		slackMessage("1700000001.000001", "U-alice", "reply"),
 	}}
 	sub := a.broker.Subscribe(Subscriber{SessionName: "work", ThreadTS: longThreadTS, ChannelID: "C1"})
