@@ -21,8 +21,8 @@ pair.
 `subscribe` and `unsubscribe` take a resource input object satisfying
 `inputs_schema` when the resource declares one; no declaration means the
 empty object. A binding made by `plect up`, `plect task setup`, a chain, a
-population, or a node's `subscription` passes the empty object. Only a
-standalone `plect subscribe` or unsubscribe supplies one.
+population, or a node's `subscription` passes the empty object, and so does
+every `unsubscribe`. Only a standalone `plect subscribe` supplies one.
 
 Resource action inputs are never inferred from workflow inputs or a previous
 resource binding. Query inputs are separate: a population supplies the literal
@@ -72,8 +72,9 @@ schema. A node's `subscription` uses the same empty-input rule after its setup
 produces an identifier. If required inputs prevent that binding, a known
 identifier fails loading and a runtime identifier reports a subscription
 failure for retry; neither is silently skipped. Teardown runs `unsubscribe`
-when the resource is no longer needed by the session entry, any task, or any
-live node.
+with the empty object when the resource is no longer needed by the session
+entry, any task, or any live node and the empty object satisfies its schema;
+otherwise the delivery registration is left in place.
 
 ## Query
 
