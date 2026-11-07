@@ -241,29 +241,12 @@ complete declaration, including its `resource` and every node. A project tree
 declares only effects, task documents, and workflows: a resource or channel
 there is a load error, so move it to the global configuration.
 
-The upgrade replaces each session's recorded invocation directory with a
-recorded project root and starts every existing session in the global-only
-context, because a directory does not say which root it would have selected.
-For a session whose workflow came from a project tree, back up the state
-database and record its root by hand while no `plect` process is running:
-
-```bash
-DATA_DIR="${XDG_DATA_HOME:-$HOME/.local/share}/plect"
-cp "$DATA_DIR/storage.db" "$DATA_DIR/storage.db.pre-project-root"
-sqlite3 "$DATA_DIR/storage.db" \
-  "UPDATE sessions SET project_root = '/projects/widgets' WHERE name = 'widgets-42'"
-```
-
-The root must be the canonical path listed in `trusted_project_roots`. Until it
-is recorded, `plect workflow rebase` on that session reads the global
-configuration alone and reports the project's workflow as missing.
-
 A population is identified by the configuration context that declares it as
 well as by its workflow and name, and every existing population belongs to the
 global-only context. A population-owned session keeps its population's
-context, so the update above is refused for one. To move a population into a
-project root, destroy its sessions with the pre-upgrade population
-configuration in place, then declare it in the project tree: the resident
+context. To move a population into a project root, destroy its sessions with
+the pre-upgrade population configuration in place, then declare it in the
+project tree: the resident
 evaluator started from that root admits its members afresh. `plect serve`
 selects the context of the directory it starts in and stops when that root is
 not trusted; start it from the project root, or from a directory with no
@@ -283,7 +266,10 @@ new release stops" above.
 
 Run `plect ls` and confirm that no session is marked `!retired`. Recreate the
 sessions you need with `plect up <resource>`, adding `--tag` where two
-sessions for one resource run side by side.
+sessions for one resource run side by side. Run it from below the trusted
+project root whose workflow the session uses: the upgrade records no project
+root for an existing session, and a new session records the root its
+invocation selected.
 
 ## Verify and recover
 
