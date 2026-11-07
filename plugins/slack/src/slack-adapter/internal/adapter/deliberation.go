@@ -61,11 +61,18 @@ func (a *Adapter) handleAppMention(ev *slackevents.AppMentionEvent) {
 	}
 	valid := threadSubs[:0]
 	for _, sub := range threadSubs {
-		if sub.SessionName != "" && sub.ChannelID == ev.Channel {
+		if sub.SessionName != "" && sub.ChannelID == ev.Channel && (sub.DeliveredThrough == "" || compareSlackTS(sub.DeliveredThrough, ev.TimeStamp) < 0) {
 			valid = append(valid, sub)
 		}
 	}
 	mentions := a.broker.ListMentions()
+	pendingMentions := mentions[:0]
+	for _, sub := range mentions {
+		if through := a.broker.MentionWatermark(sub.SessionName, threadTS); through == "" || compareSlackTS(through, ev.TimeStamp) < 0 {
+			pendingMentions = append(pendingMentions, sub)
+		}
+	}
+	mentions = pendingMentions
 	if len(valid) == 0 && len(mentions) == 0 {
 		return
 	}

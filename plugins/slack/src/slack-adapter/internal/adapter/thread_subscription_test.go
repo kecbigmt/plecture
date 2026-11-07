@@ -67,9 +67,9 @@ func TestThreadMentionPublishesForEachSessionWithoutDuplicateMessage(t *testing.
 		a.broker.Subscribe(Subscriber{SessionName: session, ThreadTS: "1700000000.000001", ChannelID: "C1"})
 	}
 	a.broker.MarkDelivered("one", "1700000000.000001", "1700000001.000001")
-	a.handleMessage(&slackevents.MessageEvent{User: "U1", Text: "<@U-bot> act", ThreadTimeStamp: "1700000000.000001", Channel: "C1"})
-	if len(publisher.events) != 0 {
-		t.Fatalf("mention was captured as slack.message: %+v", publisher.events)
+	a.handleMessage(&slackevents.MessageEvent{User: "U1", Text: "<@U-bot> act", TimeStamp: "1700000002.000001", ThreadTimeStamp: "1700000000.000001", Channel: "C1"})
+	if len(publisher.events) != 2 {
+		t.Fatalf("message-only mention events = %+v, want one per subscriber", publisher.events)
 	}
 	a.handleAppMention(&slackevents.AppMentionEvent{User: "U1", Text: "<@U-bot> act", TimeStamp: "1700000002.000001", ThreadTimeStamp: "1700000000.000001", Channel: "C1"})
 	if len(publisher.events) != 2 {

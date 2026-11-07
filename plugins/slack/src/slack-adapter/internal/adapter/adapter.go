@@ -205,6 +205,22 @@ func (a *Adapter) handleMessage(ev *slackevents.MessageEvent) {
 	}
 
 	if a.isAppMentionMessage(ev.Text) {
+		if a.botUserID == "" {
+			return
+		}
+		if ev.TimeStamp == "" {
+			a.logger.Warn("cannot deliver message mention without timestamp", "thread_ts", threadTS, "channel_id", ev.Channel)
+			return
+		}
+		for _, sub := range a.broker.ListThread(threadTS) {
+			if sub.SessionName != "" && sub.ChannelID == ev.Channel {
+				a.handleAppMention(&slackevents.AppMentionEvent{
+					User: ev.User, Text: ev.Text, TimeStamp: ev.TimeStamp,
+					ThreadTimeStamp: threadTS, Channel: ev.Channel, UserTeam: ev.UserTeam,
+				})
+				break
+			}
+		}
 		return
 	}
 
