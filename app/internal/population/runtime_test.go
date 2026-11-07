@@ -112,3 +112,36 @@ command = "true"
 		t.Fatalf("resuming a down member = %+v, want a transition", resumed)
 	}
 }
+
+func TestPopulationCannotAdoptSameProvenanceSessionRecordedForAnotherEntry(t *testing.T) {
+	t.Setenv("PLECT_SESSION_NAME", "")
+	cfg := populationConfig(t, `[source.query.poll]
+type = "exec"
+command = "true"
+`, "uses = [\"poll\"]\npoll_every = \"1m\"", `resource = { from = "resource.id" }`)
+	definitions, err := Load(cfg)
+	if err != nil {
+		t.Fatal(err)
+	}
+	definition := definitions[0]
+	provenance := &contract.PopulationProvenance{Workflow: definition.Workflow.Address, Name: definition.Population.Name}
+	name, err := service.ResolvePopulationSessionName(cfg, definition.Workflow.Address, "urn:case:a")
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, recorded := range []struct{ label, resourceType string }{{"another type", "other"}, {"no recorded entry", ""}} {
+		t.Run(recorded.label, func(t *testing.T) {
+			store := state.NewStore(t.TempDir())
+			seedPopulationRow(t, store, definition)
+			if err := store.Put(&contract.Session{Name: name, ResourceID: "urn:case:a", ResourceType: recorded.resourceType, Workflow: definition.Workflow.Address, Population: provenance}); err != nil {
+				t.Fatal(err)
+			}
+
+			_, err := upPopulation(func() *config.Config { return cfg }, store, definition, provenance, "urn:case:a", nil)
+			var conflict *populationConflictError
+			if !errors.As(err, &conflict) {
+				t.Fatalf("error = %v, want a population identity conflict", err)
+			}
+		})
+	}
+}

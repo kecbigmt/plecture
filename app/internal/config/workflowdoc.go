@@ -174,9 +174,8 @@ func workflowPopulationsFrom(def *lang.Definition, pos lang.Position) ([]Workflo
 	out := make([]WorkflowPopulation, 0, len(entries))
 	for i, entry := range entries {
 		p := WorkflowPopulation{
-			Name:             entry["name"].(string),
-			ResourceObserver: entry["resource_observer"].(string),
-			Query:            entry["query"].(map[string]any),
+			Name:  entry["name"].(string),
+			Query: entry["query"].(map[string]any),
 		}
 		for _, field := range []struct {
 			key    string

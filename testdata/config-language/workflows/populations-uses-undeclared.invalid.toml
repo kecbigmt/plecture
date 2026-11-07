@@ -1,13 +1,12 @@
 # plect-fixture: result=invalid layer=semantic diagnostic=PLECTURE-CFG-POPULATION-CONTRACT entry=definitions
-# reason: a population may select only a query means its resolved observer actually declares.
+# reason: a population may select only a query means its workflow's entry resource actually declares.
 
 [bad_uses_undeclared]
 kind     = "workflow"
-resource = "query_source"
+resource = "subscribe_only_source"
 
 [[bad_uses_undeclared.populations]]
 name              = "dispatch"
-resource_observer = "subscribe_only_source"
 uses              = ["poll"]
 poll_every        = "5m"
 

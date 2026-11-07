@@ -56,7 +56,7 @@ revision = { from = "resource.state.revision" }
 	stubObservedFacts(t, cfg, map[string]any{"checks_status": "SUCCESS", "revision": "sha1", "pr_url": prURL})
 
 	url := "https://github.com/testowner/testrepo/issues/55"
-	work := "testowner/testrepo-55+default"
+	work := "testowner/testrepo-55"
 	reviewer := "testowner/testrepo-56+review-work"
 
 	if _, err := Up(cfg, store, UpParams{Identifier: url}); err != nil {

@@ -73,13 +73,12 @@ func serviceHooks(cfg func() *config.Config, store *state.Store, def Definition,
 }
 
 func upPopulation(cfg func() *config.Config, store *state.Store, def Definition, provenance *contract.PopulationProvenance, resource string, inputs map[string]any) (UpOutcome, error) {
-	name, err := service.ResolvePopulationSessionName(cfg(), def.Workflow.Address, resource)
+	name, current, collision, err := service.ResolvePopulationSession(cfg(), store, def.Workflow.Address, resource)
+	if collision != nil {
+		return UpOutcome{}, &populationConflictError{session: name, reason: collision.Message}
+	}
 	if err != nil {
 		return UpOutcome{}, err
-	}
-	current, err := store.GetE(name)
-	if err != nil {
-		return UpOutcome{}, fmt.Errorf("read session %q state: %w", name, err)
 	}
 	if current != nil {
 		if current.Population == nil || *current.Population != *provenance || current.ResourceID != resource {

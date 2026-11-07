@@ -1288,3 +1288,27 @@ func TestPutSession_RoundTripsTheInvocationDirAcrossLaterWrites(t *testing.T) {
 		t.Errorf("InvocationDir = %q after an update, want it kept", again.InvocationDir)
 	}
 }
+
+func TestPutSession_RoundTripsTheEntryResourceAcrossLaterWrites(t *testing.T) {
+	db := migratedTestDB(t)
+	ctx := context.Background()
+	now := time.Now().UTC().Truncate(time.Second)
+	if err := db.PutSession(ctx, &domain.Session{Name: "case-1+review", Workflow: "review", ResourceID: "urn:case:1", ResourceType: "case", Tag: "review", CreatedAt: now, UpdatedAt: now}); err != nil {
+		t.Fatalf("PutSession: %v", err)
+	}
+	got, err := db.GetSession(ctx, "case-1+review")
+	if err != nil || got == nil {
+		t.Fatalf("GetSession: %v, %v", got, err)
+	}
+	got.Status = contract.SessionStatusUp
+	if err := db.PutSession(ctx, got); err != nil {
+		t.Fatalf("PutSession (update): %v", err)
+	}
+	again, err := db.GetSession(ctx, "case-1+review")
+	if err != nil || again == nil {
+		t.Fatalf("GetSession: %v, %v", again, err)
+	}
+	if again.ResourceType != "case" || again.Tag != "review" {
+		t.Errorf("entry = (%q, %q) after an update, want (case, review)", again.ResourceType, again.Tag)
+	}
+}

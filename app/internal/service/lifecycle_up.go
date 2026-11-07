@@ -20,9 +20,9 @@ import (
 // UpParams holds parameters for Up.
 type UpParams struct {
 	Identifier string // URL or session name
-	// Tag derives a tagged session name from a URL identifier. Only valid
-	// when Identifier is a URL; combining Tag with a bare session name
-	// returns ErrInvalidTag so misuse surfaces immediately rather than
+	// Tag appends one segment to the entry resource's instance name. Only
+	// valid when Identifier is a resource; combining Tag with a bare session
+	// name returns ErrInvalidTag so misuse surfaces immediately rather than
 	// silently ignoring the flag.
 	Tag           string
 	Workflow      string         // forwarded to auto-create; rejected when state already exists
@@ -87,11 +87,11 @@ func Up(cfg *config.Config, store *state.Store, params UpParams) (*UpResult, err
 func upLifecycleLockName(cfg *config.Config, store *state.Store, params UpParams) (string, error) {
 	disp, matched, err := dispatchResource(cfg, params.InvocationDir, params.Workflow, params.Identifier)
 	if err == nil && matched {
-		tag, tagErr := effectiveTag(params.Tag, disp.Workflow.ID)
-		if tagErr != nil {
-			return "", tagErr
+		name, nameErr := disp.sessionName(params.Tag)
+		if nameErr != nil {
+			return "", nameErr
 		}
-		return disp.Name + "+" + tag, nil
+		return name, nil
 	}
 	return resolveSessionName(cfg, store, params.Identifier)
 }
@@ -121,19 +121,10 @@ func upUnlocked(cfg *config.Config, store *state.Store, params UpParams) (*UpRes
 		return nil, &Error{Code: ErrExecutionFailed, Message: dispErr.Error()}
 	}
 	if matched {
-		// Resolver dispatch: the identifier is a resource id. Mirror the URL
-		// auto-create semantics below with the resolver-derived session name.
-		// The effective tag (explicit --tag or the workflow-id default) is
-		// resolved here and forwarded to Create so up and create converge on
-		// the same tagged session name.
-		tag, tagErr := effectiveTag(params.Tag, disp.Workflow.ID)
-		if tagErr != nil {
-			return nil, tagErr
-		}
-		sessionName := disp.Name + "+" + tag
-		existing, err := store.GetE(sessionName)
-		if err != nil {
-			return nil, &Error{Code: ErrExecutionFailed, Message: fmt.Sprintf("read session %q state: %v", sessionName, err)}
+		tag := params.Tag
+		sessionName, existing, entryErr := reusableEntrySession(store, disp, tag)
+		if entryErr != nil {
+			return nil, entryErr
 		}
 		if existing != nil {
 			switch {
@@ -195,7 +186,7 @@ func upUnlocked(cfg *config.Config, store *state.Store, params UpParams) (*UpRes
 		identifier = sessionName
 	} else {
 		if params.Tag != "" {
-			return nil, &Error{Code: ErrInvalidTag, Message: "--tag is only valid when the identifier is a resource a workflow resolver matches; a session name already encodes the tag"}
+			return nil, &Error{Code: ErrInvalidTag, Message: "--tag is only valid when the identifier is a resource; a session name already encodes the tag"}
 		}
 		if params.Inputs != nil {
 			return nil, &Error{Code: ErrInvalidInput, Message: "--input is only valid on the auto-create path; a bare session name implies an existing session"}

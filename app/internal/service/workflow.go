@@ -40,17 +40,16 @@ type WorkflowDetail struct {
 }
 
 type WorkflowPopulation struct {
-	Name             string            `json:"name"`
-	ResourceObserver string            `json:"resource_observer"`
-	Query            map[string]any    `json:"query"`
-	Task             string            `json:"task,omitempty"`
-	Inputs           map[string]string `json:"inputs,omitempty"`
-	DestroyForce     bool              `json:"destroy_force"`
-	PollEvery        string            `json:"poll_every,omitempty"`
-	ExpireAfter      string            `json:"expire_after,omitempty"`
-	AutoDown         bool              `json:"auto_down"`
-	AutoDestroy      bool              `json:"auto_destroy"`
-	Uses             []string          `json:"uses"`
+	Name         string            `json:"name"`
+	Query        map[string]any    `json:"query"`
+	Task         string            `json:"task,omitempty"`
+	Inputs       map[string]string `json:"inputs,omitempty"`
+	DestroyForce bool              `json:"destroy_force"`
+	PollEvery    string            `json:"poll_every,omitempty"`
+	ExpireAfter  string            `json:"expire_after,omitempty"`
+	AutoDown     bool              `json:"auto_down"`
+	AutoDestroy  bool              `json:"auto_destroy"`
+	Uses         []string          `json:"uses"`
 }
 
 // WorkflowChannel is the show-time view of an [[event.channel]]: its name, the
@@ -182,17 +181,16 @@ func workflowPopulationViews(populations []config.WorkflowPopulation) []Workflow
 	out := make([]WorkflowPopulation, 0, len(populations))
 	for _, population := range populations {
 		out = append(out, WorkflowPopulation{
-			Name:             population.Name,
-			ResourceObserver: population.ResourceObserver,
-			Query:            population.Query,
-			Task:             population.Session.Task,
-			Inputs:           valueSources(population.Session.Inputs),
-			DestroyForce:     population.Session.Destroy.Force,
-			PollEvery:        durationSource(population.PollEvery),
-			ExpireAfter:      durationSource(population.ExpireAfter),
-			AutoDown:         population.AutoDown,
-			AutoDestroy:      population.AutoDestroy,
-			Uses:             population.Uses,
+			Name:         population.Name,
+			Query:        population.Query,
+			Task:         population.Session.Task,
+			Inputs:       valueSources(population.Session.Inputs),
+			DestroyForce: population.Session.Destroy.Force,
+			PollEvery:    durationSource(population.PollEvery),
+			ExpireAfter:  durationSource(population.ExpireAfter),
+			AutoDown:     population.AutoDown,
+			AutoDestroy:  population.AutoDestroy,
+			Uses:         population.Uses,
 		})
 	}
 	return out

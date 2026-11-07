@@ -19,16 +19,16 @@ func queryAction(command string, args ...string) *lang.Action {
 
 func TestActionRunnerPollRequiresAJSONArray(t *testing.T) {
 	runner := actionRunner{cfg: &config.Config{}}
-	def := Definition{Observer: config.ResourceDef{Query: &config.ResourceQuery{}}}
+	def := Definition{Entry: config.ResourceDef{Query: &config.ResourceQuery{}}}
 	for _, output := range []string{`{"resource":"urn:case:a"}`, `null`} {
-		def.Observer.Query.Poll = queryAction("printf", output)
+		def.Entry.Query.Poll = queryAction("printf", output)
 		_, err := runner.Poll(context.Background(), def)
 		if err == nil || !strings.Contains(err.Error(), "JSON item array") {
 			t.Fatalf("output %s: error = %v, want JSON item array failure", output, err)
 		}
 	}
 
-	def.Observer.Query.Poll = queryAction("printf", `[{"resource":"urn:case:a"}]`)
+	def.Entry.Query.Poll = queryAction("printf", `[{"resource":"urn:case:a"}]`)
 	items, err := runner.Poll(context.Background(), def)
 	if err != nil || len(items) != 1 || items[0]["resource"] != "urn:case:a" {
 		t.Fatalf("items = %v, error = %v", items, err)
@@ -40,7 +40,7 @@ func TestActionRunnerPollStripsPlectDataHomeButKeepsXDGDataHome(t *testing.T) {
 	t.Setenv("XDG_DATA_HOME", "/still-inherited")
 
 	runner := actionRunner{cfg: &config.Config{}}
-	def := Definition{Observer: config.ResourceDef{Query: &config.ResourceQuery{
+	def := Definition{Entry: config.ResourceDef{Query: &config.ResourceQuery{
 		Poll: &lang.Action{Type: lang.ActionShell, Script: `
 plect_set=no; [ -n "$PLECT_DATA_HOME" ] && plect_set=yes
 xdg_set=no; [ -n "$XDG_DATA_HOME" ] && xdg_set=yes
@@ -61,7 +61,7 @@ func TestActionRunnerPollStripsPlectCacheHomeButKeepsXDGCacheHome(t *testing.T) 
 	t.Setenv("XDG_CACHE_HOME", "/still-inherited-cache")
 
 	runner := actionRunner{cfg: &config.Config{}}
-	def := Definition{Observer: config.ResourceDef{Query: &config.ResourceQuery{
+	def := Definition{Entry: config.ResourceDef{Query: &config.ResourceQuery{
 		Poll: &lang.Action{Type: lang.ActionShell, Script: `
 plect_set=no; [ -n "$PLECT_CACHE_HOME" ] && plect_set=yes
 xdg_set=no; [ -n "$XDG_CACHE_HOME" ] && xdg_set=yes
@@ -79,7 +79,7 @@ printf '[{"resource":"plect=%s xdg=%s"}]' "$plect_set" "$xdg_set"
 
 func TestActionRunnerSubscribeEmitsOneItemPerLine(t *testing.T) {
 	runner := actionRunner{cfg: &config.Config{}}
-	def := Definition{Observer: config.ResourceDef{Query: &config.ResourceQuery{
+	def := Definition{Entry: config.ResourceDef{Query: &config.ResourceQuery{
 		Subscribe: queryAction("printf", "%s\n%s\n", `{"resource":"urn:case:a"}`, `{"resource":"urn:case:b"}`),
 	}}}
 	var resources []string

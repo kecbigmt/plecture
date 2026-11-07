@@ -8,6 +8,7 @@ import (
 	"github.com/kecbigmt/plecture/app/internal/chain"
 	"github.com/kecbigmt/plecture/app/internal/config"
 	"github.com/kecbigmt/plecture/app/internal/domain"
+	"github.com/kecbigmt/plecture/app/internal/state"
 	"github.com/kecbigmt/plecture/app/internal/task"
 )
 
@@ -124,17 +125,13 @@ func sanitizeTag(s string) string {
 // resolveSpawnSessionName derives, offline, the session name a fire's spawn
 // would resolve to — mirroring Up's name derivation so the idempotency check
 // sees the same name Up will.
-func resolveSpawnSessionName(cfg *config.Config, resource, workflow, tag string) (string, error) {
+func resolveSpawnSessionName(cfg *config.Config, store *state.Store, resource, workflow, tag string) (name string, existing *domain.Session, collision *Error, err error) {
 	disp, matched, err := dispatchResource(cfg, "", workflow, resource)
 	if err != nil {
-		return "", err
+		return "", nil, nil, err
 	}
 	if !matched {
-		return "", &Error{Code: ErrInvalidInput, Message: fmt.Sprintf("no resource declaration recognizes %q", resource)}
+		return "", nil, nil, &Error{Code: ErrInvalidInput, Message: fmt.Sprintf("no resource declaration recognizes %q", resource)}
 	}
-	name := disp.Name
-	if tag != "" {
-		name = name + "+" + tag
-	}
-	return name, nil
+	return entrySession(store, disp, tag)
 }

@@ -1,5 +1,5 @@
 # plect-fixture: result=valid entry=definitions
-# reason: a population may select only subscribe from an observer whose query declares both means, opting out of poll.
+# reason: a population may select only subscribe from an entry resource whose query declares both means, opting out of poll.
 
 [subscribe_only_cases]
 kind     = "workflow"
@@ -7,7 +7,6 @@ resource = "query_source"
 
 [[subscribe_only_cases.populations]]
 name              = "dispatch"
-resource_observer = "query_source"
 uses              = ["subscribe"]
 expire_after      = "1h"
 

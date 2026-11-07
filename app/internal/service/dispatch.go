@@ -138,18 +138,22 @@ func dispatchResource(cfg *config.Config, invocationDir, flag, resource string) 
 		return dispatchResult{Workflow: wf, ResourceKey: key, Name: name}, true, nil
 	}
 
-	var candidates []config.WorkflowFile
+	var candidates, explicitOnly []config.WorkflowFile
 	addresses := config.Addresses(workflows)
 	sort.Strings(addresses)
 	for _, address := range addresses {
 		wf := workflows[address]
-		if wf.Resource == key && workflowAutoSelect(wf) {
+		switch {
+		case wf.Resource != key:
+		case workflowAutoSelect(wf):
 			candidates = append(candidates, wf)
+		default:
+			explicitOnly = append(explicitOnly, wf)
 		}
 	}
 	switch len(candidates) {
 	case 0:
-		return dispatchResult{}, false, &Error{Code: ErrInvalidInput, Message: fmt.Sprintf("no workflow accepts resource %q (the type of %q); declare one with `resource = %q` or pass --workflow", key, resource, key)}
+		return dispatchResult{}, false, noWorkflowError(key, resource, explicitOnly, workflows, addresses)
 	case 1:
 		return dispatchResult{Workflow: candidates[0], ResourceKey: key, Name: name}, true, nil
 	}
@@ -160,4 +164,26 @@ func dispatchResource(cfg *config.Config, invocationDir, flag, resource string) 
 		named[i] = wf.Address
 	}
 	return dispatchResult{}, false, &Error{Code: ErrInvalidInput, Message: fmt.Sprintf("resource %q matches multiple workflows (%s); pass --workflow to choose", key, strings.Join(named, ", "))}
+}
+
+// noWorkflowError lists what the caller can do next: the workflows that accept
+// the type only when named, or else what every declared workflow accepts, so
+// a misrecognized identifier reads as such.
+func noWorkflowError(key, resource string, explicitOnly []config.WorkflowFile, workflows map[string]config.WorkflowFile, addresses []string) *Error {
+	if len(explicitOnly) > 0 {
+		named := make([]string, len(explicitOnly))
+		for i, wf := range explicitOnly {
+			named[i] = "--workflow " + wf.Address
+		}
+		return &Error{Code: ErrInvalidInput, Message: fmt.Sprintf("no workflow is selected for resource %q (the type of %q) by default; pass one of: %s", key, resource, strings.Join(named, ", "))}
+	}
+	accepted := make([]string, len(addresses))
+	for i, address := range addresses {
+		accepted[i] = fmt.Sprintf("%s (resource %q)", address, workflows[address].Resource)
+	}
+	declared := "no workflows are declared"
+	if len(accepted) > 0 {
+		declared = "declared workflows: " + strings.Join(accepted, ", ")
+	}
+	return &Error{Code: ErrInvalidInput, Message: fmt.Sprintf("no workflow accepts resource %q (the type of %q); declare one with `resource = %q`; %s", key, resource, key, declared)}
 }

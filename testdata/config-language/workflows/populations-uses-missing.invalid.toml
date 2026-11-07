@@ -7,7 +7,6 @@ resource = "query_source"
 
 [[bad_uses_missing.populations]]
 name              = "dispatch"
-resource_observer = "query_source"
 poll_every        = "5m"
 
 [bad_uses_missing.populations.query]

@@ -213,10 +213,9 @@ hooks remain inputs-free.
 
   ```toml
   [[ops.populations]]
-  name              = "mentions"
-  resource_observer = "official.slack.thread"
-  uses              = ["subscribe"]
-  expire_after      = "8h"
+  name         = "mentions"
+  uses         = ["subscribe"]
+  expire_after = "8h"
 
   [ops.populations.query]
   base_url               = "http://127.0.0.1:7890"

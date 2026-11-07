@@ -18,7 +18,7 @@ import (
 type CreateParams struct {
 	URL           string
 	Tag           string
-	Workflow      string         // workflow name from --workflow; empty = auto-select
+	Workflow      string         // workflow name from --workflow; empty selects the one workflow accepting the resource type
 	Inputs        map[string]any // frozen at create time; passing to an existing session returns ErrInvalidInput
 	ParentSession string         // parent session name; empty falls back to PLECT_SESSION_NAME when it exists and is not self.
 	Observer      task.Observer
@@ -50,11 +50,25 @@ func ResolvePopulationSessionName(cfg *config.Config, workflow, resource string)
 	if !matched {
 		return "", &Error{Code: ErrInvalidInput, Message: fmt.Sprintf("no resource declaration recognizes population resource %q", resource)}
 	}
-	tag, tagErr := effectiveTag("", dispatch.Workflow.ID)
-	if tagErr != nil {
-		return "", tagErr
+	name, nameErr := dispatch.sessionName("")
+	if nameErr != nil {
+		return "", nameErr
 	}
-	return dispatch.Name + "+" + tag, nil
+	return name, nil
+}
+
+// ResolvePopulationSession returns the session name a population member
+// takes and the live session under it. collision is set, with no session,
+// when the live session under that name was recorded for another entry.
+func ResolvePopulationSession(cfg *config.Config, store *state.Store, workflow, resource string) (name string, existing *domain.Session, collision *Error, err error) {
+	dispatch, matched, err := dispatchResource(cfg, "", workflow, resource)
+	if err != nil {
+		return "", nil, nil, err
+	}
+	if !matched {
+		return "", nil, nil, &Error{Code: ErrInvalidInput, Message: fmt.Sprintf("no resource declaration recognizes population resource %q", resource)}
+	}
+	return entrySession(store, dispatch, "")
 }
 
 // CreateResult holds the outcome of Create.
@@ -104,10 +118,9 @@ func Create(cfg *config.Config, store *state.Store, params CreateParams) (*Creat
 	if !matched {
 		return nil, &Error{Code: ErrInvalidInput, Message: fmt.Sprintf("no resource declaration recognizes %q", resource)}
 	}
-	tag, tagErr := effectiveTag(params.Tag, disp.Workflow.ID)
-	if tagErr != nil {
-		return nil, tagErr
+	sessionName, nameErr := disp.sessionName(params.Tag)
+	if nameErr != nil {
+		return nil, nameErr
 	}
-	sessionName := disp.Name + "+" + tag
-	return createWithWorkflowSetup(cfg, store, params, disp.Workflow, sessionName, resource, params.URL)
+	return createWithWorkflowSetup(cfg, store, params, disp, sessionName, resource, params.URL)
 }

@@ -1,5 +1,5 @@
 # plect-fixture: result=invalid layer=semantic diagnostic=PLECTURE-CFG-POPULATION-CONTRACT entry=definitions
-# reason: one population parameter table must satisfy the shared query inputs_schema.
+# reason: a population's parameter table is validated by the query inputs_schema of its workflow's entry resource.
 
 [bad_query]
 kind     = "workflow"
@@ -7,7 +7,6 @@ resource = "query_source"
 
 [[bad_query.populations]]
 name              = "dispatch"
-resource_observer = "query_source"
 uses              = ["poll"]
 poll_every        = "5m"
 

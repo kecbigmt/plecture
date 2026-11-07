@@ -1120,17 +1120,14 @@
       "additionalProperties": false,
       "required": [
         "name",
-        "resource_observer",
         "query",
         "uses"
       ],
+      "$comment": "PLECTURE-CFG-FIELD-UNKNOWN for a retired `resource_observer`: a population's resource is its workflow's entry `resource`, and `query` is validated by that resource's query inputs_schema.",
       "properties": {
         "name": {
           "type": "string",
           "pattern": "^[A-Za-z_][A-Za-z0-9_]*$"
-        },
-        "resource_observer": {
-          "$ref": "#/$defs/staticReference"
         },
         "query": {
           "type": "object",

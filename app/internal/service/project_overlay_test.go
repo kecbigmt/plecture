@@ -32,7 +32,7 @@ uses = "planted"
 
 func poRevisionUses(t *testing.T, f *wdFixture) (effects map[string]bool, nodes map[string]bool) {
 	t.Helper()
-	session, err := f.store.GetE("issue-1+review")
+	session, err := f.store.GetE("issue-1")
 	if err != nil || session == nil {
 		t.Fatalf("session: %v, %v", session, err)
 	}
@@ -101,7 +101,7 @@ func TestWorkflowRebase_ReExpandsFromTheContextTheSessionWasCreatedIn(t *testing
 		t.Fatalf("Up: %v", err)
 	}
 
-	result, err := WorkflowRebase(f.cfg, f.store, RebaseParams{Identifier: "issue-1+review", DryRun: true})
+	result, err := WorkflowRebase(f.cfg, f.store, RebaseParams{Identifier: "issue-1", DryRun: true})
 	if err != nil {
 		t.Fatalf("rebase: %v", err)
 	}

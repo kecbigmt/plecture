@@ -174,7 +174,7 @@ uses = "agent"
 
 func wdSession(t *testing.T, f *wdFixture) (string, map[string]*contract.TaskState) {
 	t.Helper()
-	name := "issue-1+review"
+	name := "issue-1"
 	session, err := f.store.GetE(name)
 	if err != nil || session == nil {
 		t.Fatalf("session %q: %v, %v", name, session, err)
@@ -366,8 +366,8 @@ uses = "agent"
 		if _, err := Up(f.cfg, f.store, UpParams{Identifier: wdIssueURL, Workflow: "other"}); err != nil {
 			t.Fatalf("Up: %v", err)
 		}
-		if session, _ := f.store.GetE("issue-1+other"); session == nil {
-			t.Fatal("no session named after the resource instance and the workflow")
+		if session, _ := f.store.GetE("issue-1"); session == nil || session.Workflow != "other" {
+			t.Fatal("no session named after the resource instance, created by the chosen workflow")
 		}
 	})
 	t.Run("--workflow of another type is an error", func(t *testing.T) {

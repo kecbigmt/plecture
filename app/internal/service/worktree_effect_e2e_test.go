@@ -324,7 +324,7 @@ func TestIntegration_DestroyUnsubscribesFromGithubWatcher(t *testing.T) {
 	useShippedGithubResources(t, cfg, "default")
 
 	url := "https://github.com/testowner/testrepo/issues/56"
-	sessionName := "testowner/testrepo-56+default"
+	sessionName := "testowner/testrepo-56"
 	if _, err := Create(cfg, store, CreateParams{URL: url}); err != nil {
 		t.Fatalf("Create: %v", err)
 	}

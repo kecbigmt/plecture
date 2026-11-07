@@ -572,7 +572,6 @@ func (e *Engine) record(session, typ, reason, summary, resource string, extra ..
 func (e *Engine) validateItems(items []map[string]any, complete bool) ([]map[string]any, error) {
 	seen := make(map[string]bool, len(items))
 	out := make([]map[string]any, 0, len(items))
-	observerMatch := regexp.MustCompile(e.definition.Observer.Match)
 	entryMatch := regexp.MustCompile(e.definition.Entry.Match)
 	for i, item := range items {
 		if err := e.definition.ItemSchema.Validate(item); err != nil {
@@ -583,9 +582,6 @@ func (e *Engine) validateItems(items []map[string]any, complete bool) ([]map[str
 			return nil, fmt.Errorf("query item %d duplicates resource %q", i, resource)
 		}
 		seen[resource] = true
-		if !observerMatch.MatchString(resource) {
-			return nil, fmt.Errorf("query item %d resource %q is not recognized by observer %q", i, resource, e.definition.Observer.ID)
-		}
 		if !entryMatch.MatchString(resource) {
 			return nil, fmt.Errorf("query item %d resource %q is not recognized by the workflow's entry resource %q", i, resource, e.definition.Entry.ID)
 		}

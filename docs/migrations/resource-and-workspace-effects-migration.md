@@ -10,7 +10,8 @@ Read the whole procedure before making changes. Perform it with the release
 that removes the workspace provider. The loader refuses each retired spelling
 with a diagnostic that points here: a `kind = "workspace_provider"`
 declaration, a workflow's `workspace_provider` or `workspace_provider_inputs`
-field, and `workspace_dirs_root` in `config.toml`.
+field, a population's `resource_observer`, and `workspace_dirs_root` in
+`config.toml`.
 
 ## Backup
 
@@ -82,8 +83,35 @@ workflow's `workdir` and never stored.
    a session created before this release has no record and expands from the
    plugin and global layers alone.
 7. Move a workflow's initial task selection to each invocation, chain, or
-   population. Ensure each task's concrete resource matches the task document
-   and ensure a population derives its resource from its workflow.
+   population. Ensure each task's concrete resource matches the task document.
+8. Delete `resource_observer` from every `[[<workflow>.populations]]` entry.
+   A population queries its workflow's entry `resource` and validates `query`
+   against that resource's query `inputs_schema`; the loader refuses the
+   retired field with a diagnostic that points here. A population whose
+   `resource_observer` named a different resource than its workflow's
+   `resource` moves to a workflow whose entry resource is that resource.
+
+## Session names
+
+A session created from a resource identifier is named after the resource name
+alone (the value the resource's `name` derives); the workflow id is no longer
+appended as a default tag. `plect up <resource> --tag <tag>` appends `+<tag>`.
+A session records the entry resource type, identifier, and tag it was created
+for, and a
+live session with the composed name but a different entry is reported as a
+collision.
+
+1. Rewrite scripts, chains, and orchestration prompts that build a session
+   name as `<resource-name>+<workflow-id>`: the name of an untagged session is
+   the resource name. Pass `--tag` where two sessions for one resource must run
+   side by side, for example a work session and a review session.
+2. A session created before this release keeps its name and records no entry
+   resource. Address it by its session name. A resource-addressed `plect up`
+   that composes the same name, such as `--tag <workflow-id>`, reports a
+   collision instead of reusing it; destroy and recreate the session to give
+   it a recorded entry.
+3. A workflow whose sessions others locate by name (`plect status`,
+   `plect event publish`) needs the same rewrite in those callers.
 
 ## Establish project contexts
 

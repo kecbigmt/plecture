@@ -43,24 +43,70 @@ func validateTagFormat(tag string) *Error {
 	return nil
 }
 
-// effectiveTag resolves the session-identity tag that becomes part of a
-// session name. An explicit --tag wins; otherwise the workflow id is the
-// default, so two workflows acting on one resource (a work workflow, a
-// review workflow) materialize distinct sessions instead of racing for one
-// branch/workspace.
-// The tag is never empty on the resource-dispatch paths — session
-// identity always carries a label.
-func effectiveTag(tag, workflowID string) (string, *Error) {
-	if tag != "" {
-		if err := validateTagFormat(tag); err != nil {
-			return "", err
-		}
-		return tag, nil
+// The workflow never contributes to the name, so two workflows on one
+// instance need a tag to run side by side.
+func (d dispatchResult) sessionName(tag string) (string, *Error) {
+	if tag == "" {
+		return d.Name, nil
 	}
-	if err := validateTagFormat(workflowID); err != nil {
-		return "", &Error{Code: ErrInvalidTag, Message: fmt.Sprintf("workflow id %q cannot seed a session tag (must match [a-zA-Z0-9_-]+); pass --tag explicitly", workflowID)}
+	if err := validateTagFormat(tag); err != nil {
+		return "", err
 	}
-	return workflowID, nil
+	return d.Name + "+" + tag, nil
+}
+
+// Two different entries can compose one name, so a name match alone is not
+// the same session. Under one composed name a matching type and tag already
+// fix the resource name, so it is not compared.
+func checkEntryCollision(existing *domain.Session, d dispatchResult, tag string) *Error {
+	if existing.ResourceType == d.ResourceKey && existing.Tag == tag {
+		return nil
+	}
+	requested := fmt.Sprintf("resource %q name %q with %s", d.ResourceKey, d.Name, describeTag(tag))
+	if existing.ResourceType == "" {
+		return &Error{Code: ErrInvalidInput, Message: fmt.Sprintf("session %q collides with %s: the existing session records no entry resource; address it by its session name, or pass a --tag", existing.Name, requested)}
+	}
+	recorded := fmt.Sprintf("resource %q with %s", existing.ResourceType, describeTag(existing.Tag))
+	return &Error{Code: ErrInvalidInput, Message: fmt.Sprintf("session %q collides with %s: it was created for %s; pass a different --tag", existing.Name, requested, recorded)}
+}
+
+// Every resource-addressed reuse reads through entrySession, so none can reach
+// a session recorded for another entry. A collision is returned apart from err
+// because a chain and a population handle it differently from a read failure.
+func entrySession(store *state.Store, d dispatchResult, tag string) (name string, session *domain.Session, collision *Error, err error) {
+	name, nameErr := d.sessionName(tag)
+	if nameErr != nil {
+		return "", nil, nil, nameErr
+	}
+	existing, err := store.GetE(name)
+	if err != nil {
+		return name, nil, nil, fmt.Errorf("read session %q state: %w", name, err)
+	}
+	if existing == nil {
+		return name, nil, nil, nil
+	}
+	if collision := checkEntryCollision(existing, d, tag); collision != nil {
+		return name, nil, collision, nil
+	}
+	return name, existing, nil, nil
+}
+
+func reusableEntrySession(store *state.Store, d dispatchResult, tag string) (string, *domain.Session, *Error) {
+	name, session, collision, err := entrySession(store, d, tag)
+	if collision != nil {
+		return "", nil, collision
+	}
+	if err != nil {
+		return "", nil, asServiceError(err)
+	}
+	return name, session, nil
+}
+
+func describeTag(tag string) string {
+	if tag == "" {
+		return "no tag"
+	}
+	return fmt.Sprintf("tag %q", tag)
 }
 
 // resolveSession resolves an identifier (session name, create-time alias, or
@@ -94,12 +140,14 @@ func resolveSession(cfg *config.Config, store *state.Store, identifier string) (
 	sessionName := identifier
 	if cfg != nil {
 		if disp, matched, err := dispatchResource(cfg, "", "", identifier); err == nil && matched {
-			if session, err := store.GetE(disp.Name); err != nil {
+			name, session, err := reusableEntrySession(store, disp, "")
+			if err != nil {
 				return "", nil, err
-			} else if session != nil {
-				return disp.Name, session, nil
 			}
-			sessionName = disp.Name
+			if session != nil {
+				return name, session, nil
+			}
+			sessionName = name
 		}
 	}
 

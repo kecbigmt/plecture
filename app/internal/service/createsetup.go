@@ -24,7 +24,8 @@ import (
 //
 // The state entry is recorded before any node's setup so cleanup can release
 // a partially allocated environment after setup fails.
-func createWithWorkflowSetup(cfg *config.Config, store *state.Store, params CreateParams, wf config.WorkflowFile, sessionName, resource, alias string) (*CreateResult, error) {
+func createWithWorkflowSetup(cfg *config.Config, store *state.Store, params CreateParams, disp dispatchResult, sessionName, resource, alias string) (*CreateResult, error) {
+	wf := disp.Workflow
 	if err := validateSessionName(sessionName); err != nil {
 		return nil, err
 	}
@@ -35,9 +36,9 @@ func createWithWorkflowSetup(cfg *config.Config, store *state.Store, params Crea
 
 	now := time.Now()
 	var session *domain.Session
-	existing, err := store.GetE(sessionName)
-	if err != nil {
-		return nil, &Error{Code: ErrExecutionFailed, Message: fmt.Sprintf("failed to check for an existing session %q: %v", sessionName, err)}
+	_, existing, entryErr := reusableEntrySession(store, disp, params.Tag)
+	if entryErr != nil {
+		return nil, entryErr
 	}
 	if existing != nil {
 		if params.Population != nil && !samePopulation(existing.Population, params.Population) {
@@ -76,6 +77,8 @@ func createWithWorkflowSetup(cfg *config.Config, store *state.Store, params Crea
 			ParentSession: parentSession,
 			Status:        contract.SessionStatusDown,
 			Workflow:      wf.Address,
+			ResourceType:  disp.ResourceKey,
+			Tag:           params.Tag,
 			Population:    params.Population,
 			Inputs:        input,
 			Nodes:         make(map[string]*contract.TaskState),

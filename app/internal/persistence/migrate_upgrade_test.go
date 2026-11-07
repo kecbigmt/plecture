@@ -597,3 +597,21 @@ func TestMigrate_InvocationDirLeavesExistingSessionsWithNoRecordedContext(t *tes
 		t.Errorf("invocation_dir = %q for a pre-existing session, want NULL", dir.String)
 	}
 }
+
+func TestMigrate_EntryResourceLeavesExistingSessionsUnrecorded(t *testing.T) {
+	db, provider, sessionID := workdirMigrationFixture(t, "up", "cleaned")
+	ctx := context.Background()
+	for i := 0; i < 3; i++ {
+		if _, err := provider.UpByOne(ctx); err != nil {
+			t.Fatalf("UpByOne %d: %v", i, err)
+		}
+	}
+
+	var resourceType, tag sql.NullString
+	if err := db.write.QueryRow(`SELECT resource_type, tag FROM sessions WHERE id = ?`, sessionID).Scan(&resourceType, &tag); err != nil {
+		t.Fatalf("read entry columns: %v", err)
+	}
+	if resourceType.Valid || tag.Valid {
+		t.Errorf("entry = (%v, %v) for a pre-existing session, want both NULL", resourceType, tag)
+	}
+}
