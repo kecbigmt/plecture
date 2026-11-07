@@ -268,6 +268,11 @@ func upUnlocked(cfg *config.Config, store *state.Store, params UpParams) (*UpRes
 	}
 	if params.ForceRecreate && forceRecreateExisting {
 		var recreateErr error
+		// The recreate discards every task instance, and the initial instance
+		// is the only record of the selection it was created with.
+		if initial := session.Tasks[initialInstance]; initialTask == nil && initial != nil {
+			initialTask = &initialTaskBinding{TaskID: initial.TaskID, Resource: initial.Resource}
+		}
 		plan, recreateErr = recreateSessionRuntime(cfg, store, sessionName, session, wf, plan, params.Observer)
 		if recreateErr != nil {
 			return nil, recreateErr

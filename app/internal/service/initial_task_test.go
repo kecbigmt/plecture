@@ -313,3 +313,28 @@ func TestUp_ForceRecreateReinstantiatesTheSelectedInitialTask(t *testing.T) {
 		t.Fatalf("initial = %+v after a runtime reset, want triage reinstantiated", initial)
 	}
 }
+
+func TestUp_ForceRecreateWithoutATaskKeepsTheInitialTaskItWasCreatedWith(t *testing.T) {
+	for _, by := range []string{"resource", "session name"} {
+		t.Run(by, func(t *testing.T) {
+			store := testStore(t)
+			cfg := initialTaskFixture(t)
+			first, err := Up(cfg, store, UpParams{Identifier: identityCaseID, InitialTask: &InitialTask{TaskID: "triage"}})
+			if err != nil {
+				t.Fatalf("first up: %v", err)
+			}
+			identifier := identityCaseID
+			if by == "session name" {
+				identifier = first.SessionName
+			}
+
+			if _, err := Up(cfg, store, UpParams{Identifier: identifier, ForceRecreate: true}); err != nil {
+				t.Fatalf("force-recreate up: %v", err)
+			}
+			initial := store.Get(first.SessionName).Tasks["initial"]
+			if initial == nil || initial.TaskID != "triage" || initial.Resource != identityCaseID || initial.Status != contract.TaskStatusProduced {
+				t.Fatalf("initial = %+v after a runtime reset, want triage bound to %s reinstantiated", initial, identityCaseID)
+			}
+		})
+	}
+}
