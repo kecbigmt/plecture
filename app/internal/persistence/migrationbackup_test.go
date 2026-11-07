@@ -7,6 +7,7 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"syscall"
 	"testing"
@@ -458,7 +459,9 @@ func TestRestore_RefusesNamesThatAreNotACompletedBackup(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	for _, name := range []string{"", "missing", "../backups", "x/y", ".tmp-20200101T000000Z-v1", "20200101T000000Z-v1"} {
+	writeFile(t, filepath.Join(dir, "backups", "manual-copy", "storage.db"), "")
+
+	for _, name := range []string{"", "missing", "../backups", "x/y", ".tmp-20200101T000000Z-v1", "20200101T000000Z-v1", "manual-copy", "20200101T000000Z-v1/../manual-copy"} {
 		t.Run(name, func(t *testing.T) {
 			if _, err := restore(context.Background(), path, name, migrationFixture(fixtureV1)); err == nil {
 				t.Fatalf("restore accepted %q", name)
@@ -470,31 +473,49 @@ func TestRestore_RefusesNamesThatAreNotACompletedBackup(t *testing.T) {
 	}
 }
 
-func TestBackupBeforeMigrate_RetentionNeverDeletesTheBackupItJustTook(t *testing.T) {
-	t.Setenv(BackupRetainEnvVar, "1")
-	fixed := time.Date(2026, 11, 8, 1, 30, 0, 0, time.UTC)
-	t.Cleanup(func(fn func() time.Time) func() { return func() { clock = fn } }(clock))
-	clock = func() time.Time { return fixed }
-	dir := t.TempDir()
-	path := PathIn(dir)
-	seedFixtureStore(t, path, fixtureV1)
-	db, err := Open(path)
-	if err != nil {
-		t.Fatalf("Open: %v", err)
-	}
-	defer db.Close()
-	db.migrations = migrationFixture(fixtureV2)
-	db.diagnostics = io.Discard
+func TestBackupBeforeMigrate_SameSecondBackupsKeepCreationOrder(t *testing.T) {
+	for _, retain := range []int{1, 3} {
+		t.Run(strconv.Itoa(retain), func(t *testing.T) {
+			t.Setenv(BackupRetainEnvVar, strconv.Itoa(retain))
+			fixed := time.Date(2026, 11, 8, 1, 30, 0, 0, time.UTC)
+			t.Cleanup(func(fn func() time.Time) func() { return func() { clock = fn } }(clock))
+			clock = func() time.Time { return fixed }
+			dir := t.TempDir()
+			path := PathIn(dir)
+			seedFixtureStore(t, path, fixtureV1)
+			db, err := Open(path)
+			if err != nil {
+				t.Fatalf("Open: %v", err)
+			}
+			defer db.Close()
+			db.migrations = migrationFixture(fixtureV2)
+			db.diagnostics = io.Discard
 
-	for i := 1; i <= 3; i++ {
-		backup, err := db.backupBeforeMigrate(context.Background(), 1, 2)
-		if err != nil {
-			t.Fatalf("backup %d: %v", i, err)
-		}
-		names := backupNames(t, dir)
-		if len(names) != 1 || filepath.Join(dir, "backups", names[0]) != backup {
-			t.Fatalf("after backup %d: backups = %v, want only the one just taken (%s)", i, names, backup)
-		}
+			var created []string
+			for i := 1; i <= 6; i++ {
+				backup, err := db.backupBeforeMigrate(context.Background(), 1, 2)
+				if err != nil {
+					t.Fatalf("backup %d: %v", i, err)
+				}
+				created = append(created, filepath.Base(backup))
+
+				listed, err := ListBackups(context.Background(), path)
+				if err != nil {
+					t.Fatalf("ListBackups after backup %d: %v", i, err)
+				}
+				var got []string
+				for _, b := range listed {
+					got = append(got, b.Name)
+				}
+				var want []string
+				for k := len(created) - 1; k >= 0 && len(want) < retain; k-- {
+					want = append(want, created[k])
+				}
+				if strings.Join(got, ",") != strings.Join(want, ",") {
+					t.Fatalf("after backup %d: listed %v, want the newest %d newest-first: %v", i, got, retain, want)
+				}
+			}
+		})
 	}
 }
 

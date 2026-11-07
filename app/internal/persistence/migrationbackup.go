@@ -54,8 +54,6 @@ func backupRetain() (int, error) {
 	return n, nil
 }
 
-// backupBeforeMigrate returns "" when no backup is due: retention is 0, or
-// from is 0 and this migration is creating the store.
 func (db *DB) backupBeforeMigrate(ctx context.Context, from, to int64) (string, error) {
 	retain, err := backupRetain()
 	if err != nil {
@@ -69,10 +67,11 @@ func (db *DB) backupBeforeMigrate(ctx context.Context, from, to int64) (string, 
 	if err := os.MkdirAll(backupsDir, 0o700); err != nil {
 		return "", fmt.Errorf("create %s: %w", backupsDir, err)
 	}
-	name, err := freeName(backupsDir, fmt.Sprintf("%s-v%d", clock().UTC().Format(stampLayout), from))
+	complete, err := completedBackups(backupsDir)
 	if err != nil {
 		return "", err
 	}
+	name := fmt.Sprintf("%s-v%d", nextStamp(complete).Format(stampLayout), from)
 	tmp := filepath.Join(backupsDir, tmpPrefix+name)
 	final := filepath.Join(backupsDir, name)
 	if err := db.writeBackup(ctx, dataDir, tmp); err != nil {
@@ -90,7 +89,7 @@ func (db *DB) backupBeforeMigrate(ctx context.Context, from, to int64) (string, 
 
 	// A prune failure leaves an extra backup behind, not a store at risk,
 	// so it warns instead of refusing the migration the new backup protects.
-	if err := pruneBackups(backupsDir, retain, name); err != nil {
+	if err := pruneBackups(backupsDir, retain); err != nil {
 		fmt.Fprintf(db.diagnostics, "plect: storage: warning: pruning old backups in %s: %v\n", backupsDir, err)
 	}
 	return final, nil
@@ -164,32 +163,78 @@ func (db *DB) onlineBackup(ctx context.Context, dest string) error {
 	})
 }
 
-// pruneBackups never deletes keep, the backup just taken: a same-second name
-// reused after an earlier prune can sort below an older sibling. Leftover
-// temporary directories go too, because the caller holds migration
-// exclusion and so none of them is a backup still being written.
-func pruneBackups(backupsDir string, retain int, keep string) error {
-	entries, err := os.ReadDir(backupsDir)
-	if err != nil {
-		return err
+// nextStamp is the clock's second, or one second past the newest backup when
+// the clock has not passed it (a same-second retry, or a clock set back), so
+// a backup's name always sorts after every backup taken before it: pruning
+// and listing order backups by name.
+func nextStamp(complete []backupName) time.Time {
+	stamp := clock().UTC().Truncate(time.Second)
+	if n := len(complete); n > 0 && !stamp.After(complete[n-1].stamp) {
+		stamp = complete[n-1].stamp.Add(time.Second)
 	}
-	var complete []string
-	var errs []error
+	return stamp
+}
+
+type backupName struct {
+	name  string
+	stamp time.Time
+}
+
+// completedBackups returns the backups in backupsDir oldest first. Entries
+// whose name is not <stamp>-v<version> are left alone: plect did not write
+// them, so it neither lists nor prunes them.
+func completedBackups(backupsDir string) ([]backupName, error) {
+	entries, err := os.ReadDir(backupsDir)
+	if errors.Is(err, os.ErrNotExist) {
+		return nil, nil
+	}
+	if err != nil {
+		return nil, err
+	}
+	var backups []backupName
 	for _, e := range entries {
 		if !e.IsDir() {
 			continue
 		}
-		if strings.HasPrefix(e.Name(), tmpPrefix) {
-			errs = append(errs, os.RemoveAll(filepath.Join(backupsDir, e.Name())))
-			continue
-		}
-		if !strings.HasPrefix(e.Name(), ".") && e.Name() != keep {
-			complete = append(complete, e.Name())
+		if stamp, ok := parseBackupName(e.Name()); ok {
+			backups = append(backups, backupName{name: e.Name(), stamp: stamp})
 		}
 	}
-	sort.Sort(sort.Reverse(sort.StringSlice(complete)))
-	for i := retain - 1; i < len(complete); i++ {
-		errs = append(errs, os.RemoveAll(filepath.Join(backupsDir, complete[i])))
+	sort.Slice(backups, func(i, j int) bool { return backups[i].stamp.Before(backups[j].stamp) })
+	return backups, nil
+}
+
+func parseBackupName(name string) (time.Time, bool) {
+	stampText, version, ok := strings.Cut(name, "-v")
+	if !ok {
+		return time.Time{}, false
+	}
+	if _, err := strconv.ParseInt(version, 10, 64); err != nil {
+		return time.Time{}, false
+	}
+	stamp, err := time.Parse(stampLayout, stampText)
+	return stamp, err == nil
+}
+
+// pruneBackups also deletes leftover temporary directories: the caller holds
+// migration exclusion, so none of them is a backup still being written.
+func pruneBackups(backupsDir string, retain int) error {
+	entries, err := os.ReadDir(backupsDir)
+	if err != nil {
+		return err
+	}
+	var errs []error
+	for _, e := range entries {
+		if e.IsDir() && strings.HasPrefix(e.Name(), tmpPrefix) {
+			errs = append(errs, os.RemoveAll(filepath.Join(backupsDir, e.Name())))
+		}
+	}
+	complete, err := completedBackups(backupsDir)
+	if err != nil {
+		return errors.Join(append(errs, err)...)
+	}
+	for i := 0; i < len(complete)-retain; i++ {
+		errs = append(errs, os.RemoveAll(filepath.Join(backupsDir, complete[i].name)))
 	}
 	return errors.Join(errs...)
 }
@@ -205,28 +250,21 @@ type Backup struct {
 
 func ListBackups(ctx context.Context, dbPath string) ([]Backup, error) {
 	backupsDir := filepath.Join(filepath.Dir(dbPath), backupsDirName)
-	entries, err := os.ReadDir(backupsDir)
-	if errors.Is(err, os.ErrNotExist) {
-		return nil, nil
-	}
+	complete, err := completedBackups(backupsDir)
 	if err != nil {
 		return nil, fmt.Errorf("persistence: list backups: %w", err)
 	}
-	var backups []Backup
-	for _, e := range entries {
-		if !e.IsDir() || strings.HasPrefix(e.Name(), ".") {
-			continue
-		}
-		dir := filepath.Join(backupsDir, e.Name())
-		b := Backup{Name: e.Name()}
+	backups := make([]Backup, 0, len(complete))
+	for i := len(complete) - 1; i >= 0; i-- {
+		dir := filepath.Join(backupsDir, complete[i].name)
+		b := Backup{Name: complete[i].name}
 		b.Version, _, b.Err = backupLedger(ctx, PathIn(dir), migrationsSourceFS())
 		b.Size, err = treeSize(dir)
 		if err != nil {
-			return nil, fmt.Errorf("persistence: size of backup %s: %w", e.Name(), err)
+			return nil, fmt.Errorf("persistence: size of backup %s: %w", b.Name, err)
 		}
 		backups = append(backups, b)
 	}
-	sort.Slice(backups, func(i, j int) bool { return backups[i].Name > backups[j].Name })
 	return backups, nil
 }
 
@@ -285,7 +323,7 @@ func Restore(ctx context.Context, dbPath, name string) (string, error) {
 }
 
 func restore(ctx context.Context, dbPath, name string, migrations fs.FS) (string, error) {
-	if name == "" || name != filepath.Base(name) || strings.HasPrefix(name, ".") {
+	if _, ok := parseBackupName(name); !ok || name != filepath.Base(name) {
 		return "", fmt.Errorf("persistence: %q is not a backup name; `plect storage backups` lists them", name)
 	}
 	// Locked before the backup is read: a migration's prune, which runs under

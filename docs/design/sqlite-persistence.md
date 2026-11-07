@@ -955,9 +955,13 @@ page-exact `storage.db` in every journal mode, with no `-wal`, `-shm`, or
 (`pending_delivery.json`, `pending_delivery.json.lock`, `events/`) are copied
 next to it, because the sidecar import that follows the migration removes
 them. The backup is built in `backups/.tmp-<name>/` and renamed into place,
-so a directory without that prefix is always a completed backup. The name's
-from version is a label for people; the version of a backup is read from its
-own goose ledger.
+so a directory named `<UTC timestamp>-v<version>` is always a completed
+backup; plect neither lists, prunes, nor restores any other entry. The
+timestamp is the clock's second, or one second past the newest existing
+backup when the clock has not passed it, so name order is creation order even
+for backups taken within one second or after the clock was set back. The
+name's from version is a label for people; the version of a backup is read
+from its own goose ledger.
 
 If the backup fails, the marker records a `failed` stage with the error, and
 the runner refuses without applying any migration. When the backup succeeds,
