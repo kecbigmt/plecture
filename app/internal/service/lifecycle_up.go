@@ -127,12 +127,12 @@ func upUnlocked(cfg *config.Config, store *state.Store, params UpParams) (*UpRes
 	}
 	if matched {
 		tag := params.Tag
+		if refusal := retiredEntryRefusal(store, &disp, tag); refusal != nil {
+			return nil, refusal
+		}
 		sessionName, existing, entryErr := reusableEntrySession(store, &disp, tag)
 		if entryErr != nil {
 			return nil, entryErr
-		}
-		if refusal := retiredRevisionRefusal(existing, "`up`"); refusal != nil {
-			return nil, refusal
 		}
 		if existing != nil {
 			switch {
@@ -560,4 +560,20 @@ func recreateSessionRuntime(cfg *config.Config, store *state.Store, sessionName 
 		return nil, &Error{Code: ErrExecutionFailed, Message: setupErr.Error()}
 	}
 	return setupPlan, nil
+}
+
+// retiredEntryRefusal runs ahead of the entry-collision check because a
+// session from the previous release records no entry resource, so the
+// collision would hide the migration procedure that session actually needs.
+// A read failure is left for the collision check to report.
+func retiredEntryRefusal(store *state.Store, disp *dispatchResult, tag string) *Error {
+	name, nameErr := disp.sessionName(tag)
+	if nameErr != nil {
+		return nil
+	}
+	target, readErr := store.GetE(name)
+	if readErr != nil {
+		return nil
+	}
+	return retiredRevisionRefusal(target, "`up`")
 }

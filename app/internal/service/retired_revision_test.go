@@ -1,6 +1,7 @@
 package service
 
 import (
+	"context"
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
@@ -24,7 +25,8 @@ var retiredFixtureSpellings = []string{"@workflow", "workspace_provider"}
 // retiredRevisionSession brings a session up in the current dialect, then
 // rewrites its pinned revision into the shape a previous release stored: a
 // workflow naming a workspace provider and the @workflow pseudo-node's
-// provider declaration.
+// provider declaration. Like every session that release created, its entry is
+// the untyped resource the storage upgrade records for its identifier.
 func retiredRevisionSession(t *testing.T, workflowBody string) (*wdFixture, string) {
 	t.Helper()
 	f := newWDFixture(t, workflowBody)
@@ -49,6 +51,7 @@ func retiredRevisionSession(t *testing.T, workflowBody string) (*wdFixture, stri
 	sum := sha256.Sum256(encoded)
 	session.WorkflowRevision = hex.EncodeToString(sum[:])
 	session.WorkflowRevisionBody = string(encoded)
+	session.Resource, session.Tag = &contract.Resource{Name: wdIssueURL, Locator: wdIssueURL}, ""
 	if err := f.store.Put(session); err != nil {
 		t.Fatal(err)
 	}
@@ -231,5 +234,45 @@ func TestRetiredRevision_CurrentDialectSessionIsUnaffected(t *testing.T) {
 	}
 	if _, err := os.Stat(filepath.Join(f.home, "cleanup-intent")); err != nil {
 		t.Fatalf("destroy of a current-dialect session ran no cleanup: %v", err)
+	}
+}
+
+func TestRetiredRevision_RefusedDestroyLeavesPendingDeliveryQueued(t *testing.T) {
+	f, name := retiredRevisionSession(t, wdWorkdirWorkflow)
+	marker := filepath.Join(f.home, "unsubscribed")
+	wdWrite(t, filepath.Join(f.base, "resources", "watched.toml"), `
+[watched]
+kind  = "resource"
+match = '^watched://(?P<n>\d+)$'
+name  = { expr = "'watched-' + match.n" }
+
+[watched.observe]
+type    = "exec"
+command = "true"
+
+[watched.subscribe]
+type    = "exec"
+command = "true"
+
+[watched.unsubscribe]
+type    = "exec"
+command = "touch"
+args    = ["`+marker+`"]
+`)
+	const resource = "watched://1"
+	db, err := retryStore(f.store)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := db.QueueSubscriptionRetry(context.Background(), name, retryUnsubscribe, contract.Resource{Type: "watched", Name: "watched-1", Locator: resource}); err != nil {
+		t.Fatal(err)
+	}
+	_, err = Destroy(f.cfg, f.store, DestroyParams{Identifier: name})
+	assertRetiredRevisionRefusal(t, err, name)
+	if _, err := os.Stat(marker); !errors.Is(err, os.ErrNotExist) {
+		t.Errorf("a refused destroy ran the queued unsubscribe hook: %v", err)
+	}
+	if got := subscriptionRetryCount(t, f.store, name, retryUnsubscribe, resource, false); got != 1 {
+		t.Errorf("queued unsubscribe retries after a refused destroy = %d, want 1", got)
 	}
 }
