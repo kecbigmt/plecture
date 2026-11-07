@@ -127,14 +127,14 @@ path = { type = "string", required = true }
 		t.Fatalf("plan run nodes = %v, want pane then agent", names)
 	}
 
-	resources, err := cfg.LoadResourceDefs()
+	resources, err := cfg.LoadResourceDefs("")
 	if err != nil {
 		t.Fatalf("LoadResourceDefs: %v", err)
 	}
 	if _, ok := resources[wf.Resource]; !ok {
 		t.Errorf("workflow resource %q unresolved among %v", wf.Resource, config.Addresses(resources))
 	}
-	channels, err := cfg.LoadChannels()
+	channels, err := cfg.LoadChannels("")
 	if err != nil {
 		t.Fatalf("LoadChannels: %v", err)
 	}

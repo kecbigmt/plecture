@@ -56,7 +56,7 @@ func TestShippedGithubOkf_BinReferencesResolveUnderArbitraryAlias(t *testing.T) 
 		Plugins:    mounted,
 	}
 
-	resDefs, err := cfg.LoadResourceDefs()
+	resDefs, err := cfg.LoadResourceDefs("")
 	if err != nil {
 		t.Fatalf("LoadResourceDefs: %v", err)
 	}

@@ -69,11 +69,11 @@ func TestShippedCatalog_LoadsAndCompiles(t *testing.T) {
 	if err != nil {
 		t.Fatalf("LoadTaskDeclarations(shipped catalog): %v", err)
 	}
-	channels, err := cfg.LoadChannels()
+	channels, err := cfg.LoadChannels("")
 	if err != nil {
 		t.Fatalf("LoadChannels(shipped catalog): %v", err)
 	}
-	observers, err := cfg.LoadResourceDefs()
+	observers, err := cfg.LoadResourceDefs("")
 	if err != nil {
 		t.Fatalf("LoadResourceDefs(shipped catalog): %v", err)
 	}
@@ -138,10 +138,10 @@ func TestShippedCatalog_LoadsUnderArbitraryAlias(t *testing.T) {
 	if _, _, err := cfg.LoadTaskDeclarations(""); err != nil {
 		t.Fatalf("LoadTaskDeclarations(shipped catalog, alias %q): %v", "acme", err)
 	}
-	if _, err := cfg.LoadChannels(); err != nil {
+	if _, err := cfg.LoadChannels(""); err != nil {
 		t.Fatalf("LoadChannels(shipped catalog, alias %q): %v", "acme", err)
 	}
-	if _, err := cfg.LoadResourceDefs(); err != nil {
+	if _, err := cfg.LoadResourceDefs(""); err != nil {
 		t.Fatalf("LoadResourceDefs(shipped catalog, alias %q): %v", "acme", err)
 	}
 }
@@ -207,7 +207,7 @@ func renderQueryArgv(t *testing.T, cfg *Config, def ResourceDef, action *lang.Ac
 
 func TestShippedCatalog_GitHubPullQueryInvokesDocumentedFlags(t *testing.T) {
 	cfg := loadShippedCatalog(t, "official")
-	observers, err := cfg.LoadResourceDefs()
+	observers, err := cfg.LoadResourceDefs("")
 	if err != nil {
 		t.Fatalf("LoadResourceDefs(shipped catalog): %v", err)
 	}
@@ -277,7 +277,7 @@ func assertGitHubQueryArgv(t *testing.T, argv []string, wantBin, wantSubcommand 
 
 func TestShippedCatalog_GitHubPullQueryItemSchemaBoundary(t *testing.T) {
 	cfg := loadShippedCatalog(t, "official")
-	observers, err := cfg.LoadResourceDefs()
+	observers, err := cfg.LoadResourceDefs("")
 	if err != nil {
 		t.Fatalf("LoadResourceDefs(shipped catalog): %v", err)
 	}
@@ -300,7 +300,7 @@ func TestShippedCatalog_GitHubPullQueryItemSchemaBoundary(t *testing.T) {
 
 func TestShippedCatalog_SlackThreadQueryInvokesDocumentedFlags(t *testing.T) {
 	cfg := loadShippedCatalog(t, "official")
-	observers, err := cfg.LoadResourceDefs()
+	observers, err := cfg.LoadResourceDefs("")
 	if err != nil {
 		t.Fatalf("LoadResourceDefs(shipped catalog): %v", err)
 	}
@@ -359,7 +359,7 @@ func TestShippedCatalog_SlackThreadQueryInvokesDocumentedFlags(t *testing.T) {
 
 func TestShippedCatalog_SlackThreadQueryPassesUserPolicyFlags(t *testing.T) {
 	cfg := loadShippedCatalog(t, "official")
-	observers, err := cfg.LoadResourceDefs()
+	observers, err := cfg.LoadResourceDefs("")
 	if err != nil {
 		t.Fatalf("LoadResourceDefs(shipped catalog): %v", err)
 	}

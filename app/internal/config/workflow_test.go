@@ -996,11 +996,11 @@ func TestLoadDeclarations_SameLayerCrossKindCollisionRejected(t *testing.T) {
 		name string
 		run  func() error
 	}{
-		{"LoadChannels", func() error { _, err := cfg.LoadChannels(); return err }},
+		{"LoadChannels", func() error { _, err := cfg.LoadChannels(""); return err }},
 		{"LoadTaskDefinitions", func() error { _, err := cfg.LoadTaskDefinitions(""); return err }},
 		{"LoadTaskDocuments", func() error { _, err := cfg.LoadTaskDocuments(""); return err }},
 		{"LoadWorkflows", func() error { _, err := cfg.LoadWorkflows(""); return err }},
-		{"LoadResourceDefs", func() error { _, err := cfg.LoadResourceDefs(); return err }},
+		{"LoadResourceDefs", func() error { _, err := cfg.LoadResourceDefs(""); return err }},
 	} {
 		t.Run(load.name, func(t *testing.T) {
 			err := load.run()
@@ -1022,7 +1022,7 @@ func TestLoadDeclarations_CrossLayerCrossKindCoexists(t *testing.T) {
 		"[shared]\nkind = \"channel\"\ntype = \"exec\"\ncommand = \"true\"\n")
 	cfg := &Config{BaseDir: base, PluginDirs: []string{pluginDir}}
 
-	channels, err := cfg.LoadChannels()
+	channels, err := cfg.LoadChannels("")
 	if err != nil {
 		t.Fatalf("LoadChannels: %v", err)
 	}

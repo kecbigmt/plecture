@@ -190,7 +190,7 @@ func destroyUnlocked(cfg *config.Config, store *state.Store, params DestroyParam
 
 	// After the delete, so unwireDeliveryOnTeardown's fresh read sees the
 	// session as gone rather than skipping the unsubscribe as still needed.
-	if _, errMsg := unwireDeliveryOnTeardown(cfg, store, sessionName, session.Resource, session.ID); errMsg != "" {
+	if _, errMsg := unwireDeliveryOnTeardown(cfg, store, sessionName, session.ProjectRoot, session.Resource, session.ID); errMsg != "" {
 		result.CleanupWarnings = append(result.CleanupWarnings, fmt.Sprintf("resource delivery unsubscribe: %s", errMsg))
 	}
 

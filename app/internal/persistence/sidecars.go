@@ -18,10 +18,11 @@ const (
 // SubscriptionRetry is one provider operation that did not complete and is
 // retried by ordinary session activity.
 type SubscriptionRetry struct {
-	SessionID string
-	Session   string
-	Action    string
-	Resource  contract.Resource
+	SessionID   string
+	Session     string
+	ProjectRoot string
+	Action      string
+	Resource    contract.Resource
 }
 
 // Tombstone returns name's most recently destroyed incarnation. The retained
@@ -152,13 +153,13 @@ func queueSubscriptionRetryTx(ctx context.Context, tx *sql.Tx, sessionID, action
 
 // SubscriptionRetriesForLiveSession returns retries for name's live row.
 func (db *DB) SubscriptionRetriesForLiveSession(ctx context.Context, name string) ([]SubscriptionRetry, error) {
-	return db.subscriptionRetries(ctx, `SELECT r.session_id, s.name, r.action, res.id, res.type, res.name, res.locator FROM subscription_retries r JOIN sessions s ON s.id = r.session_id JOIN resources res ON res.id = r.resource_id WHERE s.name = ? AND s.status <> 'destroyed' ORDER BY r.action, res.name`, name)
+	return db.subscriptionRetries(ctx, `SELECT r.session_id, s.name, s.project_root, r.action, res.id, res.type, res.name, res.locator FROM subscription_retries r JOIN sessions s ON s.id = r.session_id JOIN resources res ON res.id = r.resource_id WHERE s.name = ? AND s.status <> 'destroyed' ORDER BY r.action, res.name`, name)
 }
 
 // DestroyedSubscriptionRetries returns retries whose retained session row is
 // destroyed. Callers drop subscribe attempts and retry unsubscribe attempts.
 func (db *DB) DestroyedSubscriptionRetries(ctx context.Context) ([]SubscriptionRetry, error) {
-	return db.subscriptionRetries(ctx, `SELECT r.session_id, s.name, r.action, res.id, res.type, res.name, res.locator FROM subscription_retries r JOIN sessions s ON s.id = r.session_id JOIN resources res ON res.id = r.resource_id WHERE s.status = 'destroyed' ORDER BY s.name, r.action, res.name`)
+	return db.subscriptionRetries(ctx, `SELECT r.session_id, s.name, s.project_root, r.action, res.id, res.type, res.name, res.locator FROM subscription_retries r JOIN sessions s ON s.id = r.session_id JOIN resources res ON res.id = r.resource_id WHERE s.status = 'destroyed' ORDER BY s.name, r.action, res.name`)
 }
 
 func (db *DB) subscriptionRetries(ctx context.Context, query string, args ...any) ([]SubscriptionRetry, error) {
@@ -171,7 +172,7 @@ func (db *DB) subscriptionRetries(ctx context.Context, query string, args ...any
 		defer rows.Close()
 		for rows.Next() {
 			var retry SubscriptionRetry
-			if err := rows.Scan(&retry.SessionID, &retry.Session, &retry.Action, &retry.Resource.ID, &retry.Resource.Type, &retry.Resource.Name, &retry.Resource.Locator); err != nil {
+			if err := rows.Scan(&retry.SessionID, &retry.Session, &retry.ProjectRoot, &retry.Action, &retry.Resource.ID, &retry.Resource.Type, &retry.Resource.Name, &retry.Resource.Locator); err != nil {
 				return err
 			}
 			retries = append(retries, retry)

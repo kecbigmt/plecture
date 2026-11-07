@@ -144,7 +144,7 @@ func TaskCleanup(cfg *config.Config, store *state.Store, params TaskCleanupParam
 	recordLifecycle(store, resolvedName, "task_cleanup", fmt.Sprintf("reclaimed %s", params.Instance))
 
 	result := &TaskCleanupResult{SessionName: resolvedName, Instance: params.Instance, Found: true, Resource: domain.Locator(st.Resource)}
-	result.Unsubscribed, result.UnsubscribeError = unwireDeliveryOnTeardown(cfg, store, resolvedName, st.Resource, "")
+	result.Unsubscribed, result.UnsubscribeError = unwireDeliveryOnTeardown(cfg, store, resolvedName, session.ProjectRoot, st.Resource, "")
 	if len(pending) > 0 && result.UnsubscribeError == "" {
 		if err := dequeuePendingUnsubscribe(store, resolvedName, pending[0]); err != nil {
 			result.UnsubscribeError = fmt.Sprintf("could not clear the queued unsubscribe retry: %v", err)

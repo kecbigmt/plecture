@@ -21,10 +21,11 @@ var resourceCmd = &cobra.Command{
 var resourceStatusCmd = &cobra.Command{
 	Use:   "status <resource-id>",
 	Short: "Observe a resource's current state",
-	Long: `Finds the trusted resource definition (resources/*.toml in the plugin/global
-config layers) whose 'match' recognizes <resource-id>, runs its 'observe'
-script, and reports the result. A resource id with no matching definition is
-an error — declare one (ADR "goal-as-task" D1) before observing it standalone.
+	Long: `Finds the trusted resource definition (resources/*.toml in the plugin, global,
+or selected project config layers) whose 'match' recognizes <resource-id>, runs
+its 'observe' script, and reports the result. A resource id with no matching
+definition is an error — declare one (ADR "goal-as-task" D1) before observing
+it standalone.
 
 This is the same observation contract a task instance's from_resource_status
 dynamic output reads from ('plect task setup --resource'); this command lets it
@@ -38,7 +39,11 @@ Example:
 		if err != nil {
 			return err
 		}
-		result, err := service.ResourceStatus(cfg, service.ResourceStatusParams{ResourceID: args[0]})
+		root, err := selectProjectRoot(cmd, cfg)
+		if err != nil {
+			return err
+		}
+		result, err := service.ResourceStatus(cfg, service.ResourceStatusParams{ResourceID: args[0], ProjectRoot: root})
 		if err != nil {
 			return err
 		}

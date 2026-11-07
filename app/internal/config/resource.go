@@ -77,14 +77,8 @@ func (r ResourceDef) Ownership() lang.Ownership {
 	return lang.Ownership{IsPlugin: r.FromPlugin}
 }
 
-// LoadResourceDefs loads every resource the trusted base layers
-// declare: plugin roots first, then the global config dir.
-func (c *Config) LoadResourceDefs() (map[string]ResourceDef, error) {
-	resolved, err := c.trustedKind(lang.KindResource)
-	if err != nil {
-		return nil, err
-	}
-	return loadTrustedKind(resolved, c.resourceDefFromDefinition)
+func (c *Config) LoadResourceDefs(projectRoot string) (map[string]ResourceDef, error) {
+	return loadKind(c, projectRoot, lang.KindResource, c.resourceDefFromDefinition)
 }
 
 func (c *Config) resourceDefFromDefinition(def *lang.Definition, fromPlugin bool) (ResourceDef, error) {

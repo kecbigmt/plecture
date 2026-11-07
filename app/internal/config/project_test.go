@@ -222,26 +222,70 @@ func TestLoadDefinitions_RecordedProjectRootMustStillBeAMarkedTrustedRoot(t *tes
 	}
 }
 
-func TestLoadDefinitions_ProjectLayerRefusesMachineOwnedKinds(t *testing.T) {
-	for _, tc := range []struct {
-		kind string
-		body string
-	}{
-		{"resource", "[issue]\nkind = \"resource\"\nname = \"issue\"\nmatch = '^x$'\n"},
-		{"channel", "[notify]\nkind = \"channel\"\ntype = \"unix_socket\"\npath = \"/tmp/x.sock\"\nbody = \"x\"\n"},
-	} {
-		t.Run(tc.kind, func(t *testing.T) {
-			root := filepath.Join(t.TempDir(), "widgets")
-			markProject(t, root)
-			writeFile(t, filepath.Join(root, ".plect", tc.kind+".toml"), tc.body)
-			cfg := &Config{BaseDir: t.TempDir(), TrustedProjectRoots: []string{root}}
+func TestLoadDefinitions_ProjectLayerDeclaresResourcesAndChannels(t *testing.T) {
+	global := t.TempDir()
+	writeFile(t, filepath.Join(global, "resources", "issue.toml"), resourceMatching("issue", "^global$"))
+	root := filepath.Join(t.TempDir(), "widgets")
+	markProject(t, root)
+	writeFile(t, filepath.Join(root, ".plect", "resources", "issue.toml"), resourceMatching("issue", "^project$"))
+	writeFile(t, filepath.Join(root, ".plect", "resources", "ticket.toml"), resourceMatching("ticket", "^ticket$"))
+	writeFile(t, filepath.Join(root, ".plect", "channels", "notify.toml"), "[notify]\nkind = \"channel\"\ntype = \"unix_socket\"\npath = \"/tmp/x.sock\"\nbody = \"x\"\n")
+	cfg := &Config{BaseDir: global, TrustedProjectRoots: []string{root}}
 
-			_, err := cfg.LoadWorkflows(root)
-			if err == nil || !strings.Contains(err.Error(), tc.kind) {
-				t.Fatalf("LoadWorkflows = %v, want a load error naming the %s kind", err, tc.kind)
-			}
-		})
+	resources, err := cfg.LoadResourceDefs(root)
+	if err != nil {
+		t.Fatalf("LoadResourceDefs: %v", err)
 	}
+	if got := resources["issue"].Match; got != "^project$" {
+		t.Errorf("issue match = %q, want the project declaration to replace the global one whole", got)
+	}
+	if _, ok := resources["ticket"]; !ok {
+		t.Error("the project layer's resource was not loaded")
+	}
+	channels, err := cfg.LoadChannels(root)
+	if err != nil {
+		t.Fatalf("LoadChannels: %v", err)
+	}
+	if _, ok := channels["notify"]; !ok {
+		t.Error("the project layer's channel was not loaded")
+	}
+
+	globalResources, err := cfg.LoadResourceDefs("")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, ok := globalResources["ticket"]; ok {
+		t.Error("the global-only context sees a resource only the project root declares")
+	}
+	if got := globalResources["issue"].Match; got != "^global$" {
+		t.Errorf("global-only issue match = %q, want the global declaration", got)
+	}
+	globalChannels, err := cfg.LoadChannels("")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, ok := globalChannels["notify"]; ok {
+		t.Error("the global-only context sees a channel only the project root declares")
+	}
+}
+
+func TestLoadResourcesAndChannels_RecordedProjectRootMustStillBeTrusted(t *testing.T) {
+	root := filepath.Join(t.TempDir(), "widgets")
+	markProject(t, root)
+	writeFile(t, filepath.Join(root, ".plect", "resources", "ticket.toml"), resourceMatching("ticket", "^ticket$"))
+	cfg := &Config{BaseDir: t.TempDir()}
+
+	var untrusted *UntrustedProjectError
+	if _, err := cfg.LoadResourceDefs(root); !errors.As(err, &untrusted) {
+		t.Errorf("LoadResourceDefs = %v, want an UntrustedProjectError", err)
+	}
+	if _, err := cfg.LoadChannels(root); !errors.As(err, &untrusted) {
+		t.Errorf("LoadChannels = %v, want an UntrustedProjectError", err)
+	}
+}
+
+func resourceMatching(id, match string) string {
+	return "[" + id + "]\nkind = \"resource\"\nmatch = '" + match + "'\nname = \"" + id + "\"\n[" + id + ".observe]\ntype = \"exec\"\ncommand = \"true\"\n"
 }
 
 func TestLoadDefinitions_ProjectMarkerIsNotADefinition(t *testing.T) {

@@ -147,7 +147,7 @@ func TaskSetup(cfg *config.Config, store *state.Store, params TaskSetupParams) (
 	if extraErr != nil {
 		return nil, extraErr
 	}
-	bound, boundErr := boundResource(cfg, store, params.Resource)
+	bound, boundErr := boundResource(cfg, store, session.ProjectRoot, params.Resource)
 	if boundErr != nil {
 		return nil, boundErr
 	}
@@ -284,7 +284,7 @@ func TaskSetup(cfg *config.Config, store *state.Store, params TaskSetupParams) (
 	// [[event.channel]] delivers.
 	appendInstruction(store, resolvedName, key, domain.Locator(bound), instructionOutput(resultOutputs))
 
-	subscribed, subscribeErrMsg := wireDeliveryOnSetup(cfg, store, resolvedName, bound, false)
+	subscribed, subscribeErrMsg := wireDeliveryOnSetup(cfg, store, resolvedName, session.ProjectRoot, bound, false)
 
 	return &TaskSetupResult{
 		SessionName:    resolvedName,

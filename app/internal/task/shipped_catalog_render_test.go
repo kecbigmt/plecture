@@ -64,7 +64,7 @@ func TestShippedSlackReviewExampleSubscribesThroughThreadResource(t *testing.T) 
 		t.Fatalf("capture shipped Slack review workflow: %v", err)
 	}
 
-	resources, err := cfg.LoadResourceDefs()
+	resources, err := cfg.LoadResourceDefs("")
 	if err != nil {
 		t.Fatalf("load shipped resources: %v", err)
 	}

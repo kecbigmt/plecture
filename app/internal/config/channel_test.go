@@ -48,7 +48,7 @@ session = { from = "inputs.session" }
 [imperative.input_schema]
 session = { type = "string", required = true }
 `)
-	got, err := (&Config{BaseDir: baseDir}).LoadChannels()
+	got, err := (&Config{BaseDir: baseDir}).LoadChannels("")
 	if err != nil {
 		t.Fatalf("LoadChannels: %v", err)
 	}
@@ -191,7 +191,7 @@ func TestLoadChannels_RejectedDeclarations(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			baseDir := t.TempDir()
 			writeChannelDoc(t, baseDir, "broken", tt.body)
-			_, err := (&Config{BaseDir: baseDir}).LoadChannels()
+			_, err := (&Config{BaseDir: baseDir}).LoadChannels("")
 			if err == nil {
 				t.Fatalf("expected a load error mentioning %q", tt.want)
 			}
@@ -220,7 +220,7 @@ args    = ["send-keys"]
 	}
 	cfg := &Config{PluginDirs: []string{pluginA, pluginB}}
 
-	_, err := cfg.LoadChannels()
+	_, err := cfg.LoadChannels("")
 	if err == nil || !strings.Contains(err.Error(), "tmux_send_keys") {
 		t.Fatalf("expected a collision error naming \"tmux_send_keys\", got %v", err)
 	}
@@ -392,7 +392,7 @@ func TestShippedConfig_ChannelsValidate(t *testing.T) {
 		t.Skipf("shipped config not found at %s: %v", cfgDir, err)
 	}
 	cfg := &Config{BaseDir: cfgDir}
-	channels, err := cfg.LoadChannels()
+	channels, err := cfg.LoadChannels("")
 	if err != nil {
 		t.Fatalf("LoadChannels(shipped): %v", err)
 	}
@@ -455,7 +455,7 @@ command = "true"
 declared_empty = { type = "string", default = "" }
 undeclared     = { type = "string" }
 `)
-	got, err := (&Config{BaseDir: baseDir}).LoadChannels()
+	got, err := (&Config{BaseDir: baseDir}).LoadChannels("")
 	if err != nil {
 		t.Fatal(err)
 	}

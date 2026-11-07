@@ -35,7 +35,7 @@ command = "printf"
 		t.Fatal(err)
 	}
 
-	defs, err := (&Config{BaseDir: base}).LoadResourceDefs()
+	defs, err := (&Config{BaseDir: base}).LoadResourceDefs("")
 	if err != nil {
 		t.Fatalf("LoadResourceDefs: %v", err)
 	}

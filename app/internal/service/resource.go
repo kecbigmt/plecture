@@ -10,7 +10,8 @@ import (
 // ResourceStatusParams are the inputs to ResourceStatus (`plect resource
 // status`).
 type ResourceStatusParams struct {
-	ResourceID string
+	ResourceID  string
+	ProjectRoot string
 }
 
 // ResourceStatusResult reports one resource observation.
@@ -32,7 +33,7 @@ func ResourceStatus(cfg *config.Config, params ResourceStatusParams) (*ResourceS
 	if resourceID == "" {
 		return nil, &Error{Code: ErrInvalidInput, Message: "resource id is required"}
 	}
-	defs, err := cfg.LoadResourceDefs()
+	defs, err := cfg.LoadResourceDefs(params.ProjectRoot)
 	if err != nil {
 		return nil, &Error{Code: ErrExecutionFailed, Message: err.Error()}
 	}

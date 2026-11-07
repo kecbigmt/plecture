@@ -70,7 +70,7 @@ all = [
 	if !doc.DoneWhen.All[1].IsExpr() {
 		t.Errorf("second leaf = %+v, want the expression leaf", doc.DoneWhen.All[1])
 	}
-	observers, err := cfg.LoadResourceDefs()
+	observers, err := cfg.LoadResourceDefs("")
 	if err != nil {
 		t.Fatalf("LoadResourceDefs: %v", err)
 	}
@@ -114,7 +114,7 @@ all = [{ check = "resource.state.nope", eq = "yes" }]
 	if err != nil {
 		t.Fatalf("LoadTaskDocuments: %v", err)
 	}
-	observers, err := cfg.LoadResourceDefs()
+	observers, err := cfg.LoadResourceDefs("")
 	if err != nil {
 		t.Fatalf("LoadResourceDefs: %v", err)
 	}
@@ -222,7 +222,7 @@ func loadDocsAndObservers(t *testing.T, cfg *Config) (map[string]TaskDocument, m
 	if err != nil {
 		t.Fatalf("LoadTaskDocuments: %v", err)
 	}
-	observers, err := cfg.LoadResourceDefs()
+	observers, err := cfg.LoadResourceDefs("")
 	if err != nil {
 		t.Fatalf("LoadResourceDefs: %v", err)
 	}

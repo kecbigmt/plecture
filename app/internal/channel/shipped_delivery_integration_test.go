@@ -55,7 +55,7 @@ func shippedChannels(t *testing.T) map[string]config.ChannelDefinition {
 		// re-depended on one specific catalog alias would otherwise pass.
 		mounted = append(mounted, plugins.Mounted{ID: "acme-mirror/" + filepath.Base(dir), Dir: dir, Manifest: manifest})
 	}
-	channels, err := (&config.Config{PluginDirs: dirs, Plugins: mounted}).LoadChannels()
+	channels, err := (&config.Config{PluginDirs: dirs, Plugins: mounted}).LoadChannels("")
 	if err != nil {
 		t.Fatalf("LoadChannels(shipped): %v", err)
 	}

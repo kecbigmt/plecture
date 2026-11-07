@@ -26,7 +26,7 @@ name  = "fixture"
 match = '^https://github\.com/'
 `+observerObserveHook)
 	cfg := &Config{BaseDir: baseDir}
-	got, err := cfg.LoadResourceDefs()
+	got, err := cfg.LoadResourceDefs("")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -66,7 +66,7 @@ match = '^https://github\.com/[^/]+/[^/]+/pull/'
 type    = "exec"
 command = "true"
 `)
-	got, err := (&Config{BaseDir: baseDir}).LoadResourceDefs()
+	got, err := (&Config{BaseDir: baseDir}).LoadResourceDefs("")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -104,7 +104,7 @@ type    = "exec"
 command = "global"
 `)
 	cfg := &Config{BaseDir: baseDir, PluginDirs: []string{pluginDir}}
-	got, err := cfg.LoadResourceDefs()
+	got, err := cfg.LoadResourceDefs("")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -134,7 +134,7 @@ command = "true"
 	}
 	cfg := &Config{PluginDirs: []string{pluginA, pluginB}}
 
-	_, err := cfg.LoadResourceDefs()
+	_, err := cfg.LoadResourceDefs("")
 	if err == nil || !strings.Contains(err.Error(), "github") {
 		t.Fatalf("expected a collision error naming \"github\", got %v", err)
 	}
@@ -196,7 +196,7 @@ func TestLoadResourceDefs_RejectedDeclarations(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			baseDir := t.TempDir()
 			writeFile(t, filepath.Join(baseDir, "resources", "broken.toml"), tt.body)
-			_, err := (&Config{BaseDir: baseDir}).LoadResourceDefs()
+			_, err := (&Config{BaseDir: baseDir}).LoadResourceDefs("")
 			if err == nil {
 				t.Fatalf("expected a load error mentioning %q", tt.want)
 			}
@@ -227,7 +227,7 @@ command = "curl"
 args    = ["evil.example"]
 `)
 	cfg := &Config{}
-	got, err := cfg.LoadResourceDefs()
+	got, err := cfg.LoadResourceDefs("")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -251,7 +251,7 @@ match = '^gh:'
 type = "exec"
 bin  = "local/runtime/watcher"
 `)
-	_, err := (&Config{PluginDirs: []string{pluginDir}}).LoadResourceDefs()
+	_, err := (&Config{PluginDirs: []string{pluginDir}}).LoadResourceDefs("")
 	if err == nil || !strings.Contains(err.Error(), "bare name") {
 		t.Fatalf("expected a cross-plugin reference error, got %v", err)
 	}
@@ -275,7 +275,7 @@ command = "%s"
 		baseDir := t.TempDir()
 		writeFile(t, filepath.Join(baseDir, "resources", "a.toml"), fmt.Sprintf(body, "first"))
 		writeFile(t, filepath.Join(baseDir, "resources", "b.toml"), fmt.Sprintf(body, "second"))
-		_, err := (&Config{BaseDir: baseDir}).LoadResourceDefs()
+		_, err := (&Config{BaseDir: baseDir}).LoadResourceDefs("")
 		var diag *lang.Diagnostic
 		if !errors.As(err, &diag) || diag.Code != lang.CodeIDDuplicate {
 			t.Fatalf("expected %s, got %v", lang.CodeIDDuplicate, err)
@@ -286,7 +286,7 @@ command = "%s"
 		pluginDir := t.TempDir()
 		writeFile(t, filepath.Join(pluginDir, "config", "resources", "a.toml"), fmt.Sprintf(body, "first"))
 		writeFile(t, filepath.Join(pluginDir, "config", "resources", "b.toml"), fmt.Sprintf(body, "second"))
-		_, err := (&Config{PluginDirs: []string{pluginDir}}).LoadResourceDefs()
+		_, err := (&Config{PluginDirs: []string{pluginDir}}).LoadResourceDefs("")
 		var diag *lang.Diagnostic
 		if !errors.As(err, &diag) || diag.Code != lang.CodeIDDuplicate {
 			t.Fatalf("expected %s, got %v", lang.CodeIDDuplicate, err)
@@ -319,7 +319,7 @@ match = '^x'
 type    = "exec"
 command = "global"
 `)
-	got, err := (&Config{BaseDir: baseDir, PluginDirs: []string{pluginDir}}).LoadResourceDefs()
+	got, err := (&Config{BaseDir: baseDir, PluginDirs: []string{pluginDir}}).LoadResourceDefs("")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -342,7 +342,7 @@ command = "true"
 func TestLoadResourceDefs_NameDerivesTheInstanceNameFromMatchCaptures(t *testing.T) {
 	baseDir := t.TempDir()
 	writeFile(t, filepath.Join(baseDir, "resources", "issue.toml"), forgeIssueResource)
-	got, err := (&Config{BaseDir: baseDir}).LoadResourceDefs()
+	got, err := (&Config{BaseDir: baseDir}).LoadResourceDefs("")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -370,7 +370,7 @@ match = '^https://forge\.example/'
 type    = "exec"
 command = "true"
 `)
-	_, err := (&Config{BaseDir: baseDir}).LoadResourceDefs()
+	_, err := (&Config{BaseDir: baseDir}).LoadResourceDefs("")
 	if err == nil || !strings.Contains(err.Error(), "`name` is required") {
 		t.Fatalf("error = %v, want a load error saying `name` is required", err)
 	}
@@ -388,7 +388,7 @@ name  = { from = "match.project" }
 type    = "exec"
 command = "true"
 `)
-	_, err := (&Config{BaseDir: baseDir}).LoadResourceDefs()
+	_, err := (&Config{BaseDir: baseDir}).LoadResourceDefs("")
 	if err == nil || !strings.Contains(err.Error(), "match.project") {
 		t.Fatalf("error = %v, want a load error naming match.project", err)
 	}
@@ -405,7 +405,7 @@ match = '^https://forge\.example/'
 type    = "exec"
 command = "true"
 `)
-	_, err := (&Config{BaseDir: baseDir}).LoadResourceDefs()
+	_, err := (&Config{BaseDir: baseDir}).LoadResourceDefs("")
 	if err == nil || !strings.Contains(err.Error(), "docs/migrations/resource-kind-migration.md") {
 		t.Fatalf("error = %v, want a load error pointing at the migration guide", err)
 	}
