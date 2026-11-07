@@ -29,7 +29,7 @@ func TestUpdatePopulation_CreatesAndPersistsMembers(t *testing.T) {
 	err := db.UpdatePopulation(ctx, "wf/pop", func(p *domain.PopulationState) error {
 		p.Workflow = "wf"
 		p.Name = "pop"
-		p.Members["res-1"] = &domain.PopulationMember{ResourceID: "res-1", Generation: 1, PendingUp: true, Item: map[string]any{"k": "v"}}
+		p.Members["res-1"] = &domain.PopulationMember{Resource: *testResource("res-1", "t://res-1"), Generation: 1, PendingUp: true, Item: map[string]any{"k": "v"}}
 		return nil
 	})
 	if err != nil {
@@ -72,11 +72,11 @@ func TestUpdatePopulation_ReplacesMembersRatherThanAccumulating(t *testing.T) {
 	}
 
 	mutate(func(p *domain.PopulationState) {
-		p.Members["a"] = &domain.PopulationMember{ResourceID: "a", Generation: 1}
+		p.Members["a"] = &domain.PopulationMember{Resource: *testResource("a", "t://a"), Generation: 1}
 	})
 	mutate(func(p *domain.PopulationState) {
 		delete(p.Members, "a")
-		p.Members["b"] = &domain.PopulationMember{ResourceID: "b", Generation: 1}
+		p.Members["b"] = &domain.PopulationMember{Resource: *testResource("b", "t://b"), Generation: 1}
 	})
 
 	got, err := db.Population(ctx, "wf/pop")
@@ -139,7 +139,7 @@ func TestUpdatePopulation_LastBlockersRoundTripsThroughChildTableInOrder(t *test
 	ctx := context.Background()
 
 	if err := db.UpdatePopulation(ctx, "wf/pop", func(p *domain.PopulationState) error {
-		p.Members["r1"] = &domain.PopulationMember{ResourceID: "r1", LastBlockers: []string{"open PR", "failing check"}}
+		p.Members["r1"] = &domain.PopulationMember{Resource: *testResource("r1", "t://r1"), LastBlockers: []string{"open PR", "failing check"}}
 		return nil
 	}); err != nil {
 		t.Fatalf("UpdatePopulation: %v", err)
@@ -197,7 +197,7 @@ func TestUpdatePopulation_LastDecisionRoundTripsThroughDecisionKindAndReason(t *
 			key := "wf/" + tc.name
 			if err := db.UpdatePopulation(ctx, key, func(p *domain.PopulationState) error {
 				p.Workflow, p.Name = splitPopulationKey(key)
-				p.Members["r1"] = &domain.PopulationMember{ResourceID: "r1", LastDecision: tc.lastDecision}
+				p.Members["r1"] = &domain.PopulationMember{Resource: *testResource("r1", "t://r1"), LastDecision: tc.lastDecision}
 				return nil
 			}); err != nil {
 				t.Fatalf("UpdatePopulation: %v", err)

@@ -1,6 +1,7 @@
 package service
 
 import (
+	"github.com/kecbigmt/plecture/app/internal/domain"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -20,8 +21,8 @@ func TestDispatchResource_AutoUniqueMatch(t *testing.T) {
 	if !matched {
 		t.Fatal("expected resolver match")
 	}
-	if disp.Name != "org/repo-42" {
-		t.Errorf("Name = %q, want org/repo-42", disp.Name)
+	if disp.Resource.Name != "org/repo-42" {
+		t.Errorf("Name = %q, want org/repo-42", disp.Resource.Name)
 	}
 	if disp.Workflow.ID != "gh" {
 		t.Errorf("Workflow = %q, want gh", disp.Workflow.ID)
@@ -182,8 +183,8 @@ func TestCreate_ResolverPath(t *testing.T) {
 		t.Errorf("SessionName = %q, want org/repo-42", result.SessionName)
 	}
 	s := store.Get("org/repo-42")
-	if s.ResourceID != url || s.Alias != url {
-		t.Errorf("ResourceID/Alias = %q/%q, want both %q", s.ResourceID, s.Alias, url)
+	if domain.Locator(s.Resource) != url || s.Alias != url {
+		t.Errorf("ResourceID/Alias = %q/%q, want both %q", domain.Locator(s.Resource), s.Alias, url)
 	}
 }
 
@@ -322,8 +323,8 @@ func TestCreate_SetsResourceIDAndAlias(t *testing.T) {
 		t.Fatal(err)
 	}
 	s := store.Get("org/repo-55")
-	if s.ResourceID != url || s.Alias != url {
-		t.Errorf("ResourceID/Alias = %q/%q, want %q", s.ResourceID, s.Alias, url)
+	if domain.Locator(s.Resource) != url || s.Alias != url {
+		t.Errorf("ResourceID/Alias = %q/%q, want %q", domain.Locator(s.Resource), s.Alias, url)
 	}
 }
 

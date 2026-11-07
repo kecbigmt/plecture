@@ -24,9 +24,9 @@ func TestPopulationStatusReportsPendingAndLastAdmitFailure(t *testing.T) {
 	log := eventlog.NewStore(store.Dir())
 	if err := store.UpdatePopulation("agent/dispatch", func(population *state.PopulationState) error {
 		population.Members["urn:case:a"] = &state.PopulationMember{
-			ResourceID: "urn:case:a", SessionName: "a+agent", PendingUp: true,
+			Resource: *testResource("urn:case:a"), SessionName: "a+agent", PendingUp: true,
 		}
-		population.Members["urn:case:b"] = &state.PopulationMember{ResourceID: "urn:case:b", PendingUp: true}
+		population.Members["urn:case:b"] = &state.PopulationMember{Resource: *testResource("urn:case:b"), PendingUp: true}
 		return nil
 	}); err != nil {
 		t.Fatal(err)
@@ -63,7 +63,7 @@ func TestPopulationStatusClearsAfterAdmitOK(t *testing.T) {
 	store := state.NewStore(t.TempDir())
 	log := eventlog.NewStore(store.Dir())
 	if err := store.UpdatePopulation("agent/dispatch", func(population *state.PopulationState) error {
-		population.Members["urn:case:a"] = &state.PopulationMember{ResourceID: "urn:case:a", SessionName: "a+agent"}
+		population.Members["urn:case:a"] = &state.PopulationMember{Resource: *testResource("urn:case:a"), SessionName: "a+agent"}
 		return nil
 	}); err != nil {
 		t.Fatal(err)

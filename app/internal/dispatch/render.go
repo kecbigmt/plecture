@@ -35,7 +35,8 @@ func channelInputs(s *domain.Session, ch config.EventChannel, def config.Channel
 	wfOutputs, _ := publicoutput.Of(s, publicoutput.ProducedOnly)
 	resolved, err := task.ResolveNodeInputs(ch.Inputs, deps, wfOutputs, task.SessionVars{
 		Name:       s.Name,
-		ResourceID: s.ResourceID,
+		ResourceID: domain.Locator(s.Resource),
+		Tag:        s.Tag,
 		Inputs:     s.Inputs,
 	})
 	if err != nil {

@@ -68,7 +68,7 @@ func ResolvePopulationSession(cfg *config.Config, store *state.Store, workflow, 
 	if !matched {
 		return "", nil, nil, &Error{Code: ErrInvalidInput, Message: fmt.Sprintf("no resource declaration recognizes population resource %q", resource)}
 	}
-	return entrySession(store, dispatch, "")
+	return entrySession(store, &dispatch, "")
 }
 
 // CreateResult holds the outcome of Create.
@@ -122,5 +122,5 @@ func Create(cfg *config.Config, store *state.Store, params CreateParams) (*Creat
 	if nameErr != nil {
 		return nil, nameErr
 	}
-	return createWithWorkflowSetup(cfg, store, params, disp, sessionName, resource, params.URL)
+	return createWithWorkflowSetup(cfg, store, params, disp, sessionName, params.URL)
 }

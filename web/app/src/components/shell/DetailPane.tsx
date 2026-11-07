@@ -48,7 +48,7 @@ function SessionDetailContent({ sessionName }: { sessionName: string }) {
         <Row label="run">{s.run}</Row>
         {s.health && <Row label="health">{s.health}</Row>}
         <Row label="resource">
-          <ResourceValue value={s.resourceId ?? ""} />
+          <ResourceValue value={s.resource?.locator ?? ""} />
         </Row>
         {s.message && (
           <Row label="message">

@@ -68,11 +68,11 @@ func publish(t *testing.T, svc *LiveService, session string, p service.EventPubl
 // inspection, and history reading in one flow.
 func TestBrowserAcceptance_LoginNavigatesHierarchyAndShowsHistory(t *testing.T) {
 	store := state.NewStore(t.TempDir())
-	seedSession(t, store, &domain.Session{Name: "browser-root", ResourceID: "https://github.com/browser-accept/issues/1"})
+	seedSession(t, store, &domain.Session{Name: "browser-root", Resource: testResource("https://github.com/browser-accept/issues/1")})
 	seedSession(t, store, &domain.Session{
 		Name:          "browser-child",
 		ParentSession: "browser-root",
-		ResourceID:    "https://github.com/browser-accept/issues/2",
+		Resource:      testResource("https://github.com/browser-accept/issues/2"),
 	})
 
 	origin, svc := browserOrigin(t, store, &Config{AuthToken: "s3cr3t-token"})

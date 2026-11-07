@@ -101,7 +101,7 @@ export function matchesSessionQuery(session: SessionSummary, query: string): boo
   }
   return (
     session.sessionName.toLowerCase().includes(q) ||
-    (session.resourceId ?? "").toLowerCase().includes(q)
+    (session.resource?.locator ?? "").toLowerCase().includes(q)
   );
 }
 

@@ -2,6 +2,7 @@ package service
 
 import (
 	"errors"
+	"github.com/kecbigmt/plecture/app/internal/domain"
 	"os"
 	"path/filepath"
 	"strings"
@@ -89,7 +90,7 @@ func TestUp_SelectedTaskBecomesTheInitialInstanceBoundToTheEntry(t *testing.T) {
 		t.Fatalf("up: %v", err)
 	}
 	initial := store.Get(res.SessionName).Tasks["initial"]
-	if initial == nil || initial.TaskID != "triage" || initial.Resource != identityCaseID || initial.Status != contract.TaskStatusProduced {
+	if initial == nil || initial.TaskID != "triage" || domain.Locator(initial.Resource) != identityCaseID || initial.Status != contract.TaskStatusProduced {
 		t.Fatalf("initial = %+v, want a produced triage instance bound to %s", initial, identityCaseID)
 	}
 	if evs := instructionEvents(t, store, res.SessionName); len(evs) != 1 || !strings.Contains(evs[0].Body, "Triage "+identityCaseID) {
@@ -151,11 +152,11 @@ func TestUp_BindsATaskOfAnotherTypeToTheNamedResource(t *testing.T) {
 		t.Fatalf("up: %v", err)
 	}
 	s := store.Get(res.SessionName)
-	if s.ResourceID != identityCaseID {
-		t.Errorf("entry resource = %q, want %s unchanged by the task binding", s.ResourceID, identityCaseID)
+	if domain.Locator(s.Resource) != identityCaseID {
+		t.Errorf("entry resource = %q, want %s unchanged by the task binding", domain.Locator(s.Resource), identityCaseID)
 	}
 	initial := s.Tasks["initial"]
-	if initial == nil || initial.TaskID != "ticket_work" || initial.Resource != "ticket://7" {
+	if initial == nil || initial.TaskID != "ticket_work" || domain.Locator(initial.Resource) != "ticket://7" {
 		t.Fatalf("initial = %+v, want ticket_work bound to ticket://7", initial)
 	}
 }
@@ -257,11 +258,11 @@ func TestTick_ChainSpawnStartsWithItsSelectedTaskBoundToTheSpawnedEntry(t *testi
 		t.Fatalf("chain = %+v, want a spawn that starts with ticket_work", res.Chains)
 	}
 	spawned := store.Get(spawn.TargetSession)
-	if spawned == nil || spawned.ResourceID != "ticket://7" {
+	if spawned == nil || domain.Locator(spawned.Resource) != "ticket://7" {
 		t.Fatalf("spawned = %+v, want a session for ticket://7", spawned)
 	}
 	initial := spawned.Tasks["initial"]
-	if initial == nil || initial.TaskID != "ticket_work" || initial.Resource != "ticket://7" {
+	if initial == nil || initial.TaskID != "ticket_work" || domain.Locator(initial.Resource) != "ticket://7" {
 		t.Errorf("spawned initial = %+v, want ticket_work bound to ticket://7", initial)
 	}
 	if _, ok := spawned.Inputs["task"]; ok {
@@ -332,7 +333,7 @@ func TestUp_ForceRecreateWithoutATaskKeepsTheInitialTaskItWasCreatedWith(t *test
 				t.Fatalf("force-recreate up: %v", err)
 			}
 			initial := store.Get(first.SessionName).Tasks["initial"]
-			if initial == nil || initial.TaskID != "triage" || initial.Resource != identityCaseID || initial.Status != contract.TaskStatusProduced {
+			if initial == nil || initial.TaskID != "triage" || domain.Locator(initial.Resource) != identityCaseID || initial.Status != contract.TaskStatusProduced {
 				t.Fatalf("initial = %+v after a runtime reset, want triage bound to %s reinstantiated", initial, identityCaseID)
 			}
 		})
@@ -367,7 +368,7 @@ func TestUp_AFailedForceRecreateKeepsTheInitialSelectionForTheRetry(t *testing.T
 		t.Fatalf("retried force-recreate: %v", err)
 	}
 	initial := store.Get(first.SessionName).Tasks["initial"]
-	if initial == nil || initial.TaskID != "triage" || initial.Resource != identityCaseID || initial.Status != contract.TaskStatusProduced {
+	if initial == nil || initial.TaskID != "triage" || domain.Locator(initial.Resource) != identityCaseID || initial.Status != contract.TaskStatusProduced {
 		t.Fatalf("initial = %+v after a failed rebuild and its retry, want triage reinstantiated", initial)
 	}
 }

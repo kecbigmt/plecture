@@ -120,7 +120,6 @@ describe("useLiveEvents", () => {
     queryClient.setQueryData(sessionDetailQueryKey("team/a"), {
       sessionName: "team/a",
       run: "up",
-      resourceId: "",
       createdAt: "2026-01-01T00:00:00Z",
     });
     const invalidateSpy = vi.spyOn(queryClient, "invalidateQueries");
@@ -155,7 +154,6 @@ describe("useLiveEvents", () => {
           JSON.stringify({
             sessionName: "team/a",
             run: "up",
-            resourceId: "",
             createdAt: "2026-01-01T00:00:00Z",
           }),
           { status: 200 },
@@ -194,7 +192,6 @@ describe("useLiveEvents", () => {
     const baseBody = {
       sessionName: "team/a",
       run: "up",
-      resourceId: "",
       createdAt: "2026-01-01T00:00:00Z",
     };
     const staleBody = baseBody;
@@ -242,7 +239,6 @@ describe("useLiveEvents", () => {
     queryClient.setQueryData(sessionDetailQueryKey("team/a"), {
       sessionName: "team/a",
       run: "up",
-      resourceId: "",
       createdAt: "2026-01-01T00:00:00Z",
     });
     vi.stubGlobal("fetch", vi.fn());

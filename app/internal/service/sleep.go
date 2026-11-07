@@ -179,7 +179,10 @@ func RequestWake(store *state.Store, name string, at time.Time) (bool, error) {
 		}
 		key := s.Population.Workflow + "/" + s.Population.Name
 		return store.UpdatePopulation(key, func(population *state.PopulationState) error {
-			member := population.Members[s.ResourceID]
+			if s.Resource == nil {
+				return nil
+			}
+			member := population.Members[s.Resource.Name]
 			if member != nil && member.SessionName == name && member.PendingUp {
 				member.AdmitRetryAt = time.Time{}
 			}

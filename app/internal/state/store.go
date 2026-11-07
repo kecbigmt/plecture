@@ -124,6 +124,15 @@ func (s *Store) GetE(name string) (*domain.Session, error) {
 	return db.GetSession(context.Background(), name)
 }
 
+// ResourceByName returns the resource recorded under name, or nil.
+func (s *Store) ResourceByName(name string) (*contract.Resource, error) {
+	db, err := s.dbHandle()
+	if err != nil {
+		return nil, err
+	}
+	return db.ResourceByName(context.Background(), name)
+}
+
 // Put saves or updates a session.
 func (s *Store) Put(session *domain.Session) error {
 	db, err := s.dbHandle()
@@ -153,12 +162,12 @@ func (s *Store) Update(name string, fn func(*domain.Session) error) error {
 	return db.UpdateSession(context.Background(), name, fn)
 }
 
-func (s *Store) UpdateWithSubscriptionRetries(name string, fn func(*domain.Session) error, resources []string) error {
+func (s *Store) UpdateWithSubscriptionRetries(name string, fn func(*domain.Session) error, action string, resources []contract.Resource) error {
 	db, err := s.dbHandle()
 	if err != nil {
 		return fmt.Errorf("state: update %q: %w", name, err)
 	}
-	return db.UpdateSessionWithSubscriptionRetries(context.Background(), name, fn, resources)
+	return db.UpdateSessionWithSubscriptionRetries(context.Background(), name, fn, action, resources)
 }
 
 // PruneReleasedNode reports whether name's node_id row was pruned; see

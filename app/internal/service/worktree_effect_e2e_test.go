@@ -258,14 +258,14 @@ func TestIntegration_RetryCallsGithubWatcherAfterHookFailure(t *testing.T) {
 	const name = "testowner/testrepo-58"
 	store := state.NewStore(t.TempDir())
 	now := time.Now()
-	if err := store.Put(&domain.Session{Name: name, ResourceID: resource, CreatedAt: now, UpdatedAt: now}); err != nil {
+	if err := store.Put(&domain.Session{Name: name, Resource: testResource(resource), CreatedAt: now, UpdatedAt: now}); err != nil {
 		t.Fatal(err)
 	}
 	watcher := filepath.Join(mounted[0].Dir, "github-watcher")
 	if err := os.Rename(watcher, watcher+".held"); err != nil {
 		t.Fatal(err)
 	}
-	wired, msg := wireDeliveryOnSetup(cfg, store, name, resource, false)
+	wired, msg := wireDeliveryOnSetup(cfg, store, name, testResource(resource), false)
 	if wired || msg == "" {
 		t.Fatalf("first attempt wired=%v error=%q", wired, msg)
 	}

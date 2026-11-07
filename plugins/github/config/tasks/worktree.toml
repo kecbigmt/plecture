@@ -16,6 +16,8 @@ args = [
   { from = "resource.id" },
   "--session",
   { from = "session.name" },
+  "--tag",
+  { from = "session.tag", default = "" },
   "--workspace-dirs-root",
   { from = "inputs.dirs_root", default = "" },
   "--workspace-layout-root",

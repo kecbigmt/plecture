@@ -20,12 +20,11 @@ import (
 const statusFlowLimit = 5
 
 // StatusIdentity is layer 1: what this session is, independent of whether it
-// is currently running. No plugin-shaped field belongs here — ResourceID is
-// an opaque string any resource can own.
+// is currently running. No plugin-shaped field belongs here — the resource
+// locator is an opaque string any resource can own.
 type StatusIdentity struct {
 	SessionName   string                         `json:"session_name"`
-	ResourceID    string                         `json:"resource_id,omitempty"`
-	ResourceType  string                         `json:"resource_type,omitempty"`
+	Resource      *ResourceView                  `json:"resource,omitempty"`
 	Title         string                         `json:"title,omitempty"`
 	Workflow      string                         `json:"workflow,omitempty"`
 	Revision      string                         `json:"revision,omitempty"`
@@ -227,12 +226,11 @@ func Status(cfg *config.Config, store *state.Store, identifier string) (*StatusR
 	return &StatusResult{
 		Identity: StatusIdentity{
 			SessionName:   sessionName,
-			ResourceID:    identityResourceID(session),
+			Resource:      resourceView(session.Resource),
 			Title:         displayTitle,
 			Workflow:      session.Workflow,
 			Revision:      shortWorkflowRevision(session.WorkflowRevision),
 			Population:    session.Population,
-			ResourceType:  session.ResourceType,
 			Tag:           session.Tag,
 			ParentSession: session.ParentSession,
 			Children:      childNames(sessions, sessionName),
@@ -391,7 +389,7 @@ func tombstoneStatusResult(tomb *contract.Tombstone) *StatusResult {
 				Status:            st.Status,
 				IsTask:            dynamic,
 				Name:              st.Name,
-				Resource:          st.Resource,
+				Resource:          domain.Locator(st.Resource),
 				Outputs:           st.Outputs,
 				State:             st.State,
 				Observed:          st.Observed,
@@ -406,9 +404,8 @@ func tombstoneStatusResult(tomb *contract.Tombstone) *StatusResult {
 	return &StatusResult{
 		Identity: StatusIdentity{
 			SessionName:   tomb.Name,
-			ResourceID:    identityResourceID(&tomb.Session),
+			Resource:      resourceView(tomb.Resource),
 			Workflow:      tomb.Workflow,
-			ResourceType:  tomb.ResourceType,
 			Tag:           tomb.Tag,
 			ParentSession: tomb.ParentSession,
 			CreatedAt:     tomb.CreatedAt,
@@ -417,11 +414,6 @@ func tombstoneStatusResult(tomb *contract.Tombstone) *StatusResult {
 		Destroyed:   true,
 		DestroyedAt: tomb.DestroyedAt,
 	}
-}
-
-// identityResourceID is the session's canonical resource identifier.
-func identityResourceID(s *domain.Session) string {
-	return s.ResourceID
 }
 
 // StatusSummary is the default `plect status --json` shape: identity plus, per
@@ -439,7 +431,7 @@ type StatusSummary struct {
 
 type StatusSummaryIdentity struct {
 	SessionName   string                         `json:"session_name"`
-	ResourceID    string                         `json:"resource_id,omitempty"`
+	Resource      *ResourceView                  `json:"resource,omitempty"`
 	Workflow      string                         `json:"workflow,omitempty"`
 	Revision      string                         `json:"revision,omitempty"`
 	Population    *contract.PopulationProvenance `json:"population,omitempty"`
@@ -497,7 +489,7 @@ func Summarize(result *StatusResult) *StatusSummary {
 		RepairReason:  result.Runtime.RepairReason,
 		Identity: StatusSummaryIdentity{
 			SessionName:   result.Identity.SessionName,
-			ResourceID:    result.Identity.ResourceID,
+			Resource:      result.Identity.Resource,
 			Workflow:      result.Identity.Workflow,
 			Revision:      result.Identity.Revision,
 			Population:    result.Identity.Population,

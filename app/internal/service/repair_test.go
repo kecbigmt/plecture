@@ -19,7 +19,7 @@ func seedRepairSession(t *testing.T, store *state.Store, name string, nodes map[
 	t.Helper()
 	now := time.Now()
 	session := &domain.Session{
-		Name: name, ResourceID: "resource:1", Workflow: "default", Nodes: nodes,
+		Name: name, Resource: testResource("resource:1"), Workflow: "default", Nodes: nodes,
 		CreatedAt: now, UpdatedAt: now,
 	}
 	if cfg := fixtureConfig(t); cfg != nil {

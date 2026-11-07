@@ -190,7 +190,7 @@ export interface components {
         SessionIdentity: {
             sessionName: string;
             /** @description Absent and empty are equivalent for every optional field on this model: the API omits an unset value rather than emitting it as `null` or `""`, mirroring the Go source's `omitempty` struct tags. */
-            resourceId?: string;
+            resource?: components["schemas"]["SessionResource"];
             title?: string;
             workflow?: string;
             tag?: string;
@@ -213,6 +213,11 @@ export interface components {
             /** Format: date-time */
             updatedAt: string;
         };
+        SessionResource: {
+            type: string;
+            name: string;
+            locator: string;
+        };
         /** @enum {string} */
         SessionRunState: "up" | "down";
         SessionRuntime: {
@@ -234,7 +239,7 @@ export interface components {
             displayStatus: string;
             run: components["schemas"]["SessionRunState"];
             health?: components["schemas"]["SessionHealthState"];
-            resourceId: string;
+            resource?: components["schemas"]["SessionResource"];
             /** Format: date-time */
             lastActiveAt?: string;
             message?: components["schemas"]["SessionMessage"];

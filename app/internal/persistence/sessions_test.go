@@ -29,10 +29,10 @@ func TestPutSessionAndGetSession_RoundTripsRelationalFields(t *testing.T) {
 
 	now := time.Now().UTC().Truncate(time.Second)
 	session := &domain.Session{
-		Name:       "case123",
-		ResourceID: "https://example.test/resource/123",
-		CreatedAt:  now,
-		UpdatedAt:  now,
+		Name:      "case123",
+		Resource:  testResource("case123", "https://example.test/resource/123"),
+		CreatedAt: now,
+		UpdatedAt: now,
 	}
 
 	if err := db.PutSession(ctx, session); err != nil {
@@ -46,7 +46,7 @@ func TestPutSessionAndGetSession_RoundTripsRelationalFields(t *testing.T) {
 	if got == nil {
 		t.Fatal("GetSession returned nil")
 	}
-	if got.Name != session.Name || got.ResourceID != session.ResourceID {
+	if got.Name != session.Name || got.Resource == nil || got.Resource.Locator != session.Resource.Locator {
 		t.Errorf("got = %+v, want name/resource_id to match", got)
 	}
 	if got.ID == "" {
@@ -469,7 +469,7 @@ func TestFindSessionsByAlias_MatchesEveryTagVariantAndNeverMatchesEmpty(t *testi
 	url := "https://example.test/resource/9"
 	now := time.Now().UTC()
 	for _, name := range []string{"case9", "case9+review"} {
-		if err := db.PutSession(ctx, &domain.Session{Name: name, ResourceID: url, Alias: url, CreatedAt: now, UpdatedAt: now}); err != nil {
+		if err := db.PutSession(ctx, &domain.Session{Name: name, Resource: testResource("case9", url), Alias: url, CreatedAt: now, UpdatedAt: now}); err != nil {
 			t.Fatalf("PutSession(%q): %v", name, err)
 		}
 	}
@@ -872,11 +872,11 @@ func TestPutSessionAndGetSession_EveryFieldRoundTrips(t *testing.T) {
 	earlier := now.Add(-time.Hour)
 
 	session := &domain.Session{
-		Name:       "full",
-		ResourceID: "https://example.test/resource/full",
-		Alias:      "https://example.test/resource/full",
-		Workflow:   "coding-agent",
-		Inputs:     map[string]any{"reason": "investigate"},
+		Name:     "full",
+		Resource: testResource("full", "https://example.test/resource/full"),
+		Alias:    "https://example.test/resource/full",
+		Workflow: "coding-agent",
+		Inputs:   map[string]any{"reason": "investigate"},
 		Health: &contract.HealthState{
 			LastCheckedAt:     earlier,
 			LastActivityAt:    earlier,
@@ -908,7 +908,7 @@ func TestPutSessionAndGetSession_EveryFieldRoundTrips(t *testing.T) {
 		Tasks: map[string]*contract.TaskState{
 			"work": {
 				Scope: contract.TaskScopeRun, Status: contract.TaskStatusProduced,
-				TaskID: "work-def", Resource: "resource-1", Name: "work",
+				TaskID: "work-def", Resource: testResource("resource-1", "resource://1"), Name: "work",
 				Inputs:  map[string]any{"in": 1},
 				Outputs: map[string]any{"out": 2},
 				State:   map[string]any{"reviewed": true},
@@ -953,7 +953,7 @@ func TestPutSessionAndGetSession_EveryFieldRoundTrips(t *testing.T) {
 		t.Fatal("GetSession returned nil")
 	}
 
-	if got.ResourceID != session.ResourceID || got.Alias != session.Alias || got.Workflow != session.Workflow {
+	if *got.Resource != *session.Resource || got.Alias != session.Alias || got.Workflow != session.Workflow {
 		t.Fatalf("relational fields = %+v, want %+v", got, session)
 	}
 	if got.Inputs["reason"] != "investigate" {
@@ -986,7 +986,7 @@ func TestPutSessionAndGetSession_EveryFieldRoundTrips(t *testing.T) {
 	if task == nil {
 		t.Fatal("task work missing")
 	}
-	if task.TaskID != "work-def" || task.Resource != "resource-1" || task.Name != "work" {
+	if task.TaskID != "work-def" || task.Resource == nil || task.Resource.Name != "resource-1" || task.Name != "work" {
 		t.Errorf("task identity = %+v", task)
 	}
 	if fmt.Sprint(task.Inputs) != fmt.Sprint(map[string]any{"in": float64(1)}) {
@@ -1293,7 +1293,7 @@ func TestPutSession_RoundTripsTheEntryResourceAcrossLaterWrites(t *testing.T) {
 	db := migratedTestDB(t)
 	ctx := context.Background()
 	now := time.Now().UTC().Truncate(time.Second)
-	if err := db.PutSession(ctx, &domain.Session{Name: "case-1+review", Workflow: "review", ResourceID: "urn:case:1", ResourceType: "case", Tag: "review", CreatedAt: now, UpdatedAt: now}); err != nil {
+	if err := db.PutSession(ctx, &domain.Session{Name: "case-1+review", Workflow: "review", Resource: &contract.Resource{Type: "case", Name: "case-1", Locator: "urn:case:1"}, Tag: "review", CreatedAt: now, UpdatedAt: now}); err != nil {
 		t.Fatalf("PutSession: %v", err)
 	}
 	got, err := db.GetSession(ctx, "case-1+review")
@@ -1308,7 +1308,7 @@ func TestPutSession_RoundTripsTheEntryResourceAcrossLaterWrites(t *testing.T) {
 	if err != nil || again == nil {
 		t.Fatalf("GetSession: %v, %v", again, err)
 	}
-	if again.ResourceType != "case" || again.Tag != "review" {
-		t.Errorf("entry = (%q, %q) after an update, want (case, review)", again.ResourceType, again.Tag)
+	if again.Resource == nil || again.Resource.Type != "case" || again.Resource.Name != "case-1" || again.Tag != "review" {
+		t.Errorf("entry = (%+v, %q) after an update, want (case case-1, review)", again.Resource, again.Tag)
 	}
 }

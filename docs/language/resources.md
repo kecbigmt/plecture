@@ -1,13 +1,18 @@
 # Resources
 
-A resource declaration owns one kind of external thing: recognition, instance
+A resource declaration owns one kind of external thing: recognition, resource
 naming, observation, query, delivery binding, and finalization. A resource is
 not a workflow node and does not acquire an environment.
 
 ## Identity and actions
 
-`match` recognizes a concrete identifier; `name` derives that resource
-instance's name from its captures. This name is distinct from a session name.
+`match` recognizes a concrete identifier; `name` derives that resource's
+resource name from its captures. The resource name is the resource's identity:
+identifiers that derive one name, such as two spellings of one link, are one
+resource, and a session or task bound to it gives its actions the identifier
+first resolved to that resource as `resource.id`. Resource names are unique
+across resource types, because a session takes its name from one; a resource
+name is not itself a session name, which may append a tag.
 `observe` refreshes `resource.state.*`; it neither performs work nor implies
 completion. `finalize` records a task's accepted completion and its evidence.
 `subscribe` and `unsubscribe` bind or remove delivery for one session/resource
@@ -82,6 +87,11 @@ optional appearance context. It does not duplicate observation state.
 
 - `match`, `name`, `observe`, and `state_schema` are required.
 - A `name` projection names only captures declared by `match`.
+- `name` derives a value matching the session-name rule
+  `[A-Za-z0-9][A-Za-z0-9/_+-]*`; any other value is an error where it is
+  derived.
+- A resource name another resource type already holds is an error where an
+  identifier resolves to it.
 - Every subscribe and unsubscribe receives an object satisfying
   `inputs_schema`.
 - Query inputs satisfy the query input schema independently of action inputs.

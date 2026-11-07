@@ -116,7 +116,7 @@ args    = ["-c", 'echo "$1 $2" > %s', "finalize", { from = "resource.id" }, { fr
 			Scope:    contract.TaskScopeSession,
 			TaskID:   "work",
 			Status:   contract.TaskStatusProduced,
-			Resource: "local-okf://kec/goals/x.md",
+			Resource: testResource("local-okf://kec/goals/x.md"),
 		},
 	})
 
@@ -176,7 +176,7 @@ args    = ["-c", "echo boom >&2; exit 1"]
 			Scope:    contract.TaskScopeSession,
 			TaskID:   "work",
 			Status:   contract.TaskStatusProduced,
-			Resource: "local-okf://kec/goals/x.md",
+			Resource: testResource("local-okf://kec/goals/x.md"),
 			Observed: observedFacts(map[string]any{"checks_status": "SUCCESS"}),
 		},
 	})

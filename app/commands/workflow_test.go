@@ -182,8 +182,8 @@ func TestWorkflowPopulationsRetryClearsSuspension(t *testing.T) {
 	t.Setenv(datahome.EnvVar, dataDir)
 	store := state.NewStore(dataDir)
 	if err := store.UpdatePopulation("agent/dispatch", func(population *state.PopulationState) error {
-		population.Members["urn:case:a"] = &state.PopulationMember{
-			ResourceID:               "urn:case:a",
+		population.Members[testResource("urn:case:a").Name] = &state.PopulationMember{
+			Resource:                 *testResource("urn:case:a"),
 			PendingUp:                true,
 			ConsecutiveAdmitFailures: 5,
 			LastAdmitReason:          "input",
@@ -202,7 +202,7 @@ func TestWorkflowPopulationsRetryClearsSuspension(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	member := population.Members["urn:case:a"]
+	member := population.Members[testResource("urn:case:a").Name]
 	if member.AdmitSuspended || member.ConsecutiveAdmitFailures != 0 || member.LastAdmitReason != "" {
 		t.Fatalf("member after CLI retry = %+v, want retry state cleared", member)
 	}

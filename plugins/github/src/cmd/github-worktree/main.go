@@ -42,6 +42,7 @@ func run(args []string) error {
 		fs := flag.NewFlagSet("setup", flag.ContinueOnError)
 		resource := fs.String("resource", "", "resource identifier (issue URL or pull request URL)")
 		session := fs.String("session", "", "session name the workspace is acquired for")
+		tag := fs.String("tag", "", "tag the session recorded; empty for an untagged session")
 		workspaceDirsRoot := fs.String("workspace-dirs-root", "", "dirs root worktree containers are laid out under (default: $HOME/workspace_dirs)")
 		watcherBin := fs.String("watcher-bin", "", "path to a github-watcher binary; gh-api calls route through its shared rate budget when set, otherwise call gh directly (overridden by app auth inputs below, when set)")
 		layoutRoot := fs.String("workspace-layout-root", "", "root this effect lays repository worktree containers out under (default: the dirs root)")
@@ -69,6 +70,7 @@ func run(args []string) error {
 		outputs, err := worktree.Setup(ctx, worktree.SetupOptions{
 			ResourceID:          *resource,
 			SessionName:         *session,
+			Tag:                 *tag,
 			WorkspaceDirsRoot:   *workspaceDirsRoot,
 			WorkspaceLayoutRoot: *layoutRoot,
 			IssueBranchTemplate: *issueBranchTemplate,

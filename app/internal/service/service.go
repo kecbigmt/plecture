@@ -47,37 +47,48 @@ func validateTagFormat(tag string) *Error {
 // instance need a tag to run side by side.
 func (d dispatchResult) sessionName(tag string) (string, *Error) {
 	if tag == "" {
-		return d.Name, nil
+		return d.Resource.Name, nil
 	}
 	if err := validateTagFormat(tag); err != nil {
 		return "", err
 	}
-	return d.Name + "+" + tag, nil
+	return d.Resource.Name + "+" + tag, nil
 }
 
 // Two different entries can compose one name, so a name match alone is not
-// the same session. Under one composed name a matching type and tag already
-// fix the resource name, so it is not compared.
+// the same session; the recorded resource and tag are. A resource with no
+// recorded row yet cannot be the one an existing session references.
 func checkEntryCollision(existing *domain.Session, d dispatchResult, tag string) *Error {
-	if existing.ResourceType == d.ResourceKey && existing.Tag == tag {
+	if existing.Resource != nil && d.Resource.ID != "" && existing.Resource.ID == d.Resource.ID && existing.Tag == tag {
 		return nil
 	}
-	requested := fmt.Sprintf("resource %q name %q with %s", d.ResourceKey, d.Name, describeTag(tag))
-	if existing.ResourceType == "" {
+	requested := fmt.Sprintf("%s with %s", describeResource(d.Resource), describeTag(tag))
+	if existing.Resource == nil {
 		return &Error{Code: ErrInvalidInput, Message: fmt.Sprintf("session %q collides with %s: the existing session records no entry resource; address it by its session name, or pass a --tag", existing.Name, requested)}
 	}
-	recorded := fmt.Sprintf("resource %q with %s", existing.ResourceType, describeTag(existing.Tag))
+	recorded := fmt.Sprintf("%s with %s", describeResource(*existing.Resource), describeTag(existing.Tag))
 	return &Error{Code: ErrInvalidInput, Message: fmt.Sprintf("session %q collides with %s: it was created for %s; pass a different --tag", existing.Name, requested, recorded)}
 }
 
 // Every resource-addressed reuse reads through entrySession, so none can reach
-// a session recorded for another entry. A collision is returned apart from err
-// because a chain and a population handle it differently from a read failure.
-func entrySession(store *state.Store, d dispatchResult, tag string) (name string, session *domain.Session, collision *Error, err error) {
+// a session recorded for another entry. It reconciles d.Resource with the
+// recorded row, which is what a session created from d must reference. A
+// collision, including a name another resource type already holds, is
+// returned apart from err because a chain and a population handle it
+// differently from a read failure.
+func entrySession(store *state.Store, d *dispatchResult, tag string) (name string, session *domain.Session, collision *Error, err error) {
 	name, nameErr := d.sessionName(tag)
 	if nameErr != nil {
 		return "", nil, nil, nameErr
 	}
+	recorded, conflict, err := recordedResource(store, d.Resource)
+	if err != nil {
+		return name, nil, nil, err
+	}
+	if conflict != nil {
+		return name, nil, conflict, nil
+	}
+	d.Resource = recorded
 	existing, err := store.GetE(name)
 	if err != nil {
 		return name, nil, nil, fmt.Errorf("read session %q state: %w", name, err)
@@ -85,13 +96,13 @@ func entrySession(store *state.Store, d dispatchResult, tag string) (name string
 	if existing == nil {
 		return name, nil, nil, nil
 	}
-	if collision := checkEntryCollision(existing, d, tag); collision != nil {
+	if collision := checkEntryCollision(existing, *d, tag); collision != nil {
 		return name, nil, collision, nil
 	}
 	return name, existing, nil, nil
 }
 
-func reusableEntrySession(store *state.Store, d dispatchResult, tag string) (string, *domain.Session, *Error) {
+func reusableEntrySession(store *state.Store, d *dispatchResult, tag string) (string, *domain.Session, *Error) {
 	name, session, collision, err := entrySession(store, d, tag)
 	if collision != nil {
 		return "", nil, collision
@@ -140,7 +151,7 @@ func resolveSession(cfg *config.Config, store *state.Store, identifier string) (
 	sessionName := identifier
 	if cfg != nil {
 		if disp, matched, err := dispatchResource(cfg, "", "", identifier); err == nil && matched {
-			name, session, err := reusableEntrySession(store, disp, "")
+			name, session, err := reusableEntrySession(store, &disp, "")
 			if err != nil {
 				return "", nil, err
 			}
@@ -254,7 +265,7 @@ func sessionTaskItems(cfg *config.Config, declarations taskDeclarations, session
 			}
 			items = append(items, sessionTaskItem{
 				seq: st.Seq, instance: key, taskID: st.TaskID, scope: st.Scope, status: st.Status,
-				dynamic: dynamic, name: st.Name, resource: st.Resource, outputs: st.Outputs,
+				dynamic: dynamic, name: st.Name, resource: domain.Locator(st.Resource), outputs: st.Outputs,
 				state: st.State, observed: st.Observed,
 				doneWhen: dwResult, finalized: !st.FinalizedAt.IsZero(),
 			})
@@ -333,7 +344,7 @@ type ListEntry struct {
 	Health        domain.HealthState `json:"health,omitempty"`
 	HealthReason  string             `json:"health_reason,omitempty"`
 	DisplayStatus string             `json:"display_status"`
-	ResourceID    string             `json:"resource_id"`
+	Resource      *ResourceView      `json:"resource,omitempty"`
 	Tracked       bool               `json:"tracked"`
 	LastActiveAt  *time.Time         `json:"last_active_at,omitempty"`
 	Message       *domain.Message    `json:"message,omitempty"`
@@ -404,7 +415,7 @@ func buildListEntry(cfg *config.Config, store *state.Store, displayTasks taskDec
 		Health:        health,
 		HealthReason:  healthReason,
 		DisplayStatus: cached.DisplayStatus,
-		ResourceID:    s.ResourceID,
+		Resource:      resourceView(s.Resource),
 		Tracked:       true,
 		LastActiveAt:  &s.UpdatedAt,
 		Message:       LatestStatusMessage(store, s.Name),

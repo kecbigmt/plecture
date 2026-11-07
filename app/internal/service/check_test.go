@@ -679,7 +679,7 @@ func TestTickSession_EscalatesWhenJudgeKeepsRequestingChanges(t *testing.T) {
 			Scope:    contract.TaskScopeSession,
 			TaskID:   "work",
 			Status:   contract.TaskStatusProduced,
-			Resource: "https://github.com/owner/repo/pull/1",
+			Resource: testResource("https://github.com/owner/repo/pull/1"),
 			Observed: observedFacts(map[string]any{"checks_status": "SUCCESS", "revision": "sha1"}),
 		},
 	})
@@ -734,7 +734,7 @@ func TestCheckSession_StableOrderSkipsFailedAndReportsMissingReviewerCommand(t *
 		},
 	})
 	if err := store.Update("owner/repo-1", func(s *domain.Session) error {
-		s.ResourceID = ""
+		s.Resource = nil
 		return nil
 	}); err != nil {
 		t.Fatalf("clear resource: %v", err)
@@ -768,7 +768,7 @@ func TestTickScenario_RequestChangesStaleThenApproved(t *testing.T) {
 			Scope:    contract.TaskScopeSession,
 			TaskID:   "work",
 			Status:   contract.TaskStatusProduced,
-			Resource: "https://github.com/owner/repo/pull/1",
+			Resource: testResource("https://github.com/owner/repo/pull/1"),
 			Observed: observedFacts(map[string]any{"checks_status": "SUCCESS", "revision": "sha1"}),
 		},
 	})

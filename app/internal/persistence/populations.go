@@ -10,6 +10,7 @@ import (
 
 	"github.com/kecbigmt/plecture/app/internal/domain"
 	"github.com/kecbigmt/plecture/app/internal/persistence/sqlcgen"
+	contract "github.com/kecbigmt/plecture/contracts/state"
 )
 
 // splitPopulationKey recovers a population's (workflow, name) domain
@@ -63,6 +64,7 @@ func (db *DB) UpdatePopulation(ctx context.Context, key string, fn func(*domain.
 		q := sqlcgen.New(tx)
 		row, err := q.GetPopulation(ctx, sqlcgen.GetPopulationParams{Workflow: workflow, Name: name})
 		var population *domain.PopulationState
+		previous := map[string]bool{}
 		switch {
 		case errors.Is(err, sql.ErrNoRows):
 			population = &domain.PopulationState{Workflow: workflow, Name: name}
@@ -72,6 +74,9 @@ func (db *DB) UpdatePopulation(ctx context.Context, key string, fn func(*domain.
 			members, err := loadPopulationMembers(ctx, tx, workflow, name)
 			if err != nil {
 				return err
+			}
+			for _, member := range members {
+				previous[member.Resource.ID] = true
 			}
 			population = &domain.PopulationState{Workflow: row.Workflow, Name: row.Name, Members: members}
 		}
@@ -92,21 +97,29 @@ func (db *DB) UpdatePopulation(ctx context.Context, key string, fn func(*domain.
 		}); err != nil {
 			return fmt.Errorf("upsert population %q: %w", key, err)
 		}
-		if err := q.DeletePopulationMembersForPopulation(ctx, sqlcgen.DeletePopulationMembersForPopulationParams{
-			Workflow: workflow,
-			Name:     name,
-		}); err != nil {
-			return fmt.Errorf("clear population members for %q: %w", key, err)
-		}
-		for resource, member := range population.Members {
+		// Kept members are upserted rather than deleted and reinserted, so a
+		// resource every write still references is never released in between.
+		kept := map[string]bool{}
+		for _, member := range population.Members {
 			if member == nil {
 				continue
 			}
-			if err := insertPopulationMemberTx(ctx, q, workflow, name, resource, member); err != nil {
+			if err := writePopulationMemberTx(ctx, q, workflow, name, member); err != nil {
 				return err
 			}
+			kept[member.Resource.ID] = true
 		}
-		return nil
+		var dropped []string
+		for id := range previous {
+			if kept[id] {
+				continue
+			}
+			if err := q.DeletePopulationMember(ctx, sqlcgen.DeletePopulationMemberParams{Workflow: workflow, Name: name, ResourceID: id}); err != nil {
+				return fmt.Errorf("delete population member %s of %q: %w", id, key, err)
+			}
+			dropped = append(dropped, id)
+		}
+		return releaseResourcesTx(ctx, q, dropped)
 	})
 }
 
@@ -125,13 +138,22 @@ func loadPopulationMembers(ctx context.Context, q sqlcgen.DBTX, workflow, name s
 		blockersByResource[b.ResourceID] = append(blockersByResource[b.ResourceID], b.Reason)
 	}
 
-	members := make(map[string]*domain.PopulationMember, len(rows))
+	loaded := make([]*domain.PopulationMember, 0, len(rows))
+	refs := make([]*contract.Resource, 0, len(rows))
 	for _, row := range rows {
 		member, err := populationMemberFromRow(row, blockersByResource[row.ResourceID])
 		if err != nil {
 			return nil, err
 		}
-		members[row.ResourceID] = member
+		loaded = append(loaded, member)
+		refs = append(refs, &member.Resource)
+	}
+	if err := fillResourcesTx(ctx, queries, refs); err != nil {
+		return nil, err
+	}
+	members := make(map[string]*domain.PopulationMember, len(loaded))
+	for _, member := range loaded {
+		members[member.Resource.Name] = member
 	}
 	return members, nil
 }
@@ -181,7 +203,7 @@ func populationMemberFromRow(row sqlcgen.PopulationMember, blockers []string) (*
 		return nil, fmt.Errorf("parse population member %q admit_retry_at: %w", row.ResourceID, err)
 	}
 	return &domain.PopulationMember{
-		ResourceID:               row.ResourceID,
+		Resource:                 contract.Resource{ID: row.ResourceID},
 		Item:                     item,
 		SessionName:              row.SessionName.String,
 		Generation:               uint64(row.Generation),
@@ -200,13 +222,17 @@ func populationMemberFromRow(row sqlcgen.PopulationMember, blockers []string) (*
 	}, nil
 }
 
-func insertPopulationMemberTx(ctx context.Context, q *sqlcgen.Queries, workflow, name, resource string, member *domain.PopulationMember) error {
+func writePopulationMemberTx(ctx context.Context, q *sqlcgen.Queries, workflow, name string, member *domain.PopulationMember) error {
+	if err := recordResourceTx(ctx, q, &member.Resource); err != nil {
+		return fmt.Errorf("population %s/%s member: %w", workflow, name, err)
+	}
+	resource := member.Resource.ID
 	itemJSON, err := json.Marshal(member.Item)
 	if err != nil {
 		return fmt.Errorf("marshal population member %q item: %w", resource, err)
 	}
 	decisionKind, decisionReason := splitLastDecision(member.LastDecision)
-	if err := q.InsertPopulationMember(ctx, sqlcgen.InsertPopulationMemberParams{
+	if err := q.UpsertPopulationMember(ctx, sqlcgen.UpsertPopulationMemberParams{
 		Workflow:                 workflow,
 		Name:                     name,
 		ResourceID:               resource,
@@ -226,7 +252,10 @@ func insertPopulationMemberTx(ctx context.Context, q *sqlcgen.Queries, workflow,
 		DecisionReason:           decisionReason,
 		ItemJson:                 string(itemJSON),
 	}); err != nil {
-		return fmt.Errorf("insert population member %q: %w", resource, err)
+		return fmt.Errorf("write population member %q: %w", resource, err)
+	}
+	if err := q.DeletePopulationMemberBlockers(ctx, sqlcgen.DeletePopulationMemberBlockersParams{Workflow: workflow, Name: name, ResourceID: resource}); err != nil {
+		return fmt.Errorf("clear population member %q blockers: %w", resource, err)
 	}
 	for i, reason := range member.LastBlockers {
 		if err := q.InsertPopulationMemberBlocker(ctx, sqlcgen.InsertPopulationMemberBlockerParams{

@@ -24,15 +24,15 @@ import (
 // a retry gets queued. Never returns an error: every caller treats a wiring
 // failure as non-fatal to the instantiation that already succeeded,
 // reporting it via the returned message instead.
-func wireDeliveryOnSetup(cfg *config.Config, store *state.Store, sessionName, resource string, reportInvalidInputs bool) (bool, string) {
-	if strings.TrimSpace(resource) == "" {
+func wireDeliveryOnSetup(cfg *config.Config, store *state.Store, sessionName string, resource *contract.Resource, reportInvalidInputs bool) (bool, string) {
+	if resource == nil || strings.TrimSpace(resource.Locator) == "" {
 		return false, ""
 	}
 	var subscribed bool
 	var errMsg string
 	if lockErr := withDeliveryLock(store, sessionName, func() {
 		var subErr error
-		subscribed, subErr = subscribeIfWiredWithPolicy(cfg, sessionName, resource, reportInvalidInputs)
+		subscribed, subErr = subscribeIfWiredWithPolicy(cfg, sessionName, resource.Locator, reportInvalidInputs)
 		if subErr != nil {
 			errMsg = subErr.Error()
 		}
@@ -40,7 +40,7 @@ func wireDeliveryOnSetup(cfg *config.Config, store *state.Store, sessionName, re
 		errMsg = fmt.Sprintf("could not acquire the delivery lock: %v", lockErr)
 	}
 	if errMsg != "" {
-		if queueErr := queuePendingSubscribe(store, sessionName, resource); queueErr != nil {
+		if queueErr := queuePendingSubscribe(store, sessionName, *resource); queueErr != nil {
 			errMsg = fmt.Sprintf("%s (and failed to durably queue a retry: %v)", errMsg, queueErr)
 		}
 	}
@@ -146,8 +146,8 @@ func unsubscribeIfWired(cfg *config.Config, sessionName, resourceID string) (boo
 // as a failure inside it. Never returns an error: both callers treat a
 // wiring failure as non-fatal to the teardown that already succeeded,
 // reporting it via the returned message instead.
-func unwireDeliveryOnTeardown(cfg *config.Config, store *state.Store, sessionName, resource, sessionID string) (bool, string) {
-	if strings.TrimSpace(resource) == "" {
+func unwireDeliveryOnTeardown(cfg *config.Config, store *state.Store, sessionName string, resource *contract.Resource, sessionID string) (bool, string) {
+	if resource == nil || strings.TrimSpace(resource.Locator) == "" {
 		return false, ""
 	}
 	var unsubscribed bool
@@ -156,10 +156,10 @@ func unwireDeliveryOnTeardown(cfg *config.Config, store *state.Store, sessionNam
 		fresh, freshErr := store.GetE(sessionName)
 		switch {
 		case freshErr != nil:
-			errMsg = fmt.Sprintf("could not verify whether %s is still needed: %v", resource, freshErr)
-		case shouldUnsubscribe(fresh, resource):
+			errMsg = fmt.Sprintf("could not verify whether %s is still needed: %v", resource.Locator, freshErr)
+		case shouldUnsubscribe(cfg, fresh, *resource):
 			var unsubErr error
-			unsubscribed, unsubErr = unsubscribeIfWired(cfg, sessionName, resource)
+			unsubscribed, unsubErr = unsubscribeIfWired(cfg, sessionName, resource.Locator)
 			if unsubErr != nil {
 				errMsg = unsubErr.Error()
 			}
@@ -170,9 +170,9 @@ func unwireDeliveryOnTeardown(cfg *config.Config, store *state.Store, sessionNam
 	if errMsg != "" {
 		queueErr := error(nil)
 		if sessionID == "" {
-			queueErr = queuePendingUnsubscribe(store, sessionName, resource)
+			queueErr = queuePendingUnsubscribe(store, sessionName, *resource)
 		} else {
-			queueErr = queuePendingUnsubscribeForSessionID(store, sessionID, resource)
+			queueErr = queuePendingUnsubscribeForSessionID(store, sessionID, *resource)
 		}
 		if queueErr != nil {
 			errMsg = fmt.Sprintf("%s (and failed to durably queue a retry: %v)", errMsg, queueErr)
@@ -186,28 +186,28 @@ func unwireDeliveryOnTeardown(cfg *config.Config, store *state.Store, sessionNam
 // itself no longer exists — destroyed between resolveSession and this read
 // — which is handled the same as "not needed": nothing can need a resource
 // once its owning session is gone).
-func shouldUnsubscribe(fresh *domain.Session, resource string) bool {
-	return fresh == nil || !resourceStillNeededBySession(fresh, resource)
+func shouldUnsubscribe(cfg *config.Config, fresh *domain.Session, resource contract.Resource) bool {
+	return fresh == nil || !resourceStillNeededBySession(cfg, fresh, resource)
 }
 
-func resourceStillNeededBySession(s *domain.Session, resource string) bool {
-	if resource == "" {
+func resourceStillNeededBySession(cfg *config.Config, s *domain.Session, resource contract.Resource) bool {
+	if resource.Locator == "" {
 		return false
 	}
-	if s.ResourceID == resource {
+	if sameResource(s.Resource, &resource) {
 		return true
 	}
 	for _, other := range s.Tasks {
-		if other != nil && other.Resource == resource {
+		if other != nil && other.Resource != nil && sameResource(other.Resource, &resource) {
 			return true
 		}
 	}
 	return nodeSubscriptionNeededBySession(s, resource)
 }
 
-func nodeSubscriptionNeededBySession(s *domain.Session, resource string) bool {
+func nodeSubscriptionNeededBySession(s *domain.Session, resource contract.Resource) bool {
 	for _, node := range s.Nodes {
-		if node != nil && node.Status != contract.TaskStatusCleaned && node.Subscription == resource {
+		if node != nil && node.Status != contract.TaskStatusCleaned && sameResource(node.Subscription, &resource) {
 			return true
 		}
 	}

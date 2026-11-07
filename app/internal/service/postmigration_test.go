@@ -28,12 +28,12 @@ func seedPostMigrationSession(t *testing.T, store *state.Store, name, resourceID
 	t.Helper()
 	createdAt := time.Date(2024, 1, 1, 0, 0, 0, 0, time.UTC)
 	session := &domain.Session{
-		Name:       name,
-		ResourceID: resourceID,
-		Alias:      resourceID,
-		Workflow:   workflow,
-		CreatedAt:  createdAt,
-		UpdatedAt:  createdAt,
+		Name:      name,
+		Resource:  testResource(resourceID),
+		Alias:     resourceID,
+		Workflow:  workflow,
+		CreatedAt: createdAt,
+		UpdatedAt: createdAt,
 	}
 	if err := store.Put(session); err != nil {
 		t.Fatalf("seed %q: %v", name, err)
@@ -49,8 +49,8 @@ func TestPostMigrationState_LoadsIdentityFields(t *testing.T) {
 	if s == nil {
 		t.Fatal("session not loaded from post-migration state")
 	}
-	if s.ResourceID != "https://example.test/acme/widgets/items/1" {
-		t.Errorf("ResourceID = %q", s.ResourceID)
+	if domain.Locator(s.Resource) != "https://example.test/acme/widgets/items/1" {
+		t.Errorf("ResourceID = %q", domain.Locator(s.Resource))
 	}
 	if s.Alias != "https://example.test/acme/widgets/items/1" {
 		t.Errorf("Alias = %q", s.Alias)
@@ -115,7 +115,7 @@ func TestPostMigrationState_ResolverDispatchOverPostMigrationState(t *testing.T)
 	if err != nil || !matched {
 		t.Fatalf("dispatch: matched=%v err=%v", matched, err)
 	}
-	name := disp.Name + "+gh"
+	name := disp.Resource.Name + "+gh"
 	if store.Get(name) == nil {
 		t.Fatalf("resolver-derived name %q does not address the migrated session", name)
 	}

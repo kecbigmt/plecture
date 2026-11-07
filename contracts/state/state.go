@@ -108,8 +108,8 @@ const (
 //     instantiation stack — so an task always outlives anything
 //     that depends on it. Zero on legacy state written before this field
 //     existed (such entries fall back to plan order).
-//   - Resource is the `--resource` value bound at instantiation (the external
-//     resource this instance works on); empty for instances with no resource.
+//   - Resource is the resource bound at instantiation (the external resource
+//     this instance works on); nil for instances with no resource.
 //   - Name is a `--name` instance identity for a dynamic instance: when set, the
 //     instance key IS the name (session-global unique, no `<task>#` prefix), so
 //     a second `setup --name <name>` collides. Empty for the numbered
@@ -126,8 +126,8 @@ type TaskState struct {
 	Inputs       map[string]any `json:"inputs,omitempty"`       // resolved node inputs (post-template), persisted for cleanup
 	Outputs      map[string]any `json:"outputs,omitempty"`      // parsed JSON from setup stdout
 	Seq          int            `json:"seq,omitempty"`          // instantiation order; 0 = legacy/unset
-	Resource     string         `json:"resource,omitempty"`     // bound --resource at instantiation
-	Subscription string         `json:"subscription,omitempty"` // resource id bound by a workflow node's subscription
+	Resource     *Resource      `json:"resource,omitempty"`     // bound --resource at instantiation
+	Subscription *Resource      `json:"subscription,omitempty"` // resource a workflow node's subscription bound
 	Name         string         `json:"name,omitempty"`         // --name instance identity (key == name when set)
 	Layers       []LayerState   `json:"layers,omitempty"`       // per-layer record for a nested task; empty for a plain one
 	// Directory is the directory this instance's setup ran in, recorded so
@@ -231,6 +231,23 @@ type LayerState struct {
 	Error                string    `json:"error,omitempty"`
 }
 
+// Resource is one recorded external resource. Every column that refers to a
+// resource (resource_id, and a node's subscription_id) stores its ID: an opaque
+// id, never the identifier string resource actions receive, which is Locator.
+type Resource struct {
+	ID string `json:"id,omitempty"`
+	// Type is the declaration the resource resolved through. It is empty for
+	// an identifier no declaration resolved, whose Name is then its own ID.
+	Type string `json:"type,omitempty"`
+	// Name is the slug the declaration's `name` derived. It is unique across
+	// types, because a session takes its name from it, and it is what makes
+	// two spellings of one identifier the same resource.
+	Name string `json:"name"`
+	// Locator is the identifier first resolved to this resource; a later
+	// spelling that derives the same Name never replaces it.
+	Locator string `json:"locator"`
+}
+
 // Session is the shared representation of a plect session's durable state.
 // This contains all fields that external consumers may read.
 //
@@ -238,12 +255,9 @@ type LayerState struct {
 // time so subsequent up/down/destroy use a stable plan regardless of config
 // changes. Empty means the legacy inline-`[[tasks]]` path was used.
 //
-// ResourceID is the canonical external resource this session works on (any
-// string — the workspace provider that resolved it decides what the string
-// means); Alias preserves the original create-time input so lookups survive
-// resolver rule changes. Anything resource-shaped beyond those two (a
-// repository, a number, a permalink) is a workspace provider setup output,
-// not a session field.
+// Alias preserves the original create-time input so lookups survive resolver
+// rule changes. Anything resource-shaped beyond Resource (a repository, a
+// number, a permalink) is an effect's setup output, not a session field.
 type Session struct {
 	// ID is the durable surrogate identity minted once at creation (or
 	// recreation under a reused name) and never changed thereafter;
@@ -253,13 +267,12 @@ type Session struct {
 	Status      string    `json:"status,omitempty"`
 	SleepSince  time.Time `json:"sleep_since,omitzero"`
 	DestroyedAt time.Time `json:"destroyed_at,omitzero"`
-	ResourceID  string    `json:"resource_id,omitempty"`
-	// ResourceType and Tag are the entry resource the session was created
-	// for. The tag is recorded rather than parsed back out of Name because a
-	// resource name may itself contain the tag separator, and an empty
-	// ResourceType marks a session created before they were recorded.
-	ResourceType string `json:"resource_type,omitempty"`
-	Tag          string `json:"tag,omitempty"`
+	// Resource is the entry resource the session was created for; its ID is
+	// what the session's resource_id stores.
+	Resource *Resource `json:"resource,omitempty"`
+	// Tag is recorded rather than parsed back out of Name because a resource
+	// name may itself contain the tag separator.
+	Tag string `json:"tag,omitempty"`
 	// ParentSessionID and RootSessionID are ParentSession's durable
 	// identity, resolved once and never re-resolved on a later write, so a
 	// destroyed-and-recreated parent never retargets this session.

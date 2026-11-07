@@ -5,6 +5,7 @@ import (
 	"fmt"
 
 	"github.com/kecbigmt/plecture/app/internal/config"
+	"github.com/kecbigmt/plecture/app/internal/domain"
 	"github.com/kecbigmt/plecture/app/internal/service"
 	"github.com/kecbigmt/plecture/app/internal/state"
 	contract "github.com/kecbigmt/plecture/contracts/state"
@@ -31,7 +32,7 @@ func serviceHooks(cfg func() *config.Config, store *state.Store, def Definition,
 			if err != nil {
 				return fmt.Errorf("read session %q state: %w", session, err)
 			}
-			if current == nil || current.Population == nil || *current.Population != *provenance || current.ResourceID != resource {
+			if current == nil || current.Population == nil || *current.Population != *provenance || domain.Locator(current.Resource) != resource {
 				return &populationConflictError{session: session, reason: fmt.Sprintf("session %q no longer has matching workflow-population provenance", session)}
 			}
 			_, err = service.Destroy(cfg(), store, service.DestroyParams{Identifier: session, Force: force})
@@ -55,7 +56,7 @@ func upPopulation(cfg func() *config.Config, store *state.Store, def Definition,
 		return UpOutcome{}, err
 	}
 	if current != nil {
-		if current.Population == nil || *current.Population != *provenance || current.ResourceID != resource {
+		if current.Population == nil || *current.Population != *provenance || domain.Locator(current.Resource) != resource {
 			return UpOutcome{}, &populationConflictError{session: name, reason: fmt.Sprintf("session %q is owned by another lifecycle authority", name)}
 		}
 		alreadyUp := cfg().RunScopeUp(current)

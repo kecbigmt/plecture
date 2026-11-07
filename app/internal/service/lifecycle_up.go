@@ -126,7 +126,7 @@ func upUnlocked(cfg *config.Config, store *state.Store, params UpParams) (*UpRes
 	}
 	if matched {
 		tag := params.Tag
-		sessionName, existing, entryErr := reusableEntrySession(store, disp, tag)
+		sessionName, existing, entryErr := reusableEntrySession(store, &disp, tag)
 		if entryErr != nil {
 			return nil, entryErr
 		}
@@ -272,14 +272,14 @@ func upUnlocked(cfg *config.Config, store *state.Store, params UpParams) (*UpRes
 		// The recreate discards every task instance, and the initial instance
 		// is the only record of the selection it was created with.
 		if initial := session.Tasks[initialInstance]; initialTask == nil && initial != nil {
-			initialTask = &initialTaskBinding{TaskID: initial.TaskID, Resource: initial.Resource}
+			initialTask = &initialTaskBinding{TaskID: initial.TaskID, Resource: domain.Locator(initial.Resource)}
 		}
 		plan, recreateErr = recreateSessionRuntime(cfg, store, sessionName, session, wf, plan, params.Observer)
 		if recreateErr != nil {
-			return nil, keepInitialSelection(store, sessionName, initialTask, recreateErr)
+			return nil, keepInitialSelection(cfg, store, sessionName, initialTask, recreateErr)
 		}
 		if err := ensureInitialTask(cfg, store, sessionName, initialTask); err != nil {
-			return nil, keepInitialSelection(store, sessionName, initialTask, err)
+			return nil, keepInitialSelection(cfg, store, sessionName, initialTask, err)
 		}
 	} else if cleanupErr := cleanupStaleWorkflowNodes(cfg, store, sessionName, session, plan, params.Observer); cleanupErr != nil {
 		return nil, cleanupErr
@@ -300,7 +300,7 @@ func upUnlocked(cfg *config.Config, store *state.Store, params UpParams) (*UpRes
 	// would then overwrite disk with our in-memory map, taken before the
 	// nested write landed, silently dropping it — the same hazard mergeTasks
 	// already exists to close for Create's initial_task dispatcher.
-	if err := mergeTasksWithSubscriptions(store, sessionName, session, wiredNodes); err != nil {
+	if err := mergeTasksWithSubscriptions(cfg, store, sessionName, session, wiredNodes); err != nil {
 		return nil, &Error{Code: ErrExecutionFailed, Message: fmt.Sprintf("failed to save session state: %v", err)}
 	}
 	wireProducedNodeSubscriptions(cfg, store, sessionName, wiredNodes)
@@ -357,7 +357,7 @@ func upUnlocked(cfg *config.Config, store *state.Store, params UpParams) (*UpRes
 				Summary: "population member is up",
 				Metadata: map[string]string{
 					"workflow": session.Population.Workflow, "population": session.Population.Name,
-					"resource": session.ResourceID, "reason": "up",
+					"resource": domain.Locator(session.Resource), "reason": "up",
 				},
 			})
 			if err != nil {
@@ -542,7 +542,7 @@ func recreateSessionRuntime(cfg *config.Config, store *state.Store, sessionName 
 	}
 	wiredNodes, setupErr := runNodeSetup(context.Background(), cfg, store, setupPlan.Session, sessionVars(cfg, session, setupPlan), session, observer)
 	session.UpdatedAt = time.Now()
-	if err := mergeTasksWithSubscriptions(store, sessionName, session, wiredNodes); err != nil {
+	if err := mergeTasksWithSubscriptions(cfg, store, sessionName, session, wiredNodes); err != nil {
 		return nil, &Error{Code: ErrExecutionFailed, Message: fmt.Sprintf("failed to save session state: %v", err)}
 	}
 	wireProducedNodeSubscriptions(cfg, store, sessionName, wiredNodes)

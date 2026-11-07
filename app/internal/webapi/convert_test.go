@@ -32,7 +32,7 @@ func TestDetailFromStatus_OmitsUnsetOptionalFields(t *testing.T) {
 	if got.SessionName != "team/workspace-a" || !got.CreatedAt.Equal(createdAt) {
 		t.Fatalf("required fields not carried through: %+v", got)
 	}
-	if got.ResourceId != nil || got.Title != nil || got.Workflow != nil ||
+	if got.Resource != nil || got.Title != nil || got.Workflow != nil ||
 		got.Tag != nil || got.ParentSession != nil || got.Children != nil || got.Inputs != nil {
 		t.Errorf("expected every unset optional identity field to be nil, got %+v", got)
 	}
@@ -325,7 +325,7 @@ func TestSummaryFromListEntry_MapsRequiredAndOptionalFields(t *testing.T) {
 		DisplayStatus: "up · healthy",
 		Run:           domain.RunUp,
 		Health:        domain.HealthHealthy,
-		ResourceID:    "https://github.com/owner/repo/issues/1",
+		Resource:      testView("https://github.com/owner/repo/issues/1"),
 		LastActiveAt:  &now,
 		ParentSession: "team",
 		Tasks: []service.TaskInstanceView{
@@ -336,7 +336,7 @@ func TestSummaryFromListEntry_MapsRequiredAndOptionalFields(t *testing.T) {
 	got := summaryFromListEntry(entry)
 
 	if got.SessionName != entry.SessionName || got.DisplayStatus != entry.DisplayStatus ||
-		got.ResourceId != entry.ResourceID {
+		got.Resource == nil || *got.Resource != (webapiv1.SessionResource{Type: entry.Resource.Type, Name: entry.Resource.Name, Locator: entry.Resource.Locator}) {
 		t.Fatalf("required fields not carried through: %+v", got)
 	}
 	if got.LastActiveAt == nil || !got.LastActiveAt.Equal(now) {

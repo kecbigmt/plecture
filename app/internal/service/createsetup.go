@@ -19,12 +19,12 @@ import (
 //
 //	state entry → workflow revision capture → plan compile → every node's setup
 //
-// sessionName is the final id (tag already applied); resource is the
-// canonical resource identifier; alias is the user's original input.
+// sessionName is the final id (tag already applied); alias is the user's
+// original input.
 //
 // The state entry is recorded before any node's setup so cleanup can release
 // a partially allocated environment after setup fails.
-func createWithWorkflowSetup(cfg *config.Config, store *state.Store, params CreateParams, disp dispatchResult, sessionName, resource, alias string) (*CreateResult, error) {
+func createWithWorkflowSetup(cfg *config.Config, store *state.Store, params CreateParams, disp dispatchResult, sessionName, alias string) (*CreateResult, error) {
 	wf := disp.Workflow
 	if err := validateSessionName(sessionName); err != nil {
 		return nil, err
@@ -36,7 +36,7 @@ func createWithWorkflowSetup(cfg *config.Config, store *state.Store, params Crea
 
 	now := time.Now()
 	var session *domain.Session
-	_, existing, entryErr := reusableEntrySession(store, disp, params.Tag)
+	_, existing, entryErr := reusableEntrySession(store, &disp, params.Tag)
 	if entryErr != nil {
 		return nil, entryErr
 	}
@@ -77,7 +77,7 @@ func createWithWorkflowSetup(cfg *config.Config, store *state.Store, params Crea
 			ParentSession: parentSession,
 			Status:        contract.SessionStatusDown,
 			Workflow:      wf.Address,
-			ResourceType:  disp.ResourceKey,
+			Resource:      &disp.Resource,
 			Tag:           params.Tag,
 			Population:    params.Population,
 			Inputs:        input,
@@ -86,7 +86,6 @@ func createWithWorkflowSetup(cfg *config.Config, store *state.Store, params Crea
 			CreatedAt:     now,
 		}
 	}
-	session.ResourceID = resource
 	session.Alias = alias
 	session.UpdatedAt = now
 	if session.WorkflowRevision == "" {
@@ -128,7 +127,7 @@ func createWithWorkflowSetup(cfg *config.Config, store *state.Store, params Crea
 	// `plect task setup` subprocess that writes its instance straight to disk.
 	// Overlay our in-memory task entries onto the freshly-read session instead
 	// of a blind Put so that nested write (e.g. the `initial` task) survives.
-	if err := mergeTasksWithSubscriptions(store, sessionName, session, wiredNodes); err != nil {
+	if err := mergeTasksWithSubscriptions(cfg, store, sessionName, session, wiredNodes); err != nil {
 		return nil, &Error{Code: ErrExecutionFailed, Message: fmt.Sprintf("failed to save session state: %v", err)}
 	}
 	wireProducedNodeSubscriptions(cfg, store, sessionName, wiredNodes)
@@ -145,8 +144,8 @@ func createWithWorkflowSetup(cfg *config.Config, store *state.Store, params Crea
 
 	// Binding implies delivery for the session's own resource too, not just
 	// a dynamic task setup's own bound one.
-	if _, errMsg := wireDeliveryOnSetup(cfg, store, sessionName, resource, false); errMsg != "" {
-		slog.Warn("resource delivery wiring failed at session create", "session", sessionName, "resource", resource, "error", errMsg)
+	if _, errMsg := wireDeliveryOnSetup(cfg, store, sessionName, session.Resource, false); errMsg != "" {
+		slog.Warn("resource delivery wiring failed at session create", "session", sessionName, "resource", domain.Locator(session.Resource), "error", errMsg)
 	}
 	flushPendingDeliveryLogged(cfg, store, sessionName)
 

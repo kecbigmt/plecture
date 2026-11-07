@@ -100,9 +100,9 @@ func observeInstanceResource(cfg *config.Config, session *domain.Session, doc co
 		result.Error = fmt.Sprintf("task %s is written for resource %q, which no config layer declares", doc.ID, doc.Resource)
 		return nil, result
 	}
-	resourceID := st.Resource
+	resourceID := domain.Locator(st.Resource)
 	if resourceID == "" {
-		resourceID = session.ResourceID
+		resourceID = domain.Locator(session.Resource)
 	}
 	if resourceID == "" {
 		result.Error = fmt.Sprintf("instance %q has no resource to observe", key)

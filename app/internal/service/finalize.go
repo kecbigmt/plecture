@@ -99,9 +99,9 @@ func FinalizeTask(cfg *config.Config, store *state.Store, params FinalizeTaskPar
 		return nil, &Error{Code: ErrInvalidInput, Message: fmt.Sprintf("instance %q done_when is %s, not satisfied; finalize refuses to record completion or clean up", params.Instance, eval.Overall)}
 	}
 
-	resourceID := st.Resource
+	resourceID := domain.Locator(st.Resource)
 	if resourceID == "" {
-		resourceID = session.ResourceID
+		resourceID = domain.Locator(session.Resource)
 	}
 	result := &FinalizeTaskResult{SessionName: resolvedName, Instance: params.Instance, ResourceID: resourceID}
 

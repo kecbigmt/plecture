@@ -42,10 +42,13 @@ type SetupOptions struct {
 	// ResourceID is the canonical resource identifier: a GitHub issue or
 	// pull request URL.
 	ResourceID string
-	// SessionName is the session the workspace is acquired for. Its
-	// "<name>+<tag>" suffix, when present, is what separates one tool's
-	// workspace on a resource from another's.
+	// SessionName is the session the workspace is acquired for.
 	SessionName string
+	// Tag is the tag the session recorded, which separates one tool's
+	// workspace on a resource from another's. It is not parsed out of
+	// SessionName, because a resource name may itself contain the "+"
+	// separator.
+	Tag string
 	// WorkspaceDirsRoot is the effect's `dirs_root` input; empty means
 	// `$HOME/workspace_dirs`.
 	WorkspaceDirsRoot string
@@ -111,8 +114,8 @@ func Setup(ctx context.Context, opts SetupOptions) (map[string]any, error) {
 	}
 
 	branch := baseBranch
-	if tag := SessionTag(opts.SessionName); tag != "" {
-		branch = github.ExpandTaggedBranch(opts.TaggedBranchSuffix, baseBranch, tag)
+	if opts.Tag != "" {
+		branch = github.ExpandTaggedBranch(opts.TaggedBranchSuffix, baseBranch, opts.Tag)
 	}
 
 	mgr := opts.Manager
@@ -307,15 +310,6 @@ func Cleanup(ctx context.Context, opts CleanupOptions) error {
 		return fmt.Errorf("release worktree: %w", err)
 	}
 	return nil
-}
-
-// SessionTag extracts the session tag from a session name's
-// "<name>+<tag>" convention. An untagged name yields the empty string.
-func SessionTag(sessionName string) string {
-	if idx := strings.LastIndex(sessionName, "+"); idx >= 0 {
-		return sessionName[idx+1:]
-	}
-	return ""
 }
 
 // layoutRoot picks the root this effect lays worktree containers out under:

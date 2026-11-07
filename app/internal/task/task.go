@@ -560,8 +560,11 @@ type RenderContext struct {
 }
 
 type SessionVars struct {
-	Name          string
-	ResourceID    string
+	Name       string
+	ResourceID string
+	// Tag is the tag the session recorded, never parsed back out of Name,
+	// because a resource name may itself contain the tag separator.
+	Tag           string
 	ParentSession string
 	Inputs        map[string]any
 	// Force is the destruction operation's own intent, read only by cleanup
@@ -1128,8 +1131,8 @@ func RunCleanup(goCtx context.Context, ordered []Resolved, session SessionVars, 
 		if len(state.Layers) > 0 {
 			obs.OnStart(r.Scope, r.NodeID)
 			sess := session
-			if state.Resource != "" {
-				sess.ResourceID = state.Resource
+			if state.Resource != nil {
+				sess.ResourceID = state.Resource.Locator
 			}
 			base := RenderContext{
 				Process:  state.Process,
@@ -1171,8 +1174,8 @@ func RunCleanup(goCtx context.Context, ordered []Resolved, session SessionVars, 
 		// the same one its setup bound — not the session's. SessionVars
 		// is a value, so copying and overriding is local to this task.
 		sess := session
-		if state.Resource != "" {
-			sess.ResourceID = state.Resource
+		if state.Resource != nil {
+			sess.ResourceID = state.Resource.Locator
 		}
 		ctx := RenderContext{
 			Self:       state.Outputs,

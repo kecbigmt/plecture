@@ -422,7 +422,7 @@ all = [ { judge_pending = "ac-met" } ]
 	seedReviewWork(t, store, "owner/repo-1", map[string]any{"checks_status": "SUCCESS", "revision": "sha1"})
 	seedSessionWithNodes(t, store, "owner/repo-1+review-work", "owner/repo", 1, "codex", nil)
 	if err := store.Update("owner/repo-1+review-work", func(session *domain.Session) error {
-		session.ResourceType = "alt"
+		session.Resource = testResource("alt://x")
 		return nil
 	}); err != nil {
 		t.Fatal(err)
@@ -701,7 +701,7 @@ pr_url   = { from = "self.state.pr_url" }
 			TaskID: "work",
 			Status: contract.TaskStatusProduced,
 			// Tracked by an issue in a different repository than the PR.
-			Resource: "https://github.com/owner/repo/issues/1",
+			Resource: testResource("https://github.com/owner/repo/issues/1"),
 			Observed: &contract.ResourceObservation{
 				State: map[string]any{"revision": "sha1", "checks_status": "SUCCESS"},
 				At:    time.Now(),

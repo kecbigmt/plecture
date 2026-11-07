@@ -3,6 +3,7 @@
 package service
 
 import (
+	"github.com/kecbigmt/plecture/app/internal/domain"
 	"os"
 	"path/filepath"
 	"strings"
@@ -95,8 +96,8 @@ revision = { from = "resource.state.revision" }
 	}
 	// The reviewer is about the pull request the chain named, not the issue
 	// the work session is keyed to.
-	if spawned.ResourceID != prURL {
-		t.Fatalf("reviewer resource = %q, want the pull request the chain named (%q)", spawned.ResourceID, prURL)
+	if domain.Locator(spawned.Resource) != prURL {
+		t.Fatalf("reviewer resource = %q, want the pull request the chain named (%q)", domain.Locator(spawned.Resource), prURL)
 	}
 	// The reviewer session is a real session the workflow built, not a
 	// record: its nodes ran.

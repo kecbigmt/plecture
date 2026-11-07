@@ -104,7 +104,7 @@ func TestSetTaskState_RecordsDeclaredKey(t *testing.T) {
 			Scope:    contract.TaskScopeSession,
 			TaskID:   "review",
 			Status:   contract.TaskStatusProduced,
-			Resource: "https://example.test/pull/1",
+			Resource: testResource("https://example.test/pull/1"),
 			SetupAt:  time.Now(),
 		},
 	})
@@ -815,7 +815,7 @@ func TestTickSession_DocumentSelfStateIsRecordedStateAlone(t *testing.T) {
 			Scope:    contract.TaskScopeSession,
 			TaskID:   "review",
 			Status:   contract.TaskStatusProduced,
-			Resource: "https://example.test/pull/1",
+			Resource: testResource("https://example.test/pull/1"),
 			Observed: observedFacts(map[string]any{"verdict_revision": "sha2"}),
 			SetupAt:  time.Now(),
 		},

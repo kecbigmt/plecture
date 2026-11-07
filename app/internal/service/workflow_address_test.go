@@ -133,7 +133,7 @@ func TestCreate_TwoPluginsSharingAWorkflowIDRunSideBySide(t *testing.T) {
 
 	for _, tc := range []struct{ url, address, tag string }{
 		{"https://github.com/org/repo/issues/42", "official.a.shared", "a"},
-		{"https://github.com/org/repo/pull/42", "official.b.shared", "b"},
+		{"https://github.com/org/repo/pull/43", "official.b.shared", "b"},
 	} {
 		result, err := Create(cfg, store, CreateParams{URL: tc.url, Workflow: tc.address, Tag: tc.tag})
 		if err != nil {

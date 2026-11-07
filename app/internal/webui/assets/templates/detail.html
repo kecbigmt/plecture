@@ -68,7 +68,8 @@
              A resolver-less id (e.g. "my-experiment") or a non-web scheme would
              otherwise render as a broken/sanitized link, so show plain text. */}}
       <dt class="text-muted-foreground">resource</dt>
-      <dd class="break-all">{{ if isWebURL .Identity.ResourceID }}<a class="rounded-sm underline underline-offset-2 hover:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring" href="{{ .Identity.ResourceID }}">{{ .Identity.ResourceID }}</a>{{ else }}{{ .Identity.ResourceID }}{{ end }}</dd>
+      {{- $locator := "" }}{{ with .Identity.Resource }}{{ $locator = .Locator }}{{ end }}
+      <dd class="break-all">{{ if isWebURL $locator }}<a class="rounded-sm underline underline-offset-2 hover:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring" href="{{ $locator }}">{{ $locator }}</a>{{ else }}{{ $locator }}{{ end }}</dd>
       {{- if .Identity.Workflow }}<dt class="text-muted-foreground">workflow</dt><dd class="break-all">{{ .Identity.Workflow }}</dd>{{ end }}
       {{- if .Identity.Tag }}<dt class="text-muted-foreground">tag</dt><dd class="break-all">{{ .Identity.Tag }}</dd>{{ end }}
       <dt class="text-muted-foreground">created</dt><dd>{{ .Identity.CreatedAt.Format "2006-01-02 15:04" }}</dd>

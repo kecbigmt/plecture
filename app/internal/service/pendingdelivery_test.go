@@ -24,7 +24,7 @@ func subscriptionRetryCount(t *testing.T, store *state.Store, sessionName, actio
 		}
 		count := 0
 		for _, retry := range all {
-			if retry.Session == sessionName && retry.Action == action && retry.ResourceID == resource {
+			if retry.Session == sessionName && retry.Action == action && retry.Resource.Locator == resource {
 				count++
 			}
 		}
@@ -36,7 +36,7 @@ func subscriptionRetryCount(t *testing.T, store *state.Store, sessionName, actio
 	}
 	count := 0
 	for _, retry := range all {
-		if retry.Action == action && retry.ResourceID == resource {
+		if retry.Action == action && retry.Resource.Locator == resource {
 			count++
 		}
 	}
@@ -247,7 +247,7 @@ func TestFlushPendingDeliveryLogged_DrainsOrphanedEntryViaAnotherSessionsActivit
 	if err := store.Destroy("gone-1"); err != nil {
 		t.Fatal(err)
 	}
-	if err := queuePendingUnsubscribeForSessionID(store, gone.ID, prURL); err != nil {
+	if err := queuePendingUnsubscribeForSessionID(store, gone.ID, *testResource(prURL)); err != nil {
 		t.Fatal(err)
 	}
 	if err := os.WriteFile(toggle, []byte("go"), 0o644); err != nil {
@@ -285,12 +285,12 @@ func TestSweepOrphanedPendingDeliveriesDoesNotUnsubscribeLiveNameReplacement(t *
 		t.Fatal(err)
 	}
 	const resource = "resource://same/proj/pull/1"
-	if err := queuePendingUnsubscribeForSessionID(store, old.ID, resource); err != nil {
+	if err := queuePendingUnsubscribeForSessionID(store, old.ID, *testResource(resource)); err != nil {
 		t.Fatal(err)
 	}
 	seedSession(t, store, "same-name", "same", 1, "coding", map[string]*contract.TaskState{})
 	if err := store.Update("same-name", func(session *domain.Session) error {
-		session.ResourceID = resource
+		session.Resource = testResource(resource)
 		return nil
 	}); err != nil {
 		t.Fatal(err)
@@ -341,7 +341,7 @@ func TestFlushPendingDelivery_DropsUnsubscribeEntryOnceResourceIsNeededAgain(t *
 	if _, err := TaskSetup(cfg, store, TaskSetupParams{TaskID: "work", SessionName: "sess-1", Name: "again", Resource: prURL}); err != nil {
 		t.Fatalf("setup: %v", err)
 	}
-	if err := queuePendingUnsubscribe(store, "sess-1", prURL); err != nil {
+	if err := queuePendingUnsubscribe(store, "sess-1", *testResource(prURL)); err != nil {
 		t.Fatal(err)
 	}
 
@@ -450,7 +450,7 @@ args    = ["-c", 'test -e "$1" || exit 3; echo done > "$2"', "provider", "` + fi
 	seedSession(t, store, "sess-1", "sess", 1, "coding", map[string]*contract.TaskState{})
 
 	const prURL = "resource://sess/proj/pull/9"
-	if err := queuePendingSubscribe(store, "sess-1", prURL); err != nil {
+	if err := queuePendingSubscribe(store, "sess-1", *testResource(prURL)); err != nil {
 		t.Fatal(err)
 	}
 

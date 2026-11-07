@@ -1,6 +1,9 @@
 package service
 
 import (
+	"context"
+	"github.com/kecbigmt/plecture/app/internal/persistence"
+	"github.com/kecbigmt/plecture/app/internal/state"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -339,6 +342,9 @@ func TestTaskCleanup_UnsubscribesResourceWhenNoLongerNeeded(t *testing.T) {
 	if want := "o/r-1\n" + prURL + "\n"; string(got) != want {
 		t.Errorf("unsubscribe hook recorded %q, want %q", got, want)
 	}
+	if retries := pendingRetries(t, store, "o/r-1"); len(retries) != 0 {
+		t.Errorf("retries = %+v, want the queued unsubscribe cleared once it succeeded", retries)
+	}
 }
 
 // A dynamic instance bound to the session's own primary resource must not
@@ -488,6 +494,22 @@ args    = ["-c", "echo boom >&2; exit 3"]
 	if result.UnsubscribeError == "" {
 		t.Error("UnsubscribeError is empty, want the hook failure reported")
 	}
+	if retries := pendingRetries(t, store, "o/r-1"); len(retries) != 1 || retries[0].Action != retryUnsubscribe || retries[0].Resource.Locator != prURL {
+		t.Errorf("retries = %+v, want one unsubscribe of %s", retries, prURL)
+	}
+}
+
+func pendingRetries(t *testing.T, store *state.Store, session string) []persistence.SubscriptionRetry {
+	t.Helper()
+	db, err := retryStore(store)
+	if err != nil {
+		t.Fatal(err)
+	}
+	retries, err := db.SubscriptionRetriesForLiveSession(context.Background(), session)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return retries
 }
 
 // An instance created without --resource has nothing to unregister; cleanup
@@ -520,12 +542,12 @@ func TestShouldUnsubscribe(t *testing.T) {
 		want     bool
 	}{
 		{"nil session (destroyed mid-cleanup) has nothing left to need it", nil, "r", true},
-		{"present session still needs the resource as its primary", &domain.Session{ResourceID: "r"}, "r", false},
-		{"present session no longer needs the resource", &domain.Session{ResourceID: "other"}, "r", true},
+		{"present session still needs the resource as its primary", &domain.Session{Resource: testResource("r")}, "r", false},
+		{"present session no longer needs the resource", &domain.Session{Resource: testResource("other")}, "r", true},
 	}
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
-			if got := shouldUnsubscribe(tc.session, tc.resource); got != tc.want {
+			if got := shouldUnsubscribe(nil, tc.session, *testResource(tc.resource)); got != tc.want {
 				t.Errorf("shouldUnsubscribe(%+v, %q) = %v, want %v", tc.session, tc.resource, got, tc.want)
 			}
 		})

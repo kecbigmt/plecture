@@ -1,6 +1,6 @@
 {
   "sessionName": "team/workspace-a",
-  "resourceId": "https://example.com/team/workspace/issues/1",
+  "resource": {"type": "issue", "name": "team/workspace-1", "locator": "https://example.com/team/workspace/issues/1"},
   "workflow": "default",
   "children": ["team/workspace-a/review"],
   "inputs": {

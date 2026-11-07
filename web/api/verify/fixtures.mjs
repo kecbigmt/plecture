@@ -46,8 +46,8 @@ check("session list envelope has the template's two fields", () => {
   assert.equal(list.count, 2);
   assert.equal(list.items.length, 2);
 });
-check("a required field can legitimately be an empty string", () => {
-  assert.equal(list.items[1].resourceId, "");
+check("a nested object field decodes as an object", () => {
+  assert.equal(list.items[0].resource.locator, "https://example.com/team/workspace/issues/1");
 });
 check("an absent optional field is simply missing, not null", () => {
   assert.equal("title" in list.items[1], false);

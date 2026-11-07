@@ -173,7 +173,7 @@ func TestSessionReactor_UnchangedUnmetStateAnnouncesOnce(t *testing.T) {
 				Scope:    contract.TaskScopeSession,
 				TaskID:   "work",
 				Status:   contract.TaskStatusProduced,
-				Resource: "https://github.com/o/r/pull/1",
+				Resource: testResource("https://github.com/o/r/pull/1"),
 			},
 		},
 	}

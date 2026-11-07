@@ -648,7 +648,7 @@ script = "if test -f '`+ready+`'; then touch '`+registered+`'; else touch '`+fai
 `)
 	r.cfg = &config.Config{PluginDirs: []string{pluginDir}}
 	if err := st.Update("o/r-1", func(s *domain.Session) error {
-		s.ResourceID = "thread://one"
+		s.Resource = testResource("thread://one")
 		return nil
 	}); err != nil {
 		t.Fatal(err)
@@ -657,7 +657,7 @@ script = "if test -f '`+ready+`'; then touch '`+registered+`'; else touch '`+fai
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := db.QueueSubscriptionRetry(context.Background(), "o/r-1", "subscribe", "thread://one"); err != nil {
+	if err := db.QueueSubscriptionRetry(context.Background(), "o/r-1", "subscribe", *testResource("thread://one")); err != nil {
 		t.Fatal(err)
 	}
 	stop := startReactor(t, r)

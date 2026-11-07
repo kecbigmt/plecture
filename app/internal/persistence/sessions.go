@@ -118,12 +118,12 @@ func (db *DB) FindSessionsByAlias(ctx context.Context, alias string) ([]*domain.
 // the result back in one transaction. A session is destroyed the same
 // way: fn sets Status to SessionStatusDestroyed on the same row.
 func (db *DB) UpdateSession(ctx context.Context, name string, fn func(*domain.Session) error) error {
-	return db.UpdateSessionWithSubscriptionRetries(ctx, name, fn, nil)
+	return db.UpdateSessionWithSubscriptionRetries(ctx, name, fn, "", nil)
 }
 
 // A committed node binding needs a durable retry if the process exits before
 // its subscribe hook runs.
-func (db *DB) UpdateSessionWithSubscriptionRetries(ctx context.Context, name string, fn func(*domain.Session) error, resources []string) error {
+func (db *DB) UpdateSessionWithSubscriptionRetries(ctx context.Context, name string, fn func(*domain.Session) error, action string, resources []contract.Resource) error {
 	return db.WithImmediateTx(ctx, func(tx *sql.Tx) error {
 		row, err := sqlcgen.New(tx).GetLiveSession(ctx, name)
 		if err != nil {
@@ -147,8 +147,8 @@ func (db *DB) UpdateSessionWithSubscriptionRetries(ctx context.Context, name str
 		if err := db.writeSessionTx(ctx, tx, s); err != nil {
 			return err
 		}
-		for _, resource := range resources {
-			if err := queueSubscriptionRetryTx(ctx, tx, s.ID, subscriptionRetrySubscribe, resource); err != nil {
+		for i := range resources {
+			if err := queueSubscriptionRetryTx(ctx, tx, s.ID, action, &resources[i]); err != nil {
 				return err
 			}
 		}
@@ -214,12 +214,16 @@ func (db *DB) PruneReleasedNode(ctx context.Context, sessionName, nodeID string)
 			}
 			return fmt.Errorf("resolve session %q: %w", sessionName, err)
 		}
+		referenced, err := sessionResourceIDsTx(ctx, q, sessionID)
+		if err != nil {
+			return err
+		}
 		affected, err := q.DeleteReleasedNodeInstance(ctx, sqlcgen.DeleteReleasedNodeInstanceParams{SessionID: sessionID, NodeID: nodeID})
 		if err != nil {
 			return fmt.Errorf("prune released node %q/%q: %w", sessionName, nodeID, err)
 		}
 		pruned = affected > 0
-		return nil
+		return releaseResourcesTx(ctx, q, referenced)
 	})
 	if err != nil {
 		return false, err
@@ -241,10 +245,14 @@ func (db *DB) ResetNodes(ctx context.Context, sessionName string) error {
 			}
 			return fmt.Errorf("resolve session %q: %w", sessionName, err)
 		}
+		referenced, err := sessionResourceIDsTx(ctx, q, sessionID)
+		if err != nil {
+			return err
+		}
 		if err := q.DeleteNodeInstancesForSession(ctx, sessionID); err != nil {
 			return fmt.Errorf("reset nodes for %q: %w", sessionName, err)
 		}
-		return nil
+		return releaseResourcesTx(ctx, q, referenced)
 	})
 }
 
@@ -278,7 +286,13 @@ func (db *DB) PurgeSessionByName(ctx context.Context, name string) error {
 		if err != nil {
 			return fmt.Errorf("purge session %q: list incarnations: %w", name, err)
 		}
+		var referenced []string
 		for _, id := range ids {
+			held, err := sessionResourceIDsTx(ctx, q, id)
+			if err != nil {
+				return err
+			}
+			referenced = append(referenced, held...)
 			// A kept row's parent/root id can legitimately point at this
 			// id; ON DELETE NO ACTION would reject the delete below.
 			ref := sql.NullString{String: id, Valid: true}
@@ -298,7 +312,7 @@ func (db *DB) PurgeSessionByName(ctx context.Context, name string) error {
 		if err := q.DeleteUpReservation(ctx, name); err != nil {
 			return fmt.Errorf("purge session %q: delete up-slot reservation: %w", name, err)
 		}
-		return nil
+		return releaseResourcesTx(ctx, q, referenced)
 	})
 }
 
@@ -317,8 +331,14 @@ func (db *DB) writeSessionTx(ctx context.Context, tx *sql.Tx, s *domain.Session)
 	}
 
 	candidateID := existingID
+	var referenced []string
 	if candidateID == "" {
 		candidateID = newULID()
+	} else if referenced, err = sessionResourceIDsTx(ctx, q, existingID); err != nil {
+		return err
+	}
+	if err := recordResourceTx(ctx, q, s.Resource); err != nil {
+		return fmt.Errorf("session %q: %w", s.Name, err)
 	}
 
 	// A parent/root link is resolved against the referenced session's live
@@ -372,8 +392,7 @@ func (db *DB) writeSessionTx(ctx context.Context, tx *sql.Tx, s *domain.Session)
 		DestroyedAt:              formatTimeNull(s.DestroyedAt),
 		ParentSessionID:          parentCol,
 		RootSessionID:            rootCol,
-		ResourceID:               nullString(s.ResourceID),
-		ResourceType:             nullString(s.ResourceType),
+		ResourceID:               resourceID(s.Resource),
 		Tag:                      nullString(s.Tag),
 		Alias:                    nullString(s.Alias),
 		Workflow:                 s.Workflow,
@@ -401,7 +420,10 @@ func (db *DB) writeSessionTx(ctx context.Context, tx *sql.Tx, s *domain.Session)
 	if err := db.writeTasksTx(ctx, tx, candidateID, s.Nodes, s.Tasks); err != nil {
 		return err
 	}
-	return writeChannelHealthTx(ctx, q, candidateID, s.ChannelValidationHealth, s.ChannelDeliveryHealth)
+	if err := writeChannelHealthTx(ctx, q, candidateID, s.ChannelValidationHealth, s.ChannelDeliveryHealth); err != nil {
+		return err
+	}
+	return releaseResourcesTx(ctx, q, referenced)
 }
 
 // insertSessionParams builds InsertSession's parameters from already-resolved
@@ -416,8 +438,7 @@ func insertSessionParams(id, status string, parentCol, rootCol, populationWorkfl
 		DestroyedAt:              formatTimeNull(s.DestroyedAt),
 		ParentSessionID:          parentCol,
 		RootSessionID:            rootCol,
-		ResourceID:               nullString(s.ResourceID),
-		ResourceType:             nullString(s.ResourceType),
+		ResourceID:               resourceID(s.Resource),
 		Tag:                      nullString(s.Tag),
 		Alias:                    nullString(s.Alias),
 		Workflow:                 s.Workflow,
@@ -466,6 +487,9 @@ func (db *DB) ImportSession(ctx context.Context, id string, s *domain.Session) e
 		inputsJSON, err := marshalJSONMap(s.Inputs)
 		if err != nil {
 			return fmt.Errorf("marshal session %q inputs: %w", s.Name, err)
+		}
+		if err := recordResourceTx(ctx, q, s.Resource); err != nil {
+			return fmt.Errorf("import session %q: %w", s.Name, err)
 		}
 		params, err := insertSessionParams(id, status, sql.NullString{}, sql.NullString{}, populationWorkflow, populationName, inputsJSON, health, tickConsecutiveUnchanged, tickLastFingerprint, s)
 		if err != nil {
@@ -626,8 +650,7 @@ func sessionFromRow(row sqlcgen.Session) (*domain.Session, error) {
 		ID:               row.ID,
 		Name:             row.Name,
 		Status:           row.Status,
-		ResourceID:       row.ResourceID.String,
-		ResourceType:     row.ResourceType.String,
+		Resource:         resourceRef(row.ResourceID),
 		Tag:              row.Tag.String,
 		ParentSessionID:  row.ParentSessionID.String,
 		RootSessionID:    row.RootSessionID.String,
@@ -760,7 +783,7 @@ func (db *DB) loadSessionExtras(ctx context.Context, q sqlcgen.DBTX, s *domain.S
 	}
 	s.Nodes = nodes
 	s.Tasks = tasks
-	return nil
+	return fillResourcesTx(ctx, queries, sessionResourceRefs([]*domain.Session{s}))
 }
 
 func (db *DB) loadSessionExtrasBatch(ctx context.Context, q sqlcgen.DBTX, sessions []*domain.Session) error {
@@ -813,7 +836,7 @@ func (db *DB) loadSessionExtrasBatch(ctx context.Context, q sqlcgen.DBTX, sessio
 		s.Nodes = nodesBySession[s.ID]
 		s.Tasks = tasksBySession[s.ID]
 	}
-	return nil
+	return fillResourcesTx(ctx, queries, sessionResourceRefs(sessions))
 }
 
 // resolveParentRootNames keys its result by the referenced parent/root id,

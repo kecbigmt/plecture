@@ -18,7 +18,7 @@ func sampleShow() *service.StatusResult {
 	return &service.StatusResult{
 		Identity: service.StatusIdentity{
 			SessionName: "owner/repo-7",
-			ResourceID:  "https://github.com/owner/repo/issues/7",
+			Resource:    testView("https://github.com/owner/repo/issues/7"),
 			Title:       "make the thing work",
 			CreatedAt:   time.Now(),
 		},
@@ -86,7 +86,7 @@ func TestDetail_WorkdirRendering(t *testing.T) {
 // detail: a non-URL resource id renders as plain text, not a broken anchor.
 func TestDetail_NonURLResourceIsPlainText(t *testing.T) {
 	status := sampleShow()
-	status.Identity.ResourceID = "my-experiment"
+	status.Identity.Resource = testView("my-experiment")
 	body := get(t, &fakeService{status: status}, "/sessions/owner/repo-7").Body.String()
 	if !strings.Contains(body, "my-experiment") {
 		t.Error("resource id missing from detail")
