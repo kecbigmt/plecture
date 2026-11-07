@@ -15,8 +15,8 @@ const initialInstance = "initial"
 // InitialTask is an initiating caller's task selection; an empty Resource
 // binds the entry identifier.
 type InitialTask struct {
-	TaskID   string
-	Resource string
+	TaskID         string
+	Resource       string
 	ResourceInputs map[string]any
 }
 
