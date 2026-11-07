@@ -109,7 +109,7 @@ func TestHandleUp_ExistingSessionByName(t *testing.T) {
 // The tool schemas must expose workflow/task/task_resource so a client can discover the
 // arguments without reading the handler source.
 func TestUpTool_ExposesWorkflowAndTask(t *testing.T) {
-	for _, name := range []string{"workflow", "task", "task_resource"} {
+	for _, name := range []string{"workflow", "task", "task_resource", "resource_inputs"} {
 		if _, ok := upTool.InputSchema.Properties[name]; !ok {
 			t.Errorf("%s: missing %q in InputSchema.Properties", upTool.Name, name)
 		}
