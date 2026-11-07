@@ -66,7 +66,7 @@ subscribe to `agent_session_stopped`, so Slack may return a
 `missing_agent_session_stopped_event_subscription` warning and shows no
 interactive stop button. This API migration does not switch `agent_view`.
 
-When Socket Mode is enabled, an `app_mention` in a subscribed thread publishes
+When Socket Mode is enabled, an app mention in a subscribed thread publishes
 one inbound `user.emit` per subscribed session. The event body is an
 ordered Slack transcript with display names, message times, and text. By
 default each delivery includes the root message plus only replies after the
@@ -77,7 +77,7 @@ mention and reply paths; setting it restricts both to the listed Slack users.
 
 ### `on_unbound_mention` hook
 
-An `app_mention` that resolves to no subscription is normally logged and
+An app mention that resolves to no subscription is normally logged and
 dropped (`app mention skipped: unbound thread`). When `on_unbound_mention` is
 set, slack-adapter instead runs that command once, with a JSON document on
 stdin describing the mention, and logs its exit status. `allowed_user_ids`
@@ -338,8 +338,10 @@ Returns the active subscription list as a JSON array.
 
 A nonmention human reply in a subscribed thread becomes `slack.message`.
 A mention of the app becomes `user.emit`, carrying the root and replies
-since that session's previous mention delivery. A `message` event can deliver
-a mention in a subscribed thread even if no separate `app_mention` arrives.
+since that session's previous mention delivery. Both `message` and
+`app_mention` events can deliver mentions in subscribed or unbound threads,
+including top-level mentions. The log identifies which event type carried
+the mention.
 When both Slack event types arrive, each subscriber receives the mention once.
 Both event types carry `channel_id` and `thread_ts` metadata.
 `slack.message` does not advance the transcript watermark.

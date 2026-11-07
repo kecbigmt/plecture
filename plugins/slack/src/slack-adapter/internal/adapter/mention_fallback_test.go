@@ -1,7 +1,9 @@
 package adapter
 
 import (
+	"bytes"
 	"errors"
+	"log/slog"
 	"os"
 	"path/filepath"
 	"testing"
@@ -53,6 +55,149 @@ func TestBoundThreadMentionDeliversFromMessageEvent(t *testing.T) {
 	assertBodyContainsInOrder(t, ev.Body, []string{"Root", "Earlier reply", "<@U-bot> act"})
 	if sub, _ := a.broker.Find("work", "1700000000.000001"); sub.DeliveredThrough != "1700000000.000003" {
 		t.Fatalf("watermark = %q, want mention timestamp", sub.DeliveredThrough)
+	}
+}
+
+func TestUnboundMessageMentionDeliversToMentionSubscriber(t *testing.T) {
+	for _, payload := range []string{
+		topLevelMessageMentionPayload,
+		messageMentionPayload,
+	} {
+		t.Run(payload, func(t *testing.T) {
+			a := newTestAdapter(&Config{})
+			a.botUserID = "U-bot"
+			a.broker.Subscribe(Subscriber{SessionName: "observer", ThreadTS: mentionSubscriptionKey})
+			rootTS := "1700000000.000001"
+			if payload == topLevelMessageMentionPayload {
+				rootTS = "1700000000.000003"
+			}
+			a.threadFetcher = &fakeThreadFetcher{messages: []slack.Message{slackMessage(rootTS, "U-person", "<@U-bot> act")}}
+			publisher := &recordingEventPublisher{}
+			a.eventPublisher = publisher
+
+			a.handleEventsAPI(parseMentionFallbackEvent(t, payload))
+
+			if len(publisher.events) != 1 || publisher.events[0].SessionName != "observer" || publisher.events[0].Type != "user.emit" {
+				t.Fatalf("published events = %+v, want one mention delivery", publisher.events)
+			}
+			if publisher.events[0].Meta["mention_ts"] != "1700000000.000003" {
+				t.Fatalf("metadata = %+v", publisher.events[0].Meta)
+			}
+			if payload == topLevelMessageMentionPayload && bytes.Count([]byte(publisher.events[0].Body), []byte("<@U-bot> act")) != 1 {
+				t.Fatalf("top-level transcript repeats mention: %q", publisher.events[0].Body)
+			}
+		})
+	}
+}
+
+func TestUnboundMentionIsPublishedOnceAcrossEventTypes(t *testing.T) {
+	for _, order := range []struct{ first, last string }{
+		{messageMentionPayload, appMentionPayload},
+		{appMentionPayload, messageMentionPayload},
+		{topLevelMessageMentionPayload, topLevelAppMentionPayload},
+		{topLevelAppMentionPayload, topLevelMessageMentionPayload},
+	} {
+		a := newTestAdapter(&Config{})
+		a.botUserID = "U-bot"
+		a.broker.Subscribe(Subscriber{SessionName: "observer", ThreadTS: mentionSubscriptionKey})
+		a.threadFetcher = &fakeThreadFetcher{messages: []slack.Message{slackMessage("1700000000.000001", "U-root", "Root")}}
+		publisher := &recordingEventPublisher{}
+		a.eventPublisher = publisher
+		a.handleEventsAPI(parseMentionFallbackEvent(t, order.first))
+		a.handleEventsAPI(parseMentionFallbackEvent(t, order.last))
+		if len(publisher.events) != 1 {
+			t.Fatalf("order %q then %q: events = %+v", order.first, order.last, publisher.events)
+		}
+	}
+}
+
+func TestUnboundHookAndStreamDispatchOnceAcrossEventTypes(t *testing.T) {
+	for _, pair := range []struct {
+		name           string
+		messagePayload string
+		appPayload     string
+	}{
+		{"thread reply", messageMentionPayload, appMentionPayload},
+		{"top level", topLevelMessageMentionPayload, topLevelAppMentionPayload},
+	} {
+		for _, messageFirst := range []bool{true, false} {
+			name := pair.name + "/app first"
+			first, last := pair.appPayload, pair.messagePayload
+			if messageFirst {
+				name = pair.name + "/message first"
+				first, last = pair.messagePayload, pair.appPayload
+			}
+			t.Run(name, func(t *testing.T) {
+				path := filepath.Join(t.TempDir(), "subscribers.json")
+				a := newTestAdapter(&Config{OnUnboundMention: "/path/to/dispatch"})
+				a.broker = NewBroker(path, nil)
+				a.botUserID = "U-bot"
+				a.permalinkResolver = &fakePermalinkResolver{link: "https://example.slack.com/archives/C1/p1700000000000003"}
+				runner := &recordingMentionHookRunner{}
+				a.mentionHook = runner
+				stream, cancel := a.mentions.subscribe()
+				defer cancel()
+				a.handleEventsAPI(parseMentionFallbackEvent(t, first))
+				a.broker = NewBroker(path, nil)
+				a.handleEventsAPI(parseMentionFallbackEvent(t, last))
+				if runner.calls != 1 || len(stream) != 1 {
+					t.Fatalf("hook calls = %d, stream items = %d, want one each", runner.calls, len(stream))
+				}
+			})
+		}
+	}
+}
+
+func TestFailedUnboundHookCanRetryFromOtherEventType(t *testing.T) {
+	a := newTestAdapter(&Config{OnUnboundMention: "/path/to/dispatch"})
+	a.botUserID = "U-bot"
+	a.permalinkResolver = &fakePermalinkResolver{link: "https://example.slack.com/archives/C1/p1700000000000003"}
+	runner := &recordingMentionHookRunner{err: errors.New("dispatch failed")}
+	a.mentionHook = runner
+	a.handleEventsAPI(parseMentionFallbackEvent(t, topLevelMessageMentionPayload))
+	if pending := a.broker.PendingMention("C1", "1700000000.000003"); pending != "" {
+		t.Fatalf("failed dispatch left pending mention %q", pending)
+	}
+	runner.err = nil
+	a.handleEventsAPI(parseMentionFallbackEvent(t, topLevelAppMentionPayload))
+	if runner.calls != 2 || a.broker.PendingMention("C1", "1700000000.000003") != "1700000000.000003" {
+		t.Fatalf("hook calls = %d, pending = %q, want successful retry", runner.calls, a.broker.PendingMention("C1", "1700000000.000003"))
+	}
+}
+
+func TestUnboundMessageMentionPublishFailureCanRetryFromAppMention(t *testing.T) {
+	a := newTestAdapter(&Config{})
+	a.botUserID = "U-bot"
+	a.broker.Subscribe(Subscriber{SessionName: "observer", ThreadTS: mentionSubscriptionKey})
+	a.threadFetcher = &fakeThreadFetcher{}
+	publisher := &failOnceMentionPublisher{fail: true}
+	a.eventPublisher = publisher
+	a.handleEventsAPI(parseMentionFallbackEvent(t, topLevelMessageMentionPayload))
+	if through := a.broker.MentionWatermark("observer", "1700000000.000003"); through != "" {
+		t.Fatalf("failed publication advanced watermark to %q", through)
+	}
+	a.handleEventsAPI(parseMentionFallbackEvent(t, topLevelAppMentionPayload))
+	if len(publisher.events) != 1 || publisher.events[0].Type != "user.emit" {
+		t.Fatalf("retry events = %+v, want one user.emit", publisher.events)
+	}
+}
+
+func TestMentionLogIdentifiesEventType(t *testing.T) {
+	a := newTestAdapter(&Config{})
+	a.botUserID = "U-bot"
+	a.broker.Subscribe(Subscriber{SessionName: "observer", ThreadTS: mentionSubscriptionKey})
+	a.threadFetcher = &fakeThreadFetcher{messages: []slack.Message{slackMessage("1700000000.000001", "U-root", "Root")}}
+	a.eventPublisher = &recordingEventPublisher{}
+	var log bytes.Buffer
+	a.logger = slog.New(slog.NewTextHandler(&log, nil))
+	a.handleEventsAPI(parseMentionFallbackEvent(t, messageMentionPayload))
+	if !bytes.Contains(log.Bytes(), []byte("received message mention")) {
+		t.Fatalf("message mention log = %s", log.String())
+	}
+	log.Reset()
+	a.handleEventsAPI(parseMentionFallbackEvent(t, appMentionPayload))
+	if !bytes.Contains(log.Bytes(), []byte("received app mention")) {
+		t.Fatalf("app mention log = %s", log.String())
 	}
 }
 
@@ -121,3 +266,5 @@ func parseMentionFallbackEvent(t *testing.T, raw string) slackevents.EventsAPIEv
 
 const messageMentionPayload = `{"type":"event_callback","event":{"type":"message","user":"U-person","text":"<@U-bot> act","ts":"1700000000.000003","thread_ts":"1700000000.000001","channel":"C1"}}`
 const appMentionPayload = `{"type":"event_callback","event":{"type":"app_mention","user":"U-person","text":"<@U-bot> act","ts":"1700000000.000003","thread_ts":"1700000000.000001","channel":"C1"}}`
+const topLevelMessageMentionPayload = `{"type":"event_callback","event":{"type":"message","user":"U-person","text":"<@U-bot> act","ts":"1700000000.000003","channel":"C1"}}`
+const topLevelAppMentionPayload = `{"type":"event_callback","event":{"type":"app_mention","user":"U-person","text":"<@U-bot> act","ts":"1700000000.000003","channel":"C1"}}`
