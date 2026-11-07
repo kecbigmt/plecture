@@ -16,17 +16,6 @@ import (
 	"github.com/pressly/goose/v3"
 )
 
-// TestSchemaSQL_MatchesMigrationHistory is the declaration-equivalence
-// check the design requires: applying the embedded goose migration
-// history to an empty database must produce the same table structure as
-// schema.sql declares, excluding tables goose owns for its own bookkeeping
-// (goose_db_version). It compares SQLite's own introspection rather than
-// raw CREATE TABLE text, because Atlas-generated migration SQL and
-// hand-written schema.sql are free to differ in quoting and clause order
-// while still declaring the same structure. Columns, indexes (including a
-// partial index's predicate), and foreign keys have a dedicated PRAGMA;
-// CHECK constraints do not, so those are extracted from sqlite_master's
-// own CREATE TABLE text instead of being skipped.
 func TestSchemaSQL_MatchesMigrationHistory(t *testing.T) {
 	schemaSQL, err := os.ReadFile("schema.sql")
 	if err != nil {
@@ -618,8 +607,8 @@ func isIdentByte(b byte) bool {
 }
 
 // normalizeSQLFragment lets a CHECK or partial-index predicate compare
-// equal across schema.sql and Atlas-generated SQL despite the two being
-// free to differ in identifier quoting (backticks vs. none) and
+// equal across schema.sql and migration SQL despite the two being free to
+// differ in identifier quoting (backticks vs. none) and
 // whitespace while expressing the same constraint. It tracks single-quoted
 // string literals and leaves their contents untouched: SQL keywords and
 // identifiers are case-insensitive, but a string literal's case (and

@@ -382,16 +382,11 @@ jobs:
           mapfile -t names < <(jq -r '.[]' <<< '${{ needs.changes.outputs.affected_plugins }}')
           ./scripts/run-plugin-selftests.sh "${names[@]}"
 
-  # The two standing checks docs/design/sqlite-persistence.md's toolchain
-  # slice requires: (1) here, that regenerating the goose migration from
-  # schema.sql via Atlas CE and regenerating sqlc's Go output from
-  # schema.sql/queries.sql produce no diff, so the committed artifacts
-  # cannot silently drift from their declarative sources. (2) declaration
-  # equivalence — that applying the migration history reproduces the same
-  # structure schema.sql declares, excluding goose's own bookkeeping table
-  # — is TestSchemaSQL_MatchesMigrationHistory, which already runs in every
-  # build-test (app) job below; it needs no external tool, so it gets no
-  # separate job here.
+  # Regenerating sqlc's Go output from schema.sql/queries.sql must produce
+  # no diff, so the committed generated code cannot drift from its sources.
+  # Schema drift (TestSchemaSQL_MatchesMigrationHistory) and migration
+  # integrity (TestMigrationsMatchTheirManifest) need no external tool, so
+  # they run in every build-test (app) job below instead of here.
   sqlite-persistence-generation:
     name: sqlite-persistence-generation
     needs: changes
@@ -402,29 +397,6 @@ jobs:
       - uses: actions/setup-go@v5
         with:
           go-version: ${{ env.GO_VERSION }}
-      # Pinned by exact release + the community (Apache-2.0) binary's own
-      # SHA-256, not `curl https://atlasgo.sh | sh`: see this package's
-      # doc.go for why the community binary specifically, and the per-platform
-      # checksums for developers on other operating systems.
-      - name: Fetch and verify the pinned Atlas Community Edition binary
-        run: |
-          curl -sSL -o atlas https://release.ariga.io/atlas/atlas-community-linux-amd64-v1.3.0
-          echo "10d7913e3dce43ab99b8d71534a4cbadaf11a16dc293adf3b91d10e83a0ac70b  atlas" | sha256sum -c -
-          chmod +x atlas
-        working-directory: app/internal/persistence
-      - name: Regenerate the migration history from schema.sql and check for drift
-        run: |
-          ./atlas migrate diff regen_check \
-            --dir "file://migrations" \
-            --dir-format goose \
-            --to "file://schema.sql" \
-            --dev-url "sqlite://file?mode=memory&cache=shared"
-          rm -f atlas
-          git diff --exit-code -- migrations/ schema.sql || {
-            echo "::error::app/internal/persistence/migrations (or schema.sql) is out of date; see doc.go for the regeneration command, and commit the result." >&2
-            exit 1
-          }
-        working-directory: app/internal/persistence
       - name: Regenerate sqlc's generated Go and check for drift
         run: |
           go generate ./internal/persistence/...

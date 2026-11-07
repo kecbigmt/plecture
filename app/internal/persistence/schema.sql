@@ -1,7 +1,8 @@
 -- schema.sql is the hand-edited declarative authority for the database
--- structure described in docs/design/sqlite-persistence.md. Generate
--- migrations from it with Atlas Community Edition; do not hand-write
--- migration SQL against a structural change already captured here.
+-- structure described in docs/design/sqlite-persistence.md. Every change
+-- here needs a hand-written, forward-only goose migration under
+-- migrations/ that reaches the same structure; the schema drift test
+-- fails until one does.
 --
 -- Runtime, event, and retry-state tables live here. A destroyed sessions row
 -- is the tombstone for that incarnation.
