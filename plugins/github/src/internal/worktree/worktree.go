@@ -57,10 +57,7 @@ type SetupOptions struct {
 	// branch-naming parameters; empty means the shipped convention.
 	IssueBranchTemplate string
 	TaggedBranchSuffix  string
-	// DeleteBranch is the effect's `delete_branch` input, echoed as an output
-	// so cleanup reads the policy the session was created with, or the one
-	// `plect state set-output` later rewrote it to.
-	DeleteBranch bool
+	DeleteBranch        bool
 	// AppID and PrivateKeyPath opt setup's raw git operations and its
 	// pull-request/issue metadata fetch into GitHub App installation-token
 	// auth, replacing GHClient outright rather than supplementing it.

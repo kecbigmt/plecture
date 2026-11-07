@@ -340,8 +340,6 @@ func TestDestroy_HandsTheForceIntentToEffectCleanup(t *testing.T) {
 	}
 }
 
-// A release policy fixed at creation can be changed for one session only by
-// rewriting the mutable output its cleanup reads.
 func TestDestroy_CleanupReadsAMutableOutputRewrittenBySetOutput(t *testing.T) {
 	tests := []struct {
 		name    string

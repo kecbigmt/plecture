@@ -23,8 +23,6 @@ inputs = { app_id = "123456", installation_id = "987654", private_key_path = "/e
 output = "dir"
 path   = "gh"
 
-# Cleanup reads the branch policy from setup's recorded output, so a session
-# keeps the policy it was created with unless that output is rewritten.
 [[worktree]]
 name   = "policy-set-at-creation"
 inputs = { dirs_root = "/spy/workspace_dirs", workspace_layout_root = "/spy/layout", issue_branch_template = "work/{number}", tagged_branch_suffix = "-{tag}", delete_branch = true }
