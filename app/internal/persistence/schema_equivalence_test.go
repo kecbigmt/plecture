@@ -58,6 +58,47 @@ func TestSchemaDrift_CatchesAColumnNoMigrationAdds(t *testing.T) {
 	}
 }
 
+func TestSchemaDrift_ComparesTriggersAndViews(t *testing.T) {
+	const table = "CREATE TABLE notes (id INTEGER PRIMARY KEY, body TEXT NOT NULL);\n"
+	const trigger = "CREATE TRIGGER notes_body_guard BEFORE UPDATE ON notes BEGIN SELECT RAISE(ABORT, 'Read Only') WHERE OLD.body = 'frozen'; END;\n"
+	const view = "CREATE VIEW frozen_notes AS SELECT id FROM notes WHERE body = 'frozen';\n"
+	migration := func(sql string) fstest.MapFS {
+		return fstest.MapFS{"1_notes.sql": {Data: []byte("-- +goose Up\n-- +goose StatementBegin\n" + sql + "-- +goose StatementEnd\n")}}
+	}
+
+	cases := map[string]struct {
+		schemaSQL string
+		history   fstest.MapFS
+		wantDiff  bool
+	}{
+		"trigger only in schema.sql":            {table + trigger, migration(table), true},
+		"trigger only in the migration history": {table, migration(table + trigger), true},
+		"trigger body differs":                  {table + trigger, migration(table + strings.Replace(trigger, "'frozen'", "'locked'", 1)), true},
+		"trigger literal case differs":          {table + trigger, migration(table + strings.Replace(trigger, "'Read Only'", "'read only'", 1)), true},
+		"view only in schema.sql":               {table + view, migration(table), true},
+		"view query differs":                    {table + view, migration(table + strings.Replace(view, "SELECT id", "SELECT id, body", 1)), true},
+		"same trigger and view":                 {table + trigger + view, migration(table + trigger + view), false},
+		"same trigger and view, laid out differently": {
+			table + trigger + view,
+			migration(table +
+				"create trigger \"notes_body_guard\" -- why-not: it's frozen\n  before update on `notes`\nbegin\n  /* guard */ select raise(abort, 'Read Only') where old.body = 'frozen';\nend;\n" +
+				"CREATE VIEW [frozen_notes] AS\n  SELECT id\n  FROM notes\n  WHERE body = 'frozen';\n"),
+			false,
+		},
+	}
+	for name, tc := range cases {
+		t.Run(name, func(t *testing.T) {
+			diff := schemaDrift(t, tc.schemaSQL, tc.history)
+			if tc.wantDiff && diff == "" {
+				t.Fatal("schemaDrift reported no difference")
+			}
+			if !tc.wantDiff && diff != "" {
+				t.Fatalf("schemaDrift reported a difference:\n%s", diff)
+			}
+		})
+	}
+}
+
 // schemaDrift excludes goose_db_version, the table goose owns for its own
 // bookkeeping. It compares SQLite's own introspection rather than raw
 // CREATE TABLE text, because ALTER TABLE rewrites a table's stored text in
@@ -84,7 +125,109 @@ func schemaDrift(t *testing.T, schemaSQL string, migrations fs.FS) string {
 	declared := introspect(t, ctx, declaredDB.write)
 	migrated := introspect(t, ctx, migratedDB.write)
 	delete(migrated, goose.DefaultTablename)
-	return diffTableSets(declared, migrated)
+	return diffTableSets(declared, migrated) +
+		diffObjectSets(triggersAndViews(t, ctx, declaredDB.write), triggersAndViews(t, ctx, migratedDB.write))
+}
+
+// schemaObject is a trigger or view, compared by its normalized CREATE
+// text: neither has a PRAGMA that reports its structure.
+type schemaObject struct {
+	tblName string
+	sql     string
+}
+
+func triggersAndViews(t *testing.T, ctx context.Context, handle *sql.DB) map[string]schemaObject {
+	t.Helper()
+	rows, err := handle.QueryContext(ctx, `
+		SELECT type, name, tbl_name, sql FROM sqlite_master
+		WHERE type IN ('trigger', 'view')
+	`)
+	if err != nil {
+		t.Fatalf("list triggers and views: %v", err)
+	}
+	defer rows.Close()
+
+	objects := make(map[string]schemaObject)
+	for rows.Next() {
+		var kind, name, tblName, createSQL string
+		if err := rows.Scan(&kind, &name, &tblName, &createSQL); err != nil {
+			t.Fatalf("scan trigger or view: %v", err)
+		}
+		objects[kind+" "+name] = schemaObject{tblName: tblName, sql: normalizeSQLFragment(stripSQLComments(createSQL))}
+	}
+	if err := rows.Err(); err != nil {
+		t.Fatalf("iterate triggers and views: %v", err)
+	}
+	return objects
+}
+
+func diffObjectSets(declared, migrated map[string]schemaObject) string {
+	var lines []string
+	for key, want := range declared {
+		got, ok := migrated[key]
+		switch {
+		case !ok:
+			lines = append(lines, key+": in schema.sql, missing from migration history")
+		case got != want:
+			lines = append(lines, key+": schema.sql=on "+want.tblName+" "+strconv.Quote(want.sql)+" migration=on "+got.tblName+" "+strconv.Quote(got.sql))
+		}
+	}
+	for key := range migrated {
+		if _, ok := declared[key]; !ok {
+			lines = append(lines, key+": in migration history, missing from schema.sql")
+		}
+	}
+	if len(lines) == 0 {
+		return ""
+	}
+	sort.Strings(lines)
+	return strings.Join(lines, "\n") + "\n"
+}
+
+// stripSQLComments replaces each comment outside a string literal with a
+// space rather than removing it, so the tokens on either side of it stay
+// separate words once normalizeSQLFragment collapses whitespace.
+func stripSQLComments(s string) string {
+	var b strings.Builder
+	for i := 0; i < len(s); i++ {
+		switch {
+		case s[i] == '\'':
+			end := i + 1
+			for end < len(s) {
+				if s[end] == '\'' {
+					if end+1 < len(s) && s[end+1] == '\'' {
+						end += 2
+						continue
+					}
+					break
+				}
+				end++
+			}
+			if end >= len(s) {
+				end = len(s) - 1
+			}
+			b.WriteString(s[i : end+1])
+			i = end
+		case strings.HasPrefix(s[i:], "--"):
+			end := strings.IndexByte(s[i:], '\n')
+			if end == -1 {
+				end = len(s) - i
+			}
+			b.WriteByte(' ')
+			i += end
+		case strings.HasPrefix(s[i:], "/*"):
+			end := strings.Index(s[i+2:], "*/")
+			if end == -1 {
+				i = len(s)
+			} else {
+				i += 2 + end + 1
+			}
+			b.WriteByte(' ')
+		default:
+			b.WriteByte(s[i])
+		}
+	}
+	return b.String()
 }
 
 type tableSchema struct {
@@ -825,6 +968,14 @@ func TestExtractChecks_IgnoresSyntaxInsideStringLiterals(t *testing.T) {
 	want := "(note <> 'contains a ) paren and the word check')"
 	if len(got) != 1 || got[0] != want {
 		t.Fatalf("extractChecks(...) = %v, want exactly [%q]", got, want)
+	}
+}
+
+func TestStripSQLComments_KeepsCommentMarkersInsideStringLiterals(t *testing.T) {
+	got := stripSQLComments("SELECT '-- not a comment', 'it''s /* data */' -- trailing it's\nFROM t /* gone */ WHERE x")
+	want := "SELECT '-- not a comment', 'it''s /* data */'  FROM t   WHERE x"
+	if got != want {
+		t.Errorf("stripSQLComments(...) = %q, want %q", got, want)
 	}
 }
 
