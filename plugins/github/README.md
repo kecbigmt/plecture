@@ -107,6 +107,13 @@ plect destroy <session>
 `<id>` is the `worktree` node's id in the session's workflow (`worktree` in the
 example below).
 
+The rewrite holds only until the worktree node is set up again. A rebuilt node
+records the creation-time `delete_branch` again, and a rebuild can happen
+without any command: `plect up --force-recreate`, a rebase that rebuilds the
+node, an invalidated prerequisite, or a rebuild after the worktree's liveness
+check fails. Check the output with `plect status <session>` before destroying,
+and re-apply the rewrite after a rebuild.
+
 ### Restore a deleted branch
 
 Only the local branch is deleted, and only once it is merged, so its commits

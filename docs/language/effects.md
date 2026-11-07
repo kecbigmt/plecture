@@ -90,7 +90,11 @@ workflow revision fixes.
 An effect whose release policy one session may need to change records that
 policy as a `mutable` output. `plect state set-output <session> --node <id>`
 rewrites it before destroy, and the change is part of that session's own
-record rather than an argument the next caller has to remember.
+record rather than an argument the next caller has to remember. The rewrite
+holds for the node's current setup only. A node that is set up again — by
+`plect up --force-recreate`, a rebase that rebuilds it, an invalidated
+prerequisite, or a rebuild after its liveness probe fails — records the
+creation-time policy again, so re-apply the rewrite after a rebuild.
 
 <!-- fixture: effects/cleanup-policy-output.toml -->
 ```toml

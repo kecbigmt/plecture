@@ -108,7 +108,14 @@ local and safe (`git branch -d`), so unmerged work is never deleted.
 ## Consequences
 
 - One authority decides what a cleanup releases: the session's own record. The
-  record shows the policy that a destroy will apply.
+  record shows the policy that a destroy will apply, for the node's current
+  setup.
+- A `set-output` rewrite does not survive a re-setup of its node. A node that is
+  set up again records the creation-time value again, whether the rebuild comes
+  from `up --force-recreate`, a rebase, an invalidated prerequisite, or a
+  failed liveness probe, so the operator re-applies the rewrite after a
+  rebuild. Carrying mutable outputs across a re-setup would remove this limit,
+  but it changes `mutable` for every effect and is not part of this decision.
 - A script that passed `--input` or `cleanup_inputs` fails with a pointer to
   the migration procedure. The same happens to a declaration that uses a
   retired spelling. The procedure lives in
