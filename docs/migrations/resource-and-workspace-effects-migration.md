@@ -6,7 +6,7 @@ and `resource_observer` have no aliases, provider output records have no
 compatibility reader, and a session is never reconfigured from its current
 directory.
 
-Read the whole procedure before making changes. Perform it with the release
+Read the whole procedure before making changes. It accompanies the release
 that removes the workspace provider. The loader refuses each retired spelling
 with a diagnostic that points here: a `kind = "workspace_provider"`
 declaration, a workflow's `workspace_provider` or `workspace_provider_inputs`
@@ -16,12 +16,57 @@ field, a population's `resource_observer`, `workspace_dirs_root` in
 `plect destroy --input` and the `cleanup_inputs` argument of the MCP
 `plect_destroy` tool are refused the same way.
 
-## Backup
+## Where the new release stops
+
+A session pinned to a workflow revision from the previous release cannot run
+on this release, because that revision declares its environment with
+`workspace_provider`, `resource_observer`, and the `@workflow` pseudo-node,
+which this release no longer reads. Nothing converts such a revision. Two
+independent stops refuse it, and step 2 below clears both:
+
+- **Storage stop.** The first command of the new release upgrades the
+  database and refuses while a session that has not been destroyed still holds
+  an unreleased `@workflow` record: a worktree, conversation directory, or
+  scratch directory that a workspace provider acquired. The error names this
+  procedure. By then an earlier part of the upgrade has already been applied,
+  so the previous release refuses the database as newer than it supports.
+  Restore the data backup taken right before upgrading (step 3), reinstall
+  the previous release, and continue with step 1.
+- **Lifecycle stop.** A session that passes the storage upgrade but whose
+  pinned revision still uses a retired spelling is listed with `!retired`
+  after its revision in `plect ls`, and `plect status` names the spellings
+  (`retired_spellings` in JSON output). This release refuses `up`, `down`,
+  `destroy`, automatic repair, and `workflow rebase` for it, naming the
+  spellings and this procedure. Destroy the session with the previous release.
+  `plect destroy <session> --force` on this release is the only operation that
+  passes: it removes the record without running cleanup, so nothing verifies
+  that the session's directories or other allocations were released.
+
+## Procedure
+
+Steps 1 and 2 run with the previous release; the new release cannot release
+what a workspace provider acquired.
+
+### 1. Save uncommitted work
+
+With the previous release still installed, list the sessions that have not
+been destroyed (`plect ls`). For each one, save what its directory holds that
+exists nowhere else: commit and push branches, or copy files out. Step 2
+deletes those directories.
+
+### 2. Destroy sessions with the previous release
+
+With the previous release, `plect destroy` every session listed in step 1.
+Its cleanup frees the directory and anything else the workspace provider
+acquired. Add `--force` only for a session whose cleanup fails and whose
+directory you have already saved or released by hand. Run `plect ls` again
+and confirm that no session remains.
+
+### 3. Back up configuration and durable state
 
 Stop resident processes before copying their configuration and durable state.
 The backup must include the global tree, every selected project tree, and the
-state directory because existing sessions need a recorded context and migrated
-node/output records.
+state directory, so that a rollback can restart the previous release on them.
 
 ```bash
 CONFIG_ROOT="${PLECT_CONFIG_HOME:-$HOME/.config/plect}"
@@ -38,21 +83,7 @@ placing a project marker or consolidating configuration.
 tree. Durable state is under `XDG_DATA_HOME` as shown above; this procedure
 does not name a state-directory override.
 
-## Release live sessions first
-
-A session whose environment was acquired by a workspace provider owns an
-allocation only the previous release knows how to free: its worktree,
-conversation directory, or scratch directory. The new release's storage
-migration therefore refuses to run while any session that has not been
-destroyed still holds an unreleased `@workflow` record, and names this
-procedure. With the previous release still installed, `plect destroy` each
-such session (add `--force` only to discard a directory you have already
-saved), then upgrade. The migration removes the remaining `@workflow` records
-and the stored workspace directory column; it cannot reconstruct a directory
-from them, because a workflow's work directory is now evaluated from the
-workflow's `workdir` and never stored.
-
-## Convert declarations and workflows
+### 4. Rewrite the configuration
 
 1. Rewrite every `kind = "resource_observer"` as `kind = "resource"`, adding
    `name`, delivery actions, and the resource action input schema where the
@@ -61,7 +92,7 @@ workflow's `workdir` and never stored.
    more ordinary `scope = "session"` effects. Move worktree, Slack-thread,
    and local environment setup, cleanup, liveness, and outputs to those
    effects. Cleanup still receives `force`; a release option the provider took
-   becomes a creation-time input, as step 5 describes.
+   becomes a creation-time input, as item 5 describes.
 3. Replace a workflow provider field with its entry `resource`, add nodes for
    its effects, and add one `workdir = { from = "nodes.<id>.outputs.<key>" }`
    where the workflow needs a directory. Do not create per-node cwd settings.
@@ -101,7 +132,7 @@ workflow's `workdir` and never stored.
    `resource_observer` named a different resource than its workflow's
    `resource` moves to a workflow whose entry resource is that resource.
 
-## Session names
+### Session names
 
 A session created from a resource identifier is named after the resource name
 alone (the value the resource's `name` derives); the workflow id is no longer
@@ -114,16 +145,13 @@ collision.
    name as `<resource-name>+<workflow-id>`: the name of an untagged session is
    the resource name. Pass `--tag` where two sessions for one resource must run
    side by side, for example a work session and a review session.
-2. A session created before this release keeps its name, and its identifier
-   becomes a resource no declaration resolved (see "Resources" below).
-   Address it by its session name. A resource-addressed `plect up` that
-   composes the same name, such as `--tag <workflow-id>`, reports a collision
-   instead of reusing it; destroy and recreate the session to give it a
-   resolved entry.
+2. Every session this release runs was created by it, so it records a
+   resolved entry: a session created before this release is destroyed in
+   step 2.
 3. A workflow whose sessions others locate by name (`plect status`,
    `plect event publish`) needs the same rewrite in those callers.
 
-## Resources
+### Resources
 
 The storage migration records each external resource once, in a `resources`
 table, and every table that referred to a resource by its identifier string
@@ -136,14 +164,14 @@ resource.
    named by its own id, and every session, task, node (its resource and its
    subscription), population member and delivery retry that stored the
    identifier refers to it.
-2. No live session should reach this: "Release live sessions first" destroys
-   every session the previous release created. A session left live anyway
-   keeps working by its session name, but a resource-addressed `plect up` of
-   its identifier resolves to a new, typed resource and reports a collision
-   with it. A population member recorded before the upgrade refers to the
+2. No live session should reach this: step 2 destroys every session the
+   previous release created. A session left live anyway meets the lifecycle
+   stop described above, including a resource-addressed `plect up` of its
+   identifier. A population member recorded before the upgrade refers to the
    untyped resource, so the population's next poll admits the same item as a
    new member and tombstones the old one, whose session then follows the
-   population's destroy policy (`auto_destroy`, or a recorded dry run).
+   population's destroy policy (`auto_destroy`, or a recorded dry run); that
+   destroy meets the same stop unless the policy forces it.
 3. `plect status --json` reports `identity.resource` (`type`, `name`,
    `locator`) in place of `identity.resource_id` and `identity.resource_type`,
    and `plect ls --json` reports `resource` in place of `resource_id`. The Web
@@ -162,7 +190,7 @@ resource.
    `worktree` effect passes `"--tag", { from = "session.tag", default = "" }`
    to `github-worktree setup`; make the same change in a host copy of it.
 
-## Initial tasks
+### Initial tasks
 
 Core selects a session's initial task. `plect up --task <task>` no longer
 writes `{"task": <task>}` into the session inputs for a workflow node to act
@@ -190,11 +218,8 @@ the session's `initial` instance after the workflow's session nodes run.
 5. Where the initial task works a resource other than the entry, pass it as
    `--task-resource <resource-id>`. A task bound to the entry resource needs
    no flag.
-A session created before this release keeps the `initial` instance its node
-created, and `plect up --force-recreate` re-creates that instance from its
-recorded task and resource.
 
-## Establish project contexts
+### Establish project contexts
 
 For every intended project configuration, choose one project root, consolidate
 only that root's intended `.plect/` definitions, and add this marker:
@@ -244,35 +269,31 @@ selects the context of the directory it starts in and stops when that root is
 not trusted; start it from the project root, or from a directory with no
 project marker for the global-only context.
 
-Before upgrading, release every unreleased allocation with the pre-upgrade
-binary where that is possible. Do not copy cleanup code or plugin files into
-durable state to make the later release run.
+### 5. Upgrade the binary
 
-Migrate existing sessions to their recorded project root, initial layer
-revisions, and node execution records before running lifecycle operations. A
-legacy session starts with no lifecycle-configuration baseline. Its first `up`,
-`down`, or `destroy` execution records the current trusted lifecycle
-configuration without a change warning; no historical digest or plugin hash is
-required for cleanup.
+Install the new release. Its first command upgrades the database: it removes
+the remaining `@workflow` records and the stored workspace directory column,
+and records resources and project roots as "Resources" and "Establish project
+contexts" describe. The upgrade cannot reconstruct a directory from the
+removed records, because a workflow's work directory is evaluated from the
+workflow's `workdir` and never stored. If the upgrade refuses, see "Where the
+new release stops" above.
 
-Preserve every concrete execution fact already recorded. Do not manufacture a
-missing declaration identity, cwd, setup input, output, nested-layer fact,
-trust decision, or allocation identity from today's workflow. An old session
-whose context cannot be reconstructed remains stopped without caller-cwd
-fallback. A retained declaration that uses a retired spelling and no longer
-resolves has the named precondition failure `legacy declaration spelling is
-unresolved`; migration does not rewrite it from current workflow declarations.
+### 6. Recreate sessions
+
+Run `plect ls` and confirm that no session is marked `!retired`. Recreate the
+sessions you need with `plect up <resource>`, adding `--tag` where two
+sessions for one resource run side by side.
 
 ## Verify and recover
 
 Run the release's configuration validation and inspect every workflow that has
 agent actions, every population, each resource action input contract, and both
-normal cleanup and explicit force-discard paths. Test a lifecycle-configuration
-edit: it warns before the next execution and uses the current trusted
-configuration. Test a vanished work directory: cleanup must fail its
+normal cleanup and explicit force-discard paths. A configuration edit does not
+change an existing session until `plect workflow rebase` moves it to the new
+definition. Test a vanished work directory: cleanup must fail its
 precondition without changing directory. Keep the timestamped copies until
-sessions have been recreated and the migrated state has been observed in normal
-use.
+sessions have been recreated and observed in normal use.
 
 ## Recover a residual allocation
 
@@ -300,6 +321,8 @@ that a process or external allocation is gone.
 never runs cleanup in another directory. `plect destroy --force` is the only
 explicit discard: it records that release was not verified and removes the
 session's remaining execution records.
+
+## Roll back
 
 To recover, stop the new release, restore the configuration and state copies,
 and restart the previous release. Do not mix old configuration with migrated
