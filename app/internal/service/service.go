@@ -335,21 +335,24 @@ func childNames(sessions map[string]*domain.Session, name string) []string {
 
 // ListEntry represents a single entry in the session list.
 type ListEntry struct {
-	SessionName   string             `json:"session_name"`
-	Revision      string             `json:"revision,omitempty"`
-	Title         string             `json:"title,omitempty"`
-	Run           domain.RunState    `json:"run"`
-	Sleep         string             `json:"sleep,omitempty"`
-	QueuePosition int                `json:"queue_position,omitempty"`
-	Health        domain.HealthState `json:"health,omitempty"`
-	HealthReason  string             `json:"health_reason,omitempty"`
-	DisplayStatus string             `json:"display_status"`
-	Resource      *ResourceView      `json:"resource,omitempty"`
-	Tracked       bool               `json:"tracked"`
-	LastActiveAt  *time.Time         `json:"last_active_at,omitempty"`
-	Message       *domain.Message    `json:"message,omitempty"`
-	Workdir       string             `json:"workdir,omitempty"`
-	ParentSession string             `json:"parent_session,omitempty"`
+	SessionName string `json:"session_name"`
+	Revision    string `json:"revision,omitempty"`
+	// RetiredSpellings names the retired declaration spellings the pinned
+	// revision was written in; this release refuses that session's lifecycle.
+	RetiredSpellings []string           `json:"retired_spellings,omitempty"`
+	Title            string             `json:"title,omitempty"`
+	Run              domain.RunState    `json:"run"`
+	Sleep            string             `json:"sleep,omitempty"`
+	QueuePosition    int                `json:"queue_position,omitempty"`
+	Health           domain.HealthState `json:"health,omitempty"`
+	HealthReason     string             `json:"health_reason,omitempty"`
+	DisplayStatus    string             `json:"display_status"`
+	Resource         *ResourceView      `json:"resource,omitempty"`
+	Tracked          bool               `json:"tracked"`
+	LastActiveAt     *time.Time         `json:"last_active_at,omitempty"`
+	Message          *domain.Message    `json:"message,omitempty"`
+	Workdir          string             `json:"workdir,omitempty"`
+	ParentSession    string             `json:"parent_session,omitempty"`
 	// Tasks projects the session's dynamic instances and done_when-bearing
 	// tasks with their per-instance done_when status.
 	Tasks []TaskInstanceView `json:"tasks,omitempty"`
@@ -406,22 +409,23 @@ func buildListEntry(cfg *config.Config, store *state.Store, displayTasks taskDec
 		health, healthReason = "", ""
 	}
 	entry := ListEntry{
-		SessionName:   s.Name,
-		Revision:      shortWorkflowRevision(s.WorkflowRevision),
-		Title:         cached.Title,
-		Run:           run,
-		Sleep:         sleep,
-		QueuePosition: position,
-		Health:        health,
-		HealthReason:  healthReason,
-		DisplayStatus: cached.DisplayStatus,
-		Resource:      resourceView(s.Resource),
-		Tracked:       true,
-		LastActiveAt:  &s.UpdatedAt,
-		Message:       LatestStatusMessage(store, s.Name),
-		Workdir:       listWorkdir(cfg, s),
-		ParentSession: s.ParentSession,
-		Tasks:         taskViews(cfg, displayTasks, s, sessions),
+		SessionName:      s.Name,
+		Revision:         shortWorkflowRevision(s.WorkflowRevision),
+		RetiredSpellings: config.RetiredRevisionSpellings(s),
+		Title:            cached.Title,
+		Run:              run,
+		Sleep:            sleep,
+		QueuePosition:    position,
+		Health:           health,
+		HealthReason:     healthReason,
+		DisplayStatus:    cached.DisplayStatus,
+		Resource:         resourceView(s.Resource),
+		Tracked:          true,
+		LastActiveAt:     &s.UpdatedAt,
+		Message:          LatestStatusMessage(store, s.Name),
+		Workdir:          listWorkdir(cfg, s),
+		ParentSession:    s.ParentSession,
+		Tasks:            taskViews(cfg, displayTasks, s, sessions),
 	}
 
 	return entry, nil

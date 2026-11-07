@@ -58,6 +58,9 @@ func downUnlocked(cfg *config.Config, store *state.Store, params DownParams) (*D
 	if guardErr := checkLifecycleRelationGuard(store, sessionName, "down"); guardErr != nil {
 		return nil, guardErr
 	}
+	if refusal := retiredRevisionRefusal(session, "`down`"); refusal != nil {
+		return nil, refusal
+	}
 	if session.Nodes == nil {
 		session.Nodes = make(map[string]*contract.TaskState)
 	}

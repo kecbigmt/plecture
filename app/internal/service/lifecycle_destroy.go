@@ -65,6 +65,10 @@ func destroyUnlocked(cfg *config.Config, store *state.Store, params DestroyParam
 		return nil, err
 	}
 	params.Observer = withNodeResultRecording(store, sessionName, params.Observer)
+	retired := config.RetiredRevisionSpellings(session)
+	if len(retired) > 0 && !params.Force {
+		return nil, retiredRevisionRefusal(session, "`destroy`")
+	}
 	flushPendingDeliveryLogged(cfg, store, sessionName)
 	// Tearing down an existing session is a per-session write; clamp it to the
 	// active guard so a guarded orchestrator can't destroy another owner's
@@ -107,6 +111,14 @@ func destroyUnlocked(cfg *config.Config, store *state.Store, params DestroyParam
 			}
 		}
 		result.CleanupWarnings = append(result.CleanupWarnings, fmt.Sprintf("orphaned %d child session(s): %s", len(children), strings.Join(children, ", ")))
+	}
+	if len(retired) > 0 {
+		result.CleanupWarnings = append(result.CleanupWarnings, fmt.Sprintf("workflow revision uses retired declaration spellings (%s); cleanup skipped, release not verified", strings.Join(retired, ", ")))
+		recordLifecycle(store, sessionName, "destroyed", "session destroyed")
+		if err := store.Destroy(sessionName); err != nil {
+			return nil, &Error{Code: ErrExecutionFailed, Message: fmt.Sprintf("failed to destroy state entry: %v", err)}
+		}
+		return result, nil
 	}
 	if session.Workflow != "" && session.WorkflowRevision == "" {
 		if !params.Force {

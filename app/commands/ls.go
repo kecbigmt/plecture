@@ -64,10 +64,17 @@ var lsCmd = &cobra.Command{
 			if health == "" {
 				health = "-"
 			}
-			fmt.Fprintf(w, "%s\t%s\t%s\t%s\t%s\t%s\t%s\n", e.SessionName, e.Revision, e.Run, formatSleep(e.Sleep, e.QueuePosition), health, service.DoneWhenCell(e.Tasks), formatMessage(e))
+			fmt.Fprintf(w, "%s\t%s\t%s\t%s\t%s\t%s\t%s\n", e.SessionName, formatListRevision(e), e.Run, formatSleep(e.Sleep, e.QueuePosition), health, service.DoneWhenCell(e.Tasks), formatMessage(e))
 		}
 		return w.Flush()
 	},
+}
+
+func formatListRevision(e service.ListEntry) string {
+	if len(e.RetiredSpellings) > 0 {
+		return e.Revision + "!retired"
+	}
+	return e.Revision
 }
 
 func formatSleep(state string, position int) string {

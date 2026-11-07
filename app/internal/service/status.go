@@ -23,15 +23,16 @@ const statusFlowLimit = 5
 // is currently running. No plugin-shaped field belongs here — the resource
 // locator is an opaque string any resource can own.
 type StatusIdentity struct {
-	SessionName   string                         `json:"session_name"`
-	Resource      *ResourceView                  `json:"resource,omitempty"`
-	Title         string                         `json:"title,omitempty"`
-	Workflow      string                         `json:"workflow,omitempty"`
-	Revision      string                         `json:"revision,omitempty"`
-	Population    *contract.PopulationProvenance `json:"population,omitempty"`
-	Tag           string                         `json:"tag,omitempty"`
-	ParentSession string                         `json:"parent_session,omitempty"`
-	Children      []string                       `json:"children,omitempty"`
+	SessionName      string                         `json:"session_name"`
+	Resource         *ResourceView                  `json:"resource,omitempty"`
+	Title            string                         `json:"title,omitempty"`
+	Workflow         string                         `json:"workflow,omitempty"`
+	Revision         string                         `json:"revision,omitempty"`
+	RetiredSpellings []string                       `json:"retired_spellings,omitempty"`
+	Population       *contract.PopulationProvenance `json:"population,omitempty"`
+	Tag              string                         `json:"tag,omitempty"`
+	ParentSession    string                         `json:"parent_session,omitempty"`
+	Children         []string                       `json:"children,omitempty"`
 	// Inputs is the workflow input values this session was created with —
 	// user-defined, workflow-schema-validated JSON preserved verbatim rather
 	// than interpreted here.
@@ -225,17 +226,18 @@ func Status(cfg *config.Config, store *state.Store, identifier string) (*StatusR
 
 	return &StatusResult{
 		Identity: StatusIdentity{
-			SessionName:   sessionName,
-			Resource:      resourceView(session.Resource),
-			Title:         displayTitle,
-			Workflow:      session.Workflow,
-			Revision:      shortWorkflowRevision(session.WorkflowRevision),
-			Population:    session.Population,
-			Tag:           session.Tag,
-			ParentSession: session.ParentSession,
-			Children:      childNames(sessions, sessionName),
-			Inputs:        session.Inputs,
-			CreatedAt:     session.CreatedAt,
+			SessionName:      sessionName,
+			Resource:         resourceView(session.Resource),
+			Title:            displayTitle,
+			Workflow:         session.Workflow,
+			Revision:         shortWorkflowRevision(session.WorkflowRevision),
+			RetiredSpellings: config.RetiredRevisionSpellings(session),
+			Population:       session.Population,
+			Tag:              session.Tag,
+			ParentSession:    session.ParentSession,
+			Children:         childNames(sessions, sessionName),
+			Inputs:           session.Inputs,
+			CreatedAt:        session.CreatedAt,
 		},
 		Runtime: StatusRuntime{
 			Run:            runState,
@@ -430,13 +432,14 @@ type StatusSummary struct {
 }
 
 type StatusSummaryIdentity struct {
-	SessionName   string                         `json:"session_name"`
-	Resource      *ResourceView                  `json:"resource,omitempty"`
-	Workflow      string                         `json:"workflow,omitempty"`
-	Revision      string                         `json:"revision,omitempty"`
-	Population    *contract.PopulationProvenance `json:"population,omitempty"`
-	Tag           string                         `json:"tag,omitempty"`
-	ParentSession string                         `json:"parent_session,omitempty"`
+	SessionName      string                         `json:"session_name"`
+	Resource         *ResourceView                  `json:"resource,omitempty"`
+	Workflow         string                         `json:"workflow,omitempty"`
+	Revision         string                         `json:"revision,omitempty"`
+	RetiredSpellings []string                       `json:"retired_spellings,omitempty"`
+	Population       *contract.PopulationProvenance `json:"population,omitempty"`
+	Tag              string                         `json:"tag,omitempty"`
+	ParentSession    string                         `json:"parent_session,omitempty"`
 }
 
 type StatusSummaryWork struct {
@@ -488,13 +491,14 @@ func Summarize(result *StatusResult) *StatusSummary {
 		RepairStatus:  result.Runtime.RepairStatus,
 		RepairReason:  result.Runtime.RepairReason,
 		Identity: StatusSummaryIdentity{
-			SessionName:   result.Identity.SessionName,
-			Resource:      result.Identity.Resource,
-			Workflow:      result.Identity.Workflow,
-			Revision:      result.Identity.Revision,
-			Population:    result.Identity.Population,
-			Tag:           result.Identity.Tag,
-			ParentSession: result.Identity.ParentSession,
+			SessionName:      result.Identity.SessionName,
+			Resource:         result.Identity.Resource,
+			Workflow:         result.Identity.Workflow,
+			Revision:         result.Identity.Revision,
+			RetiredSpellings: result.Identity.RetiredSpellings,
+			Population:       result.Identity.Population,
+			Tag:              result.Identity.Tag,
+			ParentSession:    result.Identity.ParentSession,
 		},
 	}
 	for _, t := range result.Work {

@@ -10,6 +10,7 @@ import (
 	"net/url"
 	"path/filepath"
 	"regexp"
+	"slices"
 	"strings"
 	"sync"
 
@@ -416,4 +417,55 @@ func freezeTaskSchemas(doc TaskDocument) (TaskDocument, error) {
 	}
 	doc.Definition = nil
 	return doc, nil
+}
+
+// RetiredRevisionSpellings reads the stored body rather than the decoded
+// revision, because decoding drops a retired field without error and would
+// hand the caller a revision that silently lost its environment. A body the
+// decoder cannot read reports nothing here, so the decoder's error surfaces.
+func RetiredRevisionSpellings(s *domain.Session) []string {
+	if s == nil || s.WorkflowRevisionBody == "" {
+		return nil
+	}
+	var body struct {
+		Workflow map[string]json.RawMessage  `json:"workflow"`
+		Tasks    map[string]retiredTaskShape `json:"tasks"`
+		Provider json.RawMessage             `json:"provider"`
+		Capture  json.RawMessage             `json:"workspace_capture_pending"`
+	}
+	if err := json.Unmarshal([]byte(s.WorkflowRevisionBody), &body); err != nil {
+		return nil
+	}
+	found := map[string]bool{}
+	if body.Provider != nil {
+		found["@workflow"] = true
+	}
+	_, provider := body.Workflow["WorkspaceProvider"]
+	_, providerInputs := body.Workflow["WorkspaceProviderInputs"]
+	if provider || providerInputs || body.Capture != nil {
+		found["workspace_provider"] = true
+	}
+	for _, doc := range body.Tasks {
+		if doc.namesResourceObserver() {
+			found["resource_observer"] = true
+		}
+	}
+	if len(found) == 0 {
+		return nil
+	}
+	return slices.Sorted(maps.Keys(found))
+}
+
+// retiredTaskShape keys on presence, not value: a previous release encoded
+// every task-document field, so even an empty observer name marks the dialect.
+type retiredTaskShape struct {
+	ResourceObserver *string            `json:"ResourceObserver"`
+	ExtendsLayers    []retiredTaskShape `json:"ExtendsLayers"`
+}
+
+func (d retiredTaskShape) namesResourceObserver() bool {
+	if d.ResourceObserver != nil {
+		return true
+	}
+	return slices.ContainsFunc(d.ExtendsLayers, retiredTaskShape.namesResourceObserver)
 }
