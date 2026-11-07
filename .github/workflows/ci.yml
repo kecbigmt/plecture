@@ -382,14 +382,12 @@ jobs:
           mapfile -t names < <(jq -r '.[]' <<< '${{ needs.changes.outputs.affected_plugins }}')
           ./scripts/run-plugin-selftests.sh "${names[@]}"
 
-  # Regenerating sqlc's Go output from app/db's schema.sql and query.sql
-  # must produce no diff, so the committed generated code cannot drift from
-  # its sources.
-  # Schema drift (TestSchemaSQL_MatchesMigrationHistory) and migration
-  # integrity (TestMigrationsMatchTheirManifest) need no external tool, so
-  # they run in every build-test (app) job below instead of here.
-  sqlite-persistence-generation:
-    name: sqlite-persistence-generation
+  # The storage contract in app/db gets its own required check, so a
+  # contract failure is reported by name rather than as one failure among
+  # the app tests. The manifest and drift tests also run under plain
+  # go test in build-test (app); the upgrade fixtures need the integration tag.
+  storage-contract:
+    name: storage-contract
     needs: changes
     if: contains(needs.changes.outputs.build_test_matrix, '"app"')
     runs-on: ubuntu-latest
@@ -398,13 +396,24 @@ jobs:
       - uses: actions/setup-go@v5
         with:
           go-version: ${{ env.GO_VERSION }}
-      - name: Regenerate sqlc's generated Go and check for drift
+      - name: manifest
+        run: |
+          go test -count=1 ./db/migrationsum/
+          go test -count=1 ./db -run '^TestMigrationsMatchTheirManifest$'
+        working-directory: app
+      - name: drift
+        run: go test -count=1 ./db -skip '^TestMigrationsMatchTheirManifest$'
+        working-directory: app
+      - name: sqlc
         run: |
           go generate ./internal/persistence/...
           git diff --exit-code -- internal/persistence/sqlcgen/ || {
             echo "::error::app/internal/persistence/sqlcgen is out of date; run 'go generate ./internal/persistence/...' in app and commit the result." >&2
             exit 1
           }
+        working-directory: app
+      - name: upgrade
+        run: go test -count=1 -tags integration ./internal/persistence -run '^TestMigrate_UpgradesEveryReleasedSchema$'
         working-directory: app
 
   # Every past darwin-only breakage was first seen in release.yml's
@@ -553,7 +562,7 @@ jobs:
       - web-app-build
       - web-browser-acceptance
       - plugin-script-selftests
-      - sqlite-persistence-generation
+      - storage-contract
       - build-test-darwin
       - build-test
       - integration-test
