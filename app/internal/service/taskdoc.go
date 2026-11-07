@@ -221,7 +221,7 @@ func setupTaskDocument(cfg *config.Config, store *state.Store, resolvedName stri
 			Status:         contract.TaskStatusProduced,
 			Inputs:         inputs,
 			ResourceInputs: params.ResourceInputs,
-			Resource:       params.Resource,
+			Resource:       resourceID,
 			Name:           params.Name,
 			Observed:       observation,
 			Seq:            task.NextSeq(s.Nodes, s.Tasks),
@@ -237,9 +237,9 @@ func setupTaskDocument(cfg *config.Config, store *state.Store, resolvedName stri
 		return nil, &Error{Code: ErrInvalidInput, Message: fmt.Sprintf("instance %q already exists in session %s; run `plect task cleanup %s` first to recreate it", key, resolvedName, key)}
 	}
 	recordLifecycle(store, resolvedName, "task_setup", fmt.Sprintf("instantiated %s", key))
-	appendInstruction(store, resolvedName, key, params.Resource, instruction)
+	appendInstruction(store, resolvedName, key, resourceID, instruction)
 
-	subscribed, subscribeErrMsg := wireDeliveryOnSetup(cfg, store, resolvedName, params.Resource, params.ResourceInputs, false)
+	subscribed, subscribeErrMsg := wireDeliveryOnSetup(cfg, store, resolvedName, resourceID, params.ResourceInputs, false)
 
 	return &TaskSetupResult{
 		SessionName: resolvedName,
@@ -249,7 +249,7 @@ func setupTaskDocument(cfg *config.Config, store *state.Store, resolvedName stri
 		TaskID:         params.TaskID,
 		Scope:          contract.TaskScopeSession,
 		Name:           params.Name,
-		Resource:       params.Resource,
+		Resource:       resourceID,
 		Subscribed:     subscribed,
 		SubscribeError: subscribeErrMsg,
 		Instruction:    instruction,

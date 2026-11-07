@@ -105,6 +105,7 @@ func upLifecycleLockName(cfg *config.Config, store *state.Store, params UpParams
 func upUnlocked(cfg *config.Config, store *state.Store, params UpParams) (*UpResult, error) {
 	identifier := params.Identifier
 	forceRecreateExisting := false
+	var initialTask *initialTaskBinding
 	disp, matched, dispErr := dispatchResource(cfg, params.InvocationDir, params.Workflow, params.Identifier)
 	if dispErr != nil {
 		if params.Tag == "" {
@@ -150,7 +151,8 @@ func upUnlocked(cfg *config.Config, store *state.Store, params UpParams) (*UpRes
 		if params.Workflow != "" && existing != nil && params.Workflow != existing.Workflow {
 			return nil, &Error{Code: ErrInvalidInput, Message: fmt.Sprintf("--workflow %q does not match the session's frozen workflow %q", params.Workflow, existing.Workflow)}
 		}
-		initialTask, taskErr := checkInitialTask(cfg, params.InvocationDir, params.Identifier, existing, params.InitialTask)
+		var taskErr error
+		initialTask, taskErr = checkInitialTask(cfg, params.InvocationDir, params.Identifier, existing, params.InitialTask)
 		if taskErr != nil {
 			return nil, taskErr
 		}
@@ -194,8 +196,12 @@ func upUnlocked(cfg *config.Config, store *state.Store, params UpParams) (*UpRes
 				return nil, err
 			}
 		}
-		if err := ensureInitialTask(cfg, store, sessionName, initialTask); err != nil {
-			return nil, err
+		// A forced recreate discards the instance after this point, so it is
+		// ensured once the runtime is rebuilt instead.
+		if !(params.ForceRecreate && existing != nil) {
+			if err := ensureInitialTask(cfg, store, sessionName, initialTask); err != nil {
+				return nil, err
+			}
 		}
 		if capped {
 			return acceptSleepingUp(cfg, store, sessionName)
@@ -276,6 +282,9 @@ func upUnlocked(cfg *config.Config, store *state.Store, params UpParams) (*UpRes
 		plan, recreateErr = recreateSessionRuntime(cfg, store, sessionName, session, wf, plan, params.Observer)
 		if recreateErr != nil {
 			return nil, recreateErr
+		}
+		if err := ensureInitialTask(cfg, store, sessionName, initialTask); err != nil {
+			return nil, err
 		}
 	} else if cleanupErr := cleanupStaleWorkflowNodes(cfg, store, sessionName, session, plan, params.Observer); cleanupErr != nil {
 		return nil, cleanupErr

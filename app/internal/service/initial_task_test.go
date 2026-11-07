@@ -287,3 +287,20 @@ func TestUp_RepeatedSelectionResolvesAgainstTheSessionsRevisionNotTodaysConfig(t
 		t.Fatalf("repeated up after the document left today's config: %v", err)
 	}
 }
+
+func TestUp_ForceRecreateReinstantiatesTheSelectedInitialTask(t *testing.T) {
+	store := testStore(t)
+	cfg := initialTaskFixture(t)
+	if _, err := Up(cfg, store, UpParams{Identifier: identityCaseID, InitialTask: &InitialTask{TaskID: "triage"}}); err != nil {
+		t.Fatalf("first up: %v", err)
+	}
+
+	res, err := Up(cfg, store, UpParams{Identifier: identityCaseID, ForceRecreate: true, InitialTask: &InitialTask{TaskID: "triage"}})
+	if err != nil {
+		t.Fatalf("force-recreate up: %v", err)
+	}
+	initial := store.Get(res.SessionName).Tasks["initial"]
+	if initial == nil || initial.TaskID != "triage" || initial.Status != contract.TaskStatusProduced {
+		t.Fatalf("initial = %+v after a runtime reset, want triage reinstantiated", initial)
+	}
+}

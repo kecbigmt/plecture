@@ -301,3 +301,27 @@ func TestTaskSetup_RejectsBindingInputsTheTaskResourceRefuses(t *testing.T) {
 		t.Errorf("an action ran for a refused binding: %q", lines)
 	}
 }
+
+func TestTaskSetup_ATaskBoundToTheEntryByDefaultSubscribesWithItsOwnInputs(t *testing.T) {
+	store := testStore(t)
+	f := newGatedTaskFixture(t)
+	res, err := Up(f.cfg, store, UpParams{Identifier: identityCaseID, ResourceInputs: map[string]any{"token": "entry"}})
+	if err != nil {
+		t.Fatalf("up: %v", err)
+	}
+	if err := os.Remove(f.log); err != nil {
+		t.Fatal(err)
+	}
+
+	setup, err := TaskSetup(f.cfg, store, TaskSetupParams{
+		TaskID: "triage", SessionName: res.SessionName, ResourceInputs: map[string]any{"token": "task"},
+	})
+	if err != nil {
+		t.Fatalf("task setup: %v", err)
+	}
+	f.requireLine(t, "observe "+identityCaseID+" task")
+	f.requireLine(t, "subscribe "+identityCaseID+" task")
+	if got := store.Get(res.SessionName).Tasks[setup.Instance].Resource; got != identityCaseID {
+		t.Errorf("recorded resource = %q, want the entry identifier the instance is bound to", got)
+	}
+}
