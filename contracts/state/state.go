@@ -231,9 +231,9 @@ type LayerState struct {
 	Error                string    `json:"error,omitempty"`
 }
 
-// Resource is one recorded external resource. Every table that refers to a
-// resource stores its ID in a resource_id column: an opaque id, never the
-// identifier string resource actions receive, which is Locator.
+// Resource is one recorded external resource. Every column that refers to a
+// resource (resource_id, and a node's subscription_id) stores its ID: an opaque
+// id, never the identifier string resource actions receive, which is Locator.
 type Resource struct {
 	ID string `json:"id,omitempty"`
 	// Type is the declaration the resource resolved through. It is empty for

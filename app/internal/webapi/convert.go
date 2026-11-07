@@ -21,7 +21,7 @@ func summaryFromListEntry(e service.ListEntry) webapiv1.SessionSummary {
 		DisplayStatus: e.DisplayStatus,
 		Run:           runState(e.Run),
 		Health:        healthState(e.Health),
-		ResourceId:    domain.Locator(e.Resource),
+		Resource:      sessionResource(e.Resource),
 		LastActiveAt:  e.LastActiveAt,
 		Message:       message(e.Message),
 		ParentSession: optionalString(e.ParentSession),
@@ -38,7 +38,7 @@ func detailFromStatus(r *service.StatusResult) webapiv1.SessionDetail {
 	rt := r.Runtime
 	return webapiv1.SessionDetail{
 		SessionName:    id.SessionName,
-		ResourceId:     optionalString(domain.Locator(id.Resource)),
+		Resource:       sessionResource(id.Resource),
 		Title:          optionalString(id.Title),
 		Workflow:       optionalString(id.Workflow),
 		Tag:            optionalString(id.Tag),
@@ -200,4 +200,11 @@ func optionalJSON(m map[string]any) *map[string]interface{} {
 	}
 	v := map[string]interface{}(m)
 	return &v
+}
+
+func sessionResource(r *service.ResourceView) *webapiv1.SessionResource {
+	if r == nil {
+		return nil
+	}
+	return &webapiv1.SessionResource{Type: r.Type, Name: r.Name, Locator: r.Locator}
 }

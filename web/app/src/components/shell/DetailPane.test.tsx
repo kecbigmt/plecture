@@ -63,7 +63,7 @@ describe("DetailPane", () => {
         sessionName: "team/a",
         run: "up",
         health: "stalled",
-        resourceId: "https://example.com/issues/1",
+        resource: { type: "issue", name: "res", locator: "https://example.com/issues/1" },
         message: { text: "Reviewing changes", updatedAt: "2026-01-02T03:04:00Z" },
         createdAt: "2026-01-01T00:00:00Z",
       }),
@@ -82,7 +82,6 @@ describe("DetailPane", () => {
         sessionName: "team/a",
         title: "Review the release",
         run: "down",
-        resourceId: "",
         createdAt: "2026-01-01T00:00:00Z",
       }),
     );
@@ -95,7 +94,6 @@ describe("DetailPane", () => {
       jsonResponse({
         sessionName: "team/a",
         run: "up",
-        resourceId: "",
         workdir: "/work/team/a",
         workdirExists: false,
         createdAt: "2026-01-01T00:00:00Z",
@@ -111,7 +109,6 @@ describe("DetailPane", () => {
       jsonResponse({
         sessionName: "team/a",
         run: "up",
-        resourceId: "",
         createdAt: "2026-01-01T00:00:00Z",
       }),
     );
@@ -125,7 +122,6 @@ describe("DetailPane", () => {
       jsonResponse({
         sessionName: "team/a",
         run: "up",
-        resourceId: "",
         createdAt: "2026-01-01T00:00:00Z",
       }),
     );
@@ -154,7 +150,6 @@ describe("DetailPane", () => {
       jsonResponse({
         sessionName: "team/b",
         run: "down",
-        resourceId: "",
         createdAt: "2026-01-01T00:00:00Z",
       }),
     );
@@ -169,7 +164,6 @@ describe("DetailPane", () => {
       jsonResponse({
         sessionName: "team/a",
         run: "up",
-        resourceId: "",
         createdAt: "2026-01-01T00:00:00Z",
       }),
     );

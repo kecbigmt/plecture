@@ -102,7 +102,7 @@ func renderStatus(cmd *cobra.Command, result *service.StatusResult) {
 	fmt.Fprintf(w, "Session:\t%s\n", id.SessionName)
 	if result.Destroyed {
 		fmt.Fprintf(w, "Status:\tdestroyed (tombstone)\n")
-		fmt.Fprintf(w, "Resource:\t%s\n", domain.Locator(id.Resource))
+		fmt.Fprintf(w, "Resource:\t%s\n", resourceLocator(id.Resource))
 		fmt.Fprintf(w, "Created:\t%s\n", id.CreatedAt.Format("2006-01-02 15:04:05"))
 		fmt.Fprintf(w, "Destroyed:\t%s\n", result.DestroyedAt.Format("2006-01-02 15:04:05"))
 		w.Flush()
@@ -110,7 +110,7 @@ func renderStatus(cmd *cobra.Command, result *service.StatusResult) {
 		return
 	}
 
-	fmt.Fprintf(w, "Resource:\t%s\n", domain.Locator(id.Resource))
+	fmt.Fprintf(w, "Resource:\t%s\n", resourceLocator(id.Resource))
 	if id.Title != "" {
 		fmt.Fprintf(w, "Title:\t%s\n", id.Title)
 	}
@@ -406,4 +406,11 @@ func init() {
 	statusCmd.Flags().BoolVar(&statusRefresh, "refresh", false, "Observe each instance's resource before reporting, so the facts shown are current")
 	statusCmd.Flags().BoolVar(&statusFull, "full", false, "With --json, output the full report (all task instances, unfiltered outputs, runtime/flow detail) instead of the default done_when-focused summary")
 	rootCmd.AddCommand(statusCmd)
+}
+
+func resourceLocator(r *service.ResourceView) string {
+	if r == nil {
+		return ""
+	}
+	return r.Locator
 }

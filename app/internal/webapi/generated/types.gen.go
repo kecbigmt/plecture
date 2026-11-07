@@ -380,8 +380,8 @@ type SessionDetail struct {
 	Message        *SessionMessage         `json:"message,omitempty"`
 	ParentSession  *string                 `json:"parentSession,omitempty"`
 
-	// ResourceId Absent and empty are equivalent for every optional field on this model: the API omits an unset value rather than emitting it as `null` or `""`, mirroring the Go source's `omitempty` struct tags.
-	ResourceId    *string               `json:"resourceId,omitempty"`
+	// Resource Absent and empty are equivalent for every optional field on this model: the API omits an unset value rather than emitting it as `null` or `""`, mirroring the Go source's `omitempty` struct tags.
+	Resource      *SessionResource      `json:"resource,omitempty"`
 	Run           SessionRunState       `json:"run"`
 	SessionName   string                `json:"sessionName"`
 	Tag           *string               `json:"tag,omitempty"`
@@ -405,12 +405,12 @@ type SessionIdentity struct {
 	Inputs        *map[string]interface{} `json:"inputs,omitempty"`
 	ParentSession *string                 `json:"parentSession,omitempty"`
 
-	// ResourceId Absent and empty are equivalent for every optional field on this model: the API omits an unset value rather than emitting it as `null` or `""`, mirroring the Go source's `omitempty` struct tags.
-	ResourceId  *string `json:"resourceId,omitempty"`
-	SessionName string  `json:"sessionName"`
-	Tag         *string `json:"tag,omitempty"`
-	Title       *string `json:"title,omitempty"`
-	Workflow    *string `json:"workflow,omitempty"`
+	// Resource Absent and empty are equivalent for every optional field on this model: the API omits an unset value rather than emitting it as `null` or `""`, mirroring the Go source's `omitempty` struct tags.
+	Resource    *SessionResource `json:"resource,omitempty"`
+	SessionName string           `json:"sessionName"`
+	Tag         *string          `json:"tag,omitempty"`
+	Title       *string          `json:"title,omitempty"`
+	Workflow    *string          `json:"workflow,omitempty"`
 }
 
 // SessionListResponse defines model for SessionListResponse.
@@ -423,6 +423,13 @@ type SessionListResponse struct {
 type SessionMessage struct {
 	Text      string    `json:"text"`
 	UpdatedAt time.Time `json:"updatedAt"`
+}
+
+// SessionResource defines model for SessionResource.
+type SessionResource struct {
+	Locator string `json:"locator"`
+	Name    string `json:"name"`
+	Type    string `json:"type"`
 }
 
 // SessionRunState defines model for SessionRunState.
@@ -448,7 +455,7 @@ type SessionSummary struct {
 	LastActiveAt  *time.Time            `json:"lastActiveAt,omitempty"`
 	Message       *SessionMessage       `json:"message,omitempty"`
 	ParentSession *string               `json:"parentSession,omitempty"`
-	ResourceId    string                `json:"resourceId"`
+	Resource      *SessionResource      `json:"resource,omitempty"`
 	Run           SessionRunState       `json:"run"`
 	SessionName   string                `json:"sessionName"`
 	Tasks         *[]SessionTaskSummary `json:"tasks,omitempty"`

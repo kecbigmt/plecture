@@ -1,9 +1,11 @@
 package service
 
 import (
+	"encoding/json"
 	contract "github.com/kecbigmt/plecture/contracts/state"
 	"os"
 	"path/filepath"
+	"reflect"
 	"strings"
 	"testing"
 	"time"
@@ -367,5 +369,37 @@ type = "string"
 	node := store.Get("a+b+t").Nodes["tagged"]
 	if node == nil || node.Outputs["tag"] != "t" {
 		t.Fatalf("tagged node = %+v, want session.tag to read the recorded tag t", node)
+	}
+}
+
+func TestStatusAndListJSONExposeTheResourceAsTypeNameAndLocatorOnly(t *testing.T) {
+	store := testStore(t)
+	cfg := identityFixture(t)
+	mustUp(t, cfg, store, UpParams{Identifier: identityCaseID})
+
+	status, err := Status(cfg, store, "case-1")
+	if err != nil {
+		t.Fatalf("status: %v", err)
+	}
+	entries, err := List(cfg, store)
+	if err != nil {
+		t.Fatalf("list: %v", err)
+	}
+	if len(entries) != 1 {
+		t.Fatalf("entries = %+v, want one", entries)
+	}
+	want := map[string]any{"type": "case", "name": "case-1", "locator": identityCaseID}
+	for label, value := range map[string]any{"status identity": status.Identity, "summary identity": Summarize(status).Identity, "list entry": entries[0]} {
+		raw, err := json.Marshal(value)
+		if err != nil {
+			t.Fatal(err)
+		}
+		var decoded map[string]any
+		if err := json.Unmarshal(raw, &decoded); err != nil {
+			t.Fatal(err)
+		}
+		if got := decoded["resource"]; !reflect.DeepEqual(got, want) {
+			t.Errorf("%s resource = %v, want %v", label, got, want)
+		}
 	}
 }

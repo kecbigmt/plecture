@@ -19,7 +19,7 @@ afterEach(() => {
 
 describe("fetchSessionList", () => {
   it("returns the items array on success", async () => {
-    const items = [{ sessionName: "a", displayStatus: "up", run: "up", resourceId: "" }];
+    const items = [{ sessionName: "a", displayStatus: "up", run: "up" }];
     vi.mocked(fetch).mockResolvedValue(jsonResponse({ items, count: 1 }));
     await expect(fetchSessionList()).resolves.toEqual(items);
   });

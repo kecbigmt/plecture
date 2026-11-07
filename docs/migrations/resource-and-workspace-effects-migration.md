@@ -137,8 +137,9 @@ resource.
 
 1. The migration cannot evaluate a declaration's `name`. Each distinct
    identifier stored before the upgrade becomes one resource with no type,
-   named by its own id, and every session, task, node, population member and
-   delivery retry that stored the identifier refers to it.
+   named by its own id, and every session, task, node (its resource and its
+   subscription), population member and delivery retry that stored the
+   identifier refers to it.
 2. No live session should reach this: "Release live sessions first" destroys
    every session the previous release created. A session left live anyway
    keeps working by its session name, but a resource-addressed `plect up` of
@@ -147,11 +148,14 @@ resource.
    untyped resource, so the population's next poll admits the same item as a
    new member and tombstones the old one, whose session then follows the
    population's destroy policy (`auto_destroy`, or a recorded dry run).
-3. `plect status --json` reports `identity.resource` (`id`, `type`, `name`,
+3. `plect status --json` reports `identity.resource` (`type`, `name`,
    `locator`) in place of `identity.resource_id` and `identity.resource_type`,
-   and `plect ls --json` reports `resource` in place of `resource_id`. The
-   `id` is opaque; the identifier is `locator`. Rewrite a consumer that reads
-   `resource_id` as the identifier to read `resource.locator`.
+   and `plect ls --json` reports `resource` in place of `resource_id`. The Web
+   API's `SessionSummary` and `SessionDetail` likewise carry `resource`
+   (`type`, `name`, `locator`) in place of `resourceId`, and a summary for a
+   session with no resource omits it. The identifier is `locator`; rewrite a
+   consumer that reads `resource_id` or `resourceId` to read
+   `resource.locator`.
 4. Resource names are unique across resource types. Two declarations whose
    `name` derives one value from different identifiers conflict: the second is
    refused when it resolves. Change one declaration's `name` so their values

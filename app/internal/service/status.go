@@ -24,7 +24,7 @@ const statusFlowLimit = 5
 // locator is an opaque string any resource can own.
 type StatusIdentity struct {
 	SessionName   string                         `json:"session_name"`
-	Resource      *contract.Resource             `json:"resource,omitempty"`
+	Resource      *ResourceView                  `json:"resource,omitempty"`
 	Title         string                         `json:"title,omitempty"`
 	Workflow      string                         `json:"workflow,omitempty"`
 	Revision      string                         `json:"revision,omitempty"`
@@ -226,7 +226,7 @@ func Status(cfg *config.Config, store *state.Store, identifier string) (*StatusR
 	return &StatusResult{
 		Identity: StatusIdentity{
 			SessionName:   sessionName,
-			Resource:      session.Resource,
+			Resource:      resourceView(session.Resource),
 			Title:         displayTitle,
 			Workflow:      session.Workflow,
 			Revision:      shortWorkflowRevision(session.WorkflowRevision),
@@ -404,7 +404,7 @@ func tombstoneStatusResult(tomb *contract.Tombstone) *StatusResult {
 	return &StatusResult{
 		Identity: StatusIdentity{
 			SessionName:   tomb.Name,
-			Resource:      tomb.Resource,
+			Resource:      resourceView(tomb.Resource),
 			Workflow:      tomb.Workflow,
 			Tag:           tomb.Tag,
 			ParentSession: tomb.ParentSession,
@@ -431,7 +431,7 @@ type StatusSummary struct {
 
 type StatusSummaryIdentity struct {
 	SessionName   string                         `json:"session_name"`
-	Resource      *contract.Resource             `json:"resource,omitempty"`
+	Resource      *ResourceView                  `json:"resource,omitempty"`
 	Workflow      string                         `json:"workflow,omitempty"`
 	Revision      string                         `json:"revision,omitempty"`
 	Population    *contract.PopulationProvenance `json:"population,omitempty"`

@@ -344,7 +344,7 @@ type ListEntry struct {
 	Health        domain.HealthState `json:"health,omitempty"`
 	HealthReason  string             `json:"health_reason,omitempty"`
 	DisplayStatus string             `json:"display_status"`
-	Resource      *contract.Resource `json:"resource,omitempty"`
+	Resource      *ResourceView      `json:"resource,omitempty"`
 	Tracked       bool               `json:"tracked"`
 	LastActiveAt  *time.Time         `json:"last_active_at,omitempty"`
 	Message       *domain.Message    `json:"message,omitempty"`
@@ -415,7 +415,7 @@ func buildListEntry(cfg *config.Config, store *state.Store, displayTasks taskDec
 		Health:        health,
 		HealthReason:  healthReason,
 		DisplayStatus: cached.DisplayStatus,
-		Resource:      s.Resource,
+		Resource:      resourceView(s.Resource),
 		Tracked:       true,
 		LastActiveAt:  &s.UpdatedAt,
 		Message:       LatestStatusMessage(store, s.Name),

@@ -97,3 +97,18 @@ func sameResource(recorded, bound *contract.Resource) bool {
 		return bound.Name != "" && recorded.Name == bound.Name
 	}
 }
+
+// ResourceView is a resource as output surfaces show it. The id is a storage
+// key no reader can look a resource up by, so it is left out.
+type ResourceView struct {
+	Type    string `json:"type"`
+	Name    string `json:"name"`
+	Locator string `json:"locator"`
+}
+
+func resourceView(r *contract.Resource) *ResourceView {
+	if r == nil {
+		return nil
+	}
+	return &ResourceView{Type: r.Type, Name: r.Name, Locator: r.Locator}
+}

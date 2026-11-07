@@ -360,8 +360,9 @@ components:
       properties:
         sessionName:
           type: string
-        resourceId:
-          type: string
+        resource:
+          allOf:
+            - $ref: '#/components/schemas/SessionResource'
           description: 'Absent and empty are equivalent for every optional field on this model: the API omits an unset value rather than emitting it as `null` or `""`, mirroring the Go source''s `omitempty` struct tags.'
         title:
           type: string
@@ -406,6 +407,19 @@ components:
         updatedAt:
           type: string
           format: date-time
+    SessionResource:
+      type: object
+      required:
+        - type
+        - name
+        - locator
+      properties:
+        type:
+          type: string
+        name:
+          type: string
+        locator:
+          type: string
     SessionRunState:
       type: string
       enum:
@@ -442,7 +456,6 @@ components:
         - sessionName
         - displayStatus
         - run
-        - resourceId
       properties:
         sessionName:
           type: string
@@ -455,8 +468,8 @@ components:
           $ref: '#/components/schemas/SessionRunState'
         health:
           $ref: '#/components/schemas/SessionHealthState'
-        resourceId:
-          type: string
+        resource:
+          $ref: '#/components/schemas/SessionResource'
         lastActiveAt:
           type: string
           format: date-time

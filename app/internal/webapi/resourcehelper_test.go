@@ -1,6 +1,7 @@
 package webapi
 
 import (
+	"github.com/kecbigmt/plecture/app/internal/service"
 	"strings"
 
 	contract "github.com/kecbigmt/plecture/contracts/state"
@@ -14,4 +15,9 @@ func testResource(locator string) *contract.Resource {
 		return '-'
 	}, locator)
 	return &contract.Resource{Type: "test", Name: "r" + name, Locator: locator}
+}
+
+func testView(locator string) *service.ResourceView {
+	r := testResource(locator)
+	return &service.ResourceView{Type: r.Type, Name: r.Name, Locator: r.Locator}
 }

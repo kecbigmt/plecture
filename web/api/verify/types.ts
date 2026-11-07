@@ -25,7 +25,6 @@ const validList: SessionListResponse = {
       sessionName: "team/workspace-a",
       displayStatus: "up",
       run: "up",
-      resourceId: "",
     },
   ],
   count: 1,
