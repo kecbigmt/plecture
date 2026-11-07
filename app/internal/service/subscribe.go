@@ -9,8 +9,8 @@ import (
 
 	"github.com/kecbigmt/plecture/app/internal/config"
 	"github.com/kecbigmt/plecture/app/internal/effect"
-	"github.com/kecbigmt/plecture/app/internal/lang"
 	"github.com/kecbigmt/plecture/app/internal/state"
+	"github.com/kecbigmt/plecture/app/internal/task"
 )
 
 // SubscribeParams are the inputs to Subscribe. ResourceID is the opaque
@@ -73,23 +73,7 @@ func Subscribe(cfg *config.Config, store *state.Store, params SubscribeParams) e
 }
 
 func validateSubscriptionInputs(def config.ResourceDef, inputs map[string]any) error {
-	if inputs == nil {
-		inputs = map[string]any{}
-	}
-	if def.InputsSchema == nil {
-		if len(inputs) > 0 {
-			return fmt.Errorf("resource %q declares no inputs_schema", def.ID)
-		}
-		return nil
-	}
-	schema, err := lang.CompileSchema(def.InputsSchema, "", "plect:resource:"+def.ID+":inputs")
-	if err != nil {
-		return fmt.Errorf("resource %q inputs_schema: %w", def.ID, err)
-	}
-	if err := schema.Validate(inputs); err != nil {
-		return fmt.Errorf("resource %q inputs: %w", def.ID, err)
-	}
-	return nil
+	return task.ValidateResourceInputs(def, inputs)
 }
 
 // matchResourceDefs keeps all matches, including declarations without hooks,

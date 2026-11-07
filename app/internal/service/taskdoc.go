@@ -194,7 +194,7 @@ func setupTaskDocument(cfg *config.Config, store *state.Store, resolvedName stri
 	}
 	// Instantiation observes once, and a failed first observation rejects it:
 	// an instance whose predicate has nothing to read is worse than none.
-	observed, oerr := task.ObserveResource(observer, resourceID, cfg.Plugins)
+	observed, oerr := task.ObserveResource(observer, resourceID, nil, cfg.Plugins)
 	if oerr != nil {
 		return nil, &Error{Code: ErrExecutionFailed, Message: fmt.Sprintf("task %s: observing %s failed, so no instance was created: %v", doc.ID, resourceID, oerr)}
 	}

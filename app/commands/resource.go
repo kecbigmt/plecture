@@ -11,7 +11,11 @@ import (
 	"github.com/kecbigmt/plecture/app/internal/service"
 )
 
-var resourceStatusJSON bool
+var (
+	resourceStatusJSON       bool
+	resourceStatusInputs     string
+	resourceStatusInputsFile string
+)
 
 var resourceCmd = &cobra.Command{
 	Use:   "resource",
@@ -30,15 +34,23 @@ This is the same observation contract a task instance's from_resource_status
 dynamic output reads from ('plect task setup --resource'); this command lets it
 be read outside any one task instance.
 
+--inputs / --inputs-file supply the resource's action input object, checked
+against its inputs_schema. A resource that declares no inputs_schema accepts
+only the empty object.
+
 Example:
   plect resource status <resource-id>`,
 	Args: cobra.ExactArgs(1),
 	RunE: func(cmd *cobra.Command, args []string) error {
+		inputs, err := resolveInputsFlags(resourceStatusInputs, resourceStatusInputsFile)
+		if err != nil {
+			return err
+		}
 		cfg, err := config.Load()
 		if err != nil {
 			return err
 		}
-		result, err := service.ResourceStatus(cfg, service.ResourceStatusParams{ResourceID: args[0]})
+		result, err := service.ResourceStatus(cfg, service.ResourceStatusParams{ResourceID: args[0], Inputs: inputs})
 		if err != nil {
 			return err
 		}
@@ -66,6 +78,8 @@ Example:
 
 func init() {
 	resourceStatusCmd.Flags().BoolVar(&resourceStatusJSON, "json", false, "Output as JSON")
+	resourceStatusCmd.Flags().StringVar(&resourceStatusInputs, "inputs", "", "Resource action inputs as a JSON object string")
+	resourceStatusCmd.Flags().StringVar(&resourceStatusInputsFile, "inputs-file", "", "Path to a JSON file containing the resource action inputs object")
 	resourceCmd.AddCommand(resourceStatusCmd)
 	rootCmd.AddCommand(resourceCmd)
 }

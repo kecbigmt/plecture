@@ -76,7 +76,7 @@ command = "true"
 }
 
 func TestResourceStatus_NoDefinition(t *testing.T) {
-	state, _, ok, err := ResourceStatus(nil, "https://github.com/o/r/pull/1", nil)
+	state, _, ok, err := ResourceStatus(nil, "https://github.com/o/r/pull/1", nil, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -105,7 +105,7 @@ required = ["resource_kind"]
 resource_kind = { type = "string" }
 checks_status = { type = "string" }
 `)
-	state, def, ok, err := ResourceStatus(defs, "https://github.com/o/r/pull/5", nil)
+	state, def, ok, err := ResourceStatus(defs, "https://github.com/o/r/pull/5", nil, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -121,6 +121,7 @@ func TestResourceStatus_ObserveReadsItsSurfaceRoots(t *testing.T) {
 	tests := []struct {
 		name       string
 		projection string
+		inputs     map[string]any
 		wantKey    string
 		want       string
 	}{
@@ -129,6 +130,13 @@ func TestResourceStatus_ObserveReadsItsSurfaceRoots(t *testing.T) {
 			projection: `{ from = "resource.id" }`,
 			wantKey:    "value",
 			want:       "local-okf://kec/goals/x.md",
+		},
+		{
+			name:       "resource.inputs",
+			projection: `{ from = "resource.inputs.token" }`,
+			inputs:     map[string]any{"token": "secret"},
+			wantKey:    "value",
+			want:       "secret",
 		},
 	}
 	for _, tt := range tests {
@@ -143,8 +151,11 @@ match = '.*'
 type    = "exec"
 command = "printf"
 args    = ['{"value":"%s"}', `+tt.projection+`]
+
+[echo.inputs_schema]
+type = "object"
 `)
-			state, _, ok, err := ResourceStatus(defs, "local-okf://kec/goals/x.md", nil)
+			state, _, ok, err := ResourceStatus(defs, "local-okf://kec/goals/x.md", tt.inputs, nil)
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -173,7 +184,7 @@ printf '{"resource_id":"%s"}' "$resource_id"
 [echo.observe.bind]
 resource_id = { from = "resource.id" }
 `)
-	state, _, ok, err := ResourceStatus(defs, "local-okf://kec/goals/x.md", nil)
+	state, _, ok, err := ResourceStatus(defs, "local-okf://kec/goals/x.md", nil, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -200,7 +211,7 @@ type = "object"
 [github.state_schema.properties]
 resource_kind = { type = "string" }
 `)
-	if _, _, _, err := ResourceStatus(defs, "x", nil); err == nil {
+	if _, _, _, err := ResourceStatus(defs, "x", nil, nil); err == nil {
 		t.Error("expected a state_schema validation error")
 	}
 }
@@ -217,7 +228,7 @@ type    = "exec"
 command = "sh"
 args    = ["-c", "echo boom >&2; exit 1"]
 `)
-	if _, _, _, err := ResourceStatus(defs, "x", nil); err == nil {
+	if _, _, _, err := ResourceStatus(defs, "x", nil, nil); err == nil {
 		t.Error("expected observe failure to error")
 	}
 }
@@ -307,6 +318,75 @@ stdin = { json = { from = "judges" } }
 		if !strings.Contains(data, want) {
 			t.Errorf("finalize output = %q, want it to contain %q", data, want)
 		}
+	}
+}
+
+func TestResourceStatus_RejectsInputsTheResourceSchemaRefuses(t *testing.T) {
+	marker := filepath.Join(t.TempDir(), "observed")
+	defs := observers(t, `
+[forge]
+kind  = "resource"
+name  = "fixture"
+match = '.*'
+
+[forge.observe]
+type    = "exec"
+command = "touch"
+args    = ['`+marker+`']
+
+[forge.inputs_schema]
+type     = "object"
+required = ["token"]
+
+[forge.inputs_schema.properties]
+token = { type = "string" }
+`)
+	for _, inputs := range []map[string]any{nil, {"token": 7}} {
+		_, _, _, err := ResourceStatus(defs, "forge://x", inputs, nil)
+		if err == nil || !strings.Contains(err.Error(), "inputs") {
+			t.Errorf("inputs %v: err = %v, want an inputs validation error", inputs, err)
+		}
+	}
+	if _, err := os.Stat(marker); err == nil {
+		t.Error("observe ran although its inputs failed validation")
+	}
+}
+
+func TestFinalizeResource_SeesTheBindingInputs(t *testing.T) {
+	out := filepath.Join(t.TempDir(), "finalize.out")
+	defs := observers(t, `
+[forge]
+kind  = "resource"
+name  = "fixture"
+match = '.*'
+
+[forge.observe]
+type    = "exec"
+command = "true"
+
+[forge.finalize]
+type    = "exec"
+command = "sh"
+args    = ["-c", 'printf "%s" "$1" > "$2"', "finalize", { from = "resource.inputs.token" }, '`+out+`']
+
+[forge.inputs_schema]
+type = "object"
+
+[forge.inputs_schema.properties]
+token = { type = "string" }
+`)
+	if _, _, err := FinalizeResource(defs, FinalizeResourceParams{
+		ResourceID: "forge://x",
+		Inputs:     map[string]any{"token": "secret"},
+	}); err != nil {
+		t.Fatal(err)
+	}
+	raw, err := os.ReadFile(out)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if string(raw) != "secret" {
+		t.Errorf("finalize saw resource.inputs.token = %q, want secret", raw)
 	}
 }
 

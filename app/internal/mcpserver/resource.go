@@ -15,6 +15,9 @@ var resourceStatusTool = mcp.NewTool("plect_resource_status",
 		mcp.Required(),
 		mcp.Description("Resource id to observe"),
 	),
+	mcp.WithObject("inputs",
+		mcp.Description("Resource action inputs, checked against the resource's inputs_schema"),
+	),
 )
 
 func handleResourceStatus(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
@@ -27,7 +30,7 @@ func handleResourceStatus(ctx context.Context, request mcp.CallToolRequest) (*mc
 	if err != nil {
 		return errorResult(err), nil
 	}
-	result, err := service.ResourceStatus(cfg, service.ResourceStatusParams{ResourceID: resourceID})
+	result, err := service.ResourceStatus(cfg, service.ResourceStatusParams{ResourceID: resourceID, Inputs: getObjectArg(request, "inputs")})
 	if err != nil {
 		return errorResult(err), nil
 	}

@@ -1,6 +1,7 @@
 package service
 
 import (
+	"errors"
 	"os"
 	"path/filepath"
 	"testing"
@@ -57,4 +58,47 @@ func TestResourceStatus_EmptyResourceIDIsError(t *testing.T) {
 	if _, err := ResourceStatus(cfg, ResourceStatusParams{ResourceID: "  "}); err == nil {
 		t.Fatal("expected an error for a blank resource id")
 	}
+}
+
+func TestResourceStatus_PassesTheSuppliedInputsToObserve(t *testing.T) {
+	cfg := &config.Config{BaseDir: t.TempDir()}
+	writeResourceDefFixture(t, cfg.BaseDir, "forge", `
+[forge]
+kind  = "resource"
+name  = "fixture"
+match = '^forge://'
+
+[forge.observe]
+type    = "exec"
+command = "printf"
+args    = ['{"token":"%s"}', { from = "resource.inputs.token" }]
+
+[forge.inputs_schema]
+type     = "object"
+required = ["token"]
+
+[forge.inputs_schema.properties]
+token = { type = "string" }
+`)
+
+	result, err := ResourceStatus(cfg, ResourceStatusParams{ResourceID: "forge://x", Inputs: map[string]any{"token": "secret"}})
+	if err != nil {
+		t.Fatalf("ResourceStatus: %v", err)
+	}
+	if result.State["token"] != "secret" {
+		t.Errorf("State = %v, want observe to see resource.inputs.token", result.State)
+	}
+
+	_, err = ResourceStatus(cfg, ResourceStatusParams{ResourceID: "forge://x"})
+	if code := errorCode(err); code != ErrInvalidInput {
+		t.Errorf("missing required inputs: err = %v (code %q), want %q", err, code, ErrInvalidInput)
+	}
+}
+
+func errorCode(err error) string {
+	var svcErr *Error
+	if errors.As(err, &svcErr) {
+		return svcErr.Code
+	}
+	return ""
 }
