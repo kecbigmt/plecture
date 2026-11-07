@@ -13,25 +13,30 @@ import (
 	"github.com/kecbigmt/plecture/app/internal/eventlog"
 	"github.com/kecbigmt/plecture/app/internal/lang"
 	"github.com/kecbigmt/plecture/app/internal/state"
+	contract "github.com/kecbigmt/plecture/contracts/state"
 )
 
 type Supervisor struct {
-	cfg      func() *config.Config
-	state    *state.Store
-	log      *eventlog.Store
-	logger   *slog.Logger
-	poll     time.Duration
-	capacity *capacityCoordinator
+	cfg func() *config.Config
+	// projectRoot is the configuration context captured when the resident
+	// started, not re-read from its cwd, so a running evaluator never
+	// changes context underneath its members.
+	projectRoot string
+	state       *state.Store
+	log         *eventlog.Store
+	logger      *slog.Logger
+	poll        time.Duration
+	capacity    *capacityCoordinator
 	// cache is shared by capacity (reader) and every population's Engine
 	// (writer), so an admit outcome recorded by one engine is immediately
 	// visible to the capacity gate for every population, not just its own.
 	cache *admitstatus.Cache
 }
 
-func NewSupervisor(cfg func() *config.Config, stateStore *state.Store, logStore *eventlog.Store) *Supervisor {
+func NewSupervisor(cfg func() *config.Config, projectRoot string, stateStore *state.Store, logStore *eventlog.Store) *Supervisor {
 	cache := admitstatus.NewCache(logStore)
 	return &Supervisor{
-		cfg: cfg, state: stateStore, log: logStore, logger: slog.Default(), poll: time.Second,
+		cfg: cfg, projectRoot: projectRoot, state: stateStore, log: logStore, logger: slog.Default(), poll: time.Second,
 		capacity: newCapacityCoordinator(cfg, stateStore, logStore, cache), cache: cache,
 	}
 }
@@ -43,7 +48,7 @@ type activeEvaluator struct {
 }
 
 func (s *Supervisor) Run(ctx context.Context) {
-	active := make(map[string]activeEvaluator)
+	active := make(map[contract.PopulationProvenance]activeEvaluator)
 	var wg sync.WaitGroup
 	defer func() {
 		for _, evaluator := range active {
@@ -63,16 +68,16 @@ func (s *Supervisor) Run(ctx context.Context) {
 	}
 }
 
-func (s *Supervisor) reconcile(ctx context.Context, active map[string]activeEvaluator, wg *sync.WaitGroup) {
+func (s *Supervisor) reconcile(ctx context.Context, active map[contract.PopulationProvenance]activeEvaluator, wg *sync.WaitGroup) {
 	cfg := s.cfg()
-	definitions, err := Load(cfg)
+	definitions, err := Load(cfg, s.projectRoot)
 	if err != nil {
 		s.logger.Warn("workflow population config reload failed; keeping previous evaluators", "error", err)
 		return
 	}
 	s.capacity.setDefinitions(definitions)
-	desired := make(map[string]Definition, len(definitions))
-	fingerprints := make(map[string][32]byte, len(definitions))
+	desired := make(map[contract.PopulationProvenance]Definition, len(definitions))
+	fingerprints := make(map[contract.PopulationProvenance][32]byte, len(definitions))
 	for _, definition := range definitions {
 		key := populationKey(definition)
 		desired[key] = definition
@@ -105,10 +110,9 @@ func definitionFingerprint(def Definition) [32]byte {
 	raw, _ := json.Marshal(struct {
 		Workflow   *lang.Definition
 		Population config.WorkflowPopulation
-		Observer   *lang.Definition
-		Provider   config.WorkspaceProviderConfig
+		Entry      *lang.Definition
 		Task       *lang.Definition
-	}{def.Workflow.Definition, def.Population, def.Observer.Definition, def.Provider, taskDefinition(def.InitialTask)})
+	}{def.Workflow.Definition, def.Population, def.Entry.Definition, taskDefinition(def.InitialTask)})
 	return sha256.Sum256(raw)
 }
 
@@ -127,12 +131,12 @@ type sourceResult struct {
 func (s *Supervisor) runEvaluator(ctx context.Context, engine *Engine, runner queryRunner) {
 	def := engine.definition
 	source := make(chan sourceResult)
-	if def.Observer.Query.Subscribe != nil && def.Population.UsesSubscribe() {
+	if def.Entry.Query.Subscribe != nil && def.Population.UsesSubscribe() {
 		go s.runSubscription(ctx, runner, def, source)
 	}
 	var poll <-chan time.Time
 	var pollTicker *time.Ticker
-	if def.Observer.Query.Poll != nil && def.Population.UsesPoll() {
+	if def.Entry.Query.Poll != nil && def.Population.UsesPoll() {
 		pollTicker = time.NewTicker(def.Population.PollEvery.Duration)
 		defer pollTicker.Stop()
 		immediate := make(chan time.Time, 1)

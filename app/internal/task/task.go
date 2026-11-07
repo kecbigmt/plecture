@@ -17,7 +17,9 @@ package task
 
 import (
 	"context"
+	"errors"
 	"fmt"
+	"log/slog"
 	"strings"
 	"time"
 
@@ -25,6 +27,7 @@ import (
 	"github.com/kecbigmt/plecture/app/internal/effect"
 	"github.com/kecbigmt/plecture/app/internal/lang"
 	"github.com/kecbigmt/plecture/app/internal/plugins"
+	"github.com/kecbigmt/plecture/app/internal/publicoutput"
 	"github.com/kecbigmt/plecture/contracts/event"
 	contract "github.com/kecbigmt/plecture/contracts/state"
 	"github.com/santhosh-tekuri/jsonschema/v6"
@@ -54,6 +57,7 @@ type Resolved struct {
 	// time against the node-inputs surface and persisted as the instance's
 	// own inputs.
 	Inputs        map[string]*lang.Value
+	Subscription  string
 	InputsSchema  *jsonschema.Schema // optional: validated against resolved inputs
 	OutputsSchema *jsonschema.Schema
 	// MutableOutputs lists output keys declared `mutable = true` in the
@@ -71,7 +75,10 @@ type Resolved struct {
 	// Layers is the node's nesting chain, outermost first, when its task
 	// definition declares `inner`. Empty for a plain task, which is the one
 	// distinction the lifecycle runners make between the two.
-	Layers []effect.Layer
+	Layers          []effect.Layer
+	Prep            bool
+	Workdir         *lang.WorkdirRef
+	WorkdirProducer bool
 	// Unresolved marks a teardown-only entry whose current definition could
 	// not be found by TaskID, so there is no cleanup recipe to run at all.
 	// RunCleanup reports it as an error and leaves the record unreleased,
@@ -135,6 +142,7 @@ type Probe struct {
 	From       lang.Ownership
 	Env        []string
 	Process    *contract.ProcessIdentity
+	Dir        string
 }
 
 func (p Probe) context(session SessionVars) RenderContext {
@@ -165,7 +173,7 @@ func RunAliveProbe(goCtx context.Context, p Probe, session SessionVars) error {
 		return err
 	}
 	defer resolved.Close()
-	_, stderr, err := resolved.Run(goCtx, session.WorkspaceDirPath, p.Env...)
+	_, stderr, err := resolved.Run(goCtx, p.Dir, p.Env...)
 	if err != nil {
 		if len(stderr) > 0 {
 			return fmt.Errorf("%w: %s", err, strings.TrimSpace(string(stderr)))
@@ -208,7 +216,7 @@ func runTerminalVerb(goCtx context.Context, binding *TerminalBinding, verb strin
 		return nil, nil, err
 	}
 	defer resolved.Close()
-	return resolved.Run(goCtx, session.WorkspaceDirPath, env...)
+	return resolved.Run(goCtx, binding.Dir, env...)
 }
 
 // CompileWorkflow turns a workflow file plus its referenced task definitions
@@ -254,12 +262,16 @@ func resolveWorkflowNodes(wf config.WorkflowFile, defs map[string]config.TaskDef
 		// (the address defs is actually keyed by) instead.
 		resolved.TaskID = node.Uses
 		resolved.Inputs = node.Inputs
+		resolved.Subscription = node.Subscription
 		out = append(out, resolved)
 	}
-	if err := deriveDependsOn(out); err != nil {
+	if err := deriveDependsOn(out, wf.Outputs); err != nil {
 		return nil, err
 	}
 	if err := applyBlocks(out, wf.Nodes); err != nil {
+		return nil, err
+	}
+	if err := applyWorkdir(wf, out); err != nil {
 		return nil, err
 	}
 	return out, nil
@@ -366,14 +378,21 @@ func hasDep(deps []string, id string) bool {
 // reads out of its input wiring, and validates that those nodes exist and that
 // scope ordering holds (a session-scoped node must not depend on a run-scoped
 // one, which would outlive it).
-func deriveDependsOn(nodes []Resolved) error {
+func deriveDependsOn(nodes []Resolved, outputs map[string]*lang.Value) error {
 	byID := make(map[string]*Resolved, len(nodes))
 	for i := range nodes {
 		byID[nodes[i].NodeID] = &nodes[i]
 	}
+	for key, binding := range outputs {
+		for _, ref := range lang.NodeReads(map[string]*lang.Value{key: binding}, nil) {
+			if _, ok := byID[ref]; !ok {
+				return fmt.Errorf("public output %q reads unknown node %q", key, ref)
+			}
+		}
+	}
 	for i := range nodes {
 		n := &nodes[i]
-		for _, ref := range lang.NodeReads(n.Inputs) {
+		for _, ref := range lang.NodeReads(n.Inputs, outputs) {
 			if ref == n.NodeID {
 				return fmt.Errorf("node %q reads its own outputs", n.NodeID)
 			}
@@ -514,9 +533,7 @@ func topoSortNodes(list []Resolved) ([]Resolved, error) {
 //	Tasks  — outputs of upstream nodes, indexed by node id.
 //	Inputs   — node's resolved input bindings (post-render), exposed as `.Inputs.<key>`.
 //	           Also reachable via `.Nodes.<self>.inputs.<key>` for symmetry.
-//	Workflow — the workflow pseudo-node's outputs, exposed as
-//	           `.Workflow.outputs.<key>` (workspace_dir, branch, ...). Empty for
-//	           sessions whose workflow declares no setup hook.
+//	Workflow — the workflow's public outputs, exposed as `.Workflow.outputs.<key>`.
 //
 // `.Nodes.<id>.outputs.<key>` is the canonical reference for upstream node
 // outputs in setup/cleanup templates; `.Tasks.<id>.<key>` is a shorter
@@ -543,19 +560,28 @@ type RenderContext struct {
 }
 
 type SessionVars struct {
-	Name             string
-	ResourceID       string
-	ParentSession    string
-	WorkspaceDirPath string
-	Branch           string
-	Inputs           map[string]any
+	Name       string
+	ResourceID string
+	// Tag is the tag the session recorded, never parsed back out of Name,
+	// because a resource name may itself contain the tag separator.
+	Tag           string
+	ParentSession string
+	Inputs        map[string]any
+	// Force is the destruction operation's own intent, read only by cleanup
+	// actions.
+	Force bool
+	// Without ReleaseAfterFailure the prerequisites of a node whose cleanup
+	// failed stay retained: releasing what it still depends on would strand
+	// its own retry.
+	ReleaseAfterFailure bool
 	// Plugins are the resolved, catalog-qualified plugins
 	// (config.Config.Plugins) in declaration order, against which a `bin`
 	// reference resolves. Threaded through SessionVars rather than added as
 	// a separate parameter to every render-driving function, since a
 	// SessionVars is already built and passed at every one of those call
 	// sites.
-	Plugins []plugins.Mounted
+	Plugins       []plugins.Mounted
+	PublicOutputs publicoutput.Declaration
 	// Terminal is the session plan's [terminal]-declaring task, if any,
 	// supplying the terminal capability the same way Plugins supplies the
 	// executable one. Nil when the plan declares no such task, or the
@@ -571,6 +597,7 @@ type SessionVars struct {
 type TerminalBinding struct {
 	Ops        *config.TerminalConfig
 	Outputs    map[string]any
+	Dir        string
 	SourcePath string
 	From       lang.Ownership
 }
@@ -589,13 +616,19 @@ func orEmpty(m map[string]any) map[string]any {
 	return m
 }
 
-// workflowOutputs extracts the workflow pseudo-node's outputs from the
-// persisted tasks map (empty when the workflow declares no setup hook).
-func workflowOutputs(tasks map[string]*contract.TaskState) map[string]any {
-	if st, ok := tasks[contract.WorkflowPseudoNodeID]; ok && st != nil {
-		return st.Outputs
+// workflowOutputs evaluates against the nodes of the run in progress, because
+// nothing is stored for it to read.
+func workflowOutputs(session SessionVars, tasks map[string]*contract.TaskState, sources publicoutput.Sources) map[string]any {
+	outputs, _ := publicoutput.Evaluate(session.PublicOutputs, tasks, session.Inputs, sources)
+	return outputs
+}
+
+// warnUnevaluablePublicOutputs names the cause a consumer would otherwise
+// report only as "resolved to nothing".
+func warnUnevaluablePublicOutputs(session SessionVars, tasks map[string]*contract.TaskState) {
+	if _, err := publicoutput.Evaluate(session.PublicOutputs, tasks, session.Inputs, publicoutput.ProducedOnly); err != nil {
+		slog.Warn("public output binding failed", "session", session.Name, "error", err)
 	}
-	return nil
 }
 
 // dependencyOutputs builds the .Tasks.<id> / .Nodes.<id>.outputs map for the
@@ -732,11 +765,19 @@ func reportCleanupFailure(obs Observer, r Resolved, elapsed time.Duration, err e
 func RunSetup(goCtx context.Context, ordered []Resolved, session SessionVars, tasks map[string]*contract.TaskState, observer Observer) error {
 	obs := observerOr(observer)
 	terminalOwner := terminalOwnerIn(ordered)
+	defer warnUnevaluablePublicOutputs(session, tasks)
 	for _, r := range ordered {
 		session = withFreshTerminalOutputs(session, terminalOwner, tasks)
 		if existing, ok := tasks[r.NodeID]; ok && existing != nil && existing.Status != contract.TaskStatusCleaned && declarationChanged(r, existing) {
 			return fmt.Errorf("node %q: an unreleased setup attempt for a different declaration (task %q) still exists; release it with `plect down` or `plect destroy` before setting up %q",
 				r.NodeID, describeTaskID(existing.TaskID, r.NodeID), describeTaskID(taskIDFor(r), r.NodeID))
+		}
+		// A record that failed after it was produced still owns its allocation:
+		// retry its release, and set it up again only once that succeeds.
+		if existing, ok := tasks[r.NodeID]; ok && existing != nil && existing.Status == contract.TaskStatusFailed && !existing.SetupAt.IsZero() {
+			if releaseErr := invalidateProducedNode(goCtx, r, ordered, errors.New(existing.Error), session, tasks, obs); releaseErr != nil {
+				return releaseErr
+			}
 		}
 		if existing, ok := tasks[r.NodeID]; ok && existing != nil && existing.Status == contract.TaskStatusProduced {
 			aliveStart := time.Now()
@@ -774,8 +815,10 @@ func RunSetup(goCtx context.Context, ordered []Resolved, session SessionVars, ta
 		// A failed attempt is persisted like a successful one, so it needs a
 		// real Seq: at 0 it would sort below an older cleaned execution of the
 		// same node, which the next load would then read as the current one.
+		var dir string
 		failed := func(errMsg string, inputs map[string]any) *contract.TaskState {
 			st := failedState(r, now, errMsg, prev, inputs, continuingExecID)
+			st.Directory = dir
 			if continuingExecID != "" {
 				st.Seq = continuingSeq
 			} else {
@@ -783,8 +826,14 @@ func RunSetup(goCtx context.Context, ordered []Resolved, session SessionVars, ta
 			}
 			return st
 		}
+		var dirErr error
+		if dir, dirErr = r.setupDir(tasks); dirErr != nil {
+			tasks[r.NodeID] = failed(dirErr.Error(), nil)
+			wrapped := fmt.Errorf("node %q: %w", r.NodeID, dirErr)
+			return reportSetupFailure(obs, r, time.Since(now), wrapped, nil)
+		}
 		deps := dependencyOutputs(r.DependsOn, tasks)
-		resolvedInputs, inputErr := ResolveNodeInputs(r.Inputs, deps, workflowOutputs(tasks), session)
+		resolvedInputs, inputErr := ResolveNodeInputs(r.Inputs, deps, workflowOutputs(session, tasks, publicoutput.ProducedOnly), session)
 		if inputErr != nil {
 			tasks[r.NodeID] = failed(inputErr.Error(), nil)
 			wrapped := fmt.Errorf("node %q input: %w", r.NodeID, inputErr)
@@ -802,12 +851,12 @@ func RunSetup(goCtx context.Context, ordered []Resolved, session SessionVars, ta
 			Prev:       prev,
 			Tasks:      deps,
 			Inputs:     resolvedInputs,
-			Workflow:   workflowOutputs(tasks),
+			Workflow:   workflowOutputs(session, tasks, publicoutput.ProducedOnly),
 			Session:    session,
 			SourcePath: r.SourcePath,
 		}
 		if len(r.Layers) > 0 {
-			layers, stderr, nestErr := effect.RunLayers(goCtx, r.Layers, chainHost(ctx, obs, r.Scope, r.NodeID), ctx.Session.WorkspaceDirPath, resolvedInputs)
+			layers, stderr, nestErr := effect.RunLayers(goCtx, r.Layers, chainHost(ctx, obs, r.Scope, r.NodeID), dir, resolvedInputs)
 			if nestErr != nil {
 				// The layers that did produce are persisted with the
 				// failure: the next cleanup has to unwind exactly those.
@@ -846,6 +895,7 @@ func RunSetup(goCtx context.Context, ordered []Resolved, session SessionVars, ta
 				NewExecution: continuingExecID == "",
 				Seq:          nextSeq(tasks),
 				SetupAt:      now,
+				Directory:    dir,
 			}
 			reportSetupSuccess(obs, r, time.Since(now), stderr)
 			continue
@@ -859,7 +909,7 @@ func RunSetup(goCtx context.Context, ordered []Resolved, session SessionVars, ta
 				wrapped := fmt.Errorf("effect %q setup: %w", r.NodeID, resolveErr)
 				return reportSetupFailure(obs, r, time.Since(now), wrapped, nil)
 			}
-			stdout, stderr, runErr := resolved.Run(goCtx, session.WorkspaceDirPath)
+			stdout, stderr, runErr := resolved.Run(goCtx, dir)
 			resolved.Close()
 			stderrCaptured = stderr
 			if runErr != nil {
@@ -900,6 +950,7 @@ func RunSetup(goCtx context.Context, ordered []Resolved, session SessionVars, ta
 			NewExecution: continuingExecID == "",
 			Seq:          nextSeq(tasks),
 			SetupAt:      now,
+			Directory:    dir,
 		}
 		reportSetupSuccess(obs, r, time.Since(now), stderrCaptured)
 	}
@@ -1030,7 +1081,8 @@ func toJSONShape(m map[string]any) map[string]any {
 // Each node's cleanup is run with .Self bound to its persisted outputs and
 // .Input bound to the inputs persisted at setup time — so cleanup never
 // depends on the original CLI invocation.
-// Cleanup errors are collected but do not stop the loop — all cleanups attempt.
+// A cleanup error is collected and does not stop the loop; work that does not
+// depend on the failed node still runs.
 //
 // ordered can freely mix workflow-node and dynamic-instance entries, so
 // tasks must merge every collection a targeted key could live in. Mutation
@@ -1039,6 +1091,12 @@ func toJSONShape(m map[string]any) map[string]any {
 func RunCleanup(goCtx context.Context, ordered []Resolved, session SessionVars, tasks map[string]*contract.TaskState, observer Observer) error {
 	obs := observerOr(observer)
 	var firstErr error
+	retained := map[string]bool{}
+	hold := func(r Resolved) {
+		for _, dep := range r.DependsOn {
+			retained[dep] = true
+		}
+	}
 	for i := len(ordered) - 1; i >= 0; i-- {
 		r := ordered[i]
 		now := time.Now()
@@ -1052,12 +1110,18 @@ func RunCleanup(goCtx context.Context, ordered []Resolved, session SessionVars, 
 			obs.OnSkip(r.Scope, r.NodeID, "already cleaned")
 			continue
 		}
+		if retained[r.NodeID] && !session.ReleaseAfterFailure {
+			obs.OnSkip(r.Scope, r.NodeID, "retained: a dependent's cleanup failed")
+			hold(r)
+			continue
+		}
 		if r.Unresolved {
 			obs.OnStart(r.Scope, r.NodeID)
 			wrapped := fmt.Errorf("node %q: current definition not found; record left unreleased", r.NodeID)
 			state.Status = contract.TaskStatusFailed
 			state.Error = wrapped.Error()
 			state.FailedAt = now
+			hold(r)
 			if firstErr == nil {
 				firstErr = wrapped
 			}
@@ -1067,20 +1131,21 @@ func RunCleanup(goCtx context.Context, ordered []Resolved, session SessionVars, 
 		if len(state.Layers) > 0 {
 			obs.OnStart(r.Scope, r.NodeID)
 			sess := session
-			if state.Resource != "" {
-				sess.ResourceID = state.Resource
+			if state.Resource != nil {
+				sess.ResourceID = state.Resource.Locator
 			}
 			base := RenderContext{
 				Process:  state.Process,
 				Tasks:    dependencyOutputs(r.DependsOn, tasks),
-				Workflow: workflowOutputs(tasks),
+				Workflow: workflowOutputs(session, tasks, publicoutput.LastRecorded),
 				Session:  sess,
 			}
-			stderr, nestErr := effect.RunLayerCleanup(goCtx, r.Layers, state.Layers, chainHost(base, obs, r.Scope, r.NodeID), base.Session.WorkspaceDirPath)
+			stderr, nestErr := effect.RunLayerCleanup(goCtx, r.Layers, state.Layers, chainHost(base, obs, r.Scope, r.NodeID), state.Directory)
 			if nestErr != nil {
 				state.Status = contract.TaskStatusFailed
 				state.Error = nestErr.Error()
 				state.FailedAt = now
+				hold(r)
 				wrapped := fmt.Errorf("task %q cleanup: %w", r.NodeID, nestErr)
 				if firstErr == nil {
 					firstErr = wrapped
@@ -1109,15 +1174,15 @@ func RunCleanup(goCtx context.Context, ordered []Resolved, session SessionVars, 
 		// the same one its setup bound — not the session's. SessionVars
 		// is a value, so copying and overriding is local to this task.
 		sess := session
-		if state.Resource != "" {
-			sess.ResourceID = state.Resource
+		if state.Resource != nil {
+			sess.ResourceID = state.Resource.Locator
 		}
 		ctx := RenderContext{
 			Self:       state.Outputs,
 			Process:    state.Process,
 			Tasks:      dependencyOutputs(r.DependsOn, tasks),
 			Inputs:     state.Inputs,
-			Workflow:   workflowOutputs(tasks),
+			Workflow:   workflowOutputs(session, tasks, publicoutput.LastRecorded),
 			Session:    sess,
 			SourcePath: r.SourcePath,
 		}
@@ -1126,6 +1191,7 @@ func RunCleanup(goCtx context.Context, ordered []Resolved, session SessionVars, 
 			state.Status = contract.TaskStatusFailed
 			state.Error = resolveErr.Error()
 			state.FailedAt = now
+			hold(r)
 			wrapped := fmt.Errorf("effect %q cleanup: %w", r.NodeID, resolveErr)
 			if firstErr == nil {
 				firstErr = wrapped
@@ -1133,12 +1199,13 @@ func RunCleanup(goCtx context.Context, ordered []Resolved, session SessionVars, 
 			reportCleanupFailure(obs, r, time.Since(now), wrapped, nil)
 			continue
 		}
-		_, stderr, runErr := resolved.Run(goCtx, sess.WorkspaceDirPath)
+		_, stderr, runErr := resolved.Run(goCtx, state.Directory)
 		resolved.Close()
 		if runErr != nil {
 			state.Status = contract.TaskStatusFailed
 			state.Error = runErr.Error()
 			state.FailedAt = now
+			hold(r)
 			wrapped := fmt.Errorf("task %q cleanup: %w", r.NodeID, runErr)
 			if firstErr == nil {
 				firstErr = wrapped

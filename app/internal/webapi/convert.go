@@ -21,10 +21,9 @@ func summaryFromListEntry(e service.ListEntry) webapiv1.SessionSummary {
 		DisplayStatus: e.DisplayStatus,
 		Run:           runState(e.Run),
 		Health:        healthState(e.Health),
-		ResourceId:    e.ResourceID,
+		Resource:      sessionResource(e.Resource),
 		LastActiveAt:  e.LastActiveAt,
 		Message:       message(e.Message),
-		Branch:        optionalString(e.Branch),
 		ParentSession: optionalString(e.ParentSession),
 		Tasks:         taskSummariesFromInstances(e.Tasks),
 	}
@@ -38,27 +37,26 @@ func detailFromStatus(r *service.StatusResult) webapiv1.SessionDetail {
 	id := r.Identity
 	rt := r.Runtime
 	return webapiv1.SessionDetail{
-		SessionName:        id.SessionName,
-		ResourceId:         optionalString(id.ResourceID),
-		Title:              optionalString(id.Title),
-		Branch:             optionalString(id.Branch),
-		Workflow:           optionalString(id.Workflow),
-		Tag:                optionalString(id.Tag),
-		ParentSession:      optionalString(id.ParentSession),
-		Children:           optionalStrings(id.Children),
-		Inputs:             optionalJSON(id.Inputs),
-		CreatedAt:          id.CreatedAt,
-		Run:                runState(rt.Run),
-		Health:             healthState(rt.Health),
-		LastCheckedAt:      optionalTime(rt.LastCheckedAt),
-		LastActivityAt:     optionalTime(rt.LastActivityAt),
-		Tasks:              taskSummariesFromRuntime(rt.Tasks),
-		WorkspaceDirPath:   optionalString(rt.WorkspaceDirPath),
-		WorkspaceDirExists: rt.WorkspaceDirExists,
-		Message:            message(rt.Message),
-		Warnings:           optionalStrings(r.Warnings),
-		Destroyed:          optionalBool(r.Destroyed),
-		DestroyedAt:        optionalTime(r.DestroyedAt),
+		SessionName:    id.SessionName,
+		Resource:       sessionResource(id.Resource),
+		Title:          optionalString(id.Title),
+		Workflow:       optionalString(id.Workflow),
+		Tag:            optionalString(id.Tag),
+		ParentSession:  optionalString(id.ParentSession),
+		Children:       optionalStrings(id.Children),
+		Inputs:         optionalJSON(id.Inputs),
+		CreatedAt:      id.CreatedAt,
+		Run:            runState(rt.Run),
+		Health:         healthState(rt.Health),
+		LastCheckedAt:  optionalTime(rt.LastCheckedAt),
+		LastActivityAt: optionalTime(rt.LastActivityAt),
+		Tasks:          taskSummariesFromRuntime(rt.Tasks),
+		Workdir:        optionalString(rt.Workdir),
+		WorkdirExists:  rt.WorkdirExists,
+		Message:        message(rt.Message),
+		Warnings:       optionalStrings(r.Warnings),
+		Destroyed:      optionalBool(r.Destroyed),
+		DestroyedAt:    optionalTime(r.DestroyedAt),
 	}
 }
 
@@ -202,4 +200,11 @@ func optionalJSON(m map[string]any) *map[string]interface{} {
 	}
 	v := map[string]interface{}(m)
 	return &v
+}
+
+func sessionResource(r *service.ResourceView) *webapiv1.SessionResource {
+	if r == nil {
+		return nil
+	}
+	return &webapiv1.SessionResource{Type: r.Type, Name: r.Name, Locator: r.Locator}
 }

@@ -4,9 +4,14 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"os"
+	"path/filepath"
+	"strings"
 	"testing"
 
+	"github.com/kecbigmt/plecture/app/internal/admitstatus"
 	"github.com/kecbigmt/plecture/app/internal/config"
+	"github.com/kecbigmt/plecture/app/internal/eventlog"
 	"github.com/kecbigmt/plecture/app/internal/service"
 	"github.com/kecbigmt/plecture/app/internal/state"
 	contract "github.com/kecbigmt/plecture/contracts/state"
@@ -18,7 +23,7 @@ func TestFailedInitialTaskIsNotAcceptedAsSuccessfullyInstalled(t *testing.T) {
 		Name: "member",
 		Tasks: map[string]*contract.TaskState{
 			"initial": {
-				Name: "initial", TaskID: "work", Resource: "urn:case:a",
+				Name: "initial", TaskID: "work", Resource: sourceRef("urn:case:a"),
 				Scope: contract.TaskScopeSession, Status: contract.TaskStatusFailed,
 			},
 		},
@@ -50,7 +55,7 @@ func TestPopulationCannotAdoptSameProvenanceSessionForAnotherResource(t *testing
 type = "exec"
 command = "true"
 `, "uses = [\"poll\"]\npoll_every = \"1m\"", `resource = { from = "resource.id" }`)
-	definitions, err := Load(cfg)
+	definitions, err := Load(cfg, "")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -58,11 +63,11 @@ command = "true"
 	store := state.NewStore(t.TempDir())
 	seedPopulationRow(t, store, definition)
 	provenance := &contract.PopulationProvenance{Workflow: definition.Workflow.Address, Name: definition.Population.Name}
-	name, err := service.ResolvePopulationSessionName(cfg, definition.Workflow.Address, "urn:case:a")
+	name, err := service.ResolvePopulationSessionName(cfg, definition.ProjectRoot, definition.Workflow.Address, "urn:case:a")
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := store.Put(&contract.Session{Name: name, ResourceID: "urn:case:b", Workflow: definition.Workflow.Address, Population: provenance}); err != nil {
+	if err := store.Put(&contract.Session{Name: name, Resource: sourceRef("urn:case:b"), Workflow: definition.Workflow.Address, Population: provenance}); err != nil {
 		t.Fatal(err)
 	}
 
@@ -81,18 +86,7 @@ func TestUpPopulationReportsRunStateFromBeforeTheIdempotentUpCall(t *testing.T) 
 type = "exec"
 command = "true"
 `, "uses = [\"poll\"]\npoll_every = \"1m\"", `resource = { from = "resource.id" }`)
-	writeDefinition(t, cfg.BaseDir, "provider", fmt.Sprintf(`[provider]
-kind = "workspace_provider"
-match = "^urn:case:(?P<id>[A-Za-z0-9]+)$"
-name = { from = "match.id" }
-[provider.setup]
-type = "exec"
-command = "printf"
-args = ['{"workspace_dir":"%s","branch":"main"}']
-[provider.outputs_schema]
-type = "object"
-`, cfg.WorkspaceDirsRoot))
-	definitions, err := Load(cfg)
+	definitions, err := Load(cfg, "")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -122,5 +116,190 @@ type = "object"
 	}
 	if resumed := up(); resumed.AlreadyUp {
 		t.Fatalf("resuming a down member = %+v, want a transition", resumed)
+	}
+}
+
+func TestPopulationCannotAdoptSameProvenanceSessionRecordedForAnotherEntry(t *testing.T) {
+	t.Setenv("PLECT_SESSION_NAME", "")
+	cfg := populationConfig(t, `[source.query.poll]
+type = "exec"
+command = "true"
+`, "uses = [\"poll\"]\npoll_every = \"1m\"", `resource = { from = "resource.id" }`)
+	definitions, err := Load(cfg, "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	definition := definitions[0]
+	provenance := &contract.PopulationProvenance{Workflow: definition.Workflow.Address, Name: definition.Population.Name}
+	name, err := service.ResolvePopulationSessionName(cfg, definition.ProjectRoot, definition.Workflow.Address, "urn:case:a")
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, recorded := range []struct {
+		label    string
+		resource *contract.Resource
+	}{{"another type", &contract.Resource{Type: "other", Name: "a", Locator: "other://a"}}, {"no recorded entry", nil}} {
+		t.Run(recorded.label, func(t *testing.T) {
+			store := state.NewStore(t.TempDir())
+			seedPopulationRow(t, store, definition)
+			if err := store.Put(&contract.Session{Name: name, Resource: recorded.resource, Workflow: definition.Workflow.Address, Population: provenance}); err != nil {
+				t.Fatal(err)
+			}
+
+			_, err := upPopulation(func() *config.Config { return cfg }, store, definition, provenance, "urn:case:a", nil)
+			var conflict *populationConflictError
+			if !errors.As(err, &conflict) {
+				t.Fatalf("error = %v, want a population identity conflict", err)
+			}
+		})
+	}
+}
+
+func TestPopulationKeepsQueryInputsApartFromResourceActionInputs(t *testing.T) {
+	dir := t.TempDir()
+	log := filepath.Join(dir, "actions.log")
+	writeDefinition(t, dir, "observer", fmt.Sprintf(`[source]
+kind = "resource"
+match = "^urn:case:(?P<id>[A-Za-z0-9]+)$"
+name = { from = "match.id" }
+
+[source.observe]
+type = "exec"
+command = "true"
+
+[source.subscribe]
+type   = "shell"
+script = '''
+printf 'subscribe scope=%%s\n' "$scope" >> %[1]q
+'''
+
+[source.subscribe.bind]
+scope = { from = "resource.inputs.scope", default = "absent" }
+
+[source.inputs_schema]
+type = "object"
+additionalProperties = false
+
+[source.inputs_schema.properties.scope]
+type = "string"
+
+[source.query.inputs_schema]
+type = "object"
+required = ["scope"]
+additionalProperties = false
+
+[source.query.inputs_schema.properties.scope]
+type = "string"
+
+[source.query.item_schema]
+type = "object"
+required = ["resource"]
+additionalProperties = false
+
+[source.query.item_schema.properties.resource]
+type = "string"
+
+[source.query.poll]
+type   = "shell"
+script = '''
+printf 'poll scope=%%s\n' "$scope" >> %[1]q
+echo '[{"resource":"urn:case:a"}]'
+'''
+
+[source.query.poll.bind]
+scope = { from = "inputs.scope" }
+`, log))
+	writeDefinition(t, dir, "workflow", `[agent]
+kind = "workflow"
+resource = "source"
+
+[[agent.nodes]]
+uses = "noop"
+
+[[agent.populations]]
+name = "dispatch"
+uses = ["poll"]
+poll_every = "1m"
+
+[agent.populations.query]
+scope = "all"
+`)
+	writeDefinition(t, dir, "noop", `[noop]
+kind = "effect"
+scope = "session"
+
+[noop.setup]
+type = "exec"
+command = "printf"
+args = ["{}"]
+
+[noop.health.alive]
+type = "noop"
+`)
+	cfg := &config.Config{BaseDir: dir}
+	definitions, err := Load(cfg, "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	definition := definitions[0]
+	store := state.NewStore(t.TempDir())
+	logStore := eventlog.NewStore(store.Dir())
+	engine := NewEngine(definition, store, logStore, admitstatus.NewCache(logStore), serviceHooks(func() *config.Config { return cfg }, store, definition, nil))
+
+	items, err := actionRunner{cfg: cfg}.Poll(context.Background(), definition)
+	if err != nil {
+		t.Fatalf("poll: %v", err)
+	}
+	for _, item := range items {
+		if err := engine.ApplyAppearance(context.Background(), item); err != nil {
+			t.Fatalf("admit %v: %v", item, err)
+		}
+	}
+
+	raw, err := os.ReadFile(log)
+	if err != nil {
+		t.Fatal(err)
+	}
+	got := strings.Split(strings.TrimSpace(string(raw)), "\n")
+	want := []string{"poll scope=all", "subscribe scope=absent"}
+	if strings.Join(got, "|") != strings.Join(want, "|") {
+		t.Errorf("action log = %q, want the query to see its own inputs and subscribe only the empty action object %q", got, want)
+	}
+}
+
+func TestUpPopulationRecordsThePopulationsProjectRootOnItsMember(t *testing.T) {
+	t.Setenv("PLECT_SESSION_NAME", "")
+	cfg := populationConfig(t, `[source.query.poll]
+type = "exec"
+command = "true"
+`, "uses = [\"poll\"]\npoll_every = \"1m\"", `resource = { from = "resource.id" }`)
+	root := filepath.Join(t.TempDir(), "widgets")
+	if err := os.MkdirAll(filepath.Join(root, ".plect"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	writeDefinition(t, filepath.Join(root, ".plect"), "project", "schema_version = 2\n")
+	if err := os.Rename(filepath.Join(cfg.BaseDir, "workflow.toml"), filepath.Join(root, ".plect", "workflow.toml")); err != nil {
+		t.Fatal(err)
+	}
+	cfg.TrustedProjectRoots = []string{root}
+	definitions, err := Load(cfg, root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	definition := definitions[0]
+	store := state.NewStore(t.TempDir())
+	seedPopulationRow(t, store, definition)
+	provenance := populationKey(definition)
+
+	outcome, err := upPopulation(func() *config.Config { return cfg }, store, definition, &provenance, "urn:case:a", map[string]any{"resource": "urn:case:a"})
+	if err != nil {
+		t.Fatalf("upPopulation: %v", err)
+	}
+	session, err := store.GetE(outcome.SessionName)
+	if err != nil || session == nil {
+		t.Fatalf("member session: %v, %v", session, err)
+	}
+	if session.ProjectRoot != root || session.Population == nil || *session.Population != provenance {
+		t.Fatalf("member root %q provenance %+v, want both in %q", session.ProjectRoot, session.Population, root)
 	}
 }

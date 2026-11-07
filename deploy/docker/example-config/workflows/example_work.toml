@@ -1,5 +1,5 @@
 # A neutral, generic example: dispatch a Claude Code session against a
-# GitHub issue or pull request in a tmux pane, authenticated as a GitHub
+# GitHub issue in a tmux pane, authenticated as a GitHub
 # App installation instead of an operator's personal `gh auth login` (the
 # phase-1 ECS contract — see the container README's First boot section).
 #
@@ -12,11 +12,22 @@
 [example_work]
 kind                = "workflow"
 name                = "example GitHub work session (Claude Code)"
-description         = "Acquire a GitHub issue/PR worktree, launch Claude Code in a tmux pane under a GitHub App gh identity, and deliver session events to it."
-workspace_provider  = "official.github.worktree"
+description         = "Acquire a GitHub issue worktree, launch Claude Code in a tmux pane under a GitHub App gh identity, and deliver session events to it."
+resource            = "official.github.issue"
+workdir             = { from = "nodes.worktree.outputs.workspace_dir" }
+
+[example_work.outputs]
+pane = { from = "nodes.pane.outputs.session_name" }
+
+[example_work.outputs_schema]
+type     = "object"
+required = ["pane"]
+
+[example_work.outputs_schema.properties]
+pane = { type = "string" }
 
 [example_work.display]
-title  = { from = "workflow.outputs.branch" }
+title  = { from = "workflow.outputs.pane" }
 status = "work"
 
 [example_work.inputs_schema]
@@ -41,6 +52,12 @@ private_key_path = { type = "string", pattern = "^[A-Za-z0-9_./:-]+$" }
 # downstream workflow layering a real dispatcher on top) attaches and
 # drives it directly.
 prompt           = { type = "string", default = "" }
+
+[[example_work.nodes]]
+uses = "official.github.worktree"
+
+[example_work.nodes.inputs]
+dirs_root = "/var/lib/plect/workspace_dirs"
 
 [[example_work.nodes]]
 uses = "official.tmux.pane"

@@ -22,14 +22,14 @@ import (
 type TaskDocument struct {
 	ID          string
 	Description string
-	// ResourceObserver is the observer this document is written for. It closes
-	// the completion chain at load: the observer's state_schema says which
-	// keys exist, so a `resource.state.*` a gate reads is resolved against a
-	// declaration rather than discovered at run time.
-	ResourceObserver string
+	// Resource is the resource declaration this document is written for. It
+	// closes the completion chain at load: the resource's state_schema says
+	// which keys exist, so a `resource.state.*` a gate reads is resolved
+	// against a declaration rather than discovered at run time.
+	Resource string
 	// Extends names the base task this declaration specializes, the ordinary
 	// task reference `extends` carries. Empty for a document that is not an
-	// extension. An extension inherits ResourceObserver from its base rather
+	// extension. An extension inherits Resource from its base rather
 	// than declaring its own.
 	Extends          string
 	InputsSchema     map[string]any
@@ -95,8 +95,8 @@ func (d TaskDocument) ResolvedStateSchemaPath() string {
 // Task documents share the effect root — a directory name is not semantic —
 // and the same TOML serialization every other kind uses; what makes a
 // declaration a task document is its `kind`, not the file it is found in.
-func (c *Config) LoadTaskDocuments(workspaceDirPath string) (map[string]TaskDocument, error) {
-	layers, err := c.discoverLayers(workspaceDirPath)
+func (c *Config) LoadTaskDocuments(projectRoot string) (map[string]TaskDocument, error) {
+	layers, err := c.discoverLayers(projectRoot)
 	if err != nil {
 		return nil, err
 	}
@@ -168,7 +168,7 @@ func taskDocumentFrom(def *lang.Definition, path string, fromPlugin bool) (TaskD
 		target *string
 	}{
 		{"description", &d.Description},
-		{"resource_observer", &d.ResourceObserver},
+		{"resource", &d.Resource},
 		{"extends", &d.Extends},
 		{"inputs_schema_file", &d.InputsSchemaFile},
 		{"state_schema_file", &d.StateSchemaFile},
@@ -316,12 +316,12 @@ func (c *Config) taskReferenceRegistry(docs map[string]TaskDocument, observers m
 // because which kind an id resolves to is exactly what such a caller is
 // asking, and answering it from one of the two maps alone would make a
 // collision a silent choice.
-func (c *Config) LoadTaskDeclarations(workspaceDirPath string) (map[string]TaskDocument, map[string]TaskDefinition, error) {
-	docs, err := c.LoadTaskDocuments(workspaceDirPath)
+func (c *Config) LoadTaskDeclarations(projectRoot string) (map[string]TaskDocument, map[string]TaskDefinition, error) {
+	docs, err := c.LoadTaskDocuments(projectRoot)
 	if err != nil {
 		return nil, nil, err
 	}
-	effects, err := c.LoadTaskDefinitions(workspaceDirPath)
+	effects, err := c.LoadTaskDefinitions(projectRoot)
 	if err != nil {
 		return nil, nil, err
 	}

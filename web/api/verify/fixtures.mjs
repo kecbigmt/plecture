@@ -46,17 +46,17 @@ check("session list envelope has the template's two fields", () => {
   assert.equal(list.count, 2);
   assert.equal(list.items.length, 2);
 });
-check("a required field can legitimately be an empty string", () => {
-  assert.equal(list.items[1].resourceId, "");
+check("a nested object field decodes as an object", () => {
+  assert.equal(list.items[0].resource.locator, "https://example.com/team/workspace/issues/1");
 });
 check("an absent optional field is simply missing, not null", () => {
-  assert.equal("branch" in list.items[1], false);
+  assert.equal("title" in list.items[1], false);
 });
 
 const detail = await readFixture("session_detail.valid.json");
 check("SessionDetail carries fields from both composed halves", () => {
   assert.equal(detail.sessionName, "team/workspace-a"); // SessionIdentity
-  assert.equal(detail.workspaceDirExists, true); // SessionRuntime
+  assert.equal(detail.workdirExists, true); // SessionRuntime
 });
 check(
   "dynamic inputs JSON: a safe integer round-trips exactly through JSON.parse",
@@ -90,12 +90,12 @@ const explicitNullDetail = await readFixture("session_detail.explicit_null.json"
 check(
   "JSON.parse keeps an explicit null as null, distinct from an absent key (unlike Go's pointer-typed decode, which unifies both to nil)",
   () => {
-    assert.equal(explicitNullDetail.branch, null);
-    assert.equal("branch" in explicitNullDetail, true);
-    assert.notEqual(explicitNullDetail.branch, undefined);
+    assert.equal(explicitNullDetail.title, null);
+    assert.equal("title" in explicitNullDetail, true);
+    assert.notEqual(explicitNullDetail.title, undefined);
     // typeof null === "object" is the classic JS gotcha this check exists
     // to make explicit rather than assumed.
-    assert.equal(typeof explicitNullDetail.branch, "object");
+    assert.equal(typeof explicitNullDetail.title, "object");
   },
 );
 

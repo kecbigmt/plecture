@@ -20,19 +20,19 @@ import (
 const statusFlowLimit = 5
 
 // StatusIdentity is layer 1: what this session is, independent of whether it
-// is currently running. No workspace-provider-shaped field belongs here —
-// ResourceID is an opaque string any workspace provider can own.
+// is currently running. No plugin-shaped field belongs here — the resource
+// locator is an opaque string any resource can own.
 type StatusIdentity struct {
-	SessionName   string                         `json:"session_name"`
-	ResourceID    string                         `json:"resource_id,omitempty"`
-	Title         string                         `json:"title,omitempty"`
-	Branch        string                         `json:"branch,omitempty"`
-	Workflow      string                         `json:"workflow,omitempty"`
-	Revision      string                         `json:"revision,omitempty"`
-	Population    *contract.PopulationProvenance `json:"population,omitempty"`
-	Tag           string                         `json:"tag,omitempty"`
-	ParentSession string                         `json:"parent_session,omitempty"`
-	Children      []string                       `json:"children,omitempty"`
+	SessionName      string                         `json:"session_name"`
+	Resource         *ResourceView                  `json:"resource,omitempty"`
+	Title            string                         `json:"title,omitempty"`
+	Workflow         string                         `json:"workflow,omitempty"`
+	Revision         string                         `json:"revision,omitempty"`
+	RetiredSpellings []string                       `json:"retired_spellings,omitempty"`
+	Population       *contract.PopulationProvenance `json:"population,omitempty"`
+	Tag              string                         `json:"tag,omitempty"`
+	ParentSession    string                         `json:"parent_session,omitempty"`
+	Children         []string                       `json:"children,omitempty"`
 	// Inputs is the workflow input values this session was created with —
 	// user-defined, workflow-schema-validated JSON preserved verbatim rather
 	// than interpreted here.
@@ -48,20 +48,21 @@ type StatusRuntimeTask struct {
 
 // StatusRuntime is layer 2: whether the session is actually alive right now.
 type StatusRuntime struct {
-	Run                domain.RunState     `json:"run"`
-	Sleep              string              `json:"sleep,omitempty"`
-	QueuePosition      int                 `json:"queue_position,omitempty"`
-	WakeReason         string              `json:"wake_reason,omitempty"`
-	Health             domain.HealthState  `json:"health,omitempty"`
-	RepairStatus       string              `json:"repair_status,omitempty"`
-	RepairReason       string              `json:"repair_reason,omitempty"`
-	LastCheckedAt      time.Time           `json:"last_checked_at,omitzero"`
-	LastActivityAt     time.Time           `json:"last_activity_at,omitzero"`
-	Tasks              []StatusRuntimeTask `json:"tasks,omitempty"`
-	WorkspaceDirPath   string              `json:"workspace_dir_path,omitempty"`
-	WorkspaceDirExists bool                `json:"workspace_dir_exists"`
-	Message            *domain.Message     `json:"message,omitempty"`
-	AttachCommand      string              `json:"attach_command,omitempty"`
+	Run            domain.RunState     `json:"run"`
+	Sleep          string              `json:"sleep,omitempty"`
+	QueuePosition  int                 `json:"queue_position,omitempty"`
+	WakeReason     string              `json:"wake_reason,omitempty"`
+	Health         domain.HealthState  `json:"health,omitempty"`
+	RepairStatus   string              `json:"repair_status,omitempty"`
+	RepairReason   string              `json:"repair_reason,omitempty"`
+	LastCheckedAt  time.Time           `json:"last_checked_at,omitzero"`
+	LastActivityAt time.Time           `json:"last_activity_at,omitzero"`
+	Tasks          []StatusRuntimeTask `json:"tasks,omitempty"`
+	// Both are evaluated on read and omitted when the workflow declares no workdir.
+	Workdir       string          `json:"workdir,omitempty"`
+	WorkdirExists *bool           `json:"workdir_exists,omitempty"`
+	Message       *domain.Message `json:"message,omitempty"`
+	AttachCommand string          `json:"attach_command,omitempty"`
 }
 
 // StatusChain is one [[chains]] evaluation against a task instance's facts —
@@ -121,7 +122,7 @@ type StatusFlow struct {
 }
 
 // StatusResult is the pure fact renderer `plect status` reports: four layers of
-// state, no workspace-provider-shaped field among them.
+// state, no plugin-shaped field among them.
 type StatusResult struct {
 	Identity StatusIdentity `json:"identity"`
 	Runtime  StatusRuntime  `json:"runtime"`
@@ -164,7 +165,7 @@ func Status(cfg *config.Config, store *state.Store, identifier string) (*StatusR
 		return nil, err
 	}
 
-	wtExists := fileExists(session.WorkspaceDirPath)
+	workdir, workdirExists := statusWorkdir(cfg, session)
 	runState := sessionRunState(cfg, session)
 	sleep, queuePosition, err := sleepVisibility(cfg, store, session)
 	if err != nil {
@@ -225,34 +226,34 @@ func Status(cfg *config.Config, store *state.Store, identifier string) (*StatusR
 
 	return &StatusResult{
 		Identity: StatusIdentity{
-			SessionName:   sessionName,
-			ResourceID:    identityResourceID(session),
-			Title:         displayTitle,
-			Branch:        domain.SessionBranch(session),
-			Workflow:      session.Workflow,
-			Revision:      shortWorkflowRevision(session.WorkflowRevision),
-			Population:    session.Population,
-			Tag:           sessionTag(sessionName),
-			ParentSession: session.ParentSession,
-			Children:      childNames(sessions, sessionName),
-			Inputs:        session.Inputs,
-			CreatedAt:     session.CreatedAt,
+			SessionName:      sessionName,
+			Resource:         resourceView(session.Resource),
+			Title:            displayTitle,
+			Workflow:         session.Workflow,
+			Revision:         shortWorkflowRevision(session.WorkflowRevision),
+			RetiredSpellings: config.RetiredRevisionSpellings(session),
+			Population:       session.Population,
+			Tag:              session.Tag,
+			ParentSession:    session.ParentSession,
+			Children:         childNames(sessions, sessionName),
+			Inputs:           session.Inputs,
+			CreatedAt:        session.CreatedAt,
 		},
 		Runtime: StatusRuntime{
-			Run:                runState,
-			Sleep:              sleep,
-			QueuePosition:      queuePosition,
-			WakeReason:         wakeReason,
-			Health:             healthState,
-			RepairStatus:       repairStatus,
-			RepairReason:       repairReason,
-			LastCheckedAt:      healthReport.LastCheckedAt,
-			LastActivityAt:     healthReport.LastActivityAt,
-			Tasks:              runtimeTaskViews(session),
-			WorkspaceDirPath:   session.WorkspaceDirPath,
-			WorkspaceDirExists: wtExists,
-			Message:            LatestStatusMessage(store, sessionName),
-			AttachCommand:      attachCommandFor(cfg, session),
+			Run:            runState,
+			Sleep:          sleep,
+			QueuePosition:  queuePosition,
+			WakeReason:     wakeReason,
+			Health:         healthState,
+			RepairStatus:   repairStatus,
+			RepairReason:   repairReason,
+			LastCheckedAt:  healthReport.LastCheckedAt,
+			LastActivityAt: healthReport.LastActivityAt,
+			Tasks:          runtimeTaskViews(session),
+			Workdir:        workdir,
+			WorkdirExists:  workdirExists,
+			Message:        LatestStatusMessage(store, sessionName),
+			AttachCommand:  attachCommandFor(cfg, session),
 		},
 		Work:     statusTaskViews(cfg, declarations, session, sessions, actionsByInstance, chainsByInstance),
 		Flow:     StatusFlow{Events: events},
@@ -260,11 +261,22 @@ func Status(cfg *config.Config, store *state.Store, identifier string) (*StatusR
 	}, nil
 }
 
+// statusWorkdir reports a workdir whose producer is not produced yet as
+// absent: `plect status` reports facts and does not fail on them.
+func statusWorkdir(cfg *config.Config, session *domain.Session) (string, *bool) {
+	dir, err := sessionWorkdir(cfg, session)
+	if err != nil || dir == "" {
+		return "", nil
+	}
+	exists := fileExists(dir)
+	return dir, &exists
+}
+
 // attachCommandFor resolves the declared attach command for display, mirroring
 // Attach's lookup but degrading to "" (no attach target, or not yet produced)
 // instead of an error — `plect status` reports facts, it doesn't fail on them.
 func attachCommandFor(cfg *config.Config, session *domain.Session) string {
-	plan, err := buildPlanForSession(cfg, session.WorkspaceDirPath, session)
+	plan, err := buildPlanForSession(cfg, session)
 	if err != nil {
 		return ""
 	}
@@ -306,7 +318,7 @@ func runtimeTaskViews(session *domain.Session) []StatusRuntimeTask {
 	var out []StatusRuntimeTask
 	for _, key := range sortedTaskKeys(merged) {
 		st := merged[key]
-		if st == nil || st.Scope != contract.TaskScopeRun || key == contract.WorkflowPseudoNodeID {
+		if st == nil || st.Scope != contract.TaskScopeRun {
 			continue
 		}
 		out = append(out, StatusRuntimeTask{Instance: key, Status: st.Status})
@@ -379,7 +391,7 @@ func tombstoneStatusResult(tomb *contract.Tombstone) *StatusResult {
 				Status:            st.Status,
 				IsTask:            dynamic,
 				Name:              st.Name,
-				Resource:          st.Resource,
+				Resource:          domain.Locator(st.Resource),
 				Outputs:           st.Outputs,
 				State:             st.State,
 				Observed:          st.Observed,
@@ -394,9 +406,9 @@ func tombstoneStatusResult(tomb *contract.Tombstone) *StatusResult {
 	return &StatusResult{
 		Identity: StatusIdentity{
 			SessionName:   tomb.Name,
-			ResourceID:    identityResourceID(&tomb.Session),
+			Resource:      resourceView(tomb.Resource),
 			Workflow:      tomb.Workflow,
-			Tag:           sessionTag(tomb.Name),
+			Tag:           tomb.Tag,
 			ParentSession: tomb.ParentSession,
 			CreatedAt:     tomb.CreatedAt,
 		},
@@ -404,21 +416,6 @@ func tombstoneStatusResult(tomb *contract.Tombstone) *StatusResult {
 		Destroyed:   true,
 		DestroyedAt: tomb.DestroyedAt,
 	}
-}
-
-// identityResourceID is the session's canonical resource identifier.
-func identityResourceID(s *domain.Session) string {
-	return s.ResourceID
-}
-
-// sessionTag extracts the session-identity tag from a session name's
-// "<resource>+<tag>" convention (effectiveTag, chainSpawnTag) — provider-
-// agnostic string parsing over a name plect itself produced.
-func sessionTag(name string) string {
-	if idx := strings.LastIndex(name, "+"); idx >= 0 {
-		return name[idx+1:]
-	}
-	return ""
 }
 
 // StatusSummary is the default `plect status --json` shape: identity plus, per
@@ -435,13 +432,14 @@ type StatusSummary struct {
 }
 
 type StatusSummaryIdentity struct {
-	SessionName   string                         `json:"session_name"`
-	ResourceID    string                         `json:"resource_id,omitempty"`
-	Workflow      string                         `json:"workflow,omitempty"`
-	Revision      string                         `json:"revision,omitempty"`
-	Population    *contract.PopulationProvenance `json:"population,omitempty"`
-	Tag           string                         `json:"tag,omitempty"`
-	ParentSession string                         `json:"parent_session,omitempty"`
+	SessionName      string                         `json:"session_name"`
+	Resource         *ResourceView                  `json:"resource,omitempty"`
+	Workflow         string                         `json:"workflow,omitempty"`
+	Revision         string                         `json:"revision,omitempty"`
+	RetiredSpellings []string                       `json:"retired_spellings,omitempty"`
+	Population       *contract.PopulationProvenance `json:"population,omitempty"`
+	Tag              string                         `json:"tag,omitempty"`
+	ParentSession    string                         `json:"parent_session,omitempty"`
 }
 
 type StatusSummaryWork struct {
@@ -493,13 +491,14 @@ func Summarize(result *StatusResult) *StatusSummary {
 		RepairStatus:  result.Runtime.RepairStatus,
 		RepairReason:  result.Runtime.RepairReason,
 		Identity: StatusSummaryIdentity{
-			SessionName:   result.Identity.SessionName,
-			ResourceID:    result.Identity.ResourceID,
-			Workflow:      result.Identity.Workflow,
-			Revision:      result.Identity.Revision,
-			Population:    result.Identity.Population,
-			Tag:           result.Identity.Tag,
-			ParentSession: result.Identity.ParentSession,
+			SessionName:      result.Identity.SessionName,
+			Resource:         result.Identity.Resource,
+			Workflow:         result.Identity.Workflow,
+			Revision:         result.Identity.Revision,
+			RetiredSpellings: result.Identity.RetiredSpellings,
+			Population:       result.Identity.Population,
+			Tag:              result.Identity.Tag,
+			ParentSession:    result.Identity.ParentSession,
 		},
 	}
 	for _, t := range result.Work {

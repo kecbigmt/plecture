@@ -367,7 +367,6 @@ type NotFoundErrorCode string
 
 // SessionDetail defines model for SessionDetail.
 type SessionDetail struct {
-	Branch      *string             `json:"branch,omitempty"`
 	Children    *[]string           `json:"children,omitempty"`
 	CreatedAt   time.Time           `json:"createdAt"`
 	Destroyed   *bool               `json:"destroyed,omitempty"`
@@ -381,17 +380,17 @@ type SessionDetail struct {
 	Message        *SessionMessage         `json:"message,omitempty"`
 	ParentSession  *string                 `json:"parentSession,omitempty"`
 
-	// ResourceId Absent and empty are equivalent for every optional field on this model: the API omits an unset value rather than emitting it as `null` or `""`, mirroring the Go source's `omitempty` struct tags.
-	ResourceId         *string               `json:"resourceId,omitempty"`
-	Run                SessionRunState       `json:"run"`
-	SessionName        string                `json:"sessionName"`
-	Tag                *string               `json:"tag,omitempty"`
-	Tasks              *[]SessionTaskSummary `json:"tasks,omitempty"`
-	Title              *string               `json:"title,omitempty"`
-	Warnings           *[]string             `json:"warnings,omitempty"`
-	Workflow           *string               `json:"workflow,omitempty"`
-	WorkspaceDirExists bool                  `json:"workspaceDirExists"`
-	WorkspaceDirPath   *string               `json:"workspaceDirPath,omitempty"`
+	// Resource Absent and empty are equivalent for every optional field on this model: the API omits an unset value rather than emitting it as `null` or `""`, mirroring the Go source's `omitempty` struct tags.
+	Resource      *SessionResource      `json:"resource,omitempty"`
+	Run           SessionRunState       `json:"run"`
+	SessionName   string                `json:"sessionName"`
+	Tag           *string               `json:"tag,omitempty"`
+	Tasks         *[]SessionTaskSummary `json:"tasks,omitempty"`
+	Title         *string               `json:"title,omitempty"`
+	Warnings      *[]string             `json:"warnings,omitempty"`
+	Workdir       *string               `json:"workdir,omitempty"`
+	WorkdirExists *bool                 `json:"workdirExists,omitempty"`
+	Workflow      *string               `json:"workflow,omitempty"`
 }
 
 // SessionHealthState defines model for SessionHealthState.
@@ -399,7 +398,6 @@ type SessionHealthState string
 
 // SessionIdentity defines model for SessionIdentity.
 type SessionIdentity struct {
-	Branch    *string   `json:"branch,omitempty"`
 	Children  *[]string `json:"children,omitempty"`
 	CreatedAt time.Time `json:"createdAt"`
 
@@ -407,12 +405,12 @@ type SessionIdentity struct {
 	Inputs        *map[string]interface{} `json:"inputs,omitempty"`
 	ParentSession *string                 `json:"parentSession,omitempty"`
 
-	// ResourceId Absent and empty are equivalent for every optional field on this model: the API omits an unset value rather than emitting it as `null` or `""`, mirroring the Go source's `omitempty` struct tags.
-	ResourceId  *string `json:"resourceId,omitempty"`
-	SessionName string  `json:"sessionName"`
-	Tag         *string `json:"tag,omitempty"`
-	Title       *string `json:"title,omitempty"`
-	Workflow    *string `json:"workflow,omitempty"`
+	// Resource Absent and empty are equivalent for every optional field on this model: the API omits an unset value rather than emitting it as `null` or `""`, mirroring the Go source's `omitempty` struct tags.
+	Resource    *SessionResource `json:"resource,omitempty"`
+	SessionName string           `json:"sessionName"`
+	Tag         *string          `json:"tag,omitempty"`
+	Title       *string          `json:"title,omitempty"`
+	Workflow    *string          `json:"workflow,omitempty"`
 }
 
 // SessionListResponse defines model for SessionListResponse.
@@ -427,32 +425,37 @@ type SessionMessage struct {
 	UpdatedAt time.Time `json:"updatedAt"`
 }
 
+// SessionResource defines model for SessionResource.
+type SessionResource struct {
+	Locator string `json:"locator"`
+	Name    string `json:"name"`
+	Type    string `json:"type"`
+}
+
 // SessionRunState defines model for SessionRunState.
 type SessionRunState string
 
 // SessionRuntime defines model for SessionRuntime.
 type SessionRuntime struct {
-	Health             *SessionHealthState   `json:"health,omitempty"`
-	LastActivityAt     *time.Time            `json:"lastActivityAt,omitempty"`
-	LastCheckedAt      *time.Time            `json:"lastCheckedAt,omitempty"`
-	Message            *SessionMessage       `json:"message,omitempty"`
-	Run                SessionRunState       `json:"run"`
-	Tasks              *[]SessionTaskSummary `json:"tasks,omitempty"`
-	WorkspaceDirExists bool                  `json:"workspaceDirExists"`
-	WorkspaceDirPath   *string               `json:"workspaceDirPath,omitempty"`
+	Health         *SessionHealthState   `json:"health,omitempty"`
+	LastActivityAt *time.Time            `json:"lastActivityAt,omitempty"`
+	LastCheckedAt  *time.Time            `json:"lastCheckedAt,omitempty"`
+	Message        *SessionMessage       `json:"message,omitempty"`
+	Run            SessionRunState       `json:"run"`
+	Tasks          *[]SessionTaskSummary `json:"tasks,omitempty"`
+	Workdir        *string               `json:"workdir,omitempty"`
+	WorkdirExists  *bool                 `json:"workdirExists,omitempty"`
 }
 
 // SessionSummary defines model for SessionSummary.
 type SessionSummary struct {
-	Branch *string `json:"branch,omitempty"`
-
 	// DisplayStatus A human-readable status label combining run/health/message into one string for compact display; not a machine-readable status of its own (see `run` and `health`).
 	DisplayStatus string                `json:"displayStatus"`
 	Health        *SessionHealthState   `json:"health,omitempty"`
 	LastActiveAt  *time.Time            `json:"lastActiveAt,omitempty"`
 	Message       *SessionMessage       `json:"message,omitempty"`
 	ParentSession *string               `json:"parentSession,omitempty"`
-	ResourceId    string                `json:"resourceId"`
+	Resource      *SessionResource      `json:"resource,omitempty"`
 	Run           SessionRunState       `json:"run"`
 	SessionName   string                `json:"sessionName"`
 	Tasks         *[]SessionTaskSummary `json:"tasks,omitempty"`

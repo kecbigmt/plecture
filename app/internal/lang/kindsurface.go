@@ -16,20 +16,22 @@ var kindFields = map[Kind]map[string]bool{
 	KindTask: fieldSet(
 		"budget", "chains", "description", "done_when", "extends", "inputs_schema",
 		"inputs_schema_file", "instructions",
-		"resource_observer", "state_schema", "state_schema_file"),
+		"resource", "state_schema", "state_schema_file"),
 	KindChannel: fieldSet(
 		"args", "bin", "bind", "body", "command", "input_schema", "path",
 		"script", "stdin", "timeout", "type"),
 	KindWorkflow: fieldSet(
 		"auto_select", "description", "display", "event", "health", "healthcheck",
 		"inputs_schema", "inputs_schema_file", "max_up_children", "name",
-		"nodes", "populations", "tick", "workspace_provider", "workspace_provider_inputs"),
-	KindWorkspaceProvider: fieldSet(
-		"cleanup", "inputs_schema", "inputs_schema_file", "match", "name",
-		"outputs_schema", "outputs_schema_file", "setup"),
-	KindResourceObserver: fieldSet(
-		"finalize", "match", "observe", "query", "state_schema", "state_schema_file", "subscribe", "unsubscribe", "inputs_schema"),
+		"nodes", "outputs", "outputs_schema", "populations", "resource", "tick", "workdir"),
+	KindResource: fieldSet(
+		"finalize", "match", "name", "observe", "query", "state_schema", "state_schema_file", "subscribe", "unsubscribe", "inputs_schema"),
 }
+
+// retiredWorkflowFields are the workflow fields that named a workspace
+// provider. They are refused with a pointer rather than as unknown fields,
+// because the author's declaration was valid until the provider was removed.
+var retiredWorkflowFields = fieldSet("workspace_provider", "workspace_provider_inputs")
 
 func fieldSet(names ...string) map[string]bool {
 	set := make(map[string]bool, len(names))
@@ -45,6 +47,10 @@ func fieldSet(names ...string) map[string]bool {
 func checkKindSurface(def *Definition, pos Position) error {
 	fields := kindFields[def.Kind]
 	for _, field := range sortedKeys(def.Body) {
+		if def.Kind == KindWorkflow && retiredWorkflowFields[field] {
+			return newDiag(CodeFieldUnknown, LayerStructural, childPos(pos, field),
+				fmt.Sprintf("%q is retired: a workflow assembles its environment from nodes and declares `workdir`; see %s", field, WorkspaceProviderMigrationGuide))
+		}
 		if !fields[field] {
 			return newDiag(CodeFieldUnknown, LayerStructural, childPos(pos, field),
 				fmt.Sprintf("%q is not part of the %s surface", field, def.Kind))

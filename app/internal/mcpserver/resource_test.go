@@ -14,7 +14,7 @@ func TestHandleResourceStatus_ObservesMatchingDefinition(t *testing.T) {
 	if err := os.MkdirAll(resourcesDir, 0o755); err != nil {
 		t.Fatal(err)
 	}
-	def := "[example]\nkind = \"resource_observer\"\nmatch = '^https://example\\.test/'\n" +
+	def := "[example]\nkind = \"resource\"\nname = \"fixture\"\nmatch = '^https://example\\.test/'\n" +
 		"\n[example.observe]\ntype = \"exec\"\ncommand = \"printf\"\nargs = ['{\"checks_status\":\"SUCCESS\"}']\n"
 	if err := os.WriteFile(filepath.Join(resourcesDir, "example.toml"), []byte(def), 0o644); err != nil {
 		t.Fatal(err)

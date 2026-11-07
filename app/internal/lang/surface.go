@@ -1,6 +1,7 @@
 package lang
 
 import (
+	"fmt"
 	"sort"
 	"strings"
 	"sync"
@@ -90,6 +91,16 @@ func (s *Surface) identifiers() []string {
 	return out
 }
 
+// retiredRoot reports a root an earlier dialect offered, with a message naming
+// the migration guide, because a declaration that was valid before the root
+// was removed deserves more than "not a root this surface offers".
+func retiredRoot(path string) (string, bool) {
+	if head, _, _ := strings.Cut(path, "."); head == "cleanup" {
+		return fmt.Sprintf("%q is retired: destroy takes no plugin inputs, so cleanup reads what setup recorded in self.outputs instead; see %s", path, WorkspaceProviderMigrationGuide), true
+	}
+	return "", false
+}
+
 func withRootCode(s *Surface, code Code) *Surface {
 	s.rootCode = code
 	return s
@@ -98,31 +109,27 @@ func withRootCode(s *Surface, code Code) *Surface {
 // The surfaces below are values.md's table, in its order. A projection
 // naming a root the surface does not observe is PLECTURE-CFG-FROM-ROOT.
 var (
-	surfaceProviderName = newSurface("workspace_provider.name", LayerSemantic,
+	surfaceResourceName = newSurface("resource.name", LayerSemantic,
 		"match.<capture>")
-	surfaceProviderSetup = newSurface("workspace_provider.setup", LayerSemantic,
-		"resource.id", "session.name", "session.inputs.<key>", "inputs.<key>",
-		"prev.<key>", "config.workspace_dirs_root")
-	surfaceProviderCleanup = newSurface("workspace_provider.cleanup", LayerSemantic,
-		"self.outputs.<key>", "inputs.<key>", "cleanup.inputs.<key>", "session.name",
-		"config.workspace_dirs_root", "force")
-	surfaceObserverObserve = newSurface("resource_observer.observe", LayerSemantic,
-		"resource.id", "workspace.dir", "workspace.branch")
-	surfaceObserverFinalize = newSurface("resource_observer.finalize", LayerSemantic,
+	surfaceResourceObserve = newSurface("resource.observe", LayerSemantic,
+		"resource.id")
+	surfaceResourceFinalize = newSurface("resource.finalize", LayerSemantic,
 		"resource.id", "session.name", "resource.revision", "judges")
-	surfaceObserverSubscribe = newSurface("resource_observer.subscribe", LayerSemantic,
-		"resource.id", "resource.inputs.<key>", "session.name", "session.branch")
-	surfaceObserverUnsubscribe = newSurface("resource_observer.unsubscribe", LayerSemantic,
-		"resource.id", "resource.inputs.<key>", "session.name", "session.branch")
-	surfaceObserverQuery = newSurface("resource_observer.query", LayerSemantic,
+	surfaceResourceSubscribe = newSurface("resource.subscribe", LayerSemantic,
+		"resource.id", "resource.inputs.<key>", "session.name")
+	surfaceResourceUnsubscribe = newSurface("resource.unsubscribe", LayerSemantic,
+		"resource.id", "resource.inputs.<key>", "session.name")
+	surfaceResourceQuery = newSurface("resource.query", LayerSemantic,
 		"inputs.<key>")
 
+	surfaceWorkflowOutputs = newSurface("workflow.outputs", LayerSemantic,
+		"nodes.<id>.outputs.<key>", "session.inputs.<key>")
 	surfaceWorkflowDisplay = newSurface("workflow.display", LayerSemantic,
 		"workflow.outputs.<key>", "session.inputs.<key>")
 	// A workflow event channel's inputs read the same roots a node's do.
 	surfaceWorkflowNodeInputs = newSurface("workflow.node.inputs", LayerSemantic,
 		"nodes.<id>.outputs.<key>", "workflow.outputs.<key>", "session.*",
-		"session.inputs.<key>", "workspace.*")
+		"session.inputs.<key>")
 	surfaceWorkflowPopulationInputs = newSurface("workflow.population.session.inputs", LayerSemantic,
 		"resource.id", "item.<key>")
 
@@ -133,17 +140,17 @@ var (
 
 	surfaceEffectSetup = newSurface("effect.setup", LayerSemantic,
 		"inputs.<key>", "prev.<key>", "nodes.<id>.outputs.<key>", "workflow.outputs.<key>",
-		"session.*", "session.inputs.<key>", "workspace.*", "resource.id")
+		"session.*", "session.inputs.<key>", "resource.id")
 	surfaceEffectCleanup = newSurface("effect.cleanup", LayerSemantic,
-		"self.outputs.<key>", "self.process.identity", "inputs.<key>", "nodes.<id>.outputs.<key>",
-		"workflow.outputs.<key>", "session.*", "workspace.*")
+		"self.outputs.<key>", "self.process.identity", "inputs.<key>", "force",
+		"nodes.<id>.outputs.<key>", "workflow.outputs.<key>", "session.*")
 	surfaceEffectHealth = newSurface("effect.health", LayerSemantic,
-		"self.outputs.<key>", "inputs.<key>", "session.*", "workspace.*")
+		"self.outputs.<key>", "inputs.<key>", "session.*")
 	surfaceEffectTerminal = newSurface("effect.terminal", LayerSemantic,
 		"self.outputs.<key>", "session.*")
 	surfaceEffectInner = newSurface("effect.inner", LayerSemantic,
 		"inputs.<key>", "locals.<key>", "nodes.<id>.outputs.<key>", "workflow.outputs.<key>",
-		"session.*", "workspace.*")
+		"session.*")
 	surfaceEffectOutputsBind = newSurface("effect.outputs.bind", LayerStructural,
 		"inner.outputs.<key>", "locals.<key>", "inputs.<key>")
 

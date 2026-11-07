@@ -22,3 +22,16 @@ inputs = { app_id = "123456", installation_id = "987654", private_key_path = "/e
 [[gh_app_guard.artifacts]]
 output = "dir"
 path   = "gh"
+
+[[worktree]]
+name   = "policy-set-at-creation"
+inputs = { dirs_root = "/spy/workspace_dirs", workspace_layout_root = "/spy/layout", issue_branch_template = "work/{number}", tagged_branch_suffix = "-{tag}", delete_branch = true }
+
+[[worktree]]
+name  = "policy-defaults-to-keep"
+hooks = ["setup", "cleanup"]
+
+[[worktree]]
+name  = "policy-rewritten-before-destroy"
+self  = { workspace_dir = "/spy/layout/issue-1", branch = "spy-branch", delete_branch = "false" }
+hooks = ["cleanup"]

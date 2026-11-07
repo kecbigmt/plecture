@@ -22,7 +22,7 @@ func validateUserSource(t *testing.T, src string) error {
 
 func TestResourceObserverQueryRequiresSharedSchemasAndAMeans(t *testing.T) {
 	base := `[source]
-kind = "resource_observer"
+kind = "resource"
 match = "^urn:"
 [source.observe]
 type = "exec"
@@ -72,7 +72,7 @@ type = "string"
 
 func TestResourceObserverQueryAcceptsPollAndSubscribeWithSharedInputs(t *testing.T) {
 	err := validateUserSource(t, `[source]
-kind = "resource_observer"
+kind = "resource"
 match = "^urn:"
 [source.observe]
 type = "exec"
@@ -105,7 +105,7 @@ func TestResourceObserverQueryRejectsUndeclaredInputProjection(t *testing.T) {
 	for _, projection := range []string{`{ from = "inputs.missing" }`, `{ expr = "inputs.missing" }`} {
 		t.Run(projection, func(t *testing.T) {
 			err := validateUserSource(t, `[source]
-kind = "resource_observer"
+kind = "resource"
 [source.query.inputs_schema]
 type = "object"
 [source.query.item_schema]
@@ -128,7 +128,7 @@ command = "printf"
 
 func TestResourceObserverQueryRejectsStateFactsInItems(t *testing.T) {
 	err := validateUserSource(t, `[source]
-kind = "resource_observer"
+kind = "resource"
 match = "^urn:"
 [source.observe]
 type = "exec"
@@ -158,10 +158,9 @@ command = "true"
 func TestWorkflowPopulationSurfaceAndTrustedOwnership(t *testing.T) {
 	src := `[agent]
 kind = "workflow"
-workspace_provider = "provider"
+resource = "source"
 [[agent.populations]]
 name = "dispatch"
-resource_observer = "source"
 uses = ["poll"]
 poll_every = "1m"
 [agent.populations.query]
@@ -186,24 +185,22 @@ context = { from = "item.context", optional = true }
 	}
 }
 
-func TestWorkflowPopulationRequiresUniqueNameObserverAndQuery(t *testing.T) {
+func TestWorkflowPopulationRequiresUniqueNameAndQuery(t *testing.T) {
 	tests := []struct {
 		name string
 		body string
 	}{
-		{"name", `resource_observer = "source"
-[agent.populations.query]
-scope = "all"`},
-		{"observer", `name = "dispatch"
+		{"name", `uses = ["poll"]
 [agent.populations.query]
 scope = "all"`},
 		{"query", `name = "dispatch"
-resource_observer = "source"`},
+uses = ["poll"]`},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			err := validateUserSource(t, `[agent]
 kind = "workflow"
+resource = "issue"
 [[agent.populations]]
 `+tt.body)
 			var d *Diagnostic
@@ -215,14 +212,13 @@ kind = "workflow"
 
 	err := validateUserSource(t, `[agent]
 kind = "workflow"
+resource = "issue"
 [[agent.populations]]
 name = "dispatch"
-resource_observer = "source"
 uses = ["poll"]
 [agent.populations.query]
 [[agent.populations]]
 name = "dispatch"
-resource_observer = "source"
 uses = ["poll"]
 [agent.populations.query]
 `)
@@ -234,7 +230,7 @@ uses = ["poll"]
 
 func TestWorkflowPopulationPlanValidatesQueryAndItemContracts(t *testing.T) {
 	src := `[source]
-kind = "resource_observer"
+kind = "resource"
 [source.query.inputs_schema]
 type = "object"
 required = ["scope"]
@@ -252,15 +248,11 @@ type = "string"
 type = "exec"
 command = "true"
 
-[provider]
-kind = "workspace_provider"
-
 [agent]
 kind = "workflow"
-workspace_provider = "provider"
+resource = "source"
 [[agent.populations]]
 name = "dispatch"
-resource_observer = "source"
 uses = ["poll"]
 poll_every = "1m"
 [agent.populations.query]

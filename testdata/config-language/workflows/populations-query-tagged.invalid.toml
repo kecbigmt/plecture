@@ -2,11 +2,11 @@
 # reason: query parameters are literal data, so a tagged value cannot select them dynamically.
 
 [bad_query]
-kind = "workflow"
+kind     = "workflow"
+resource = "query_source"
 
 [[bad_query.populations]]
 name              = "dispatch"
-resource_observer = "query_source"
 uses              = ["poll"]
 poll_every        = "5m"
 

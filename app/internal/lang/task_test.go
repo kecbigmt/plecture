@@ -5,7 +5,7 @@ import "testing"
 // taskContext is the observer and workflow a task document under test is
 // written against, standing in for the rest of the layer.
 const taskContext = `[issue_pr]
-kind  = "resource_observer"
+kind  = "resource"
 match = '^https://github\.com/[^/]+/[^/]+/(issues|pull)/[0-9]+$'
 
 [issue_pr.observe]
@@ -23,6 +23,7 @@ revision      = { type = "string" }
 
 [goal_reviewer]
 kind = "workflow"
+resource = "issue"
 
 [goal_reviewer.inputs_schema]
 type                 = "object"
@@ -37,6 +38,7 @@ head         = { type = "string" }
 
 [open_reviewer]
 kind = "workflow"
+resource = "issue"
 
 [open_reviewer.inputs_schema]
 type     = "object"
@@ -82,7 +84,7 @@ func TestValidateTaskContractsRejectsAnUndeclaredKey(t *testing.T) {
 			name: "a completion check on a key the observer does not publish",
 			src: `[work]
 kind              = "task"
-resource_observer = "issue_pr"
+resource          = "issue_pr"
 instructions      = [{ text = "Resolve {{ resource.id }}." }]
 
 [work.done_when]
@@ -93,7 +95,7 @@ all = [{ check = "resource.state.mergeability", in = ["clean"] }]
 			name: "a completion check on state this document does not keep",
 			src: `[work]
 kind              = "task"
-resource_observer = "issue_pr"
+resource          = "issue_pr"
 instructions      = [{ text = "Resolve {{ resource.id }}." }]
 
 [work.done_when]
@@ -104,7 +106,7 @@ all = [{ check = "self.state.verdict_revision", ne = "" }]
 			name: "a computed leaf reading an unpublished key",
 			src: `[work]
 kind              = "task"
-resource_observer = "issue_pr"
+resource          = "issue_pr"
 instructions      = [{ text = "Resolve {{ resource.id }}." }]
 
 [work.state_schema]
@@ -121,7 +123,7 @@ all = [{ expr = "self.state.verdict_revision == resource.state.head_sha" }]
 			name: "an instruction body projecting an unpublished key",
 			src: `[work]
 kind              = "task"
-resource_observer = "issue_pr"
+resource          = "issue_pr"
 instructions      = [{ text = "Resolve {{ resource.id }} at {{ resource.state.head_sha }}." }]
 `,
 		},
@@ -129,7 +131,7 @@ instructions      = [{ text = "Resolve {{ resource.id }} at {{ resource.state.he
 			name: "a chain fact reading an unpublished key",
 			src: `[work]
 kind              = "task"
-resource_observer = "issue_pr"
+resource          = "issue_pr"
 instructions      = [{ text = "Resolve {{ resource.id }}." }]
 
 [[work.chains]]
@@ -148,7 +150,7 @@ task = "review"
 			name: "a chain input projecting an unpublished key",
 			src: `[work]
 kind              = "task"
-resource_observer = "issue_pr"
+resource          = "issue_pr"
 instructions      = [{ text = "Resolve {{ resource.id }}." }]
 
 [[work.chains]]
@@ -168,7 +170,7 @@ head = { from = "resource.state.head_sha" }
 			name: "a chain waiting on a judge this document never declares",
 			src: `[work]
 kind              = "task"
-resource_observer = "issue_pr"
+resource          = "issue_pr"
 instructions      = [{ text = "Resolve {{ resource.id }}." }]
 
 [work.done_when]
@@ -197,7 +199,7 @@ task = "review"
 func TestValidateTaskContractsResolvesEveryDeclaredKey(t *testing.T) {
 	src := `[work]
 kind              = "task"
-resource_observer = "issue_pr"
+resource          = "issue_pr"
 instructions      = [{ text = "Review {{ resource.id }} at {{ resource.state.revision }}, last judged at {{ self.state.verdict_revision }}." }]
 
 [work.state_schema]
@@ -248,7 +250,7 @@ all = [{ check = "resource.state.revision", ne = "" }]
 func TestValidateTaskContractsRejectsAnObserverOfAnotherKind(t *testing.T) {
 	src := `[work]
 kind              = "task"
-resource_observer = "goal_reviewer"
+resource          = "goal_reviewer"
 instructions      = [{ text = "Resolve {{ resource.id }}." }]
 `
 	wantDiag(t, resolveTaskDocument(t, src), CodeKindMismatch, LayerSemantic)
@@ -259,7 +261,7 @@ instructions      = [{ text = "Resolve {{ resource.id }}." }]
 // document is rejected rather than exempted.
 func TestValidateTaskContractsFailsClosedOnAnUnresolvableContract(t *testing.T) {
 	context, err := ParseDefinitionDocument("context.toml", []byte(`[filed]
-kind              = "resource_observer"
+kind              = "resource"
 state_schema_file = "state.schema.json"
 
 [filed.observe]
@@ -272,7 +274,7 @@ args = ["observe"]
 	}
 	defs, err := ParseDefinitionDocument("task.toml", []byte(`[work]
 kind              = "task"
-resource_observer = "filed"
+resource          = "filed"
 instructions      = [{ text = "Resolve {{ resource.id }}." }]
 
 [work.done_when]
@@ -293,7 +295,7 @@ all = [{ check = "resource.state.anything", ne = "" }]
 func TestValidateTaskContractsRequiresTheInputsTheTargetWorkflowDeclares(t *testing.T) {
 	src := `[work]
 kind              = "task"
-resource_observer = "issue_pr"
+resource          = "issue_pr"
 instructions      = [{ text = "Resolve {{ resource.id }}." }]
 
 [[work.chains]]
@@ -317,7 +319,7 @@ func TestValidateTaskContractsChecksAnInputAgainstAClosedTargetContract(t *testi
 	document := func(extraKey string) string {
 		return `[work]
 kind              = "task"
-resource_observer = "issue_pr"
+resource          = "issue_pr"
 instructions      = [{ text = "Resolve {{ resource.id }}." }]
 
 [[work.chains]]

@@ -16,7 +16,7 @@ import (
 func TestRunHealthProbes_ResolvePluginLocalBin(t *testing.T) {
 	repoRoot := repoRootForTest(t)
 	claude := mountShippedPlugin(t, repoRoot, "acme-mirror", "plugins/claude")
-	session := SessionVars{Name: "s", WorkspaceDirPath: t.TempDir(), Plugins: []plugins.Mounted{claude}}
+	session := SessionVars{Name: "s", Plugins: []plugins.Mounted{claude}}
 	sourcePath := claude.Dir + "/config/tasks/runtime.toml"
 
 	activityBin := &lang.Value{Form: lang.FormBin, Bin: "claude-agent-activity"}

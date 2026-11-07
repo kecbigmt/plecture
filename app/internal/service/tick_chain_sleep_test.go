@@ -1,7 +1,6 @@
 package service
 
 import (
-	"fmt"
 	"os"
 	"path/filepath"
 	"testing"
@@ -22,31 +21,21 @@ all = [ { judge_pending = "ac-met" } ]
 func writeSpawnableWorkflowFile(t *testing.T, cfg *config.Config, id, workspaceDir string) {
 	t.Helper()
 	tasksDir := filepath.Join(cfg.BaseDir, "tasks")
-	workflowsDir := filepath.Join(cfg.BaseDir, "workflows")
-	providersDir := filepath.Join(cfg.BaseDir, "workspaces")
-	for _, dir := range []string{tasksDir, workflowsDir, providersDir} {
-		if err := os.MkdirAll(dir, 0o755); err != nil {
-			t.Fatal(err)
-		}
+	if err := os.MkdirAll(tasksDir, 0o755); err != nil {
+		t.Fatal(err)
 	}
 	noopID := id + "_noop"
 	noopDoc := effectFixtureDoc(taskFixture{id: noopID, scope: "session", setup: "echo '{}'"})
 	if err := os.WriteFile(filepath.Join(tasksDir, noopID+".toml"), []byte(noopDoc), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	provID, prov := providerAside(id, providerCreatingWorkspace(id, workspaceDir))
-	wf := fmt.Sprintf("[%s]\nkind = \"workflow\"\nworkspace_provider = %q\n\n[[%s.nodes]]\nuses = %q\n", id, provID, id, noopID)
-	if err := os.WriteFile(filepath.Join(workflowsDir, id+".toml"), []byte(wf), 0o644); err != nil {
-		t.Fatal(err)
-	}
-	if err := os.WriteFile(filepath.Join(providersDir, provID+".toml"), []byte(prov), 0o644); err != nil {
-		t.Fatal(err)
-	}
+	addFixtureWorkflow(t, cfg, id, "issue", noopID, "")
+	attachWorkdir(t, cfg, id, taskFixture{id: id + "_dir", setup: mkdirScript(workspaceDir)})
 }
 
 func TestTickSession_ChainAcceptsCapacitySleepAndWakesWhenSlotFrees(t *testing.T) {
 	store := testStore(t)
-	cfg := writeWorkflowFixture(t, t.TempDir(), "wf",
+	cfg := writeWorkflowFixture(t, "wf",
 		[]taskFixture{workTaskWithChain(capReviewChainFixture)},
 		[]nodeFixture{{id: "work"}})
 	writeSpawnableWorkflowFile(t, cfg, "reviewer_wf", filepath.Join(t.TempDir(), "reviewer-wd"))

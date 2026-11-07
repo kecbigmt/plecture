@@ -72,7 +72,7 @@ func TestUp_PopulationMemberInPlaceRepairDeliversNodeResultThroughChannel(t *tes
 	sock, recv := startFakeChannelSocket(t)
 	store := testStore(t)
 	sessionName := "session1"
-	cfg := writeWorkflowFixture(t, t.TempDir(), "default",
+	cfg := writeWorkflowFixture(t, "default",
 		[]taskFixture{{
 			id:      "agent",
 			scope:   "run",
@@ -110,7 +110,7 @@ path = { from = "nodes.agent.outputs.socket_path" }
 	seedSessionWithNodes(t, store, sessionName, "acct", 1, "default", map[string]*contract.TaskState{
 		"agent": {Scope: contract.TaskScopeRun, Status: contract.TaskStatusProduced, Outputs: map[string]any{"socket_path": sock}},
 	})
-	if err := store.UpdatePopulation("default/pop", func(population *state.PopulationState) error {
+	if err := store.UpdatePopulation(contract.PopulationProvenance{Workflow: "default", Name: "pop"}, func(population *state.PopulationState) error {
 		population.Workflow = "default"
 		population.Name = "pop"
 		return nil

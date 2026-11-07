@@ -25,48 +25,78 @@ import (
 	contract "github.com/kecbigmt/plecture/contracts/state"
 )
 
-// branchNodes seeds a session's @workflow pseudo-node with a "branch"
-// output, the shape domain.SessionBranch reads instead of a stored field.
-func branchNodes(branch string) map[string]*contract.TaskState {
-	return map[string]*contract.TaskState{
-		contract.WorkflowPseudoNodeID: {
-			Scope:   contract.TaskScopeSession,
-			Status:  contract.TaskStatusProduced,
-			Outputs: map[string]any{"branch": branch},
-		},
-	}
-}
+// workdirWorkflowID is the workflow mountWorkdirWorkflow declares.
+const workdirWorkflowID = "test"
 
-// mountResolverOnlyWorkspaceProvider registers a minimal global-layer workflow +
-// workspace provider so dispatch can resolve a github.com URL without depending on
-// whatever catalogs.toml (if any) happens to be registered on the machine
-// the test runs on. The workspace provider's setup hook is a placeholder that must
-// never actually run — Create's allowlist check is meant to reject the
-// request before any workspace provider hook does.
-func mountResolverOnlyWorkspaceProvider(t *testing.T, cfg *config.Config) {
+// mountWorkdirWorkflow registers a minimal global-layer resource, a
+// directory-producing effect and a workflow whose workdir reads it, so a
+// session can be created from a github.com URL and a seeded session's detail
+// view can resolve a workdir, without depending on whatever catalogs.toml (if
+// any) happens to be registered on the machine the test runs on. The effect's
+// setup must never actually run in these tests.
+func mountWorkdirWorkflow(t *testing.T, cfg *config.Config) {
 	t.Helper()
 	isolateMachineConfig(cfg)
 	base := t.TempDir()
 	cfg.BaseDir = base
-	if err := os.MkdirAll(filepath.Join(base, "workflows"), 0o755); err != nil {
+	files := map[string]string{
+		"resources/test_gh.toml": "[test_gh]\n" +
+			"kind  = \"resource\"\n" +
+			"match = '^https://github\\.com/(?P<owner>[^/]+)/(?P<repo>[^/]+)/(?:issues|pull)/(?P<number>\\d+)'\n" +
+			"name  = { expr = \"match.owner + '/' + match.repo + '-' + match.number\" }\n" +
+			"\n[test_gh.observe]\ntype = \"shell\"\nscript = \"echo '{}'\"\n" +
+			"\n[test_gh.state_schema]\ntype = \"object\"\n",
+		"tasks/checkout.toml": "[checkout]\n" +
+			"kind  = \"effect\"\n" +
+			"scope = \"session\"\n" +
+			"\n[checkout.setup]\ntype = \"exec\"\ncommand = \"false\"\n" +
+			"\n[checkout.health.alive]\ntype = \"noop\"\n" +
+			"\n[checkout.outputs_schema]\ntype = \"object\"\n" +
+			"\n[checkout.outputs_schema.properties]\nworkspace_dir = { type = \"string\" }\n",
+		"workflows/test.toml": "[" + workdirWorkflowID + "]\n" +
+			"kind     = \"workflow\"\n" +
+			"resource = \"test_gh\"\n" +
+			"workdir  = { from = \"nodes.checkout.outputs.workspace_dir\" }\n" +
+			"\n[[" + workdirWorkflowID + ".nodes]]\nuses = \"checkout\"\n",
+	}
+	for name, body := range files {
+		path := filepath.Join(base, name)
+		if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(path, []byte(body), 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
+}
+
+// workdirSession seeds a session of the mounted workflow whose workdir
+// producer reported dir.
+func workdirSession(t *testing.T, cfg *config.Config, name, resourceID, dir string) *domain.Session {
+	t.Helper()
+	revision, err := cfg.CaptureWorkflowRevision("", workdirWorkflowID)
+	if err != nil {
+		t.Fatalf("CaptureWorkflowRevision: %v", err)
+	}
+	body, digest, err := revision.CanonicalBody()
+	if err != nil {
 		t.Fatal(err)
 	}
-	if err := os.MkdirAll(filepath.Join(base, "workspaces"), 0o755); err != nil {
-		t.Fatal(err)
-	}
-	workflowTOML := "[test]\nkind = \"workflow\"\nworkspace_provider = \"test_gh\"\n"
-	if err := os.WriteFile(filepath.Join(base, "workflows", "test.toml"), []byte(workflowTOML), 0o644); err != nil {
-		t.Fatal(err)
-	}
-	workspaceProviderTOML := "[test_gh]\n" +
-		"kind  = \"workspace_provider\"\n" +
-		"match = '^https://github\\.com/(?P<owner>[^/]+)/(?P<repo>[^/]+)/(?:issues|pull)/(?P<number>\\d+)'\n" +
-		"name  = { expr = \"match.owner + '/' + match.repo + '-' + match.number\" }\n" +
-		// Never invoked (the allowlist check rejects the request first) —
-		// only present because a provider must declare how it acquires.
-		"\n[test_gh.setup]\ntype = \"exec\"\ncommand = \"false\"\n"
-	if err := os.WriteFile(filepath.Join(base, "workspaces", "test_gh.toml"), []byte(workspaceProviderTOML), 0o644); err != nil {
-		t.Fatal(err)
+	return &domain.Session{
+		Name:                 name,
+		Resource:             testResource(resourceID),
+		Workflow:             workdirWorkflowID,
+		WorkflowRevision:     digest,
+		WorkflowRevisionBody: string(body),
+		Nodes: map[string]*contract.TaskState{
+			"checkout": {
+				Scope:   contract.TaskScopeSession,
+				Status:  contract.TaskStatusProduced,
+				Outputs: map[string]any{"workspace_dir": dir},
+			},
+		},
+		CreatedAt: time.Now(),
+		UpdatedAt: time.Now(),
 	}
 }
 
@@ -79,12 +109,10 @@ func mountResolverOnlyWorkspaceProvider(t *testing.T, cfg *config.Config) {
 func TestAcceptance_SessionAppearsInList(t *testing.T) {
 	store := state.NewStore(t.TempDir())
 	sess := &domain.Session{
-		Name:             "acceptance/web-1",
-		ResourceID:       "https://github.com/acceptance/web/issues/1",
-		Nodes:            branchNodes("issue/1"),
-		WorkspaceDirPath: "/nonexistent/workspace-dir",
-		CreatedAt:        time.Now(),
-		UpdatedAt:        time.Now(),
+		Name:      "acceptance/web-1",
+		Resource:  testResource("https://github.com/acceptance/web/issues/1"),
+		CreatedAt: time.Now(),
+		UpdatedAt: time.Now(),
 	}
 	if err := store.Put(sess); err != nil {
 		t.Fatalf("seed session: %v", err)
@@ -115,18 +143,6 @@ func TestAcceptance_SessionAppearsInList(t *testing.T) {
 // Then the response is the SessionDetail JSON for that session.
 func TestAcceptance_ApiV1SessionDetailServesSeededSession(t *testing.T) {
 	store := state.NewStore(t.TempDir())
-	sess := &domain.Session{
-		Name:             "acceptance/web-2",
-		ResourceID:       "https://github.com/acceptance/web/issues/2",
-		Nodes:            branchNodes("issue/2"),
-		WorkspaceDirPath: "/nonexistent/workspace-dir",
-		CreatedAt:        time.Now(),
-		UpdatedAt:        time.Now(),
-	}
-	if err := store.Put(sess); err != nil {
-		t.Fatalf("seed session: %v", err)
-	}
-
 	cfg, err := config.Load()
 	if err != nil {
 		t.Fatal(err)
@@ -134,7 +150,10 @@ func TestAcceptance_ApiV1SessionDetailServesSeededSession(t *testing.T) {
 	// Session detail assembly loads task declarations, so this has to answer
 	// only for what the test itself declares — not whatever catalog happens
 	// to be installed on the machine the suite runs on.
-	isolateMachineConfig(cfg)
+	mountWorkdirWorkflow(t, cfg)
+	if err := store.Put(workdirSession(t, cfg, "acceptance/web-2", "https://github.com/acceptance/web/issues/2", "/nonexistent/workdir")); err != nil {
+		t.Fatalf("seed session: %v", err)
+	}
 	svc := newLiveService(cfg, store)
 	rec := get(t, svc, "/api/v1/sessions/acceptance/web-2")
 
@@ -148,8 +167,11 @@ func TestAcceptance_ApiV1SessionDetailServesSeededSession(t *testing.T) {
 	if detail.SessionName != "acceptance/web-2" {
 		t.Errorf("SessionName = %q, want acceptance/web-2", detail.SessionName)
 	}
-	if detail.Branch == nil || *detail.Branch != "issue/2" {
-		t.Errorf("Branch = %v, want issue/2", detail.Branch)
+	if detail.Workdir == nil || *detail.Workdir != "/nonexistent/workdir" {
+		t.Errorf("Workdir = %v, want /nonexistent/workdir", detail.Workdir)
+	}
+	if detail.WorkdirExists == nil || *detail.WorkdirExists {
+		t.Errorf("WorkdirExists = %v, want false", detail.WorkdirExists)
 	}
 }
 
@@ -276,22 +298,10 @@ func strPtr(s string) *string { return &s }
 //
 // Given a session persisted in a temp state store,
 // When GET /sessions/<name> is served by the live service,
-// Then the response shows that session's branch and a diagnostic for the
-// missing workspace directory (the seeded path does not exist).
+// Then the response shows that session and a diagnostic for the missing
+// workdir (the produced path does not exist).
 func TestAcceptance_SessionDetail(t *testing.T) {
 	store := state.NewStore(t.TempDir())
-	sess := &domain.Session{
-		Name:             "acceptance/web-2",
-		ResourceID:       "https://github.com/acceptance/web/issues/2",
-		Nodes:            branchNodes("issue/2"),
-		WorkspaceDirPath: "/nonexistent/workspace-dir",
-		CreatedAt:        time.Now(),
-		UpdatedAt:        time.Now(),
-	}
-	if err := store.Put(sess); err != nil {
-		t.Fatalf("seed session: %v", err)
-	}
-
 	cfg, err := config.Load()
 	if err != nil {
 		t.Fatal(err)
@@ -300,7 +310,10 @@ func TestAcceptance_SessionDetail(t *testing.T) {
 	// machine running it happens to own: a session's detail view loads the
 	// declarations its workflow names, so leaving the machine's own layers in
 	// the load would make this pass or fail on their strength.
-	isolateMachineConfig(cfg)
+	mountWorkdirWorkflow(t, cfg)
+	if err := store.Put(workdirSession(t, cfg, "acceptance/web-2", "https://github.com/acceptance/web/issues/2", "/nonexistent/workdir")); err != nil {
+		t.Fatalf("seed session: %v", err)
+	}
 	svc := newLiveService(cfg, store)
 	rec := get(t, svc, "/sessions/acceptance/web-2")
 
@@ -308,11 +321,11 @@ func TestAcceptance_SessionDetail(t *testing.T) {
 		t.Fatalf("status = %d, want 200", rec.Code)
 	}
 	body := rec.Body.String()
-	if !strings.Contains(body, "acceptance/web-2") || !strings.Contains(body, "issue/2") {
+	if !strings.Contains(body, "acceptance/web-2") || !strings.Contains(body, "/nonexistent/workdir") {
 		t.Errorf("detail missing session fields; body:\n%s", body)
 	}
 	if !strings.Contains(body, "(missing)") {
-		t.Errorf("detail should surface the missing-workspace-dir diagnostic; body:\n%s", body)
+		t.Errorf("detail should surface the missing-workdir diagnostic; body:\n%s", body)
 	}
 }
 
@@ -346,14 +359,14 @@ func acceptancePost(t *testing.T, h http.Handler, path string, form url.Values) 
 }
 
 // Acceptance: a create for a resource outside the allowlist is a 403 through
-// the real stack — the allowlist check fires before any workspace provider work.
+// the real stack — the allowlist check fires before any effect runs.
 func TestAcceptance_CreateResourceNotAllowed(t *testing.T) {
 	store := state.NewStore(t.TempDir())
 	cfg, err := config.Load()
 	if err != nil {
 		t.Fatal(err)
 	}
-	mountResolverOnlyWorkspaceProvider(t, cfg)
+	mountWorkdirWorkflow(t, cfg)
 	cfg.ResourceAllowlist = []string{`^https://github\.com/only/allowed/`}
 
 	h := New(newLiveService(cfg, store)).Routes()

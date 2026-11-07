@@ -486,6 +486,11 @@ func upsertNodeExecutionTx(ctx context.Context, q *sqlcgen.Queries, sessionID, n
 		return fmt.Errorf("marshal node %q/%q done_when: %w", sessionID, nodeID, err)
 	}
 
+	for _, r := range []*contract.Resource{ts.Resource, ts.Subscription} {
+		if err := recordResourceTx(ctx, q, r); err != nil {
+			return fmt.Errorf("node %q/%q: %w", sessionID, nodeID, err)
+		}
+	}
 	if err := q.EnsureNodeInstance(ctx, sqlcgen.EnsureNodeInstanceParams{SessionID: sessionID, NodeID: nodeID}); err != nil {
 		return fmt.Errorf("ensure node instance %q/%q: %w", sessionID, nodeID, err)
 	}
@@ -516,7 +521,8 @@ func upsertNodeExecutionTx(ctx context.Context, q *sqlcgen.Queries, sessionID, n
 			Name:                    nullString(ts.Name),
 			Scope:                   ts.Scope,
 			Status:                  ts.Status,
-			Resource:                nullString(ts.Resource),
+			ResourceID:              resourceID(ts.Resource),
+			SubscriptionID:          resourceID(ts.Subscription),
 			InputsJson:              inputsJSON,
 			OutputsJson:             outputsJSON,
 			StateJson:               stateJSON,
@@ -530,6 +536,7 @@ func upsertNodeExecutionTx(ctx context.Context, q *sqlcgen.Queries, sessionID, n
 			CleanedAt:               formatTimeNull(ts.CleanedAt),
 			FinalizedAt:             formatTimeNull(ts.FinalizedAt),
 			ProcessJson:             processJSON,
+			Directory:               nullString(ts.Directory),
 		}); err != nil {
 			return fmt.Errorf("update node execution %q/%q: %w", sessionID, nodeID, err)
 		}
@@ -549,7 +556,8 @@ func upsertNodeExecutionTx(ctx context.Context, q *sqlcgen.Queries, sessionID, n
 				Name:                    nullString(ts.Name),
 				Scope:                   ts.Scope,
 				Status:                  ts.Status,
-				Resource:                nullString(ts.Resource),
+				ResourceID:              resourceID(ts.Resource),
+				SubscriptionID:          resourceID(ts.Subscription),
 				InputsJson:              inputsJSON,
 				OutputsJson:             outputsJSON,
 				StateJson:               stateJSON,
@@ -563,6 +571,7 @@ func upsertNodeExecutionTx(ctx context.Context, q *sqlcgen.Queries, sessionID, n
 				CleanedAt:               formatTimeNull(ts.CleanedAt),
 				FinalizedAt:             formatTimeNull(ts.FinalizedAt),
 				ProcessJson:             processJSON,
+				Directory:               nullString(ts.Directory),
 			})
 			if err != nil {
 				return fmt.Errorf("insert node execution %q/%q: %w", sessionID, nodeID, err)
@@ -580,7 +589,8 @@ func upsertNodeExecutionTx(ctx context.Context, q *sqlcgen.Queries, sessionID, n
 				Name:                    nullString(ts.Name),
 				Scope:                   ts.Scope,
 				Status:                  ts.Status,
-				Resource:                nullString(ts.Resource),
+				ResourceID:              resourceID(ts.Resource),
+				SubscriptionID:          resourceID(ts.Subscription),
 				InputsJson:              inputsJSON,
 				OutputsJson:             outputsJSON,
 				StateJson:               stateJSON,
@@ -594,6 +604,7 @@ func upsertNodeExecutionTx(ctx context.Context, q *sqlcgen.Queries, sessionID, n
 				CleanedAt:               formatTimeNull(ts.CleanedAt),
 				FinalizedAt:             formatTimeNull(ts.FinalizedAt),
 				ProcessJson:             processJSON,
+				Directory:               nullString(ts.Directory),
 			}); err != nil {
 				return fmt.Errorf("update node execution %q/%q: %w", sessionID, nodeID, err)
 			}
@@ -685,7 +696,9 @@ func nodeExecutionFromRow(row sqlcgen.NodeExecution) (*contract.TaskState, error
 		Scope:         row.Scope,
 		Status:        row.Status,
 		Seq:           int(row.Sequence),
-		Resource:      row.Resource.String,
+		Resource:      resourceRef(row.ResourceID),
+		Subscription:  resourceRef(row.SubscriptionID),
+		Directory:     row.Directory.String,
 		ExecutionID:   row.ID,
 		Inputs:        inputs,
 		Outputs:       outputs,
@@ -729,6 +742,9 @@ func upsertTaskInstanceTx(ctx context.Context, q *sqlcgen.Queries, sessionID, in
 	if err != nil {
 		return fmt.Errorf("marshal task %q/%q observed: %w", sessionID, instanceName, err)
 	}
+	if err := recordResourceTx(ctx, q, ts.Resource); err != nil {
+		return fmt.Errorf("task %q/%q: %w", sessionID, instanceName, err)
+	}
 	named := ts.Name != ""
 	id, err := q.UpsertTaskInstance(ctx, sqlcgen.UpsertTaskInstanceParams{
 		ID:                      newULID(),
@@ -738,7 +754,7 @@ func upsertTaskInstanceTx(ctx context.Context, q *sqlcgen.Queries, sessionID, in
 		Scope:                   ts.Scope,
 		Status:                  ts.Status,
 		Sequence:                int64(ts.Seq),
-		Resource:                nullString(ts.Resource),
+		ResourceID:              resourceID(ts.Resource),
 		Named:                   named,
 		InputsJson:              inputsJSON,
 		OutputsJson:             outputsJSON,
@@ -752,6 +768,7 @@ func upsertTaskInstanceTx(ctx context.Context, q *sqlcgen.Queries, sessionID, in
 		CleanedAt:               formatTimeNull(ts.CleanedAt),
 		FinalizedAt:             formatTimeNull(ts.FinalizedAt),
 		ProcessJson:             processJSON,
+		Directory:               nullString(ts.Directory),
 	})
 	if err != nil {
 		return fmt.Errorf("upsert task instance %q/%q: %w", sessionID, instanceName, err)
@@ -833,10 +850,11 @@ func taskInstanceFromRow(row sqlcgen.TaskInstance) (*contract.TaskState, error) 
 	}
 	ts := &contract.TaskState{
 		TaskID:        row.TaskID,
+		Directory:     row.Directory.String,
 		Scope:         row.Scope,
 		Status:        row.Status,
 		Seq:           int(row.Sequence),
-		Resource:      row.Resource.String,
+		Resource:      resourceRef(row.ResourceID),
 		Inputs:        inputs,
 		Outputs:       outputs,
 		Process:       process,

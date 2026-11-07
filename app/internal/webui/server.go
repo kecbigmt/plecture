@@ -39,6 +39,7 @@ var templates = template.Must(
 			"subtreePath":     subtreePath,
 			"queryEscape":     url.QueryEscape,
 			"isWebURL":        isWebURL,
+			"isFalse":         isFalse,
 			"doneStatusClass": doneStatusClass,
 			"doneSymbol":      doneSymbol,
 			"taskName":        taskName,
@@ -282,6 +283,10 @@ func isWebURL(s string) bool {
 	u, err := url.Parse(s)
 	return err == nil && (u.Scheme == "http" || u.Scheme == "https") && u.Host != ""
 }
+
+// isFalse reports whether b is present and false; a nil pointer (the workflow
+// declares no workdir, so nothing was checked) is not a missing directory.
+func isFalse(b *bool) bool { return b != nil && !*b }
 
 // statusClass maps a session status to its badge color classes; the badge's
 // structural classes stay in the template. Per DESIGN.md these reuse Tailwind's

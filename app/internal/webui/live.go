@@ -5,6 +5,7 @@ import (
 	"github.com/kecbigmt/plecture/app/internal/service"
 	"github.com/kecbigmt/plecture/app/internal/state"
 	"github.com/kecbigmt/plecture/contracts/event"
+	"os"
 )
 
 // LiveService is the production SessionService: it calls service.* against the
@@ -12,6 +13,9 @@ import (
 type LiveService struct {
 	cfg   *config.Config
 	store *state.Store
+	// projectRoot is the context selected when the server started; a web
+	// request has no directory of its own to select one from.
+	projectRoot string
 }
 
 // NewLiveService wires config.Load() and the default state store.
@@ -28,6 +32,14 @@ func NewLiveService() (*LiveService, error) {
 	if err != nil {
 		return nil, err
 	}
+	dir, err := os.Getwd()
+	if err != nil {
+		return nil, err
+	}
+	projectRoot, err := cfg.SelectProjectRoot(dir)
+	if err != nil {
+		return nil, err
+	}
 	pending, err := store.NeedsWorkflowRevisionBackfill()
 	if err != nil {
 		return nil, err
@@ -37,7 +49,9 @@ func NewLiveService() (*LiveService, error) {
 			return nil, err
 		}
 	}
-	return newLiveService(cfg, store), nil
+	live := newLiveService(cfg, store)
+	live.projectRoot = projectRoot
+	return live, nil
 }
 
 // newLiveService injects the cfg and store so tests can supply a temp store
@@ -98,10 +112,12 @@ func (l *LiveService) PublishEvent(name string, p service.EventPublishParams) (e
 }
 
 func (l *LiveService) Create(p service.CreateParams) (*service.CreateResult, error) {
+	p.ProjectRoot = l.projectRoot
 	return service.Create(l.cfg, l.store, p)
 }
 
 func (l *LiveService) Up(p service.UpParams) (*service.UpResult, error) {
+	p.ProjectRoot = l.projectRoot
 	return service.Up(l.cfg, l.store, p)
 }
 

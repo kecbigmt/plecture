@@ -8,9 +8,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/kecbigmt/plecture/app/internal/config"
 	"github.com/kecbigmt/plecture/app/internal/domain"
-	"github.com/kecbigmt/plecture/app/internal/effect"
 	"github.com/kecbigmt/plecture/app/internal/persistence"
 	contract "github.com/kecbigmt/plecture/contracts/state"
 )
@@ -202,18 +200,4 @@ func TestRunSetup_RetryAfterFailedSetupOverCleanedExecution(t *testing.T) {
 				got.Status, got.ExecutionID, got.Seq, firstFailure.ExecutionID, firstFailure.Seq)
 		}
 	})
-}
-
-func TestRunWorkflowSetup_FailureOutranksTheCleanedExecutionItReplaces(t *testing.T) {
-	prov := config.WorkspaceProviderConfig{ID: "wf", Setup: providerExec(`echo '{"branch":"b"}'`)}
-	tasks := map[string]*contract.TaskState{
-		contract.WorkflowPseudoNodeID: {Scope: contract.TaskScopeSession, Status: contract.TaskStatusCleaned, ExecutionID: "old", Seq: staleCleanedSeq},
-	}
-	if _, err := RunWorkflowSetup(prov, effect.WorkflowHookVars{}, tasks, nil); err == nil {
-		t.Fatal("RunWorkflowSetup: want a setup failure, got nil")
-	}
-	got := tasks[contract.WorkflowPseudoNodeID]
-	if got.Status != contract.TaskStatusFailed || got.Seq <= staleCleanedSeq {
-		t.Fatalf("Status = %q, Seq = %d, want failed with a Seq above the cleaned execution's %d", got.Status, got.Seq, staleCleanedSeq)
-	}
 }

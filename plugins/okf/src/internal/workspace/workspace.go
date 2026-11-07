@@ -1,5 +1,5 @@
-// Package workspace implements the local-okf workspace provider's
-// dispatch-time workspace acquisition: it turns a
+// Package workspace implements the okf goal_dir effect's dispatch-time
+// directory acquisition: it turns a
 // `local-okf://<owner>/<concept-id>` resource id and a session name into a
 // read-context workspace directory over the owner's knowledge bundle. There
 // is no git repository here and nothing to isolate — the workspace
@@ -27,7 +27,7 @@ import (
 // known-disposable scratch dir.
 const scratchDirName = ".okf-workspaces"
 
-// SetupResult is the workspace provider outputs contract: the reserved
+// SetupResult is the goal_dir effect's outputs contract: the
 // `workspace_dir` key plus the resource facts a workflow's templates may
 // want.
 type SetupResult struct {

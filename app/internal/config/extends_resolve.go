@@ -70,9 +70,9 @@ func composeExtendedTaskDocuments(docs map[string]TaskDocument, registry *lang.R
 
 func composeTaskDocument(layers []TaskDocument) TaskDocument {
 	composed := layers[len(layers)-1]
-	// An extension declares no resource_observer of its own (lang's structural
+	// An extension declares no resource of its own (lang's structural
 	// check already guarantees this); it inherits the root's.
-	composed.ResourceObserver = layers[0].ResourceObserver
+	composed.Resource = layers[0].Resource
 
 	var texts []string
 	var chains []DocumentChain

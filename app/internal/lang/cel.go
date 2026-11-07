@@ -186,6 +186,9 @@ func visitPath(path string, bound map[string]bool, ref referenceFunc) error {
 // declares identifiers, so the leading segment is CEL's to reject, and the
 // rest of the path is the surface's.
 func checkReference(path string, declared map[string]bool, s *Surface, pos Position) error {
+	if msg, retired := retiredRoot(path); retired {
+		return newDiag(s.rootCode, s.rootLayer, pos, msg)
+	}
 	head, _, _ := strings.Cut(path, ".")
 	if !declared[head] {
 		return newDiag(CodeCELUnknownName, LayerCEL, pos,

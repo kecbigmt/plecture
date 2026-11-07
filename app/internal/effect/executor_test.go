@@ -25,10 +25,10 @@ func shellExecution(script string) *lang.Execution {
 	return &lang.Execution{Argv: []string{"bash", "-c", script}}
 }
 
-// A host invocation's two long-standing shape rules: stdout and stderr are
-// captured separately, and a working directory that does not exist is
-// ignored rather than surfaced as an error.
-func TestExecutor_HostExecutorCapturesSeparatelyAndIgnoresAMissingDir(t *testing.T) {
+// A host invocation's two shape rules: stdout and stderr are captured
+// separately, and a working directory that does not exist fails the launch
+// rather than running the command somewhere else.
+func TestExecutor_HostExecutorCapturesSeparatelyAndRejectsAMissingDir(t *testing.T) {
 	var exec Executor = hostExecutor{}
 	stdout, stderr, err := exec.Run(context.Background(), ExecRequest{Argv: []string{"bash", "-c", `echo out; echo err >&2`}})
 	if err != nil {
@@ -38,14 +38,12 @@ func TestExecutor_HostExecutorCapturesSeparatelyAndIgnoresAMissingDir(t *testing
 		t.Errorf("stdout=%q stderr=%q", stdout, stderr)
 	}
 
-	// A Dir that doesn't exist must be silently ignored, not surfaced as an
-	// error: a hook that runs before its workspace exists still has to run.
 	stdout, _, err = exec.Run(context.Background(), ExecRequest{Argv: []string{"bash", "-c", "pwd"}, Dir: "/nonexistent/does-not-exist"})
-	if err != nil {
-		t.Fatalf("Run with missing Dir: %v", err)
+	if err == nil {
+		t.Fatalf("Run with missing Dir succeeded (stdout %q), want a launch failure", stdout)
 	}
-	if string(stdout) == "/nonexistent/does-not-exist\n" {
-		t.Errorf("Dir was applied despite not existing")
+	if len(stdout) != 0 {
+		t.Errorf("the command ran despite the missing Dir: stdout=%q", stdout)
 	}
 }
 

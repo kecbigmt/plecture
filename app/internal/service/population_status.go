@@ -8,6 +8,7 @@ import (
 	"github.com/kecbigmt/plecture/app/internal/admitstatus"
 	"github.com/kecbigmt/plecture/app/internal/eventlog"
 	"github.com/kecbigmt/plecture/app/internal/state"
+	contract "github.com/kecbigmt/plecture/contracts/state"
 )
 
 type PopulationMemberStatus struct {
@@ -25,11 +26,11 @@ type PopulationMemberStatus struct {
 // PopulationStatus reads runtime state directly rather than resolving
 // workflow/population against current config, so it still shows a
 // population whose config was just changed or removed out from under it.
-func PopulationStatus(store *state.Store, workflow, population string) ([]PopulationMemberStatus, error) {
-	key := workflow + "/" + population
+func PopulationStatus(store *state.Store, projectRoot, workflow, population string) ([]PopulationMemberStatus, error) {
+	key := contract.PopulationProvenance{ProjectRoot: projectRoot, Workflow: workflow, Name: population}
 	pop, err := store.Population(key)
 	if err != nil {
-		return nil, fmt.Errorf("read population %q: %w", key, err)
+		return nil, fmt.Errorf("read population %q/%q: %w", workflow, population, err)
 	}
 	if pop == nil {
 		return nil, nil
@@ -44,7 +45,7 @@ func PopulationStatus(store *state.Store, workflow, population string) ([]Popula
 	for _, resource := range resources {
 		member := pop.Members[resource]
 		st := PopulationMemberStatus{
-			Resource: resource, Session: member.SessionName,
+			Resource: member.Resource.Locator, Session: member.SessionName,
 			PendingUp: member.PendingUp, Tombstoned: member.Tombstoned,
 			LastAdmitReason: member.LastAdmitReason, LastAdmitError: member.LastAdmitError,
 			ConsecutiveAdmitFailures: int(member.ConsecutiveAdmitFailures),
@@ -54,7 +55,7 @@ func PopulationStatus(store *state.Store, workflow, population string) ([]Popula
 			st.AdmitRetryAt = member.AdmitRetryAt.Format(time.RFC3339Nano)
 		}
 		if !member.Tombstoned && st.LastAdmitReason == "" && st.ConsecutiveAdmitFailures == 0 {
-			status := admitstatus.Member(log, member.SessionName, resource)
+			status := admitstatus.Member(log, member.SessionName, member.Resource.Locator)
 			st.LastAdmitReason, st.LastAdmitError, st.ConsecutiveAdmitFailures =
 				status.LastReason, status.LastError, status.Consecutive
 		}

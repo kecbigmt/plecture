@@ -3,6 +3,7 @@ package commands
 import (
 	"bytes"
 	"encoding/json"
+	contract "github.com/kecbigmt/plecture/contracts/state"
 	"os"
 	"path/filepath"
 	"strings"
@@ -23,35 +24,51 @@ func writeWorkflowShowFixtureFile(t *testing.T, path, content string) {
 	}
 }
 
-func setUpBrokenWorkspaceProviderFixture(t *testing.T) {
+func setUpWorkdirWorkflowFixture(t *testing.T) {
 	t.Helper()
 	fakeHome := t.TempDir()
 	t.Setenv("HOME", fakeHome)
 	globalDir := filepath.Join(fakeHome, ".config", "plect")
 	writeWorkflowShowFixtureFile(t, filepath.Join(globalDir, "config.toml"), "schema_version = 2\n")
-	writeWorkflowShowFixtureFile(t, filepath.Join(globalDir, "tasks", "tmux.toml"), `
-[tmux]
-kind  = "effect"
-scope = "run"
+	writeWorkflowShowFixtureFile(t, filepath.Join(globalDir, "resources", "ticket.toml"), `
+[ticket]
+kind  = "resource"
+match = '^ticket://(?P<id>.+)$'
+name  = { expr = "match.id" }
 
-[tmux.setup]
+[ticket.observe]
 type   = "shell"
 script = "echo '{}'"
 
-[tmux.health.alive]
-type = "noop"
+[ticket.state_schema]
+type = "object"
 `)
-	writeWorkflowShowFixtureFile(t, filepath.Join(globalDir, "workspaces", "broken.toml"), `
-[broken]
-kind = "workspace_provider"
-`)
-	writeWorkflowShowFixtureFile(t, filepath.Join(globalDir, "workflows", "usesbroken.toml"), `
-[usesbroken]
-kind = "workflow"
-workspace_provider = "broken"
+	writeWorkflowShowFixtureFile(t, filepath.Join(globalDir, "tasks", "checkout.toml"), `
+[checkout]
+kind  = "effect"
+scope = "session"
 
-[[usesbroken.nodes]]
-uses = "tmux"
+[checkout.setup]
+type   = "shell"
+script = "echo '{}'"
+
+[checkout.health.alive]
+type = "noop"
+
+[checkout.outputs_schema]
+type = "object"
+
+[checkout.outputs_schema.properties]
+dir = { type = "string" }
+`)
+	writeWorkflowShowFixtureFile(t, filepath.Join(globalDir, "workflows", "inworkdir.toml"), `
+[inworkdir]
+kind     = "workflow"
+resource = "ticket"
+workdir  = { from = "nodes.checkout.outputs.dir" }
+
+[[inworkdir.nodes]]
+uses = "checkout"
 `)
 }
 
@@ -164,10 +181,11 @@ func TestWritePopulationMembers_ShowsLastErrorAndStreak(t *testing.T) {
 func TestWorkflowPopulationsRetryClearsSuspension(t *testing.T) {
 	dataDir := t.TempDir()
 	t.Setenv(datahome.EnvVar, dataDir)
+	t.Setenv("PLECT_CONFIG_HOME", t.TempDir())
 	store := state.NewStore(dataDir)
-	if err := store.UpdatePopulation("agent/dispatch", func(population *state.PopulationState) error {
-		population.Members["urn:case:a"] = &state.PopulationMember{
-			ResourceID:               "urn:case:a",
+	if err := store.UpdatePopulation(contract.PopulationProvenance{Workflow: "agent", Name: "dispatch"}, func(population *state.PopulationState) error {
+		population.Members[testResource("urn:case:a").Name] = &state.PopulationMember{
+			Resource:                 *testResource("urn:case:a"),
 			PendingUp:                true,
 			ConsecutiveAdmitFailures: 5,
 			LastAdmitReason:          "input",
@@ -182,57 +200,50 @@ func TestWorkflowPopulationsRetryClearsSuspension(t *testing.T) {
 	if err != nil {
 		t.Fatalf("workflow populations retry: %v; output:\n%s", err, out)
 	}
-	population, err := store.Population("agent/dispatch")
+	population, err := store.Population(contract.PopulationProvenance{Workflow: "agent", Name: "dispatch"})
 	if err != nil {
 		t.Fatal(err)
 	}
-	member := population.Members["urn:case:a"]
+	member := population.Members[testResource("urn:case:a").Name]
 	if member.AdmitSuspended || member.ConsecutiveAdmitFailures != 0 || member.LastAdmitReason != "" {
 		t.Fatalf("member after CLI retry = %+v, want retry state cleared", member)
 	}
 }
 
-func TestWorkflowShow_WorkspaceProviderLoadErrorExitsNonzero(t *testing.T) {
-	setUpBrokenWorkspaceProviderFixture(t)
+func TestWorkflowShow_NamesTheEntryResourceAndWorkdir(t *testing.T) {
+	setUpWorkdirWorkflowFixture(t)
 
-	out, err := execRoot(t, "workflow", "show", "usesbroken")
-	if err == nil {
-		t.Fatalf("expected nonzero exit when the referenced workspace provider fails to load; output:\n%s", out)
+	out, err := execRoot(t, "workflow", "show", "inworkdir")
+	if err != nil {
+		t.Fatalf("workflow show: %v; output:\n%s", err, out)
 	}
-	if !strings.Contains(out, "usesbroken") {
-		t.Errorf("output should still render the rest of the workflow; got:\n%s", out)
-	}
-	if !strings.Contains(out, "broken") {
-		t.Errorf("output should name the failing definition; got:\n%s", out)
-	}
-	if !strings.Contains(out, "setup") {
-		t.Errorf("output should name the load diagnostic; got:\n%s", out)
+	for _, want := range []string{"Resource:", "ticket", "Workdir:", "nodes.checkout.outputs.dir"} {
+		if !strings.Contains(out, want) {
+			t.Errorf("output missing %q; got:\n%s", want, out)
+		}
 	}
 }
 
-func TestWorkflowShow_JSONWorkspaceProviderLoadErrorExitsNonzeroAndKeepsDetail(t *testing.T) {
+func TestWorkflowShow_JSONCarriesTheEntryResourceAndWorkdir(t *testing.T) {
 	t.Cleanup(func() { workflowShowJSON = false })
-	setUpBrokenWorkspaceProviderFixture(t)
+	setUpWorkdirWorkflowFixture(t)
 
-	out, err := execRoot(t, "workflow", "show", "--json", "usesbroken")
-	if err == nil {
-		t.Fatalf("expected nonzero exit for --json output too; output:\n%s", out)
+	out, err := execRoot(t, "workflow", "show", "--json", "inworkdir")
+	if err != nil {
+		t.Fatalf("workflow show --json: %v; output:\n%s", err, out)
 	}
 	var detail service.WorkflowDetail
 	if jsonErr := json.Unmarshal([]byte(out), &detail); jsonErr != nil {
 		t.Fatalf("--json output is not valid JSON: %v; got:\n%s", jsonErr, out)
 	}
-	if detail.WorkspaceProviderError == "" {
-		t.Fatal("expected workspace_provider_error to be populated in JSON output")
+	if detail.Resource != "ticket" {
+		t.Errorf("resource = %q, want ticket", detail.Resource)
 	}
-	if !strings.Contains(detail.WorkspaceProviderError, "broken") {
-		t.Errorf("workspace_provider_error should name the failing definition; got %q", detail.WorkspaceProviderError)
+	if !strings.Contains(detail.Workdir, "nodes.checkout.outputs.dir") {
+		t.Errorf("workdir = %q, want it to spell the producing node output", detail.Workdir)
 	}
-	if !strings.Contains(detail.WorkspaceProviderError, "setup") {
-		t.Errorf("workspace_provider_error should name the setup diagnostic; got %q", detail.WorkspaceProviderError)
-	}
-	if len(detail.Nodes) != 1 || detail.Nodes[0].ID != "tmux" {
-		t.Errorf("expected the rest of the workflow detail to be preserved; got nodes=%+v", detail.Nodes)
+	if len(detail.Nodes) != 1 || detail.Nodes[0].ID != "checkout" {
+		t.Errorf("nodes = %+v, want the one checkout node", detail.Nodes)
 	}
 }
 

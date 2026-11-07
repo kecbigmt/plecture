@@ -2,7 +2,9 @@ package service
 
 import (
 	"context"
+	"errors"
 	"fmt"
+	"log/slog"
 	"os"
 	"strings"
 	"time"
@@ -11,6 +13,7 @@ import (
 	"github.com/kecbigmt/plecture/app/internal/domain"
 	"github.com/kecbigmt/plecture/app/internal/effect"
 	"github.com/kecbigmt/plecture/app/internal/lang"
+	"github.com/kecbigmt/plecture/app/internal/publicoutput"
 	"github.com/kecbigmt/plecture/app/internal/state"
 	"github.com/kecbigmt/plecture/app/internal/task"
 	contract "github.com/kecbigmt/plecture/contracts/state"
@@ -21,31 +24,26 @@ func nameCollides(s *domain.Session, name string) bool {
 	return domain.TaskState(s, name) != nil
 }
 
-func runWorkflowSetup(prov config.WorkspaceProviderConfig, vars effect.WorkflowHookVars, session *domain.Session, observer task.Observer) (map[string]any, error) {
-	merged := domain.MergedTasks(session)
-	outputs, err := task.RunWorkflowSetup(prov, vars, merged, observer)
-	if session.Nodes == nil {
-		session.Nodes = make(map[string]*contract.TaskState)
-	}
-	if st, ok := merged[contract.WorkflowPseudoNodeID]; ok {
-		session.Nodes[contract.WorkflowPseudoNodeID] = st
-	}
-	return outputs, err
-}
-
 // A --name dynamic instance may legally occupy a node's id before that node
 // is ever produced (nameCollides only checks existing state), so runNodeSetup
 // excludes any such id from ordered before running or writing back setup
 // results — its merged entry is really that instance's record, not a node's.
-func runNodeSetup(ctx context.Context, ordered []task.Resolved, vars task.SessionVars, session *domain.Session, observer task.Observer) error {
+func runNodeSetup(ctx context.Context, cfg *config.Config, store *state.Store, ordered []task.Resolved, vars task.SessionVars, session *domain.Session, observer task.Observer) (map[string]*contract.Resource, error) {
 	nodesOnly := make([]task.Resolved, 0, len(ordered))
+	previous := make(map[string]time.Time, len(ordered))
 	for _, r := range ordered {
 		if session.Tasks[r.NodeID] == nil {
 			nodesOnly = append(nodesOnly, r)
+			if st := session.Nodes[r.NodeID]; st != nil && st.Status == contract.TaskStatusProduced {
+				previous[r.NodeID] = st.SetupAt
+			}
 		}
 	}
 	merged := domain.MergedTasks(session)
-	err := task.RunSetup(ctx, nodesOnly, vars, merged, observer)
+	if observer == nil {
+		observer = noopTaskObserver{}
+	}
+	err := task.RunSetup(ctx, nodesOnly, vars, merged, nodeSubscriptionReleaseObserver{Observer: observer, cfg: cfg, store: store, sessionName: session.Name})
 	if session.Nodes == nil {
 		session.Nodes = make(map[string]*contract.TaskState)
 	}
@@ -54,18 +52,69 @@ func runNodeSetup(ctx context.Context, ordered []task.Resolved, vars task.Sessio
 			session.Nodes[r.NodeID] = st
 		}
 	}
-	return err
+	wired := make(map[string]*contract.Resource)
+	errs := []error{err}
+	for _, r := range nodesOnly {
+		st := session.Nodes[r.NodeID]
+		if st == nil || st.Status != contract.TaskStatusProduced || r.Subscription == "" {
+			continue
+		}
+		resolvedNow := st.Subscription == nil
+		if resolvedNow {
+			identifier, ok := st.Outputs[r.Subscription].(string)
+			if !ok || strings.TrimSpace(identifier) == "" {
+				errs = append(errs, fmt.Errorf("node %q subscription output %q must be a non-empty resource ID", r.NodeID, r.Subscription))
+				continue
+			}
+			resource, boundErr := boundResource(cfg, store, identifier)
+			if boundErr != nil {
+				errs = append(errs, fmt.Errorf("node %q subscription: %w", r.NodeID, boundErr))
+				continue
+			}
+			st.Subscription = resource
+		}
+		// A subscription that failed to resolve on an earlier pass was never
+		// wired, even though the node's setup did not run again.
+		if resolvedNow || st.SetupAt != previous[r.NodeID] {
+			wired[r.NodeID] = st.Subscription
+		}
+	}
+	return wired, errors.Join(errs...)
 }
 
-func runTaskCleanup(ctx context.Context, ordered []task.Resolved, vars task.SessionVars, session *domain.Session, observer task.Observer) error {
-	return task.RunCleanup(ctx, ordered, vars, domain.MergedTasks(session), observer)
+func runTaskCleanup(ctx context.Context, cfg *config.Config, store *state.Store, ordered []task.Resolved, vars task.SessionVars, session *domain.Session, observer task.Observer) error {
+	before := make(map[string]bool)
+	for _, r := range ordered {
+		if st := session.Nodes[r.NodeID]; st != nil && st.Status != contract.TaskStatusCleaned {
+			before[r.NodeID] = true
+		}
+	}
+	err := task.RunCleanup(ctx, ordered, vars, domain.MergedTasks(session), observer)
+	released := make(map[string]*contract.TaskState)
+	for id := range before {
+		if st := session.Nodes[id]; st != nil && st.Status == contract.TaskStatusCleaned && st.Subscription != nil {
+			released[id] = st
+		}
+	}
+	if releaseErr := releaseNodeSubscriptions(cfg, store, session.Name, released); releaseErr != nil && err == nil {
+		err = releaseErr
+	}
+	return err
 }
 
 // mergeTasks persists Nodes/Tasks by overlay under the state lock rather
 // than a blind Put, so a nested `plect task setup` subprocess's disk-only
 // write during this call's own (unlocked) setup pass survives.
 func mergeTasks(store *state.Store, sessionName string, session *domain.Session) error {
-	if err := store.Update(sessionName, func(s *domain.Session) error {
+	return mergeTasksWithSubscriptions(nil, store, sessionName, session, nil)
+}
+
+func mergeTasksWithSubscriptions(cfg *config.Config, store *state.Store, sessionName string, session *domain.Session, subscriptions map[string]*contract.Resource) error {
+	var resources []contract.Resource
+	for _, resource := range distinctResources(subscriptions) {
+		resources = append(resources, *resource)
+	}
+	if err := store.UpdateWithSubscriptionRetries(sessionName, func(s *domain.Session) error {
 		if s.Nodes == nil {
 			s.Nodes = make(map[string]*contract.TaskState)
 		}
@@ -80,7 +129,7 @@ func mergeTasks(store *state.Store, sessionName string, session *domain.Session)
 		}
 		s.UpdatedAt = session.UpdatedAt
 		return nil
-	}); err != nil {
+	}, retrySubscribe, resources); err != nil {
 		return err
 	}
 	return refreshNodeIdentities(store, sessionName, session)
@@ -88,7 +137,6 @@ func mergeTasks(store *state.Store, sessionName string, session *domain.Session)
 
 func replaceRuntimeState(store *state.Store, sessionName string, session *domain.Session) error {
 	if err := store.Update(sessionName, func(s *domain.Session) error {
-		s.WorkspaceDirPath = session.WorkspaceDirPath
 		s.Nodes = session.Nodes
 		s.Tasks = session.Tasks
 		s.Health = session.Health
@@ -189,15 +237,19 @@ func resolveParentSession(store *state.Store, sessionName, explicit string) (str
 // scope, e.g. a dynamic instance's own cleanup) — it feeds the terminal
 // "..."}} helper binding; every other field is plan-independent.
 func sessionVars(cfg *config.Config, s *domain.Session, plan *task.Plan) task.SessionVars {
+	publicOutputs, err := publicoutput.Declare(s)
+	if err != nil {
+		slog.Warn("public outputs not declared", "session", s.Name, "error", err)
+	}
 	return task.SessionVars{
-		Name:             s.Name,
-		ResourceID:       s.ResourceID,
-		ParentSession:    s.ParentSession,
-		WorkspaceDirPath: s.WorkspaceDirPath,
-		Branch:           domain.SessionBranch(s),
-		Inputs:           s.Inputs,
-		Plugins:          cfg.Plugins,
-		Terminal:         terminalBinding(plan, s),
+		PublicOutputs: publicOutputs,
+		Name:          s.Name,
+		ResourceID:    domain.Locator(s.Resource),
+		Tag:           s.Tag,
+		ParentSession: s.ParentSession,
+		Inputs:        s.Inputs,
+		Plugins:       cfg.Plugins,
+		Terminal:      terminalBinding(plan, s),
 	}
 }
 
@@ -217,12 +269,14 @@ func terminalBinding(plan *task.Plan, s *domain.Session) *task.TerminalBinding {
 		return nil
 	}
 	outputs := map[string]any{}
+	dir := ""
 	if st, ok := s.Nodes[t.NodeID]; ok && st != nil {
 		if self := effect.TerminalSelf(t.Layers, st); self != nil {
 			outputs = self
 		}
+		dir = st.Directory
 	}
-	return &task.TerminalBinding{Ops: t.Terminal, Outputs: outputs, SourcePath: t.SourcePath, From: t.From}
+	return &task.TerminalBinding{Ops: t.Terminal, Outputs: outputs, Dir: dir, SourcePath: t.SourcePath, From: t.From}
 }
 
 func inputsOnExistingSessionMessage() string {
@@ -234,10 +288,10 @@ func inputsOnExistingSessionMessage() string {
 // for the legacy inline-tasks path. nil is normalized to `{}` only when a
 // schema is declared, so required-field configs fail fast instead of silently
 // accepting `{}`.
-func resolveSessionInputs(cfg *config.Config, workspaceDirPath, workflowName string, raw map[string]any) (map[string]any, *Error) {
+func resolveSessionInputs(cfg *config.Config, projectRoot, workflowName string, raw map[string]any) (map[string]any, *Error) {
 	inline, file, sourceID := cfg.InputsSchema, cfg.ResolvedInputsSchemaPath(), "plect:config:inputs"
 	if workflowName != "" {
-		workflows, err := cfg.LoadWorkflows(workspaceDirPath)
+		workflows, err := cfg.LoadWorkflows(projectRoot)
 		if err != nil {
 			return nil, &Error{Code: ErrExecutionFailed, Message: fmt.Sprintf("load workflows: %v", err)}
 		}
@@ -276,21 +330,7 @@ func hasIncompleteSessionTask(cfg *config.Config, session *domain.Session) bool 
 	if session.Workflow != "" && session.WorkflowRevision == "" {
 		return true
 	}
-	if revision, ok, err := config.RevisionForSession(session); err == nil && ok && revision.WorkspaceCapturePending {
-		return true
-	}
-	// A workspace-provider-backed workflow needs its pseudo-node produced
-	// too — a failed/absent setup is exactly the partial-create state to
-	// recover.
-	if wf, err := cfg.ResolveSessionWorkflow(session); err == nil {
-		if wf != nil && wf.WorkspaceProvider != "" {
-			st, ok := session.Nodes[contract.WorkflowPseudoNodeID]
-			if !ok || st == nil || st.Status != contract.TaskStatusProduced {
-				return true
-			}
-		}
-	}
-	plan, err := buildPlanForSession(cfg, session.WorkspaceDirPath, session)
+	plan, err := buildPlanForSession(cfg, session)
 	if err != nil || plan == nil {
 		return false
 	}
@@ -306,7 +346,7 @@ func hasIncompleteSessionTask(cfg *config.Config, session *domain.Session) bool 
 // loadSessionWorkflow reloads the workflow a session is frozen to, for a
 // caller that has only the session in hand, not an already-loaded
 // WorkflowFile.
-func loadSessionWorkflow(cfg *config.Config, workspaceDirPath string, session *domain.Session) (config.WorkflowFile, error) {
+func loadSessionWorkflow(cfg *config.Config, session *domain.Session) (config.WorkflowFile, error) {
 	if session == nil || session.Workflow == "" {
 		return config.WorkflowFile{}, nil
 	}
@@ -316,28 +356,21 @@ func loadSessionWorkflow(cfg *config.Config, workspaceDirPath string, session *d
 	return config.WorkflowFile{}, fmt.Errorf("session %q has no stored workflow revision", session.Name)
 }
 
-// resolveWorkspaceProviderInputs validates the workflow's
-// `[workspace_provider_inputs]` against the workspace provider's own
-// `[inputs_schema]`. A provider that declares no schema accepts no inputs at
-// all: silently ignoring a key the author never declared would let a typo'd
-// parameter read as configured.
-func resolveWorkspaceProviderInputs(prov config.WorkspaceProviderConfig, wf config.WorkflowFile) (map[string]any, error) {
-	schema, err := lang.CompileSchema(prov.InputsSchema, prov.ResolvedInputsSchemaPath(), "plect:workspace:"+prov.ID+":inputs")
+func workdirProducer(cfg *config.Config, session *domain.Session) string {
+	wf, err := loadSessionWorkflow(cfg, session)
+	if err != nil || wf.Workdir == nil {
+		return ""
+	}
+	return wf.Workdir.Node
+}
+
+// sessionWorkdir evaluates the directory the session's workflow declares as its
+// `workdir`, against the outputs its producer node recorded. A workflow that
+// declares none has no directory, reported as "".
+func sessionWorkdir(cfg *config.Config, session *domain.Session) (string, error) {
+	wf, err := loadSessionWorkflow(cfg, session)
 	if err != nil {
-		return nil, fmt.Errorf("workspace provider %q inputs schema: %w", prov.ID, err)
+		return "", err
 	}
-	if schema == nil {
-		if len(wf.WorkspaceProviderInputs) > 0 {
-			return nil, fmt.Errorf("workflow %q sets workspace_provider_inputs but workspace provider %q declares no inputs_schema", wf.ID, prov.ID)
-		}
-		return nil, nil
-	}
-	value := make(map[string]any, len(wf.WorkspaceProviderInputs))
-	for k, v := range wf.WorkspaceProviderInputs {
-		value[k] = v
-	}
-	if vErr := schema.Validate(value); vErr != nil {
-		return nil, fmt.Errorf("workflow %q workspace_provider_inputs: %s", wf.ID, task.DescribeValidationError(schema, vErr))
-	}
-	return value, nil
+	return task.WorkdirOf(wf.Workdir, session.Nodes)
 }

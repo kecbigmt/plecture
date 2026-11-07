@@ -16,7 +16,7 @@ import (
 // keeps its own task definition even though the current workflow no longer
 // declares a node for it, so its cleanup still resolves normally.
 func TestDestroy_ReleasesNodeRemovedFromWorkflow(t *testing.T) {
-	cfg := writeWorkflowFixture(t, t.TempDir(), "coding",
+	cfg := writeWorkflowFixture(t, "coding",
 		[]taskFixture{
 			{id: "kept", scope: "run", setup: `echo '{}'`, cleanup: "true"},
 			{id: "retired", scope: "run", cleanup: "true"},
@@ -48,7 +48,7 @@ func TestDestroy_ReleasesNodeRemovedFromWorkflow(t *testing.T) {
 // above. --force is the operator's explicit discard and is not covered
 // here (see TestDestroy_ForceContinuesOnCleanupError).
 func TestDestroy_ReportsAndLeavesUnreleasedANodeWithNoResolvableDefinition(t *testing.T) {
-	cfg := writeWorkflowFixture(t, t.TempDir(), "coding",
+	cfg := writeWorkflowFixture(t, "coding",
 		[]taskFixture{{id: "kept", scope: "run", setup: `echo '{}'`, cleanup: "true"}},
 		[]nodeFixture{{id: "kept"}},
 	)
@@ -73,7 +73,7 @@ func TestDestroy_ReportsAndLeavesUnreleasedANodeWithNoResolvableDefinition(t *te
 
 // `plect down`'s counterpart: session-scoped state must survive.
 func TestDown_ReleasesRunScopedNodeRemovedFromWorkflow(t *testing.T) {
-	cfg := writeWorkflowFixture(t, t.TempDir(), "coding",
+	cfg := writeWorkflowFixture(t, "coding",
 		[]taskFixture{
 			{id: "review", scope: "session", setup: `echo '{}'`, cleanup: "true"},
 			{id: "retired", scope: "run", cleanup: "true"},
@@ -111,7 +111,7 @@ func TestUp_FailedSetupCanStillBeDestroyedAfterARestart(t *testing.T) {
 		t.Skip("bash not available")
 	}
 	cleanupLog := filepath.Join(t.TempDir(), "cleanup.log")
-	cfg := writeWorkflowFixture(t, t.TempDir(), "coding",
+	cfg := writeWorkflowFixture(t, "coding",
 		[]taskFixture{{
 			id:      "flaky",
 			scope:   "run",
@@ -147,7 +147,7 @@ func TestUp_FailedSetupCanStillBeDestroyedAfterARestart(t *testing.T) {
 // Nothing recorded means nothing to tear down, so --force is enough without
 // a --workflow recreate.
 func TestDestroy_ForceRemovesStubSessionWithNoWorkflowAndNoExecutions(t *testing.T) {
-	cfg := writeWorkflowFixture(t, t.TempDir(), "wf", nil, nil)
+	cfg := writeWorkflowFixture(t, "wf", nil, nil)
 	store := testStore(t)
 	if err := store.Put(&domain.Session{Name: "stub-1"}); err != nil {
 		t.Fatal(err)
@@ -163,7 +163,7 @@ func TestDestroy_ForceRemovesStubSessionWithNoWorkflowAndNoExecutions(t *testing
 
 // Same opt-in requirement as every other Destroy guard.
 func TestDestroy_WithoutForceStubSessionStillErrors(t *testing.T) {
-	cfg := writeWorkflowFixture(t, t.TempDir(), "wf", nil, nil)
+	cfg := writeWorkflowFixture(t, "wf", nil, nil)
 	store := testStore(t)
 	if err := store.Put(&domain.Session{Name: "stub-1"}); err != nil {
 		t.Fatal(err)
@@ -180,7 +180,7 @@ func TestDestroy_WithoutForceStubSessionStillErrors(t *testing.T) {
 // Real executions make this a broken state, not the nothing-to-tear-down
 // case above.
 func TestDestroy_WorkflowlessSessionWithExecutionsStillErrorsEvenUnderForce(t *testing.T) {
-	cfg := writeWorkflowFixture(t, t.TempDir(), "wf", nil, nil)
+	cfg := writeWorkflowFixture(t, "wf", nil, nil)
 	store := testStore(t)
 	seedSessionWithNodes(t, store, "broken-1", "acme", 1, "", map[string]*contract.TaskState{
 		"orphaned": {Scope: contract.TaskScopeRun, Status: contract.TaskStatusProduced, TaskID: "orphaned", Seq: 1, Outputs: map[string]any{}},
@@ -192,7 +192,7 @@ func TestDestroy_WorkflowlessSessionWithExecutionsStillErrorsEvenUnderForce(t *t
 }
 
 func TestUnifiedTeardownList_ReleasesNodeRemovedFromCurrentWorkflow(t *testing.T) {
-	cfg := writeWorkflowFixture(t, t.TempDir(), "wf",
+	cfg := writeWorkflowFixture(t, "wf",
 		[]taskFixture{{id: "kept", scope: "session", setup: "echo '{}'", cleanup: "true"}},
 		[]nodeFixture{{id: "kept"}},
 	)
@@ -228,7 +228,7 @@ func TestUnifiedTeardownList_ReleasesNodeRemovedFromCurrentWorkflow(t *testing.T
 // A node with no matching definition in its session revision remains
 // unresolved even when its execution is recorded.
 func TestUnifiedTeardownList_MarksNodeUnresolvedWhenCurrentDefinitionIsGone(t *testing.T) {
-	cfg := writeWorkflowFixture(t, t.TempDir(), "wf", nil, nil)
+	cfg := writeWorkflowFixture(t, "wf", nil, nil)
 	session := &domain.Session{
 		Workflow: "wf",
 		Nodes: map[string]*contract.TaskState{
@@ -248,7 +248,7 @@ func TestUnifiedTeardownList_MarksNodeUnresolvedWhenCurrentDefinitionIsGone(t *t
 // b's Seq is lower than its prerequisite a's, so RunCleanup's reverse pass
 // must still release b first; that requires a to come out before b here.
 func TestUnifiedTeardownList_OrdersByRecordedDependencyNotSeqAlone(t *testing.T) {
-	cfg := writeWorkflowFixture(t, t.TempDir(), "wf", nil, nil)
+	cfg := writeWorkflowFixture(t, "wf", nil, nil)
 	session := &domain.Session{
 		Workflow: "wf",
 		Nodes: map[string]*contract.TaskState{

@@ -75,7 +75,7 @@ func TestUp_RecordsNodeResultForProducedNode(t *testing.T) {
 	}
 	store := testStore(t)
 	sessionName := "session1"
-	cfg := writeWorkflowFixture(t, t.TempDir(), "default",
+	cfg := writeWorkflowFixture(t, "default",
 		[]taskFixture{{id: "agent", scope: "run", setup: `echo '{}'`}},
 		[]nodeFixture{{id: "agent"}},
 	)
@@ -107,7 +107,7 @@ func TestUp_RecordsNodeResultForFailedSetup(t *testing.T) {
 	}
 	store := testStore(t)
 	sessionName := "session1"
-	cfg := writeWorkflowFixture(t, t.TempDir(), "default",
+	cfg := writeWorkflowFixture(t, "default",
 		[]taskFixture{{id: "agent", scope: "run", setup: `echo boom 1>&2; exit 1`}},
 		[]nodeFixture{{id: "agent"}},
 	)
@@ -136,7 +136,7 @@ func TestUp_RecordsNodeResultForAliveSkip(t *testing.T) {
 	}
 	store := testStore(t)
 	sessionName := "session1"
-	cfg := writeWorkflowFixture(t, t.TempDir(), "default",
+	cfg := writeWorkflowFixture(t, "default",
 		[]taskFixture{{id: "agent", scope: "run", setup: `echo '{}'`, alive: "true"}},
 		[]nodeFixture{{id: "agent"}},
 	)
@@ -163,7 +163,7 @@ func TestDown_RecordsNodeResultForCleanedNode(t *testing.T) {
 	}
 	store := testStore(t)
 	sessionName := "session1"
-	cfg := writeWorkflowFixture(t, t.TempDir(), "default",
+	cfg := writeWorkflowFixture(t, "default",
 		[]taskFixture{{id: "agent", scope: "run", setup: `echo '{}'`, cleanup: "true"}},
 		[]nodeFixture{{id: "agent"}},
 	)
@@ -191,7 +191,7 @@ func TestUp_PopulationMemberRepairRecordsNodeResultWithoutUpTransition(t *testin
 	store := testStore(t)
 	sessionName := "session1"
 	pane := filepath.Join(t.TempDir(), "pane")
-	cfg := writeWorkflowFixture(t, t.TempDir(), "default",
+	cfg := writeWorkflowFixture(t, "default",
 		[]taskFixture{
 			{id: "pane", scope: "run", setup: "touch " + pane + "; echo '{}'", alive: "test -f " + pane},
 		},
@@ -200,7 +200,7 @@ func TestUp_PopulationMemberRepairRecordsNodeResultWithoutUpTransition(t *testin
 	seedSessionWithNodes(t, store, sessionName, "acct", 1, "default", map[string]*contract.TaskState{
 		"pane": {Scope: contract.TaskScopeRun, Status: contract.TaskStatusProduced, Outputs: map[string]any{}},
 	})
-	if err := store.UpdatePopulation("default/pop", func(population *state.PopulationState) error {
+	if err := store.UpdatePopulation(contract.PopulationProvenance{Workflow: "default", Name: "pop"}, func(population *state.PopulationState) error {
 		population.Workflow = "default"
 		population.Name = "pop"
 		return nil

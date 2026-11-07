@@ -9,8 +9,8 @@ package dispatch
 import (
 	"github.com/kecbigmt/plecture/app/internal/config"
 	"github.com/kecbigmt/plecture/app/internal/domain"
+	"github.com/kecbigmt/plecture/app/internal/publicoutput"
 	"github.com/kecbigmt/plecture/app/internal/task"
-	contract "github.com/kecbigmt/plecture/contracts/state"
 )
 
 // channelInputs resolves an [[event.channel]]'s input wiring against the
@@ -32,16 +32,12 @@ func channelInputs(s *domain.Session, ch config.EventChannel, def config.Channel
 		}
 		deps[id] = out
 	}
-	var wfOutputs map[string]any
-	if st := s.Nodes[contract.WorkflowPseudoNodeID]; st != nil {
-		wfOutputs = st.Outputs
-	}
+	wfOutputs, _ := publicoutput.Of(s, publicoutput.ProducedOnly)
 	resolved, err := task.ResolveNodeInputs(ch.Inputs, deps, wfOutputs, task.SessionVars{
-		Name:             s.Name,
-		ResourceID:       s.ResourceID,
-		WorkspaceDirPath: s.WorkspaceDirPath,
-		Branch:           domain.SessionBranch(s),
-		Inputs:           s.Inputs,
+		Name:       s.Name,
+		ResourceID: domain.Locator(s.Resource),
+		Tag:        s.Tag,
+		Inputs:     s.Inputs,
 	})
 	if err != nil {
 		return nil, err

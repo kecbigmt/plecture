@@ -23,7 +23,7 @@ func writeFile(t *testing.T, path, content string) {
 
 func TestWorkflowPopulationViewsExposeResolvedPolicy(t *testing.T) {
 	views := workflowPopulationViews([]config.WorkflowPopulation{{
-		Name: "dispatch", ResourceObserver: "source", Query: map[string]any{"scope": "open"},
+		Name: "dispatch", Query: map[string]any{"scope": "open"},
 		Session: config.PopulationSession{
 			Task: "work", Inputs: map[string]*lang.Value{"resource": {Form: lang.FormFrom, From: "resource.id"}},
 			Destroy: config.PopulationDestroy{Force: true},
@@ -38,7 +38,7 @@ func TestWorkflowPopulationViewsExposeResolvedPolicy(t *testing.T) {
 	}
 }
 
-func setupWorkflowFixture(t *testing.T) (*config.Config, string) {
+func setupWorkflowFixture(t *testing.T) *config.Config {
 	t.Helper()
 	tmpHome := t.TempDir()
 	t.Setenv("HOME", tmpHome)
@@ -64,6 +64,7 @@ type = "noop"
 	writeFile(t, filepath.Join(globalDir, "workflows", "coding.toml"), `
 [coding]
 kind = "workflow"
+resource = "issue"
 name        = "Coding agent"
 description = "Spawn tmux + agent"
 
@@ -79,23 +80,20 @@ uses = "tmux"
 	writeFile(t, filepath.Join(globalDir, "workflows", "bare.toml"), `
 [bare]
 kind = "workflow"
+resource = "issue"
 [[bare.nodes]]
 uses = "tmux"
 `)
-	workdirDir := filepath.Join(tmpHome, "workdirs", "session")
-	if err := os.MkdirAll(workdirDir, 0o755); err != nil {
-		t.Fatal(err)
-	}
 	cfg, err := config.Load()
 	if err != nil {
 		t.Fatal(err)
 	}
-	return cfg, workdirDir
+	return cfg
 }
 
 func TestWorkflowList_ReturnsSortedSummaries(t *testing.T) {
-	cfg, workdirDir := setupWorkflowFixture(t)
-	got, err := WorkflowList(cfg, workdirDir)
+	cfg := setupWorkflowFixture(t)
+	got, err := WorkflowList(cfg, "")
 	if err != nil {
 		t.Fatalf("WorkflowList: %v", err)
 	}
@@ -114,8 +112,8 @@ func TestWorkflowList_ReturnsSortedSummaries(t *testing.T) {
 }
 
 func TestWorkflowShow_ReturnsCompiledDAG(t *testing.T) {
-	cfg, workdirDir := setupWorkflowFixture(t)
-	got, err := WorkflowShow(cfg, workdirDir, "coding")
+	cfg := setupWorkflowFixture(t)
+	got, err := WorkflowShow(cfg, "", "coding")
 	if err != nil {
 		t.Fatalf("WorkflowShow: %v", err)
 	}
@@ -127,63 +125,6 @@ func TestWorkflowShow_ReturnsCompiledDAG(t *testing.T) {
 	}
 	if len(got.Nodes) != 1 || got.Nodes[0].ID != "tmux" || got.Nodes[0].Uses != "tmux" {
 		t.Errorf("nodes mismatch: %+v", got.Nodes)
-	}
-}
-
-func TestWorkflowShow_WorkspaceProviderLoadErrorIsSurfaced(t *testing.T) {
-	tmpHome := t.TempDir()
-	t.Setenv("HOME", tmpHome)
-	globalDir := filepath.Join(tmpHome, ".config", "plect")
-	if err := os.MkdirAll(globalDir, 0o755); err != nil {
-		t.Fatal(err)
-	}
-	if err := os.WriteFile(filepath.Join(globalDir, "config.toml"), []byte("schema_version = 2\n"), 0o644); err != nil {
-		t.Fatal(err)
-	}
-	writeFile(t, filepath.Join(globalDir, "tasks", "tmux.toml"), `
-[tmux]
-kind  = "effect"
-scope = "run"
-
-[tmux.setup]
-type   = "shell"
-script = "echo '{}'"
-
-[tmux.health.alive]
-type = "noop"
-`)
-	// `setup` is required for a workspace provider; omitting it fails the load.
-	writeFile(t, filepath.Join(globalDir, "workspaces", "broken.toml"), `
-[broken]
-kind = "workspace_provider"
-`)
-	writeFile(t, filepath.Join(globalDir, "workflows", "usesbroken.toml"), `
-[usesbroken]
-kind = "workflow"
-workspace_provider = "broken"
-
-[[usesbroken.nodes]]
-uses = "tmux"
-`)
-	cfg, err := config.Load()
-	if err != nil {
-		t.Fatal(err)
-	}
-	got, err := WorkflowShow(cfg, filepath.Join(tmpHome, "workdirs", "session"), "usesbroken")
-	if err != nil {
-		t.Fatalf("WorkflowShow should still return a partial result, got error: %v", err)
-	}
-	if got.WorkspaceProviderInfo != nil {
-		t.Errorf("expected no resolved workspace provider info, got %+v", got.WorkspaceProviderInfo)
-	}
-	if got.WorkspaceProviderError == "" {
-		t.Fatal("expected WorkspaceProviderError to be populated")
-	}
-	if !strings.Contains(got.WorkspaceProviderError, "setup") {
-		t.Errorf("error should name the missing field: %q", got.WorkspaceProviderError)
-	}
-	if len(got.Nodes) != 1 {
-		t.Errorf("expected the rest of the workflow to still render: %+v", got.Nodes)
 	}
 }
 
@@ -222,6 +163,7 @@ path = { type = "string", required = true }
 	writeFile(t, filepath.Join(globalDir, "workflows", "withchan.toml"), `
 [withchan]
 kind = "workflow"
+resource = "issue"
 [[withchan.nodes]]
 uses = "tmux"
 
@@ -235,7 +177,7 @@ include     = ["plect.instruction", "github.*"]
 	if err != nil {
 		t.Fatal(err)
 	}
-	got, err := WorkflowShow(cfg, filepath.Join(tmpHome, "workdirs", "session"), "withchan")
+	got, err := WorkflowShow(cfg, "", "withchan")
 	if err != nil {
 		t.Fatalf("WorkflowShow: %v", err)
 	}
@@ -279,6 +221,7 @@ type = "noop"
 	writeFile(t, filepath.Join(globalDir, "workflows", "withchan.toml"), `
 [withchan]
 kind = "workflow"
+resource = "issue"
 [[withchan.nodes]]
 uses = "tmux"
 
@@ -292,7 +235,7 @@ include     = ["github.*"]
 	if err != nil {
 		t.Fatal(err)
 	}
-	_, err = WorkflowShow(cfg, filepath.Join(tmpHome, "workdirs", "session"), "withchan")
+	_, err = WorkflowShow(cfg, "", "withchan")
 	if err == nil {
 		t.Fatal("expected error when a channel definition fails to load")
 	}
@@ -329,6 +272,7 @@ type = "noop"
 	writeFile(t, filepath.Join(globalDir, "workflows", "withchan.toml"), `
 [withchan]
 kind = "workflow"
+resource = "issue"
 [[withchan.nodes]]
 uses = "tmux"
 
@@ -341,7 +285,7 @@ include = ["github.*"]
 	if err != nil {
 		t.Fatal(err)
 	}
-	_, err = WorkflowShow(cfg, filepath.Join(tmpHome, "workdirs", "session"), "withchan")
+	_, err = WorkflowShow(cfg, "", "withchan")
 	if err == nil {
 		t.Fatal("expected error for unknown channel definition")
 	}
@@ -355,8 +299,8 @@ include = ["github.*"]
 }
 
 func TestWorkflowShow_UnknownIDReturnsInvalidInput(t *testing.T) {
-	cfg, workdirDir := setupWorkflowFixture(t)
-	_, err := WorkflowShow(cfg, workdirDir, "missing")
+	cfg := setupWorkflowFixture(t)
+	_, err := WorkflowShow(cfg, "", "missing")
 	if err == nil {
 		t.Fatal("expected error for unknown workflow id")
 	}
@@ -373,7 +317,7 @@ func TestWorkflowShow_UnknownIDReturnsInvalidInput(t *testing.T) {
 // declares `tmux_session` (additionalProperties = false), and a workflow
 // whose node still wires it: a task/workflow drift that previously
 // surfaced only once `plect up` dispatched to that node.
-func setupDriftedInputFixture(t *testing.T, nodeInputs string) (*config.Config, string) {
+func setupDriftedInputFixture(t *testing.T, nodeInputs string) *config.Config {
 	t.Helper()
 	tmpHome := t.TempDir()
 	t.Setenv("HOME", tmpHome)
@@ -406,6 +350,7 @@ template = { type = "string" }
 	writeFile(t, filepath.Join(globalDir, "workflows", "coding.toml"), `
 [coding]
 kind = "workflow"
+resource = "issue"
 
 [[coding.nodes]]
 uses = "tmux"
@@ -414,12 +359,12 @@ uses = "tmux"
 	if err != nil {
 		t.Fatal(err)
 	}
-	return cfg, filepath.Join(tmpHome, "workdirs", "session")
+	return cfg
 }
 
 func TestWorkflowShow_NodeInputNotInSchemaReturnsInvalidInput(t *testing.T) {
-	cfg, workdirDir := setupDriftedInputFixture(t, `inputs.tmux_session = "main"`)
-	_, err := WorkflowShow(cfg, workdirDir, "coding")
+	cfg := setupDriftedInputFixture(t, `inputs.tmux_session = "main"`)
+	_, err := WorkflowShow(cfg, "", "coding")
 	if err == nil {
 		t.Fatal("expected error for a node input the task's inputs_schema no longer accepts")
 	}
@@ -438,8 +383,8 @@ func TestWorkflowShow_NodeInputNotInSchemaReturnsInvalidInput(t *testing.T) {
 }
 
 func TestWorkflowShow_CorrectedNodeInputsPass(t *testing.T) {
-	cfg, workdirDir := setupDriftedInputFixture(t, `inputs.template = "main"`)
-	got, err := WorkflowShow(cfg, workdirDir, "coding")
+	cfg := setupDriftedInputFixture(t, `inputs.template = "main"`)
+	got, err := WorkflowShow(cfg, "", "coding")
 	if err != nil {
 		t.Fatalf("WorkflowShow: %v", err)
 	}
@@ -456,6 +401,7 @@ func TestResolveSessionInputs_RejectsUnknownTask(t *testing.T) {
 	writeFile(t, filepath.Join(globalDir, "workflows", "claude.toml"), `
 [claude]
 kind = "workflow"
+resource = "issue"
 [claude.inputs_schema]
 type = "object"
 required = ["task"]
@@ -502,6 +448,7 @@ func TestResolveSessionInputs_MissingRequiredTaskListsChoices(t *testing.T) {
 	writeFile(t, filepath.Join(globalDir, "workflows", "claude.toml"), `
 [claude]
 kind = "workflow"
+resource = "issue"
 [claude.inputs_schema]
 type = "object"
 required = ["task"]

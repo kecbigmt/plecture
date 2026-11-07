@@ -21,7 +21,8 @@ func TestLoadResourceDefs_GlobalLayer(t *testing.T) {
 	baseDir := t.TempDir()
 	writeFile(t, filepath.Join(baseDir, "resources", "github.toml"), `
 [github]
-kind  = "resource_observer"
+kind  = "resource"
+name  = "fixture"
 match = '^https://github\.com/'
 `+observerObserveHook)
 	cfg := &Config{BaseDir: baseDir}
@@ -48,7 +49,8 @@ func TestLoadResourceDefs_IDComesFromTheTableNotTheFilename(t *testing.T) {
 	baseDir := t.TempDir()
 	writeFile(t, filepath.Join(baseDir, "resources", "anything.toml"), `
 [issue]
-kind  = "resource_observer"
+kind  = "resource"
+name  = "fixture"
 match = '^https://github\.com/[^/]+/[^/]+/issues/'
 
 [issue.observe]
@@ -56,7 +58,8 @@ type    = "exec"
 command = "true"
 
 [pull]
-kind  = "resource_observer"
+kind  = "resource"
+name  = "fixture"
 match = '^https://github\.com/[^/]+/[^/]+/pull/'
 
 [pull.observe]
@@ -82,7 +85,8 @@ func TestLoadResourceDefs_GlobalOverridesPlugin(t *testing.T) {
 	baseDir := t.TempDir()
 	writeFile(t, filepath.Join(pluginDir, "config", "resources", "github.toml"), `
 [github]
-kind  = "resource_observer"
+kind  = "resource"
+name  = "fixture"
 match = '^x'
 
 [github.observe]
@@ -91,7 +95,8 @@ command = "plugin"
 `)
 	writeFile(t, filepath.Join(baseDir, "resources", "github.toml"), `
 [github]
-kind  = "resource_observer"
+kind  = "resource"
+name  = "fixture"
 match = '^x'
 
 [github.observe]
@@ -118,7 +123,8 @@ func TestLoadResourceDefs_TwoUnaddressablePluginLayersSameIDFailsLoud(t *testing
 	for _, dir := range []string{pluginA, pluginB} {
 		writeFile(t, filepath.Join(dir, "config", "resources", "github.toml"), `
 [github]
-kind  = "resource_observer"
+kind  = "resource"
+name  = "fixture"
 match = '^x'
 
 [github.observe]
@@ -142,17 +148,17 @@ func TestLoadResourceDefs_RejectedDeclarations(t *testing.T) {
 	}{
 		{
 			name: "match required",
-			body: "[broken]\nkind = \"resource_observer\"\n\n[broken.observe]\ntype = \"exec\"\ncommand = \"true\"\n",
+			body: "[broken]\nkind = \"resource\"\nname = \"fixture\"\n\n[broken.observe]\ntype = \"exec\"\ncommand = \"true\"\n",
 			want: "match",
 		},
 		{
 			name: "observe required",
-			body: "[broken]\nkind = \"resource_observer\"\nmatch = '^x'\n",
+			body: "[broken]\nkind = \"resource\"\nname = \"fixture\"\nmatch = '^x'\n",
 			want: "observe",
 		},
 		{
 			name: "match does not compile",
-			body: "[broken]\nkind = \"resource_observer\"\nmatch = '('\n\n[broken.observe]\ntype = \"exec\"\ncommand = \"true\"\n",
+			body: "[broken]\nkind = \"resource\"\nname = \"fixture\"\nmatch = '('\n\n[broken.observe]\ntype = \"exec\"\ncommand = \"true\"\n",
 			want: "match",
 		},
 		{
@@ -162,27 +168,27 @@ func TestLoadResourceDefs_RejectedDeclarations(t *testing.T) {
 		},
 		{
 			name: "a field outside the observer surface",
-			body: "[broken]\nkind = \"resource_observer\"\nmatch = '^x'\nexecution = \"environment\"\n\n[broken.observe]\ntype = \"exec\"\ncommand = \"true\"\n",
+			body: "[broken]\nkind = \"resource\"\nname = \"fixture\"\nmatch = '^x'\nexecution = \"environment\"\n\n[broken.observe]\ntype = \"exec\"\ncommand = \"true\"\n",
 			want: "execution",
 		},
 		{
 			name: "a root the observe surface does not offer",
-			body: "[broken]\nkind = \"resource_observer\"\nmatch = '^x'\n\n[broken.observe]\ntype = \"exec\"\ncommand = \"true\"\nargs = [{ from = \"session.name\" }]\n",
+			body: "[broken]\nkind = \"resource\"\nname = \"fixture\"\nmatch = '^x'\n\n[broken.observe]\ntype = \"exec\"\ncommand = \"true\"\nargs = [{ from = \"session.name\" }]\n",
 			want: "session.name",
 		},
 		{
 			name: "a root the finalize surface does not offer",
-			body: "[broken]\nkind = \"resource_observer\"\nmatch = '^x'\n\n[broken.observe]\ntype = \"exec\"\ncommand = \"true\"\n\n[broken.finalize]\ntype = \"exec\"\ncommand = \"true\"\nargs = [{ from = \"workspace.dir\" }]\n",
+			body: "[broken]\nkind = \"resource\"\nname = \"fixture\"\nmatch = '^x'\n\n[broken.observe]\ntype = \"exec\"\ncommand = \"true\"\n\n[broken.finalize]\ntype = \"exec\"\ncommand = \"true\"\nargs = [{ from = \"workspace.dir\" }]\n",
 			want: "workspace.dir",
 		},
 		{
 			name: "an interpolated shell script",
-			body: "[broken]\nkind = \"resource_observer\"\nmatch = '^x'\n\n[broken.observe]\ntype = \"shell\"\nscript = \"echo {{.ResourceID}}\\n\"\n",
+			body: "[broken]\nkind = \"resource\"\nname = \"fixture\"\nmatch = '^x'\n\n[broken.observe]\ntype = \"shell\"\nscript = \"echo {{.ResourceID}}\\n\"\n",
 			want: "bind",
 		},
 		{
 			name: "malformed resource inputs schema",
-			body: "[broken]\nkind = \"resource_observer\"\nmatch = '^x'\n\n[broken.observe]\ntype = \"exec\"\ncommand = \"true\"\n\n[broken.inputs_schema]\ntype = \"bogus\"\n",
+			body: "[broken]\nkind = \"resource\"\nname = \"fixture\"\nmatch = '^x'\n\n[broken.observe]\ntype = \"exec\"\ncommand = \"true\"\n\n[broken.inputs_schema]\ntype = \"bogus\"\n",
 			want: "inputs_schema",
 		},
 	}
@@ -211,7 +217,8 @@ func TestLoadResourceDefs_NotInWorkspaceDirCascade(t *testing.T) {
 	workspaceDirPath := filepath.Join(tmpHome, "workspace_dirs", "session")
 	writeFile(t, filepath.Join(workspaceDirPath, ".plect", "resources", "evil.toml"), `
 [evil]
-kind  = "resource_observer"
+kind  = "resource"
+name  = "fixture"
 match = '.*'
 
 [evil.observe]
@@ -236,7 +243,8 @@ func TestLoadResourceDefs_PluginOwnedBinRefStaysInsideItsPlugin(t *testing.T) {
 	pluginDir := t.TempDir()
 	writeFile(t, filepath.Join(pluginDir, "config", "resources", "github.toml"), `
 [github]
-kind  = "resource_observer"
+kind  = "resource"
+name  = "fixture"
 match = '^gh:'
 
 [github.observe]
@@ -255,7 +263,8 @@ bin  = "local/runtime/watcher"
 func TestLoadResourceDefs_SameLayerDuplicateIDAcrossFiles(t *testing.T) {
 	const body = `
 [same]
-kind  = "resource_observer"
+kind  = "resource"
+name  = "fixture"
 match = '^x'
 
 [same.observe]
@@ -292,7 +301,8 @@ func TestLoadResourceDefs_GlobalReplacingAPluginIDIsNotADuplicate(t *testing.T) 
 	baseDir := t.TempDir()
 	writeFile(t, filepath.Join(pluginDir, "config", "resources", "a.toml"), `
 [same]
-kind  = "resource_observer"
+kind  = "resource"
+name  = "fixture"
 match = '^x'
 
 [same.observe]
@@ -301,7 +311,8 @@ command = "plugin"
 `)
 	writeFile(t, filepath.Join(baseDir, "resources", "b.toml"), `
 [same]
-kind  = "resource_observer"
+kind  = "resource"
+name  = "fixture"
 match = '^x'
 
 [same.observe]
@@ -314,5 +325,191 @@ command = "global"
 	}
 	if got["same"].Observe.Command != "global" {
 		t.Errorf("Command = %q, want the global layer to win", got["same"].Observe.Command)
+	}
+}
+
+const forgeIssueResource = `
+[issue]
+kind  = "resource"
+match = '^https://forge\.example/(?P<project>[^/]+)/issues/(?P<number>\d+)$'
+name  = { expr = "match.project + '-issue-' + match.number" }
+
+[issue.observe]
+type    = "exec"
+command = "true"
+`
+
+func TestLoadResourceDefs_NameDerivesTheInstanceNameFromMatchCaptures(t *testing.T) {
+	baseDir := t.TempDir()
+	writeFile(t, filepath.Join(baseDir, "resources", "issue.toml"), forgeIssueResource)
+	got, err := (&Config{BaseDir: baseDir}).LoadResourceDefs()
+	if err != nil {
+		t.Fatal(err)
+	}
+	def, ok := got["issue"]
+	if !ok {
+		t.Fatalf("resource not loaded: %v", got)
+	}
+	name, matched, err := def.InstanceName("https://forge.example/acme/issues/42")
+	if err != nil || !matched || name != "acme-issue-42" {
+		t.Errorf("InstanceName = (%q, %v, %v), want (acme-issue-42, true, nil)", name, matched, err)
+	}
+	if _, matched, err := def.InstanceName("https://forge.example/acme/pulls/42"); err != nil || matched {
+		t.Errorf("an id the match does not recognize = (matched %v, err %v), want unmatched and no error", matched, err)
+	}
+}
+
+func TestLoadResourceDefs_NameIsRequired(t *testing.T) {
+	baseDir := t.TempDir()
+	writeFile(t, filepath.Join(baseDir, "resources", "issue.toml"), `
+[issue]
+kind  = "resource"
+match = '^https://forge\.example/'
+
+[issue.observe]
+type    = "exec"
+command = "true"
+`)
+	_, err := (&Config{BaseDir: baseDir}).LoadResourceDefs()
+	if err == nil || !strings.Contains(err.Error(), "`name` is required") {
+		t.Fatalf("error = %v, want a load error saying `name` is required", err)
+	}
+}
+
+func TestLoadResourceDefs_NameMayNotOutrunItsCaptures(t *testing.T) {
+	baseDir := t.TempDir()
+	writeFile(t, filepath.Join(baseDir, "resources", "issue.toml"), `
+[issue]
+kind  = "resource"
+match = '^https://forge\.example/(?P<number>\d+)$'
+name  = { from = "match.project" }
+
+[issue.observe]
+type    = "exec"
+command = "true"
+`)
+	_, err := (&Config{BaseDir: baseDir}).LoadResourceDefs()
+	if err == nil || !strings.Contains(err.Error(), "match.project") {
+		t.Fatalf("error = %v, want a load error naming match.project", err)
+	}
+}
+
+func TestLoadResourceDefs_RetiredKindPointsAtTheMigrationGuide(t *testing.T) {
+	baseDir := t.TempDir()
+	writeFile(t, filepath.Join(baseDir, "resources", "issue.toml"), `
+[issue]
+kind  = "resource_observer"
+match = '^https://forge\.example/'
+
+[issue.observe]
+type    = "exec"
+command = "true"
+`)
+	_, err := (&Config{BaseDir: baseDir}).LoadResourceDefs()
+	if err == nil || !strings.Contains(err.Error(), "docs/migrations/resource-kind-migration.md") {
+		t.Fatalf("error = %v, want a load error pointing at the migration guide", err)
+	}
+}
+
+// A task document's resource must be a resource declaration: pointing it at
+// another kind is rejected when the config loads, not when an instance binds.
+func TestValidateTaskDocuments_ResourceNamesAResourceDeclaration(t *testing.T) {
+	tests := []struct {
+		name     string
+		resource string
+		wantErr  string
+	}{
+		{name: "a resource declaration", resource: "issue"},
+		{name: "a declaration of another kind", resource: "other", wantErr: "KIND-MISMATCH"},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			base := t.TempDir()
+			writeFile(t, filepath.Join(base, "resources", "issue.toml"), forgeIssueResource)
+			writeFile(t, filepath.Join(base, "tasks", "other.toml"), `
+[other]
+kind         = "task"
+resource     = "issue"
+instructions = [{ text = "Other." }]
+`)
+			writeFile(t, filepath.Join(base, "tasks", "work.toml"), fmt.Sprintf(`
+[work]
+kind         = "task"
+resource     = %q
+instructions = [{ text = "Resolve {{ resource.id }}." }]
+`, tc.resource))
+			cfg := &Config{BaseDir: base}
+			docs, resources := loadDocsAndObservers(t, cfg)
+			if got := docs["work"].Resource; got != tc.resource {
+				t.Errorf("Resource = %q, want %q", got, tc.resource)
+			}
+			err := cfg.ValidateTaskDocuments(docs, resources, nil)
+			if tc.wantErr == "" {
+				if err != nil {
+					t.Fatal(err)
+				}
+				return
+			}
+			if err == nil || !strings.Contains(err.Error(), tc.wantErr) {
+				t.Fatalf("error = %v, want %s", err, tc.wantErr)
+			}
+		})
+	}
+}
+
+func TestWorkflowRevisionBodyRecordsResourceDeclarationsInTheNewForm(t *testing.T) {
+	base := t.TempDir()
+	writeFile(t, filepath.Join(base, "resources", "issue.toml"), forgeIssueResource)
+	writeFile(t, filepath.Join(base, "tasks", "work.toml"), `
+[work]
+kind         = "task"
+resource     = "issue"
+instructions = [{ text = "Resolve {{ resource.id }}." }]
+`)
+	docs, err := (&Config{BaseDir: base}).LoadTaskDocuments("")
+	if err != nil {
+		t.Fatal(err)
+	}
+	body, _, err := WorkflowRevision{Workflow: WorkflowFile{ID: "work"}, Tasks: docs}.CanonicalBody()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(strings.ToLower(string(body)), "resource_observer") || strings.Contains(string(body), "ResourceObserver") {
+		t.Errorf("revision body still records the retired field: %s", body)
+	}
+	if !strings.Contains(string(body), `"Resource":"issue"`) {
+		t.Errorf("revision body does not record the task's resource: %s", body)
+	}
+}
+
+// A resource's name fails with the resource's id, so the declaration an
+// author must fix is named, whichever way the derivation broke.
+func TestResourceDefInstanceNameFailurePathsNameTheResource(t *testing.T) {
+	tests := []struct {
+		name  string
+		match string
+		value map[string]any
+		id    string
+	}{
+		{name: "a match that does not compile", match: `^(`, value: map[string]any{"from": "match.n"}, id: "x"},
+		{name: "a name reading an undeclared capture", match: `^x/(?P<n>\d+)$`, value: map[string]any{"from": "match.other"}, id: "x/1"},
+		{name: "a name that evaluates to the empty string", match: `^x/(?P<n>\d*)$`, value: map[string]any{"from": "match.n"}, id: "x/"},
+		{name: "a name that evaluates to whitespace only", match: `^x/(?P<n>\s+)$`, value: map[string]any{"from": "match.n"}, id: "x/  "},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			name, err := lang.ParseValue(tc.value, lang.ClassData, lang.Position{File: "r.toml", Path: "res.name"})
+			if err != nil {
+				t.Fatal(err)
+			}
+			res := ResourceDef{ID: "res", Match: tc.match, Name: name}
+			got, matched, err := res.InstanceName(tc.id)
+			if err == nil || !strings.Contains(err.Error(), `"res"`) {
+				t.Fatalf("error = %v, want one naming resource \"res\"", err)
+			}
+			if got != "" || matched {
+				t.Errorf("a failed resolution returned (%q, %v), want no name", got, matched)
+			}
+		})
 	}
 }

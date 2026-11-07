@@ -12,7 +12,7 @@ Durable structure of work (identity, lifecycle, relationships, observation,
 verification, handoff) belongs in `app/` and `contracts/` (core).
 
 A plugin is a distributable package: executable adapters (0+) + config
-resources (0+ — workspace providers, resources, tasks, workflows, templates,
+resources (0+ — effects, resources, tasks, workflows, templates,
 channels) + metadata. A plugin with only configuration and no executables
 is still a plugin. Commitments to a particular technology (a VCS, an agent
 CLI, a terminal multiplexer, a chat service) belong in `plugins/`, whether
@@ -88,7 +88,7 @@ prose naming.
 |---------------|----------------------------------------------------------------|
 | `app/`        | CLI + MCP server: session lifecycle, task DAG, state, dispatch |
 | `contracts/`  | Shared data contracts between the CLI and plugins               |
-| `plugins/`    | Distributable packages: executable adapters and config resources for a particular technology (channel relay, GitHub workspace provider and watcher, Slack adapter) |
+| `plugins/`    | Distributable packages: executable adapters and config resources for a particular technology (channel relay, GitHub worktree effect and watcher, Slack adapter) |
 | `deploy/`     | Deployment packaging: container images and their runtime contract (build, process supervision, persistence, first boot) — not a catalog plugin, not core |
 
 Core (`app/`, `contracts/*`) never imports `plugins/*`.
@@ -297,9 +297,11 @@ the breaking change — not as follow-up work.
 - Supersession is the only lifecycle fact recorded in ADR files. A
   superseding ADR declares YAML frontmatter
   `supersedes: <YYYY-MM-DD-slug>`, and the old ADR gets YAML frontmatter
-  `superseded_by: <YYYY-MM-DD-slug>`. That frontmatter edit is the only edit
-  permitted to an accepted ADR. A superseding ADR has a section titled
-  "Supersession scope", placed between Context and Decision, that lists only
+  `superseded_by: <YYYY-MM-DD-slug>`. An ADR that several later ADRs each
+  replace in part lists them all, with `superseded_by` as a YAML list.
+  Adding an entry to `superseded_by` is the only edit permitted to an accepted
+  ADR; removing or changing an entry is not. A superseding ADR has a section
+  titled "Supersession scope", placed between Context and Decision, that lists only
   the decisions of the superseded ADR it replaces, one bullet per decision
   citing the superseded ADR's heading; it does not enumerate what remains in
   force, because every decision not listed remains in force.

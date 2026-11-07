@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/kecbigmt/plecture/app/internal/domain"
+	"github.com/kecbigmt/plecture/app/internal/lang"
 	"github.com/kecbigmt/plecture/app/internal/service"
 	"github.com/kecbigmt/plecture/app/internal/task"
 	contract "github.com/kecbigmt/plecture/contracts/state"
@@ -173,7 +174,7 @@ func TestRenderStatus_LiveSession(t *testing.T) {
 	cmd := statusCmd
 	cmd.SetOut(&buf)
 	renderStatus(cmd, &service.StatusResult{
-		Identity: service.StatusIdentity{SessionName: "owner/repo-1", ResourceID: "https://github.com/owner/repo/issues/1", Workflow: "claude"},
+		Identity: service.StatusIdentity{SessionName: "owner/repo-1", Resource: testView("https://github.com/owner/repo/issues/1"), Workflow: "claude"},
 		Runtime:  service.StatusRuntime{Run: domain.RunUp, Health: domain.HealthHealthy},
 	})
 	out := buf.String()
@@ -208,7 +209,7 @@ func TestRenderStatus_DestroyedSession(t *testing.T) {
 	created := time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC)
 	destroyed := time.Date(2026, 1, 2, 0, 0, 0, 0, time.UTC)
 	renderStatus(cmd, &service.StatusResult{
-		Identity:    service.StatusIdentity{SessionName: "owner/repo-1", ResourceID: "id-1", CreatedAt: created},
+		Identity:    service.StatusIdentity{SessionName: "owner/repo-1", Resource: testView("id-1"), CreatedAt: created},
 		Destroyed:   true,
 		DestroyedAt: destroyed,
 	})
@@ -247,5 +248,26 @@ func TestRenderStatusWork_ObservationCarriesItsAge(t *testing.T) {
 	}
 	if !strings.Contains(out, "verdict_revision=sha1") {
 		t.Errorf("output does not carry what the instance holds about itself:\n%s", out)
+	}
+}
+
+func TestRenderStatus_RetiredRevisionNamesSpellingsAndProcedure(t *testing.T) {
+	var buf bytes.Buffer
+	cmd := statusCmd
+	cmd.SetOut(&buf)
+	renderStatus(cmd, &service.StatusResult{
+		Identity: service.StatusIdentity{SessionName: "s", Workflow: "work", Revision: "1a2b3c4d", RetiredSpellings: []string{"@workflow", "workspace_provider"}},
+		Runtime:  service.StatusRuntime{Run: domain.RunDown},
+	})
+	var line string
+	for _, l := range strings.Split(buf.String(), "\n") {
+		if strings.HasPrefix(l, "Revision:") {
+			line = l
+		}
+	}
+	for _, want := range []string{"1a2b3c4d", "retired dialect: @workflow, workspace_provider", "previous release", lang.WorkspaceProviderMigrationGuide} {
+		if !strings.Contains(line, want) {
+			t.Errorf("Revision line %q does not contain %q", line, want)
+		}
 	}
 }

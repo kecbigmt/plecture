@@ -6,4 +6,6 @@
 # host config now, so there is nothing here for them to invoke.
 
 [[goal_bootstrap]]
-inputs = { owner = "acme", assignees = '["user:acme"]' }
+inputs = { owner = "acme", workspace_dir = "/spy/orchestrator", assignees = '["user:acme"]' }
+
+[[goal_dir]]

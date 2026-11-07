@@ -10,18 +10,18 @@ import (
 )
 
 // RetryPopulationMember clears an operator-approved admission suspension.
-func RetryPopulationMember(store *state.Store, log *eventlog.Store, workflow, name, resource string, initialTaskID func() (string, error)) error {
-	key := workflow + "/" + name
+func RetryPopulationMember(store *state.Store, log *eventlog.Store, key contract.PopulationProvenance, resource string, initialTaskID func() (string, error)) error {
+	label := populationLabel(key)
 	population, err := store.Population(key)
 	if err != nil {
-		return fmt.Errorf("read population %q: %w", key, err)
+		return fmt.Errorf("read population %q: %w", label, err)
 	}
-	if population == nil || population.Members[resource] == nil {
-		return fmt.Errorf("population member %q not found in %q", resource, key)
+	memberKey, member := findMember(population, resource)
+	if member == nil {
+		return fmt.Errorf("population member %q not found in %q", resource, label)
 	}
-	member := population.Members[resource]
 	if member.Tombstoned {
-		return fmt.Errorf("population member %q in %q is tombstoned", resource, key)
+		return fmt.Errorf("population member %q in %q is tombstoned", resource, label)
 	}
 	if member.SessionName != "" {
 		session, err := store.GetE(member.SessionName)
@@ -34,7 +34,7 @@ func RetryPopulationMember(store *state.Store, log *eventlog.Store, workflow, na
 				if err != nil {
 					return err
 				}
-				if initial.Name != "initial" || initial.TaskID != taskID || initial.Resource != resource || initial.Status != contract.TaskStatusProduced {
+				if initial.Name != "initial" || initial.TaskID != taskID || !sameMemberResource(initial.Resource, member.Resource) || initial.Status != contract.TaskStatusProduced {
 					return fmt.Errorf("session %q still has initial task state; run `plect task cleanup initial --session %s` successfully before retrying", member.SessionName, member.SessionName)
 				}
 			}
@@ -43,12 +43,12 @@ func RetryPopulationMember(store *state.Store, log *eventlog.Store, workflow, na
 
 	session := member.SessionName
 	if err := store.UpdatePopulation(key, func(population *state.PopulationState) error {
-		current := population.Members[resource]
+		current := population.Members[memberKey]
 		if current == nil {
-			return fmt.Errorf("population member %q not found in %q", resource, key)
+			return fmt.Errorf("population member %q not found in %q", resource, label)
 		}
 		if current.Tombstoned {
-			return fmt.Errorf("population member %q in %q is tombstoned", resource, key)
+			return fmt.Errorf("population member %q in %q is tombstoned", resource, label)
 		}
 		clearAdmitRetry(current)
 		return nil
@@ -65,11 +65,32 @@ func RetryPopulationMember(store *state.Store, log *eventlog.Store, workflow, na
 		Direction:   event.Internal,
 		Summary:     "population member retry requested",
 		Metadata: map[string]string{
-			"workflow":   workflow,
-			"population": name,
-			"resource":   resource,
+			"workflow":   key.Workflow,
+			"population": key.Name,
+			"resource":   member.Resource.Locator,
 			"reason":     "operator_retry",
 		},
 	})
 	return nil
+}
+
+// findMember accepts a member's resource name or its locator, the two forms an
+// operator sees.
+func findMember(population *state.PopulationState, ref string) (string, *state.PopulationMember) {
+	if population == nil {
+		return "", nil
+	}
+	if member := population.Members[ref]; member != nil {
+		return ref, member
+	}
+	for name, member := range population.Members {
+		if member != nil && member.Resource.Locator == ref {
+			return name, member
+		}
+	}
+	return "", nil
+}
+
+func sameMemberResource(bound *contract.Resource, member contract.Resource) bool {
+	return bound != nil && bound.Name == member.Name
 }

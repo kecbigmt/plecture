@@ -2,12 +2,11 @@
 # reason: a query means is either selected or not; naming it twice is not a distinct selection.
 
 [bad_uses_duplicate]
-kind               = "workflow"
-workspace_provider = "query_provider"
+kind     = "workflow"
+resource = "query_source"
 
 [[bad_uses_duplicate.populations]]
 name              = "dispatch"
-resource_observer = "query_source"
 uses              = ["poll", "poll"]
 poll_every        = "5m"
 

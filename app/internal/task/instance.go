@@ -9,6 +9,7 @@ import (
 
 	"github.com/kecbigmt/plecture/app/internal/effect"
 	"github.com/kecbigmt/plecture/app/internal/lang"
+	"github.com/kecbigmt/plecture/app/internal/publicoutput"
 	contract "github.com/kecbigmt/plecture/contracts/state"
 )
 
@@ -84,10 +85,10 @@ type InstanceSetup struct {
 // Stderr is returned so the caller's observer can surface diagnostic output.
 //
 // inputs are the already-bound input values (the caller applies the
-// --input > workspace-provider/workflow outputs > session vars precedence).
-// nodes is the session's Nodes map, read only to expose the @workflow
-// pseudo-node's outputs to the setup template.
-func ExecuteTaskSetup(goCtx context.Context, r Resolved, inputs map[string]any, session SessionVars, nodes map[string]*contract.TaskState) (InstanceSetup, error) {
+// --input > workflow public outputs > session vars precedence).
+// nodes is the session's Nodes map, read only to evaluate the public outputs
+// the setup template sees as `workflow.outputs`.
+func ExecuteTaskSetup(goCtx context.Context, r Resolved, inputs map[string]any, session SessionVars, nodes map[string]*contract.TaskState, dir string) (InstanceSetup, error) {
 	if inputs == nil {
 		inputs = map[string]any{}
 	}
@@ -99,12 +100,12 @@ func ExecuteTaskSetup(goCtx context.Context, r Resolved, inputs map[string]any, 
 	ctx := RenderContext{
 		Self:       map[string]any{},
 		Inputs:     inputs,
-		Workflow:   workflowOutputs(nodes),
+		Workflow:   workflowOutputs(session, nodes, publicoutput.ProducedOnly),
 		Session:    session,
 		SourcePath: r.SourcePath,
 	}
 	if len(r.Layers) > 0 {
-		layers, stderr, err := effect.RunLayers(goCtx, r.Layers, chainHost(ctx, nil, r.Scope, r.NodeID), session.WorkspaceDirPath, inputs)
+		layers, stderr, err := effect.RunLayers(goCtx, r.Layers, chainHost(ctx, nil, r.Scope, r.NodeID), dir, inputs)
 		if err != nil {
 			return InstanceSetup{Layers: layers, Stderr: stderr}, err
 		}
@@ -125,7 +126,7 @@ func ExecuteTaskSetup(goCtx context.Context, r Resolved, inputs map[string]any, 
 		if resolveErr != nil {
 			return InstanceSetup{}, fmt.Errorf("setup: %w", resolveErr)
 		}
-		stdout, capturedStderr, runErr := resolved.Run(goCtx, session.WorkspaceDirPath)
+		stdout, capturedStderr, runErr := resolved.Run(goCtx, dir)
 		resolved.Close()
 		stderr = capturedStderr
 		if runErr != nil {

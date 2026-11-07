@@ -6,9 +6,9 @@ import (
 	"log/slog"
 
 	"github.com/kecbigmt/plecture/app/internal/config"
-	"github.com/kecbigmt/plecture/app/internal/domain"
 	"github.com/kecbigmt/plecture/app/internal/persistence"
 	"github.com/kecbigmt/plecture/app/internal/state"
+	contract "github.com/kecbigmt/plecture/contracts/state"
 )
 
 const (
@@ -20,28 +20,28 @@ func retryStore(store *state.Store) (*persistence.DB, error) {
 	return persistence.EnsureCurrentShared(context.Background(), persistence.PathIn(store.Dir()))
 }
 
-func queuePendingSubscribe(store *state.Store, sessionName, resourceID string) error {
+func queuePendingSubscribe(store *state.Store, sessionName string, resource contract.Resource) error {
 	db, err := retryStore(store)
 	if err != nil {
 		return err
 	}
-	return db.QueueSubscriptionRetry(context.Background(), sessionName, retrySubscribe, resourceID)
+	return db.QueueSubscriptionRetry(context.Background(), sessionName, retrySubscribe, resource)
 }
 
-func queuePendingUnsubscribe(store *state.Store, sessionName, resourceID string) error {
+func queuePendingUnsubscribe(store *state.Store, sessionName string, resource contract.Resource) error {
 	db, err := retryStore(store)
 	if err != nil {
 		return err
 	}
-	return db.QueueSubscriptionRetry(context.Background(), sessionName, retryUnsubscribe, resourceID)
+	return db.QueueSubscriptionRetry(context.Background(), sessionName, retryUnsubscribe, resource)
 }
 
-func queuePendingUnsubscribeForSessionID(store *state.Store, sessionID, resourceID string) error {
+func queuePendingUnsubscribeForSessionID(store *state.Store, sessionID string, resource contract.Resource) error {
 	db, err := retryStore(store)
 	if err != nil {
 		return err
 	}
-	return db.QueueSubscriptionRetryByID(context.Background(), sessionID, retryUnsubscribe, resourceID)
+	return db.QueueSubscriptionRetryByID(context.Background(), sessionID, retryUnsubscribe, resource)
 }
 
 func dequeuePendingDelivery(store *state.Store, retry persistence.SubscriptionRetry) error {
@@ -49,17 +49,38 @@ func dequeuePendingDelivery(store *state.Store, retry persistence.SubscriptionRe
 	if err != nil {
 		return err
 	}
-	return db.DeleteSubscriptionRetry(context.Background(), retry.SessionID, retry.Action, retry.ResourceID)
+	return db.DeleteSubscriptionRetry(context.Background(), retry.SessionID, retry.Action, retry.Resource.ID)
 }
 
-// flushPendingDeliveryLogged is TaskSetup's/TaskCleanup's/Destroy's own call
-// site for flushPendingDelivery, logging what it could not resolve since
-// none of them has a result field for an unrelated resource's retry failure.
+func dequeuePendingUnsubscribe(store *state.Store, sessionName string, resource contract.Resource) error {
+	db, err := retryStore(store)
+	if err != nil {
+		return err
+	}
+	return db.DeleteSubscriptionRetryForLiveSession(context.Background(), sessionName, retryUnsubscribe, resource.ID)
+}
+
+func dequeuePendingSubscribe(store *state.Store, sessionName string, resource contract.Resource) error {
+	if resource.ID == "" {
+		return nil
+	}
+	db, err := retryStore(store)
+	if err != nil {
+		return err
+	}
+	return db.DeleteSubscriptionRetryForLiveSession(context.Background(), sessionName, retrySubscribe, resource.ID)
+}
+
 func flushPendingDeliveryLogged(cfg *config.Config, store *state.Store, sessionName string) {
+	RetryPendingDelivery(cfg, store, sessionName)
+	sweepOrphanedPendingDeliveries(cfg, store)
+}
+
+// Sessions without task activity still need their pending subscriptions retried.
+func RetryPendingDelivery(cfg *config.Config, store *state.Store, sessionName string) {
 	for _, err := range flushPendingDelivery(cfg, store, sessionName) {
 		slog.Default().Warn("subscription retry flush failed", "session", sessionName, "error", err)
 	}
-	sweepOrphanedPendingDeliveries(cfg, store)
 }
 
 // sweepOrphanedPendingDeliveries handles retries owned by retained destroyed
@@ -90,11 +111,11 @@ func sweepOrphanedPendingDeliveries(cfg *config.Config, store *state.Store) {
 				sweepErr = fmt.Errorf("read replacement session: %w", err)
 				return
 			}
-			if fresh != nil && resourceStillNeededBySession(fresh, retry.ResourceID) {
+			if fresh != nil && resourceStillNeededBySession(cfg, fresh, retry.Resource) {
 				sweepErr = dequeuePendingDelivery(store, retry)
 				return
 			}
-			unsubscribed, err := unsubscribeIfWired(cfg, retry.Session, retry.ResourceID, "")
+			unsubscribed, err := unsubscribeIfWired(cfg, retry.Session, retry.Resource.Locator)
 			if err != nil || !unsubscribed {
 				sweepErr = err
 				return
@@ -110,9 +131,6 @@ func sweepOrphanedPendingDeliveries(cfg *config.Config, store *state.Store) {
 	}
 }
 
-// flushPendingDelivery retries every operation owned by sessionName's live
-// incarnation under its delivery lock. Ordinary activity, not a background
-// worker, drains live retries.
 func flushPendingDelivery(cfg *config.Config, store *state.Store, sessionName string) []error {
 	var errs []error
 	if lockErr := withDeliveryLock(store, sessionName, func() {
@@ -144,19 +162,19 @@ func flushOnePendingDelivery(cfg *config.Config, store *state.Store, retry persi
 	}
 	switch retry.Action {
 	case retrySubscribe:
-		if fresh == nil || !resourceStillNeededBySession(fresh, retry.ResourceID) {
+		if fresh == nil || !resourceStillNeededBySession(cfg, fresh, retry.Resource) {
 			return dequeuePendingDelivery(store, retry)
 		}
-		subscribed, err := subscribeIfWired(cfg, retry.Session, retry.ResourceID, domain.SessionBranch(fresh))
+		subscribed, err := subscribeIfWiredWithPolicy(cfg, retry.Session, retry.Resource.Locator, nodeSubscriptionNeededBySession(fresh, retry.Resource))
 		if err != nil || !subscribed {
 			return err
 		}
 		return dequeuePendingDelivery(store, retry)
 	case retryUnsubscribe:
-		if fresh != nil && resourceStillNeededBySession(fresh, retry.ResourceID) {
+		if fresh != nil && resourceStillNeededBySession(cfg, fresh, retry.Resource) {
 			return dequeuePendingDelivery(store, retry)
 		}
-		unsubscribed, err := unsubscribeIfWired(cfg, retry.Session, retry.ResourceID, domain.SessionBranch(fresh))
+		unsubscribed, err := unsubscribeIfWired(cfg, retry.Session, retry.Resource.Locator)
 		if err != nil || !unsubscribed {
 			return err
 		}

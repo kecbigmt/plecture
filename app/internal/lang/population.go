@@ -39,7 +39,7 @@ func (v Validation) validateObserverQuery(def *Definition, pos Position) error {
 		}
 	}
 	for _, means := range []string{"poll", "subscribe"} {
-		if err := v.action(query, means, surfaceObserverQuery, at); err != nil {
+		if err := v.action(query, means, surfaceResourceQuery, at); err != nil {
 			return err
 		}
 		if action, ok := query[means]; ok {
@@ -60,7 +60,7 @@ func validateQueryInputPaths(value any, schema map[string]any, pos Position) err
 			}
 		}
 		if expr, ok := node["expr"].(string); ok {
-			for _, path := range expressionPaths(expr, surfaceObserverQuery) {
+			for _, path := range expressionPaths(expr, surfaceResourceQuery) {
 				if err := validateQueryInputPath(path, schema, pos); err != nil {
 					return err
 				}
@@ -150,10 +150,14 @@ func (v Validation) validateWorkflowPopulations(def *Definition, pos Position) e
 	names := make(map[string]bool, len(entries))
 	for i, entry := range entries {
 		at := childPos(childPos(pos, "populations"), fmt.Sprintf("[%d]", i))
-		if err := rejectUnknownFields(entry, at, "name", "resource_observer", "query", "session", "uses", "poll_every", "expire_after", "auto_down", "auto_destroy"); err != nil {
+		if _, declared := entry["resource_observer"]; declared {
+			return newDiag(CodeFieldUnknown, LayerStructural, childPos(at, "resource_observer"),
+				"`resource_observer` is retired: a population uses its workflow's entry `resource`; see "+WorkspaceProviderMigrationGuide)
+		}
+		if err := rejectUnknownFields(entry, at, "name", "query", "session", "uses", "poll_every", "expire_after", "auto_down", "auto_destroy"); err != nil {
 			return err
 		}
-		for _, field := range []string{"name", "resource_observer", "query", "uses"} {
+		for _, field := range []string{"name", "query", "uses"} {
 			if _, ok := entry[field]; !ok {
 				return newDiag(CodeFieldRequired, LayerStructural, childPos(at, field),
 					fmt.Sprintf("a population declares `%s`", field))
@@ -175,9 +179,6 @@ func (v Validation) validateWorkflowPopulations(def *Definition, pos Position) e
 				fmt.Sprintf("population name %q is declared more than once in workflow %q", name, def.ID))
 		}
 		names[name] = true
-		if _, err := staticRef(entry["resource_observer"], childPos(at, "resource_observer").Path); err != nil {
-			return err
-		}
 		query, err := table(entry["query"], childPos(at, "query"))
 		if err != nil {
 			return err
@@ -207,17 +208,22 @@ func (v Validation) ValidatePopulationContracts(workflow *Definition, registry *
 	if err != nil || len(entries) == 0 {
 		return err
 	}
+	workflowPos := Position{File: workflow.File, Path: workflow.ID}
+	entryRef, ok := workflow.Body["resource"].(string)
+	if !ok {
+		return newDiag(CodeFieldRequired, LayerStructural, childPos(workflowPos, "resource"),
+			"a workflow with populations declares its entry `resource`")
+	}
+	observer, err := registry.ExpectKind(entryRef, v.From, KindResource, workflow.ID+".resource")
+	if err != nil {
+		return err
+	}
 	for i, entry := range entries {
 		at := Position{File: workflow.File, Path: fmt.Sprintf("%s.populations.[%d]", workflow.ID, i)}
-		observerRef := entry["resource_observer"].(string)
-		observer, err := registry.ExpectKind(observerRef, v.From, KindResourceObserver, at.Path+".resource_observer")
-		if err != nil {
-			return err
-		}
 		query, ok := observer.Body["query"].(map[string]any)
 		if !ok {
-			return newDiag(CodePopulationContract, LayerSemantic, childPos(at, "resource_observer"),
-				fmt.Sprintf("resource observer %q declares no query face", observerRef))
+			return newDiag(CodePopulationContract, LayerSemantic, childPos(workflowPos, "resource"),
+				fmt.Sprintf("entry resource %q declares no query face, so the workflow cannot declare a population", entryRef))
 		}
 		inputSchema, err := CompileInlineSchema(query["inputs_schema"].(map[string]any), "plect:population-query-inputs")
 		if err != nil {
@@ -225,7 +231,7 @@ func (v Validation) ValidatePopulationContracts(workflow *Definition, registry *
 		}
 		if err := inputSchema.Validate(entry["query"]); err != nil {
 			return newDiag(CodePopulationContract, LayerSemantic, childPos(at, "query"),
-				"population query parameters do not satisfy the observer query inputs_schema: "+err.Error())
+				"population query parameters do not satisfy the entry resource's query inputs_schema: "+err.Error())
 		}
 		if err := validatePopulationUsesContract(entry, query, at); err != nil {
 			return err
@@ -334,7 +340,7 @@ func validatePopulationUsesContract(entry, query map[string]any, at Position) er
 		means := item.(string)
 		if _, declared := query[means]; !declared {
 			return newDiag(CodePopulationContract, LayerSemantic, childPos(childPos(at, "uses"), fmt.Sprintf("[%d]", i)),
-				fmt.Sprintf("population %q selects %q, but its resource observer query declares no %s means", entry["name"], means, means))
+				fmt.Sprintf("population %q selects %q, but its resource query declares no %s means", entry["name"], means, means))
 		}
 	}
 	return nil
@@ -354,31 +360,17 @@ func parsePopulationDuration(value string) (time.Duration, error) {
 func (v Validation) validatePopulationSessionContracts(entry map[string]any, observer *Definition, query map[string]any, registry *Registry, at Position) error {
 	session, _ := entry["session"].(map[string]any)
 	if taskRef, ok := session["task"].(string); ok {
-		task, err := registry.ExpectKind(taskRef, v.From, KindTask, at.Path+".session.task")
+		taskObserver, err := v.taskDocumentResource(taskRef, registry, at.Path+".session.task")
 		if err != nil {
 			return err
 		}
-		taskValidation := Validation{From: registry.OwnerOf(task)}
-		chain, err := taskValidation.ExtendsChain(task, registry)
-		if err != nil {
-			return err
-		}
-		root := task
-		if len(chain) > 0 {
-			root = chain[0]
-		}
-		taskObserverRef, ok := root.Body["resource_observer"].(string)
-		if !ok {
+		if taskObserver == nil {
 			return newDiag(CodePopulationContract, LayerSemantic, childPos(at, "session.task"),
-				fmt.Sprintf("task %q declares no resource_observer", taskRef))
-		}
-		taskObserver, err := registry.ExpectKind(taskObserverRef, registry.OwnerOf(root), KindResourceObserver, root.ID+".resource_observer")
-		if err != nil {
-			return err
+				fmt.Sprintf("task %q declares no resource", taskRef))
 		}
 		if taskObserver != observer {
 			return newDiag(CodePopulationContract, LayerSemantic, childPos(at, "session.task"),
-				"the initial task and population must resolve to the same resource observer")
+				"the initial task and population must resolve to the same resource")
 		}
 	}
 	itemSchema := query["item_schema"].(map[string]any)
@@ -428,6 +420,10 @@ func (v Validation) validatePopulationSession(entry map[string]any, pos Position
 		if err != nil {
 			return err
 		}
+		if _, ok := destroy["inputs"]; ok {
+			return newDiag(CodeFieldUnknown, LayerStructural, childPos(destroyAt, "inputs"),
+				fmt.Sprintf("cleanup inputs are retired: an automatic destroy passes only force; see %s", WorkspaceProviderMigrationGuide))
+		}
 		if err := rejectUnknownFields(destroy, destroyAt, "force"); err != nil {
 			return err
 		}
@@ -438,4 +434,29 @@ func (v Validation) validatePopulationSession(entry map[string]any, pos Position
 		}
 	}
 	return nil
+}
+
+// taskDocumentResource resolves the resource a selected task document is
+// written for, following extends to the root that declares it. A document
+// whose root declares no resource yields nil, which each selecting surface
+// reports in its own terms.
+func (v Validation) taskDocumentResource(taskRef string, registry *Registry, site string) (*Definition, error) {
+	task, err := registry.ExpectKind(taskRef, v.From, KindTask, site)
+	if err != nil {
+		return nil, err
+	}
+	taskValidation := Validation{From: registry.OwnerOf(task)}
+	chain, err := taskValidation.ExtendsChain(task, registry)
+	if err != nil {
+		return nil, err
+	}
+	root := task
+	if len(chain) > 0 {
+		root = chain[0]
+	}
+	ref, ok := root.Body["resource"].(string)
+	if !ok {
+		return nil, nil
+	}
+	return registry.ExpectKind(ref, registry.OwnerOf(root), KindResource, root.ID+".resource")
 }

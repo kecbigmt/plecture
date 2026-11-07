@@ -4,7 +4,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
-	"os"
 	"sort"
 	"strings"
 	"text/tabwriter"
@@ -16,6 +15,7 @@ import (
 	"github.com/kecbigmt/plecture/app/internal/population"
 	"github.com/kecbigmt/plecture/app/internal/service"
 	"github.com/kecbigmt/plecture/app/internal/state"
+	contract "github.com/kecbigmt/plecture/contracts/state"
 )
 
 var (
@@ -34,7 +34,10 @@ var workflowListCmd = &cobra.Command{
 	Use:     "list",
 	Aliases: []string{"ls"},
 	Short:   "List available workflows",
-	Long: `List workflows discoverable from the cascade (global + ancestor .plect/workflows/).
+	Long: `List the workflows of the current directory's configuration context: plugin
+and global workflows, then those of the nearest project root (the nearest
+directory whose .plect/ holds project.toml) when trusted_project_roots lists it.
+Run interactively, an unlisted project root is offered for trust.
 
 Default output is a space-aligned table with ID / NAME / DESCRIPTION columns.
 Use --json for a fully structured listing; --no-header switches to tab-separated
@@ -45,11 +48,11 @@ output without a header row so the result is consumable by cut/awk/etc.`,
 		if err != nil {
 			return err
 		}
-		cwd, err := os.Getwd()
+		root, err := selectProjectRoot(cmd, cfg)
 		if err != nil {
-			return fmt.Errorf("getwd: %w", err)
+			return err
 		}
-		workflows, err := service.WorkflowList(cfg, cwd)
+		workflows, err := service.WorkflowList(cfg, root)
 		if err != nil {
 			return err
 		}
@@ -101,24 +104,18 @@ func writeWorkflowList(out io.Writer, workflows []service.WorkflowSummary, noHea
 var workflowShowCmd = &cobra.Command{
 	Use:   "show <id>",
 	Short: "Show full information about a workflow",
-	Long: `Show full information about a workflow: identity, workspace provider,
-inputs schema, node DAG, event channels, and populations.
-
-Exit code is nonzero when the workflow's referenced workspace provider is
-declared but fails to load — the failure is still printed (or included in
---json as workspace_provider_error) alongside everything else that resolved
-cleanly.`,
-	Args: cobra.ExactArgs(1),
+	Long:  `Show full information about a workflow: identity, entry resource, work directory, inputs schema, node DAG, event channels, and populations.`,
+	Args:  cobra.ExactArgs(1),
 	RunE: func(cmd *cobra.Command, args []string) error {
 		cfg, err := config.Load()
 		if err != nil {
 			return err
 		}
-		cwd, err := os.Getwd()
+		root, err := selectProjectRoot(cmd, cfg)
 		if err != nil {
-			return fmt.Errorf("getwd: %w", err)
+			return err
 		}
-		detail, err := service.WorkflowShow(cfg, cwd, args[0])
+		detail, err := service.WorkflowShow(cfg, root, args[0])
 		if err != nil {
 			return err
 		}
@@ -130,9 +127,6 @@ cleanly.`,
 			fmt.Fprintln(cmd.OutOrStdout(), string(b))
 		} else if err := printWorkflowDetail(cmd.OutOrStdout(), detail); err != nil {
 			return err
-		}
-		if detail.WorkspaceProviderError != "" {
-			return fmt.Errorf("workspace provider %q failed to load: %s", detail.WorkspaceProvider, detail.WorkspaceProviderError)
 		}
 		return nil
 	},
@@ -147,11 +141,20 @@ admit outcome (reason, error, and how many admits have failed in a row
 since the last one that succeeded).
 
 Reads runtime state directly, not current config, so it still shows a
-population whose config was just changed or removed out from under it.`,
+population whose config was just changed or removed out from under it. The
+population is the one of the current directory's configuration context.`,
 	Args: cobra.ExactArgs(2),
 	RunE: func(cmd *cobra.Command, args []string) error {
+		cfg, err := config.Load()
+		if err != nil {
+			return err
+		}
+		root, err := selectProjectRoot(cmd, cfg)
+		if err != nil {
+			return err
+		}
 		store := state.NewStore("")
-		members, err := service.PopulationStatus(store, args[0], args[1])
+		members, err := service.PopulationStatus(store, root, args[0], args[1])
 		if err != nil {
 			return err
 		}
@@ -180,13 +183,18 @@ plect task cleanup initial --session <session> successfully; this command
 refuses to re-enable it while that instance remains.`,
 	Args: cobra.ExactArgs(3),
 	RunE: func(cmd *cobra.Command, args []string) error {
+		cfg, err := config.Load()
+		if err != nil {
+			return err
+		}
+		root, err := selectProjectRoot(cmd, cfg)
+		if err != nil {
+			return err
+		}
 		store := state.NewStore("")
-		return population.RetryPopulationMember(store, eventlog.NewStore(store.Dir()), args[0], args[1], args[2], func() (string, error) {
-			cfg, err := config.Load()
-			if err != nil {
-				return "", err
-			}
-			workflows, err := cfg.LoadWorkflows("")
+		key := contract.PopulationProvenance{ProjectRoot: root, Workflow: args[0], Name: args[1]}
+		return population.RetryPopulationMember(store, eventlog.NewStore(store.Dir()), key, args[2], func() (string, error) {
+			workflows, err := cfg.LoadWorkflows(root)
 			if err != nil {
 				return "", err
 			}
@@ -238,29 +246,12 @@ func printWorkflowDetail(out io.Writer, d *service.WorkflowDetail) error {
 	if d.Description != "" {
 		fmt.Fprintf(w, "Description:\t%s\n", d.Description)
 	}
-	if d.WorkspaceProvider != "" {
-		fmt.Fprintf(w, "Workspace provider:\t%s\n", d.WorkspaceProvider)
+	fmt.Fprintf(w, "Resource:\t%s\n", d.Resource)
+	if d.Workdir != "" {
+		fmt.Fprintf(w, "Workdir:\t%s\n", d.Workdir)
 	}
 	if !d.AutoSelect {
 		fmt.Fprintln(w, "Auto-select:\tfalse")
-	}
-	if d.WorkspaceProviderInfo != nil {
-		if d.WorkspaceProviderInfo.Match != "" {
-			fmt.Fprintf(w, "Resolver:\t%s → %s\n", d.WorkspaceProviderInfo.Match, d.WorkspaceProviderInfo.Name.Source())
-		}
-		var hooks []string
-		if d.WorkspaceProviderInfo.Setup != nil {
-			hooks = append(hooks, "setup")
-		}
-		if d.WorkspaceProviderInfo.Cleanup != nil {
-			hooks = append(hooks, "cleanup")
-		}
-		if len(hooks) > 0 {
-			fmt.Fprintf(w, "Workspace provider hooks:\t%s (use --json for the scripts)\n", strings.Join(hooks, ", "))
-		}
-	}
-	if d.WorkspaceProviderError != "" {
-		fmt.Fprintf(w, "Workspace provider error:\t%s\n", d.WorkspaceProviderError)
 	}
 	if d.Tick != nil {
 		if len(d.Tick.On) > 0 {
@@ -311,7 +302,7 @@ func printWorkflowDetail(out io.Writer, d *service.WorkflowDetail) error {
 
 func writePopulations(out io.Writer, populations []service.WorkflowPopulation) {
 	for _, population := range populations {
-		fmt.Fprintf(out, "  %s (observer %s)\n", population.Name, population.ResourceObserver)
+		fmt.Fprintf(out, "  %s\n", population.Name)
 		fmt.Fprintf(out, "    uses: %s\n", strings.Join(population.Uses, ", "))
 		if population.PollEvery != "" {
 			fmt.Fprintf(out, "    poll every: %s\n", population.PollEvery)

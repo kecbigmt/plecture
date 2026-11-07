@@ -4,7 +4,7 @@
 [official_review]
 kind              = "task"
 description       = "Review a change against the official contract"
-resource_observer = "issue_pr"
+resource          = "issue_pr"
 instructions      = [{ text = "Review the change at {{ resource.id }}." }]
 
 [official_review.done_when]

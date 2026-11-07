@@ -21,10 +21,8 @@ import (
 type SetOutputParams struct {
 	Identifier string
 	// Node targets a workflow node's outputs by node id. Mutually exclusive
-	// with Workflow / Task; exactly one target must be set.
+	// with Task; exactly one target must be set.
 	Node string
-	// Workflow targets the workflow pseudo-node's outputs.
-	Workflow bool
 	// Task targets a runtime task's outputs by its displayed handle, e.g.
 	// "review#1". Dynamic output refresh is the normal DoD path; this remains
 	// for explicit trusted updates.
@@ -47,8 +45,6 @@ type SetOutputResult struct {
 //     no full-replace mode
 //   - only keys declared `mutable = true` in the target's outputs schema are
 //     writable; with no such declaration nothing is writable
-//   - the reserved `workspace_dir` key is always immutable (schemas declaring
-//     it mutable fail at load, before this check is ever reached)
 //   - the merged result must still satisfy the outputs schema
 //
 // The read-modify-write runs under the state file lock so concurrent explicit
@@ -58,20 +54,14 @@ func SetOutput(cfg *config.Config, store *state.Store, params SetOutputParams) (
 	if params.Node != "" {
 		selected++
 	}
-	if params.Workflow {
-		selected++
-	}
 	if params.Task != "" {
 		selected++
 	}
 	if selected != 1 {
-		return nil, &Error{Code: ErrInvalidInput, Message: "exactly one of --node, --workflow, or --task is required"}
+		return nil, &Error{Code: ErrInvalidInput, Message: "exactly one of --node or --task is required"}
 	}
 	if len(params.Outputs) == 0 {
 		return nil, &Error{Code: ErrInvalidInput, Message: "payload must be a non-empty JSON object"}
-	}
-	if _, ok := params.Outputs[contract.OutputKeyWorkspaceDir]; ok {
-		return nil, &Error{Code: ErrInvalidInput, Message: fmt.Sprintf("output key %q is reserved and always immutable", contract.OutputKeyWorkspaceDir)}
 	}
 
 	sessionName, session, err := resolveSession(cfg, store, params.Identifier)
@@ -152,29 +142,6 @@ func SetOutput(cfg *config.Config, store *state.Store, params SetOutputParams) (
 // the mutable-key set, compiled outputs schema, and — for a nested task — the
 // layer chain a write routes through.
 func resolveSetOutputTarget(cfg *config.Config, session *domain.Session, params SetOutputParams) (target string, mutable []string, schema *jsonschema.Schema, layers []effect.Layer, err *Error) {
-	if params.Workflow {
-		wf, loadErr := cfg.ResolveSessionWorkflow(session)
-		if loadErr != nil {
-			return "", nil, nil, nil, &Error{Code: ErrExecutionFailed, Message: fmt.Sprintf("load workflows: %v", loadErr)}
-		}
-		if wf == nil {
-			return "", nil, nil, nil, &Error{Code: ErrExecutionFailed, Message: fmt.Sprintf("workflow %q not found in .plect/workflows or global config", session.Workflow)}
-		}
-		prov, loadErr := cfg.WorkspaceProviderForSession(session)
-		if loadErr != nil {
-			return "", nil, nil, nil, &Error{Code: ErrExecutionFailed, Message: fmt.Sprintf("load workspace provider: %v", loadErr)}
-		}
-		mutableKeys, mErr := task.MutableOutputKeys(prov.OutputsSchema, prov.ResolvedOutputsSchemaPath())
-		if mErr != nil {
-			return "", nil, nil, nil, &Error{Code: ErrExecutionFailed, Message: fmt.Sprintf("workspace provider %q: outputs schema: %v", prov.ID, mErr)}
-		}
-		compiled, cErr := lang.CompileSchema(prov.OutputsSchema, prov.ResolvedOutputsSchemaPath(), "plect:workspace_provider:"+prov.ID+":outputs")
-		if cErr != nil {
-			return "", nil, nil, nil, &Error{Code: ErrExecutionFailed, Message: fmt.Sprintf("workspace provider %q: outputs schema: %v", prov.ID, cErr)}
-		}
-		return contract.WorkflowPseudoNodeID, mutableKeys, compiled, nil, nil
-	}
-
 	if params.Task != "" {
 		handle := params.Task
 		st, ok := session.Tasks[handle]
@@ -215,7 +182,7 @@ func resolveSetOutputTarget(cfg *config.Config, session *domain.Session, params 
 		return handle, mutableKeys, compiled, resolvedLayers, nil
 	}
 
-	plan, planErr := buildPlanForSession(cfg, session.WorkspaceDirPath, session)
+	plan, planErr := buildPlanForSession(cfg, session)
 	if planErr != nil {
 		return "", nil, nil, nil, &Error{Code: ErrExecutionFailed, Message: planErr.Error()}
 	}

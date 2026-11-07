@@ -1,7 +1,11 @@
 [fault_recovery_nested]
 kind               = "workflow"
 name               = "Docker fault recovery fixture with the runtime nested in a guard layer"
-workspace_provider = "fault_workspace"
+resource           = "fault_resource"
+workdir            = { from = "nodes.fault_workspace.outputs.workspace_dir" }
+
+[[fault_recovery_nested.nodes]]
+uses = "fault_workspace"
 
 [[fault_recovery_nested.nodes]]
 uses = "official.tmux.pane"

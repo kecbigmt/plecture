@@ -38,10 +38,8 @@ func (v Validation) ValidateDefinition(def *Definition) error {
 		return v.validateEffect(def, pos)
 	case KindChannel:
 		return v.validateChannel(def, pos)
-	case KindWorkspaceProvider:
-		return v.validateProvider(def, pos)
-	case KindResourceObserver:
-		return v.validateObserver(def, pos)
+	case KindResource:
+		return v.validateResource(def, pos)
 	case KindWorkflow:
 		return v.validateWorkflow(def, pos)
 	case KindTask:
@@ -54,8 +52,15 @@ func (v Validation) validateEffect(def *Definition, pos Position) error {
 	if err := v.action(def.Body, "setup", surfaceEffectSetup, pos); err != nil {
 		return err
 	}
-	if err := v.action(def.Body, "cleanup", surfaceEffectCleanup, pos); err != nil {
-		return err
+	if raw, ok := def.Body["cleanup"]; ok {
+		at := childPos(pos, "cleanup")
+		action, err := ParseCleanup(raw, at)
+		if err != nil {
+			return err
+		}
+		if err := v.checkAction(action, surfaceEffectCleanup, at); err != nil {
+			return err
+		}
 	}
 	// Each of the four tables below is closed the way the definition surface
 	// itself is: a misspelled probe, verb, or joint key is a declaration with
@@ -215,60 +220,43 @@ func (v Validation) validateChannel(def *Definition, pos Position) error {
 	return nil
 }
 
-func (v Validation) validateProvider(def *Definition, pos Position) error {
+func (v Validation) validateResource(def *Definition, pos Position) error {
 	if name, ok := def.Body["name"]; ok {
-		if err := v.value(name, ClassData, surfaceProviderName, childPos(pos, "name")); err != nil {
+		if err := v.value(name, ClassData, surfaceResourceName, childPos(pos, "name")); err != nil {
 			return err
 		}
 	}
-	for _, hook := range []struct {
-		field   string
-		surface *Surface
-	}{
-		{"setup", surfaceProviderSetup},
-		{"cleanup", surfaceProviderCleanup},
-	} {
-		if err := v.action(def.Body, hook.field, hook.surface, pos); err != nil {
-			return err
-		}
-	}
-	return v.providerContracts(def, pos)
-}
-
-func (v Validation) validateObserver(def *Definition, pos Position) error {
-	if err := v.action(def.Body, "observe", surfaceObserverObserve, pos); err != nil {
+	if err := nameContract(def, pos, surfaceResourceName); err != nil {
 		return err
 	}
-	if err := v.action(def.Body, "finalize", surfaceObserverFinalize, pos); err != nil {
+	if err := v.action(def.Body, "observe", surfaceResourceObserve, pos); err != nil {
 		return err
 	}
-	if err := v.action(def.Body, "subscribe", surfaceObserverSubscribe, pos); err != nil {
+	if err := v.action(def.Body, "finalize", surfaceResourceFinalize, pos); err != nil {
 		return err
 	}
-	if err := v.action(def.Body, "unsubscribe", surfaceObserverUnsubscribe, pos); err != nil {
+	if err := v.action(def.Body, "subscribe", surfaceResourceSubscribe, pos); err != nil {
+		return err
+	}
+	if err := v.action(def.Body, "unsubscribe", surfaceResourceUnsubscribe, pos); err != nil {
 		return err
 	}
 	return v.validateObserverQuery(def, pos)
 }
 
 func (v Validation) validateWorkflow(def *Definition, pos Position) error {
+	if _, ok := def.Body["resource"]; !ok {
+		return newDiag(CodeFieldRequired, LayerStructural, childPos(pos, "resource"),
+			"`resource` is required: a workflow declares the one entry resource type it accepts")
+	}
+	if err := v.valueTable(def.Body, "outputs", ClassData, surfaceWorkflowOutputs, pos); err != nil {
+		return err
+	}
 	if err := v.valueTable(def.Body, "display", ClassData, surfaceWorkflowDisplay, pos); err != nil {
 		return err
 	}
-	if inputs, ok := def.Body["workspace_provider_inputs"]; ok {
-		at := childPos(pos, "workspace_provider_inputs")
-		tbl, err := table(inputs, at)
-		if err != nil {
-			return err
-		}
-		for _, key := range sortedKeys(tbl) {
-			// A workspace provider's hooks run before any node output
-			// exists, so its parameters are literal data and no surface
-			// environment applies.
-			if _, err := ParseValue(tbl[key], ClassLiteral, childPos(at, key)); err != nil {
-				return err
-			}
-		}
+	if _, err := WorkflowWorkdir(def); err != nil {
+		return err
 	}
 	nodes, err := tableArray(def.Body, "nodes", pos)
 	if err != nil {
@@ -351,9 +339,9 @@ func (v Validation) validateWorkflow(def *Definition, pos Position) error {
 
 func (v Validation) validateTask(def *Definition, pos Position) error {
 	if _, extends := def.Body["extends"]; extends {
-		if _, ok := def.Body["resource_observer"]; ok {
-			return newDiag(CodeExtendsInheritedField, LayerStructural, childPos(pos, "resource_observer"),
-				"resource_observer is inherited through extends and is not part of the extension surface")
+		if _, ok := def.Body["resource"]; ok {
+			return newDiag(CodeExtendsInheritedField, LayerStructural, childPos(pos, "resource"),
+				"resource is inherited through extends and is not part of the extension surface")
 		}
 		if err := checkExtendsSchemaShape(def, pos); err != nil {
 			return err
@@ -382,6 +370,11 @@ func (v Validation) validateTask(def *Definition, pos Position) error {
 		}
 		if err := v.valueTable(chain, "inputs", ClassData, surfaceChainInputs, at); err != nil {
 			return err
+		}
+		if raw, declared := chain["task"]; declared {
+			if _, err := staticRef(raw, childPos(at, "task").Path); err != nil {
+				return err
+			}
 		}
 	}
 	return v.instructionBody(def, pos)
@@ -453,8 +446,8 @@ func (v Validation) instructionBody(def *Definition, pos Position) error {
 // topology, so the shape of a configuration is discoverable before anything
 // is evaluated.
 func (v Validation) checkStaticTopology(def *Definition, pos Position) error {
-	if wp, ok := def.Body["workspace_provider"]; ok {
-		if _, err := staticRef(wp, childPos(pos, "workspace_provider").Path); err != nil {
+	if resource, ok := def.Body["resource"]; ok && def.Kind == KindWorkflow {
+		if _, err := staticRef(resource, childPos(pos, "resource").Path); err != nil {
 			return err
 		}
 	}
@@ -585,6 +578,9 @@ func (v Validation) value(raw any, class ValueClass, s *Surface, pos Position) e
 func (v Validation) checkValue(value *Value, s *Surface, pos Position) error {
 	switch value.Form {
 	case FormFrom:
+		if msg, retired := retiredRoot(value.From); retired {
+			return newDiag(s.rootCode, s.rootLayer, pos, msg)
+		}
 		if !s.offers(value.From) {
 			return newDiag(s.rootCode, s.rootLayer, pos,
 				fmt.Sprintf("%q is not a root the %s surface offers", value.From, s.Name))

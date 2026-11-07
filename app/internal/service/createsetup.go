@@ -9,24 +9,23 @@ import (
 	"github.com/kecbigmt/plecture/app/internal/config"
 	"github.com/kecbigmt/plecture/app/internal/dispatch"
 	"github.com/kecbigmt/plecture/app/internal/domain"
-	"github.com/kecbigmt/plecture/app/internal/effect"
 	"github.com/kecbigmt/plecture/app/internal/eventlog"
 	"github.com/kecbigmt/plecture/app/internal/state"
 	"github.com/kecbigmt/plecture/app/internal/task"
 	contract "github.com/kecbigmt/plecture/contracts/state"
 )
 
-// createWithWorkflowSetup is the workflow-setup create path:
+// createWithWorkflowSetup is the create path:
 //
-//	state entry → workflow setup (acquires workspace) → cascade resolution
-//	from workspace → task DAG compile → session-scoped tasks
+//	state entry → workflow revision capture → plan compile → every node's setup
 //
-// sessionName is the final id (tag already applied); resource is the
-// canonical resource identifier; alias is the user's original input.
+// sessionName is the final id (tag already applied); alias is the user's
+// original input.
 //
-// The state entry and its provider declaration are recorded before setup so
-// cleanup can release a partially allocated workspace after setup fails.
-func createWithWorkflowSetup(cfg *config.Config, store *state.Store, params CreateParams, wf config.WorkflowFile, prov config.WorkspaceProviderConfig, sessionName, resource, alias string) (*CreateResult, error) {
+// The state entry is recorded before any node's setup so cleanup can release
+// a partially allocated environment after setup fails.
+func createWithWorkflowSetup(cfg *config.Config, store *state.Store, params CreateParams, disp dispatchResult, sessionName, alias string) (*CreateResult, error) {
+	wf := disp.Workflow
 	if err := validateSessionName(sessionName); err != nil {
 		return nil, err
 	}
@@ -37,10 +36,9 @@ func createWithWorkflowSetup(cfg *config.Config, store *state.Store, params Crea
 
 	now := time.Now()
 	var session *domain.Session
-	revisionPending := false
-	existing, err := store.GetE(sessionName)
-	if err != nil {
-		return nil, &Error{Code: ErrExecutionFailed, Message: fmt.Sprintf("failed to check for an existing session %q: %v", sessionName, err)}
+	_, existing, entryErr := reusableEntrySession(store, &disp, params.Tag)
+	if entryErr != nil {
+		return nil, entryErr
 	}
 	if existing != nil {
 		if params.Population != nil && !samePopulation(existing.Population, params.Population) {
@@ -55,17 +53,8 @@ func createWithWorkflowSetup(cfg *config.Config, store *state.Store, params Crea
 		if existing.Workflow != "" && existing.Workflow != wf.Address {
 			return nil, &Error{Code: ErrInvalidInput, Message: fmt.Sprintf("resource dispatches to workflow %q but session %q is frozen to %q; destroy and recreate to switch", wf.Address, sessionName, existing.Workflow)}
 		}
-		if existing.WorkflowRevision != "" {
-			revision, _, revisionErr := config.RevisionForSession(existing)
-			if revisionErr != nil {
-				return nil, &Error{Code: ErrExecutionFailed, Message: revisionErr.Error()}
-			}
-			if revision.Provider == nil {
-				return nil, &Error{Code: ErrExecutionFailed, Message: fmt.Sprintf("workflow %q has no stored workspace provider", existing.Workflow)}
-			}
-			wf = revision.Workflow
-			prov = *revision.Provider
-			revisionPending = revision.WorkspaceCapturePending
+		if err := requireSessionRoot(cfg, existing); err != nil {
+			return nil, err
 		}
 		session = existing
 		if session.Nodes == nil {
@@ -79,11 +68,7 @@ func createWithWorkflowSetup(cfg *config.Config, store *state.Store, params Crea
 		if parentErr != nil {
 			return nil, parentErr
 		}
-		// Session inputs are validated against the trusted-layer schema;
-		// workspace-dir overlays can add nodes but not tighten the input
-		// contract retroactively (the workspace doesn't exist at validation
-		// time).
-		input, validateErr := resolveSessionInputs(cfg, "", wf.Address, params.Inputs)
+		input, validateErr := resolveSessionInputs(cfg, params.ProjectRoot, wf.Address, params.Inputs)
 		if validateErr != nil {
 			return nil, validateErr
 		}
@@ -95,6 +80,8 @@ func createWithWorkflowSetup(cfg *config.Config, store *state.Store, params Crea
 			ParentSession: parentSession,
 			Status:        contract.SessionStatusDown,
 			Workflow:      wf.Address,
+			Resource:      &disp.Resource,
+			Tag:           params.Tag,
 			Population:    params.Population,
 			Inputs:        input,
 			Nodes:         make(map[string]*contract.TaskState),
@@ -102,20 +89,17 @@ func createWithWorkflowSetup(cfg *config.Config, store *state.Store, params Crea
 			CreatedAt:     now,
 		}
 	}
-	session.ResourceID = resource
 	session.Alias = alias
 	session.UpdatedAt = now
-	initialCapture := session.WorkflowRevision == ""
-	if initialCapture {
-		revision, err := cfg.CaptureWorkflowRevision("", session.Workflow)
+	if session.WorkflowRevision == "" {
+		revision, err := cfg.CaptureWorkflowRevision(params.ProjectRoot, session.Workflow)
 		if err != nil {
 			return nil, &Error{Code: ErrExecutionFailed, Message: fmt.Sprintf("capture workflow revision: %v", err)}
 		}
-		revision.WorkspaceCapturePending = true
-		if err := setSessionRevision(session, revision, false); err != nil {
+		if err := setSessionRevision(session, revision, true); err != nil {
 			return nil, &Error{Code: ErrExecutionFailed, Message: fmt.Sprintf("capture workflow revision: %v", err)}
 		}
-		revisionPending = true
+		session.ProjectRoot = params.ProjectRoot
 	}
 
 	existingBeforePut := existing != nil
@@ -136,93 +120,20 @@ func createWithWorkflowSetup(cfg *config.Config, store *state.Store, params Crea
 		dispatch.SeedCursor(eventlog.NewStore(store.Dir()), sessionName)
 	}
 
-	reused := false
-	if st, ok := session.Nodes[contract.WorkflowPseudoNodeID]; ok && st != nil && st.Status == contract.TaskStatusProduced {
-		reused = true
-	}
-
-	provInputs, provInputsErr := resolveWorkspaceProviderInputs(prov, wf)
-	if provInputsErr != nil {
-		return nil, &Error{Code: ErrInvalidInput, Message: provInputsErr.Error()}
-	}
-	vars := effect.WorkflowHookVars{
-		ResourceID:        resource,
-		SessionName:       sessionName,
-		WorkspaceDirsRoot: cfg.WorkspaceDirsRoot,
-		SessionInputs:     session.Inputs,
-		Inputs:            provInputs,
-		Plugins:           cfg.Plugins,
-		SourcePath:        prov.SourcePath,
-	}
-	outputs, setupErr := runWorkflowSetup(prov, vars, session, params.Observer)
-	session.UpdatedAt = time.Now()
-	if outputs != nil {
-		if workspaceDir, ok := outputs[contract.OutputKeyWorkspaceDir].(string); ok {
-			// The session's own workspace-directory field is the one every
-			// consumer (cd/attach/ls/web UI/hooks) reads, so mirror it here.
-			session.WorkspaceDirPath = workspaceDir
-		}
-		// A git-backed provider's own "branch" output (domain.SessionBranch)
-		// needs no mirroring here: it already lives in this @workflow node's
-		// Outputs, which the Put below persists.
-	}
-	if err := store.Put(session); err != nil {
-		return nil, &Error{Code: ErrExecutionFailed, Message: fmt.Sprintf("failed to save session state: %v", err)}
-	}
-	if setupErr != nil {
-		return nil, &Error{Code: ErrExecutionFailed, Message: setupErr.Error()}
-	}
-
-	// The workspace now exists: resolve the full cascade (incl. overlays
-	// above and the node-only layer inside the workspace dir) and run
-	// session tasks.
-	if revisionPending {
-		stored, _, err := config.RevisionForSession(session)
-		if err != nil {
-			return nil, &Error{Code: ErrExecutionFailed, Message: err.Error()}
-		}
-		stored.WorkspaceCapturePending = false
-		base, baseErr := cfg.CaptureWorkflowRevision("", session.Workflow)
-		if baseErr != nil {
-			return nil, &Error{Code: ErrExecutionFailed, Message: fmt.Sprintf("capture workflow revision: %v", baseErr)}
-		}
-		full, fullErr := cfg.CaptureWorkflowRevision(session.WorkspaceDirPath, session.Workflow)
-		if fullErr != nil {
-			return nil, &Error{Code: ErrExecutionFailed, Message: fmt.Sprintf("capture workflow revision: %v", fullErr)}
-		}
-		_, storedDigest, storedErr := stored.CanonicalBody()
-		_, baseDigest, baseErr := base.CanonicalBody()
-		_, fullDigest, fullErr := full.CanonicalBody()
-		if storedErr != nil || baseErr != nil || fullErr != nil {
-			return nil, &Error{Code: ErrExecutionFailed, Message: fmt.Sprintf("encode workflow revision: %v, %v, %v", storedErr, baseErr, fullErr)}
-		}
-		final := stored
-		if baseDigest != fullDigest {
-			if baseDigest != storedDigest {
-				return nil, &Error{Code: ErrExecutionFailed, Message: fmt.Sprintf("trusted configuration changed since session %q was created; restore it before retrying, or destroy the session", session.Name)}
-			}
-			final = full
-		}
-		if err := setSessionRevision(session, final, true); err != nil {
-			return nil, &Error{Code: ErrExecutionFailed, Message: fmt.Sprintf("capture workflow revision: %v", err)}
-		}
-		if err := store.Put(session); err != nil {
-			return nil, &Error{Code: ErrExecutionFailed, Message: fmt.Sprintf("save workflow revision: %v", err)}
-		}
-	}
-	plan, err := buildPlanForSession(cfg, session.WorkspaceDirPath, session)
+	plan, err := buildPlanForSession(cfg, session)
 	if err != nil {
 		return nil, &Error{Code: ErrExecutionFailed, Message: err.Error()}
 	}
-	tasksErr := runNodeSetup(context.Background(), plan.Session, sessionVars(cfg, session, plan), session, params.Observer)
+	wiredNodes, tasksErr := runNodeSetup(context.Background(), cfg, store, plan.Session, sessionVars(cfg, session, plan), session, params.Observer)
 	session.UpdatedAt = time.Now()
 	// A session node (the initial_task dispatcher) can shell out to a nested
 	// `plect task setup` subprocess that writes its instance straight to disk.
 	// Overlay our in-memory task entries onto the freshly-read session instead
 	// of a blind Put so that nested write (e.g. the `initial` task) survives.
-	if err := mergeTasks(store, sessionName, session); err != nil {
+	if err := mergeTasksWithSubscriptions(cfg, store, sessionName, session, wiredNodes); err != nil {
 		return nil, &Error{Code: ErrExecutionFailed, Message: fmt.Sprintf("failed to save session state: %v", err)}
 	}
+	wireProducedNodeSubscriptions(cfg, store, sessionName, wiredNodes)
 	if tasksErr != nil {
 		return nil, &Error{Code: ErrExecutionFailed, Message: tasksErr.Error()}
 	}
@@ -236,20 +147,18 @@ func createWithWorkflowSetup(cfg *config.Config, store *state.Store, params Crea
 
 	// Binding implies delivery for the session's own resource too, not just
 	// a dynamic task setup's own bound one.
-	if _, errMsg := wireDeliveryOnSetup(cfg, store, sessionName, resource, domain.SessionBranch(session)); errMsg != "" {
-		slog.Warn("resource delivery wiring failed at session create", "session", sessionName, "resource", resource, "error", errMsg)
+	if _, errMsg := wireDeliveryOnSetup(cfg, store, sessionName, session.Resource, false); errMsg != "" {
+		slog.Warn("resource delivery wiring failed at session create", "session", sessionName, "resource", domain.Locator(session.Resource), "error", errMsg)
 	}
+	flushPendingDeliveryLogged(cfg, store, sessionName)
 
 	// Record lifecycle.created on the first successful create (idempotent across
 	// retries of a partial failure and re-runs of an already-created session).
 	recordSessionCreated(store, sessionName)
 
 	return &CreateResult{
-		SessionName:        sessionName,
-		WorkspaceDirPath:   session.WorkspaceDirPath,
-		Branch:             domain.SessionBranch(session),
-		ReusedWorkspaceDir: reused,
-		Tasks:              domain.MergedTasks(session),
+		SessionName: sessionName,
+		Tasks:       domain.MergedTasks(session),
 	}, nil
 }
 

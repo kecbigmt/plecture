@@ -3,6 +3,7 @@
 
 [session]
 kind = "workflow"
+resource = "issue_pr"
 
 [[session.nodes]]
 id   = "first"

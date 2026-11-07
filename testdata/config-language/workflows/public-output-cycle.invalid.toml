@@ -1,0 +1,16 @@
+# plect-fixture: result=invalid layer=semantic diagnostic=PLECTURE-CFG-WORKFLOW-CYCLE entry=definitions
+# reason: a node reads a public output whose binding reads that same node, so the expanded dependencies form a cycle.
+
+[session]
+kind = "workflow"
+resource = "issue_pr"
+
+[session.outputs]
+endpoint = { from = "nodes.agent.outputs.endpoint" }
+
+[[session.nodes]]
+id   = "agent"
+uses = "pane"
+
+[session.nodes.inputs]
+peer = { from = "workflow.outputs.endpoint" }

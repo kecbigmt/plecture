@@ -1,5 +1,5 @@
-# Copy this into a user-owned config layer and adjust the runtime/provider
-# choices for the review workflow that should discuss conclusions in Slack.
+# Copy this into a user-owned config layer and adjust the runtime and
+# checkout choices for the review workflow that should discuss conclusions in Slack.
 #
 # slack_thread itself knows nothing about reviews: it just opens a thread for
 # whatever root_text it is handed. The review framing — composing that text
@@ -7,8 +7,9 @@
 # it.
 
 [pr_review_with_slack]
-kind               = "workflow"
-workspace_provider = "official.github.worktree"
+kind     = "workflow"
+resource = "official.github.pull_request"
+workdir  = { from = "nodes.worktree.outputs.workspace_dir" }
 
 [pr_review_with_slack.inputs_schema]
 type                 = "object"
@@ -23,8 +24,13 @@ pr_url           = { type = "string" }
 head_sha         = { type = "string" }
 
 [[pr_review_with_slack.nodes]]
+id   = "worktree"
+uses = "official.github.worktree"
+
+[[pr_review_with_slack.nodes]]
 id   = "slack_thread"
 uses = "official.slack.slack_thread"
+subscription = { from = "self.outputs.permalink" }
 
 [pr_review_with_slack.nodes.inputs]
 base_url   = { from = "session.inputs.slack_base_url" }

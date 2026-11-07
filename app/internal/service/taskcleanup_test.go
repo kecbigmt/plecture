@@ -1,6 +1,9 @@
 package service
 
 import (
+	"context"
+	"github.com/kecbigmt/plecture/app/internal/persistence"
+	"github.com/kecbigmt/plecture/app/internal/state"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -17,7 +20,7 @@ import (
 // name is free for a subsequent setup (the dispatcher's recreate idiom).
 func TestTaskCleanup_RemovesInstanceAndRunsScript(t *testing.T) {
 	marker := filepath.Join(t.TempDir(), "cleaned")
-	cfg := writeWorkflowFixture(t, t.TempDir(), "coding",
+	cfg := writeWorkflowFixture(t, "coding",
 		[]taskFixture{{id: "work", scope: "session", setup: `echo '{}'`, cleanup: "touch " + marker}},
 		[]nodeFixture{{id: "work"}},
 	)
@@ -45,7 +48,7 @@ func TestTaskCleanup_RemovesInstanceAndRunsScript(t *testing.T) {
 // Removing the instance lets a same-name setup recreate without colliding —
 // this is exactly the dispatcher's `cleanup initial; setup … --name initial`.
 func TestTaskCleanup_FreesNameForReSetup(t *testing.T) {
-	cfg := writeWorkflowFixture(t, t.TempDir(), "coding",
+	cfg := writeWorkflowFixture(t, "coding",
 		[]taskFixture{{id: "work", scope: "session", setup: `echo '{}'`, cleanup: "true"}},
 		[]nodeFixture{{id: "work"}},
 	)
@@ -66,7 +69,7 @@ func TestTaskCleanup_FreesNameForReSetup(t *testing.T) {
 // An absent instance is a no-op success (Found=false), so the dispatcher's
 // first-run `cleanup initial` (nothing yet) is harmless.
 func TestTaskCleanup_AbsentIsNoOp(t *testing.T) {
-	cfg := writeWorkflowFixture(t, t.TempDir(), "coding",
+	cfg := writeWorkflowFixture(t, "coding",
 		[]taskFixture{{id: "work", scope: "session", setup: `echo '{}'`}},
 		[]nodeFixture{{id: "work"}},
 	)
@@ -89,7 +92,7 @@ func TestTaskCleanup_DoesNotClobberConcurrentSetup(t *testing.T) {
 	dir := t.TempDir()
 	started := filepath.Join(dir, "started")
 	gate := filepath.Join(dir, "go")
-	cfg := writeWorkflowFixture(t, t.TempDir(), "coding",
+	cfg := writeWorkflowFixture(t, "coding",
 		[]taskFixture{
 			{id: "slow", scope: "session", setup: `echo '{}'`,
 				cleanup: `touch ` + started + `; while [ ! -e ` + gate + ` ]; do sleep 0.01; done`},
@@ -134,7 +137,7 @@ func TestTaskCleanup_DoesNotClobberConcurrentSetup(t *testing.T) {
 // cleanup reclaims by key regardless of which task produced it — a task
 // drift that left `initial` on the wrong task is still swept.
 func TestTaskCleanup_ReclaimsRegardlessOfTaskID(t *testing.T) {
-	cfg := writeWorkflowFixture(t, t.TempDir(), "coding",
+	cfg := writeWorkflowFixture(t, "coding",
 		[]taskFixture{
 			{id: "work", scope: "session", setup: `echo '{}'`, cleanup: "true"},
 			{id: "review", scope: "session", setup: `echo '{}'`, cleanup: "true"},
@@ -169,7 +172,7 @@ func TestTaskCleanup_JoinsPersistFailureWithCleanupFailure(t *testing.T) {
 	// The cleanup script deletes the session out from under the pending
 	// persist (simulating a racing `plect destroy`) and fails itself, so
 	// both failures must be joined into the returned error.
-	cfg := writeWorkflowFixture(t, t.TempDir(), "coding",
+	cfg := writeWorkflowFixture(t, "coding",
 		[]taskFixture{{id: "work", scope: "session", setup: `echo '{}'`,
 			cleanup: deleteSessionCommand(store.Dir(), "o/r-1") + " && exit 1"}},
 		[]nodeFixture{{id: "work"}},
@@ -200,7 +203,7 @@ func TestTaskCleanup_NestedPartialUnwindSurvivesForTheRetry(t *testing.T) {
 	dir := t.TempDir()
 	innerLog := filepath.Join(dir, "inner-runs")
 	gate := filepath.Join(dir, "outer-may-succeed")
-	cfg := writeWorkflowFixture(t, t.TempDir(), "coding",
+	cfg := writeWorkflowFixture(t, "coding",
 		[]taskFixture{
 			{id: "runtime", scope: "session", setup: `echo '{}'`, cleanup: "echo ran >> " + innerLog},
 			{id: "team_runtime", scope: "session", cleanup: "test -f " + gate,
@@ -264,7 +267,7 @@ func TestTaskCleanup_NestedOuterReleasesItsProjectedLocal(t *testing.T) {
 	dir := t.TempDir()
 	guard := filepath.Join(dir, "guard")
 	released := filepath.Join(dir, "released")
-	cfg := writeWorkflowFixture(t, t.TempDir(), "coding",
+	cfg := writeWorkflowFixture(t, "coding",
 		[]taskFixture{
 			{id: "runtime", scope: "session", setup: `echo '{"pid":"42"}'`},
 			{
@@ -317,7 +320,7 @@ type = "string"
 func TestTaskCleanup_UnsubscribesResourceWhenNoLongerNeeded(t *testing.T) {
 	unsubRec := filepath.Join(t.TempDir(), "unsub-rec")
 	provCfg := writeSubscribeUnsubscribeProvider(t, "github", ghMatch, "", unsubRec)
-	cfg := writeWorkflowFixture(t, t.TempDir(), "coding",
+	cfg := writeWorkflowFixture(t, "coding",
 		[]taskFixture{{id: "work", scope: "session", setup: `echo '{}'`, cleanup: "true"}},
 		[]nodeFixture{{id: "work"}},
 	)
@@ -339,6 +342,9 @@ func TestTaskCleanup_UnsubscribesResourceWhenNoLongerNeeded(t *testing.T) {
 	if want := "o/r-1\n" + prURL + "\n"; string(got) != want {
 		t.Errorf("unsubscribe hook recorded %q, want %q", got, want)
 	}
+	if retries := pendingRetries(t, store, "o/r-1"); len(retries) != 0 {
+		t.Errorf("retries = %+v, want the queued unsubscribe cleared once it succeeded", retries)
+	}
 }
 
 // A dynamic instance bound to the session's own primary resource must not
@@ -347,7 +353,7 @@ func TestTaskCleanup_UnsubscribesResourceWhenNoLongerNeeded(t *testing.T) {
 func TestTaskCleanup_DoesNotUnsubscribeSessionPrimaryResource(t *testing.T) {
 	unsubRec := filepath.Join(t.TempDir(), "unsub-rec")
 	provCfg := writeSubscribeUnsubscribeProvider(t, "github", ghMatch, "", unsubRec)
-	cfg := writeWorkflowFixture(t, t.TempDir(), "coding",
+	cfg := writeWorkflowFixture(t, "coding",
 		[]taskFixture{{id: "work", scope: "session", setup: `echo '{}'`, cleanup: "true"}},
 		[]nodeFixture{{id: "work"}},
 	)
@@ -374,7 +380,7 @@ func TestTaskCleanup_DoesNotUnsubscribeSessionPrimaryResource(t *testing.T) {
 func TestTaskCleanup_DoesNotUnsubscribeResourceStillBoundByAnotherInstance(t *testing.T) {
 	unsubRec := filepath.Join(t.TempDir(), "unsub-rec")
 	provCfg := writeSubscribeUnsubscribeProvider(t, "github", ghMatch, "", unsubRec)
-	cfg := writeWorkflowFixture(t, t.TempDir(), "coding",
+	cfg := writeWorkflowFixture(t, "coding",
 		[]taskFixture{{id: "work", scope: "session", setup: `echo '{}'`, cleanup: "true"}},
 		[]nodeFixture{{id: "work"}},
 	)
@@ -409,7 +415,7 @@ func TestTaskCleanup_DoesNotUnsubscribeResourceStillBoundByAnotherInstance(t *te
 func TestTaskCleanup_DoesNotFalselyReportUnsubscribedWhenNoHookDeclared(t *testing.T) {
 	subRec := filepath.Join(t.TempDir(), "sub-rec")
 	provCfg := writeSubscribeUnsubscribeProvider(t, "github", ghMatch, subRec, "")
-	cfg := writeWorkflowFixture(t, t.TempDir(), "coding",
+	cfg := writeWorkflowFixture(t, "coding",
 		[]taskFixture{{id: "work", scope: "session", setup: `echo '{}'`, cleanup: "true"}},
 		[]nodeFixture{{id: "work"}},
 	)
@@ -437,13 +443,14 @@ func TestTaskCleanup_DoesNotFalselyReportUnsubscribedWhenNoHookDeclared(t *testi
 // surviving retry handle) and reported to this call's own caller via
 // UnsubscribeError.
 func TestTaskCleanup_UnsubscribeHookFailureDoesNotFailCleanup(t *testing.T) {
-	cfg := writeWorkflowFixture(t, t.TempDir(), "coding",
+	cfg := writeWorkflowFixture(t, "coding",
 		[]taskFixture{{id: "work", scope: "session", setup: `echo '{}'`, cleanup: "true"}},
 		[]nodeFixture{{id: "work"}},
 	)
 	body := `
 [github]
-kind  = "resource_observer"
+kind  = "resource"
+name  = "fixture"
 match = '` + ghMatch + `'
 
 [github.observe]
@@ -466,6 +473,7 @@ args    = ["-c", "echo boom >&2; exit 3"]
 	if err := os.WriteFile(filepath.Join(cfg.BaseDir, "resources", "github.toml"), []byte(body), 0o644); err != nil {
 		t.Fatal(err)
 	}
+	dropIssueResource(t, cfg)
 	store := testStore(t)
 	seedSession(t, store, "o/r-1", "o/r", 1, "coding", map[string]*contract.TaskState{})
 
@@ -486,12 +494,28 @@ args    = ["-c", "echo boom >&2; exit 3"]
 	if result.UnsubscribeError == "" {
 		t.Error("UnsubscribeError is empty, want the hook failure reported")
 	}
+	if retries := pendingRetries(t, store, "o/r-1"); len(retries) != 1 || retries[0].Action != retryUnsubscribe || retries[0].Resource.Locator != prURL {
+		t.Errorf("retries = %+v, want one unsubscribe of %s", retries, prURL)
+	}
+}
+
+func pendingRetries(t *testing.T, store *state.Store, session string) []persistence.SubscriptionRetry {
+	t.Helper()
+	db, err := retryStore(store)
+	if err != nil {
+		t.Fatal(err)
+	}
+	retries, err := db.SubscriptionRetriesForLiveSession(context.Background(), session)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return retries
 }
 
 // An instance created without --resource has nothing to unregister; cleanup
-// must not fail just because no workspace provider is even configured.
+// must not fail just because no resource declaration is even present.
 func TestTaskCleanup_NoResourceBoundIsANoOpForDelivery(t *testing.T) {
-	cfg := writeWorkflowFixture(t, t.TempDir(), "coding",
+	cfg := writeWorkflowFixture(t, "coding",
 		[]taskFixture{{id: "work", scope: "session", setup: `echo '{}'`, cleanup: "true"}},
 		[]nodeFixture{{id: "work"}},
 	)
@@ -518,12 +542,12 @@ func TestShouldUnsubscribe(t *testing.T) {
 		want     bool
 	}{
 		{"nil session (destroyed mid-cleanup) has nothing left to need it", nil, "r", true},
-		{"present session still needs the resource as its primary", &domain.Session{ResourceID: "r"}, "r", false},
-		{"present session no longer needs the resource", &domain.Session{ResourceID: "other"}, "r", true},
+		{"present session still needs the resource as its primary", &domain.Session{Resource: testResource("r")}, "r", false},
+		{"present session no longer needs the resource", &domain.Session{Resource: testResource("other")}, "r", true},
 	}
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
-			if got := shouldUnsubscribe(tc.session, tc.resource); got != tc.want {
+			if got := shouldUnsubscribe(nil, tc.session, *testResource(tc.resource)); got != tc.want {
 				t.Errorf("shouldUnsubscribe(%+v, %q) = %v, want %v", tc.session, tc.resource, got, tc.want)
 			}
 		})
@@ -546,6 +570,7 @@ func mergeWorkspacesDir(t *testing.T, from, to *config.Config) {
 	if err := os.MkdirAll(dstDir, 0o755); err != nil {
 		t.Fatal(err)
 	}
+	dropIssueResource(t, to)
 	for _, e := range entries {
 		data, err := os.ReadFile(filepath.Join(srcDir, e.Name()))
 		if err != nil {
@@ -593,6 +618,7 @@ script = "touch `+marker+`"
 	write(filepath.Join(base, "workflows", "coding.toml"), `
 [coding]
 kind = "workflow"
+resource = "issue"
 
 [[coding.nodes]]
 id   = "runner"

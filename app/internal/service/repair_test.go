@@ -19,7 +19,7 @@ func seedRepairSession(t *testing.T, store *state.Store, name string, nodes map[
 	t.Helper()
 	now := time.Now()
 	session := &domain.Session{
-		Name: name, ResourceID: "resource:1", Workflow: "default", Nodes: nodes,
+		Name: name, Resource: testResource("resource:1"), Workflow: "default", Nodes: nodes,
 		CreatedAt: now, UpdatedAt: now,
 	}
 	if cfg := fixtureConfig(t); cfg != nil {
@@ -203,7 +203,7 @@ func TestDown_WaitsForSessionLifecycleLock(t *testing.T) {
 
 func TestRepairAttemptState_SuccessfulHumanUpResetsStreak(t *testing.T) {
 	store := testStore(t)
-	cfg := writeWorkflowFixture(t, t.TempDir(), "default", []taskFixture{{id: "runner", scope: contract.TaskScopeRun, setup: "echo '{}'", alive: "true"}}, []nodeFixture{{id: "initial", uses: "runner"}})
+	cfg := writeWorkflowFixture(t, "default", []taskFixture{{id: "runner", scope: contract.TaskScopeRun, setup: "echo '{}'", alive: "true"}}, []nodeFixture{{id: "initial", uses: "runner"}})
 	name := "session-1"
 	seedRepairSession(t, store, name, map[string]*contract.TaskState{
 		"initial": {Scope: contract.TaskScopeRun, TaskID: "runner", Status: contract.TaskStatusProduced},
@@ -258,7 +258,7 @@ func TestRepairAttemptState_HealthyObservationResetsStreak(t *testing.T) {
 
 func repairWorkflowFixture(t *testing.T, setup, alive string, attempts int) *config.Config {
 	t.Helper()
-	cfg := writeWorkflowFixture(t, t.TempDir(), "default", []taskFixture{{id: "runner", scope: contract.TaskScopeRun, setup: setup, alive: alive}}, []nodeFixture{{id: "initial", uses: "runner"}})
+	cfg := writeWorkflowFixture(t, "default", []taskFixture{{id: "runner", scope: contract.TaskScopeRun, setup: setup, alive: alive}}, []nodeFixture{{id: "initial", uses: "runner"}})
 	path := filepath.Join(cfg.BaseDir, "workflows", "default.toml")
 	workflow, err := os.ReadFile(path)
 	if err != nil {
@@ -341,7 +341,7 @@ func TestRepairSession_SuspendsAfterAttemptLimit(t *testing.T) {
 
 func TestRepairSession_RepeatedAttemptSkipsHealthyProducedNode(t *testing.T) {
 	store := testStore(t)
-	cfg := writeWorkflowFixture(t, t.TempDir(), "default",
+	cfg := writeWorkflowFixture(t, "default",
 		[]taskFixture{
 			{id: "stable", scope: contract.TaskScopeRun, setup: "echo '{}'", alive: "true"},
 			{id: "broken", scope: contract.TaskScopeRun, setup: "exit 1"},

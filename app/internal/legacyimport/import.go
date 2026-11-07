@@ -7,11 +7,13 @@ import (
 	"os"
 	"path/filepath"
 	"sort"
+	"strings"
 
 	"github.com/kecbigmt/plecture/app/internal/domain"
 	"github.com/kecbigmt/plecture/app/internal/legacystate"
 	"github.com/kecbigmt/plecture/app/internal/persistence"
 	"github.com/kecbigmt/plecture/contracts/atomicfile"
+	contract "github.com/kecbigmt/plecture/contracts/state"
 )
 
 // Options configures one Run call.
@@ -134,7 +136,13 @@ func Run(ctx context.Context, opts Options) (*Report, error) {
 		if pop == nil {
 			continue
 		}
-		if err := db.UpdatePopulation(ctx, key, func(p *domain.PopulationState) error {
+		// Legacy state predates project roots, so every population it holds
+		// belongs to the global-only context.
+		workflow, name := key, ""
+		if i := strings.LastIndex(key, "/"); i >= 0 {
+			workflow, name = key[:i], key[i+1:]
+		}
+		if err := db.UpdatePopulation(ctx, contract.PopulationProvenance{Workflow: workflow, Name: name}, func(p *domain.PopulationState) error {
 			p.Members = pop.Members
 			return nil
 		}); err != nil {

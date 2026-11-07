@@ -1,0 +1,137 @@
+# GitHub worktree effect: acquires and releases the git worktree an issue or
+# pull request resource maps to. A workflow composes it as a node and names its
+# `workspace_dir` output as its `workdir`.
+[worktree]
+kind  = "effect"
+scope = "session"
+
+# Title/state fetches go through github-watcher's gh-api subcommand so setup and
+# the daemon's polling share one rate budget.
+[worktree.setup]
+type = "exec"
+bin  = "github-worktree"
+args = [
+  "setup",
+  "--resource",
+  { from = "resource.id" },
+  "--session",
+  { from = "session.name" },
+  "--tag",
+  { from = "session.tag", default = "" },
+  "--workspace-dirs-root",
+  { from = "inputs.dirs_root", default = "" },
+  "--workspace-layout-root",
+  { from = "inputs.workspace_layout_root", default = "" },
+  "--issue-branch-template",
+  { from = "inputs.issue_branch_template", default = "" },
+  "--tagged-branch-suffix",
+  { from = "inputs.tagged_branch_suffix", default = "" },
+  "--delete-branch",
+  { from = "inputs.delete_branch", default = false },
+  "--watcher-bin",
+  { bin = "github-watcher" },
+  "--app-token-bin",
+  { bin = "gh-app-token" },
+  "--app-id",
+  { from = "session.inputs.app_id", default = "" },
+  "--installation-id",
+  { from = "session.inputs.installation_id", default = "" },
+  "--owner",
+  { from = "session.inputs.owner", default = "" },
+  "--repo",
+  { from = "session.inputs.repo", default = "" },
+  "--private-key-path",
+  { from = "session.inputs.private_key_path", default = "" },
+]
+
+# The unsubscribe runs after the worktree cleanup and never gates its exit
+# status: a dirty worktree must still fail `plect destroy`, and a destroyed
+# session's subscriptions must not poll forever.
+[worktree.cleanup]
+type = "shell"
+script = '''
+"$worktree_bin" cleanup \
+  --workspace-dir "$workspace_dir" \
+  --branch "$branch" \
+  --workspace-dirs-root "$workspace_dirs_root" \
+  --workspace-layout-root "$workspace_layout_root" \
+  --force="$force" \
+  --delete-branch="$delete_branch"
+status=$?
+"$watcher_bin" unsubscribe --session "$session_name"
+exit $status
+'''
+
+[worktree.cleanup.bind]
+worktree_bin          = { bin = "github-worktree" }
+watcher_bin           = { bin = "github-watcher" }
+session_name          = { from = "session.name" }
+workspace_dir         = { from = "self.outputs.workspace_dir" }
+branch                = { from = "self.outputs.branch" }
+workspace_dirs_root   = { from = "inputs.dirs_root", default = "" }
+workspace_layout_root = { from = "inputs.workspace_layout_root", default = "" }
+force                 = { from = "force" }
+delete_branch         = { from = "self.outputs.delete_branch" }
+
+[worktree.health.alive]
+type    = "exec"
+command = "test"
+args    = ["-d", { from = "self.outputs.workspace_dir" }]
+
+# Every parameter is data, so wiring one changes where a worktree lands, never
+# what the actions run.
+[worktree.inputs_schema]
+type                 = "object"
+additionalProperties = false
+
+[worktree.inputs_schema.properties]
+# Empty selects `$HOME/workspace_dirs`, which github-worktree resolves.
+dirs_root             = { type = "string", pattern = "^[A-Za-z0-9_./~:-]*$" }
+workspace_layout_root = { type = "string", pattern = "^[A-Za-z0-9_./~:-]*$" }
+issue_branch_template = { type = "string", pattern = "^[A-Za-z0-9_./{}-]*$" }
+tagged_branch_suffix  = { type = "string", pattern = "^[A-Za-z0-9_./+{}-]*$" }
+delete_branch         = { type = "boolean" }
+
+# `mutable` keys may be merged by `plect state set-output`.
+[worktree.outputs_schema]
+type     = "object"
+required = ["workspace_dir", "branch", "delete_branch"]
+
+[worktree.outputs_schema.properties.workspace_dir]
+type = "string"
+
+[worktree.outputs_schema.properties.branch]
+type = "string"
+
+# Recorded at setup so the policy is fixed with the session, and mutable so one
+# session can change it with `plect state set-output` before destroy.
+[worktree.outputs_schema.properties.delete_branch]
+type    = "boolean"
+mutable = true
+
+[worktree.outputs_schema.properties.url]
+type = "string"
+
+[worktree.outputs_schema.properties.owner_repo]
+type = "string"
+
+[worktree.outputs_schema.properties.owner]
+type = "string"
+
+[worktree.outputs_schema.properties.repo]
+type = "string"
+
+[worktree.outputs_schema.properties.number]
+type = "integer"
+
+[worktree.outputs_schema.properties.title]
+type    = "string"
+mutable = true
+
+[worktree.outputs_schema.properties.pr_state]
+type    = "string"
+mutable = true
+
+[worktree.outputs_schema.properties.issue_state]
+type    = "string"
+mutable = true

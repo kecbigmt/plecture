@@ -12,7 +12,6 @@ function summary(overrides: Partial<SessionSummary> & { sessionName: string }): 
   return {
     displayStatus: "up",
     run: "up",
-    resourceId: "",
     ...overrides,
   };
 }
@@ -107,17 +106,17 @@ describe("matchesSessionQuery", () => {
     expect(matchesSessionQuery(summary({ sessionName: "team/Alpha" }), "alpha")).toBe(true);
   });
 
-  it("matches on resourceId", () => {
+  it("matches on the resource locator", () => {
     expect(
       matchesSessionQuery(
-        summary({ sessionName: "x", resourceId: "https://example.com/issues/7" }),
+        summary({ sessionName: "x", resource: { type: "issue", name: "res", locator: "https://example.com/issues/7" } }),
         "issues/7",
       ),
     ).toBe(true);
   });
 
   it("does not match unrelated text", () => {
-    expect(matchesSessionQuery(summary({ sessionName: "x", resourceId: "y" }), "z")).toBe(false);
+    expect(matchesSessionQuery(summary({ sessionName: "x", resource: { type: "issue", name: "res", locator: "y" } }), "z")).toBe(false);
   });
 
   it("treats an empty query as matching everything", () => {

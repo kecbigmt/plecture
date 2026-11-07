@@ -120,3 +120,21 @@ func TestTaskDisplayName(t *testing.T) {
 		})
 	}
 }
+
+func TestFormatListRevision_MarksARetiredRevision(t *testing.T) {
+	tests := []struct {
+		name  string
+		entry service.ListEntry
+		want  string
+	}{
+		{"current dialect", service.ListEntry{Revision: "1a2b3c4d"}, "1a2b3c4d"},
+		{"retired dialect", service.ListEntry{Revision: "1a2b3c4d", RetiredSpellings: []string{"workspace_provider"}}, "1a2b3c4d!retired"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := formatListRevision(tt.entry); got != tt.want {
+				t.Errorf("formatListRevision() = %q, want %q", got, tt.want)
+			}
+		})
+	}
+}

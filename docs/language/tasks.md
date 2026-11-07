@@ -139,7 +139,8 @@ per-layer namespace every kind shares, and references use the same dotted forms
 validated against `kind = "task"`.
 
 Instance identity is separate and orthogonal: the id names the declaration,
-while an instance is identified by its concrete resource and instance name. A
+while an instance is identified by its concrete resource and that resource's
+resource name. A
 task can be added to a session whose entry resource has another type; this does
 not change the session's identity or environment.
 
@@ -244,8 +245,10 @@ A task document is authored. Its identity is the id its declaration carries,
 in the one per-layer namespace every kind shares, and references resolve to it
 by that id.
 
-A task instance is created from a document, by dynamic instantiation or by
-another document's chain spawn. Its identity is its resource plus its instance
+A task instance is created from a document, by dynamic instantiation or as a
+session's initial task, which the initiating caller selects with `plect up
+--task`, another document's chain spawn, or a population's `session.task` (see
+[Resource binding](#resource-binding)). Its identity is its resource plus its instance
 name. The two identities are orthogonal: one document backs many instances, and
 an instance's resource says nothing about which id declared it.
 
@@ -283,9 +286,11 @@ states a type, instantiation checks compatibility up front: binding an instance
 to a resource that does not resolve to the declared resource fails immediately,
 rather than producing an instance that can never satisfy.
 
-The initiating caller selects an optional initial task: `plect up`, a chain,
-or a population. A workflow does not select it. Each surface selects at most
-one task and supplies one compatible concrete resource binding.
+The initiating caller selects an optional initial task: `plect up --task`, a
+chain's `task`, or a population's `session.task`. A workflow does not select
+it, and a session input named `task` carries no selection. Each surface
+selects at most one task and supplies one compatible concrete resource
+binding.
 
 Every shipped task document is written for exactly one resource type, so this
 dependency already existed — it was hiding in a runtime convention. Declaring it
@@ -420,9 +425,11 @@ all = [{ judge_pending = "ac-met" }]
 
 [claude_reviewer]
 kind = "workflow"
+resource = "issue_pr"
 
 [codex_reviewer]
 kind = "workflow"
+resource = "issue_pr"
 ```
 
 A gate variant appends one instruction segment and the judge that records it —

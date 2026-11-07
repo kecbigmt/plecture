@@ -24,7 +24,7 @@ func subscriptionRetryCount(t *testing.T, store *state.Store, sessionName, actio
 		}
 		count := 0
 		for _, retry := range all {
-			if retry.Session == sessionName && retry.Action == action && retry.ResourceID == resource {
+			if retry.Session == sessionName && retry.Action == action && retry.Resource.Locator == resource {
 				count++
 			}
 		}
@@ -36,7 +36,7 @@ func subscriptionRetryCount(t *testing.T, store *state.Store, sessionName, actio
 	}
 	count := 0
 	for _, retry := range all {
-		if retry.Action == action && retry.ResourceID == resource {
+		if retry.Action == action && retry.Resource.Locator == resource {
 			count++
 		}
 	}
@@ -48,7 +48,7 @@ func subscriptionRetryCount(t *testing.T, store *state.Store, sessionName, actio
 // gone by the time this runs, so the queue is the only surviving trace of
 // the failure.
 func TestTaskCleanup_UnsubscribeFailureIsDurablyQueued(t *testing.T) {
-	cfg := writeWorkflowFixture(t, t.TempDir(), "coding",
+	cfg := writeWorkflowFixture(t, "coding",
 		[]taskFixture{{id: "work", scope: "session", setup: `echo '{}'`, cleanup: "true"}},
 		[]nodeFixture{{id: "work"}},
 	)
@@ -76,13 +76,14 @@ func TestTaskCleanup_UnsubscribeFailureIsDurablyQueued(t *testing.T) {
 // A TaskSetup whose subscribe hook fails queues the resource for a durable
 // retry too — the symmetric case of the unsubscribe side above.
 func TestTaskSetup_SubscribeFailureIsDurablyQueued(t *testing.T) {
-	cfg := writeWorkflowFixture(t, t.TempDir(), "coding",
+	cfg := writeWorkflowFixture(t, "coding",
 		[]taskFixture{{id: "work", scope: "session", setup: `echo '{}'`}},
 		[]nodeFixture{{id: "work"}},
 	)
 	body := `
 [fixture]
-kind  = "resource_observer"
+kind  = "resource"
+name  = "fixture"
 match = '` + fixtureResourceMatch + `'
 
 [fixture.observe]
@@ -124,7 +125,8 @@ func writeAlwaysFailingUnsubscribeProvider(t *testing.T, baseDir string) {
 	t.Helper()
 	body := `
 [fixture]
-kind  = "resource_observer"
+kind  = "resource"
+name  = "fixture"
 match = '` + fixtureResourceMatch + `'
 
 [fixture.observe]
@@ -157,7 +159,8 @@ func toggledUnsubscribeProvider(t *testing.T, baseDir, toggle, rec string) {
 	t.Helper()
 	body := `
 [fixture]
-kind  = "resource_observer"
+kind  = "resource"
+name  = "fixture"
 match = '` + fixtureResourceMatch + `'
 
 [fixture.observe]
@@ -189,7 +192,7 @@ args    = ["-c", 'test -e "$1" || exit 3; echo done > "$2"', "provider", "` + to
 func TestFlushPendingDelivery_RetriesUnsubscribeAndDrainsOnSuccess(t *testing.T) {
 	toggle := filepath.Join(t.TempDir(), "toggle")
 	rec := filepath.Join(t.TempDir(), "rec")
-	cfg := writeWorkflowFixture(t, t.TempDir(), "coding",
+	cfg := writeWorkflowFixture(t, "coding",
 		[]taskFixture{{id: "work", scope: "session", setup: `echo '{}'`, cleanup: "true"}},
 		[]nodeFixture{{id: "work"}},
 	)
@@ -228,7 +231,7 @@ func TestFlushPendingDelivery_RetriesUnsubscribeAndDrainsOnSuccess(t *testing.T)
 func TestFlushPendingDeliveryLogged_DrainsOrphanedEntryViaAnotherSessionsActivity(t *testing.T) {
 	toggle := filepath.Join(t.TempDir(), "toggle")
 	rec := filepath.Join(t.TempDir(), "rec")
-	cfg := writeWorkflowFixture(t, t.TempDir(), "coding",
+	cfg := writeWorkflowFixture(t, "coding",
 		[]taskFixture{{id: "work", scope: "session", setup: `echo '{}'`}},
 		[]nodeFixture{{id: "work"}},
 	)
@@ -244,7 +247,7 @@ func TestFlushPendingDeliveryLogged_DrainsOrphanedEntryViaAnotherSessionsActivit
 	if err := store.Destroy("gone-1"); err != nil {
 		t.Fatal(err)
 	}
-	if err := queuePendingUnsubscribeForSessionID(store, gone.ID, prURL); err != nil {
+	if err := queuePendingUnsubscribeForSessionID(store, gone.ID, *testResource(prURL)); err != nil {
 		t.Fatal(err)
 	}
 	if err := os.WriteFile(toggle, []byte("go"), 0o644); err != nil {
@@ -267,7 +270,7 @@ func TestFlushPendingDeliveryLogged_DrainsOrphanedEntryViaAnotherSessionsActivit
 func TestSweepOrphanedPendingDeliveriesDoesNotUnsubscribeLiveNameReplacement(t *testing.T) {
 	toggle := filepath.Join(t.TempDir(), "toggle")
 	rec := filepath.Join(t.TempDir(), "rec")
-	cfg := writeWorkflowFixture(t, t.TempDir(), "coding",
+	cfg := writeWorkflowFixture(t, "coding",
 		[]taskFixture{{id: "work", scope: "session", setup: `echo '{}'`}},
 		[]nodeFixture{{id: "work"}},
 	)
@@ -282,12 +285,12 @@ func TestSweepOrphanedPendingDeliveriesDoesNotUnsubscribeLiveNameReplacement(t *
 		t.Fatal(err)
 	}
 	const resource = "resource://same/proj/pull/1"
-	if err := queuePendingUnsubscribeForSessionID(store, old.ID, resource); err != nil {
+	if err := queuePendingUnsubscribeForSessionID(store, old.ID, *testResource(resource)); err != nil {
 		t.Fatal(err)
 	}
 	seedSession(t, store, "same-name", "same", 1, "coding", map[string]*contract.TaskState{})
 	if err := store.Update("same-name", func(session *domain.Session) error {
-		session.ResourceID = resource
+		session.Resource = testResource(resource)
 		return nil
 	}); err != nil {
 		t.Fatal(err)
@@ -321,7 +324,7 @@ func TestSweepOrphanedPendingDeliveriesDoesNotUnsubscribeLiveNameReplacement(t *
 // moot once something else has since claimed the resource again.
 func TestFlushPendingDelivery_DropsUnsubscribeEntryOnceResourceIsNeededAgain(t *testing.T) {
 	rec := filepath.Join(t.TempDir(), "rec")
-	cfg := writeWorkflowFixture(t, t.TempDir(), "coding",
+	cfg := writeWorkflowFixture(t, "coding",
 		[]taskFixture{{id: "work", scope: "session", setup: `echo '{}'`, cleanup: "true"}},
 		[]nodeFixture{{id: "work"}},
 	)
@@ -338,7 +341,7 @@ func TestFlushPendingDelivery_DropsUnsubscribeEntryOnceResourceIsNeededAgain(t *
 	if _, err := TaskSetup(cfg, store, TaskSetupParams{TaskID: "work", SessionName: "sess-1", Name: "again", Resource: prURL}); err != nil {
 		t.Fatalf("setup: %v", err)
 	}
-	if err := queuePendingUnsubscribe(store, "sess-1", prURL); err != nil {
+	if err := queuePendingUnsubscribe(store, "sess-1", *testResource(prURL)); err != nil {
 		t.Fatal(err)
 	}
 
@@ -359,13 +362,14 @@ func TestFlushPendingDelivery_DropsUnsubscribeEntryOnceResourceIsNeededAgain(t *
 func TestFlushPendingDelivery_RetriesSubscribeAndDrainsOnSuccess(t *testing.T) {
 	toggle := filepath.Join(t.TempDir(), "toggle")
 	rec := filepath.Join(t.TempDir(), "rec")
-	cfg := writeWorkflowFixture(t, t.TempDir(), "coding",
+	cfg := writeWorkflowFixture(t, "coding",
 		[]taskFixture{{id: "work", scope: "session", setup: `echo '{}'`}},
 		[]nodeFixture{{id: "work"}},
 	)
 	body := `
 [fixture]
-kind  = "resource_observer"
+kind  = "resource"
+name  = "fixture"
 match = '` + fixtureResourceMatch + `'
 
 [fixture.observe]
@@ -415,14 +419,15 @@ args    = ["-c", 'test -e "$1" || exit 3; echo done > "$2"', "provider", "` + to
 // binding was itself reclaimed) is dropped without retrying.
 func TestFlushPendingDelivery_DropsSubscribeEntryOnceResourceIsNoLongerNeeded(t *testing.T) {
 	rec := filepath.Join(t.TempDir(), "rec")
-	cfg := writeWorkflowFixture(t, t.TempDir(), "coding",
+	cfg := writeWorkflowFixture(t, "coding",
 		[]taskFixture{{id: "work", scope: "session", setup: `echo '{}'`, cleanup: "true"}},
 		[]nodeFixture{{id: "work"}},
 	)
 	// A toggle that never appears: if the hook ran at all, the test fails.
 	body := `
 [fixture]
-kind  = "resource_observer"
+kind  = "resource"
+name  = "fixture"
 match = '` + fixtureResourceMatch + `'
 
 [fixture.observe]
@@ -445,7 +450,7 @@ args    = ["-c", 'test -e "$1" || exit 3; echo done > "$2"', "provider", "` + fi
 	seedSession(t, store, "sess-1", "sess", 1, "coding", map[string]*contract.TaskState{})
 
 	const prURL = "resource://sess/proj/pull/9"
-	if err := queuePendingSubscribe(store, "sess-1", prURL); err != nil {
+	if err := queuePendingSubscribe(store, "sess-1", *testResource(prURL)); err != nil {
 		t.Fatal(err)
 	}
 

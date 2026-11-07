@@ -73,9 +73,6 @@ func TestShippedCatalog_LoadsAndCompiles(t *testing.T) {
 	if err != nil {
 		t.Fatalf("LoadChannels(shipped catalog): %v", err)
 	}
-	if _, err := cfg.LoadWorkspaceProviders(); err != nil {
-		t.Fatalf("LoadWorkspaceProviders(shipped catalog): %v", err)
-	}
 	observers, err := cfg.LoadResourceDefs()
 	if err != nil {
 		t.Fatalf("LoadResourceDefs(shipped catalog): %v", err)
@@ -143,9 +140,6 @@ func TestShippedCatalog_LoadsUnderArbitraryAlias(t *testing.T) {
 	}
 	if _, err := cfg.LoadChannels(); err != nil {
 		t.Fatalf("LoadChannels(shipped catalog, alias %q): %v", "acme", err)
-	}
-	if _, err := cfg.LoadWorkspaceProviders(); err != nil {
-		t.Fatalf("LoadWorkspaceProviders(shipped catalog, alias %q): %v", "acme", err)
 	}
 	if _, err := cfg.LoadResourceDefs(); err != nil {
 		t.Fatalf("LoadResourceDefs(shipped catalog, alias %q): %v", "acme", err)
@@ -424,12 +418,11 @@ func TestShippedCatalog_WorkflowPopulationResolvesGitHubPullQuery(t *testing.T) 
 	cfg.BaseDir = t.TempDir()
 	writeFile(t, filepath.Join(cfg.BaseDir, "agent.toml"), `
 [agent]
-kind               = "workflow"
-workspace_provider = "official.github.worktree"
+kind     = "workflow"
+resource = "official.github.pull_request"
 
 [[agent.populations]]
 name              = "dispatch"
-resource_observer = "official.github.pull_request"
 uses              = ["poll"]
 poll_every        = "1m"
 auto_down         = true
@@ -446,7 +439,7 @@ draft        = false
 		t.Fatalf("LoadWorkflows: %v", err)
 	}
 	populations := workflows["agent"].Populations
-	if len(populations) != 1 || populations[0].ResourceObserver != "official.github.pull_request" {
+	if len(populations) != 1 {
 		t.Fatalf("populations = %+v", populations)
 	}
 }
@@ -458,12 +451,11 @@ func TestShippedCatalog_WorkflowPopulationResolvesSlackThreadQuery(t *testing.T)
 	cfg.BaseDir = t.TempDir()
 	writeFile(t, filepath.Join(cfg.BaseDir, "ops.toml"), `
 [ops]
-kind               = "workflow"
-workspace_provider = "official.slack.thread_workspace"
+kind     = "workflow"
+resource = "official.slack.thread"
 
 [[ops.populations]]
 name              = "mentions"
-resource_observer = "official.slack.thread"
 uses              = ["subscribe"]
 expire_after      = "8h"
 auto_down         = true
@@ -481,7 +473,7 @@ denied_channel_message = "Use the other channel."
 		t.Fatalf("LoadWorkflows: %v", err)
 	}
 	populations := workflows["ops"].Populations
-	if len(populations) != 1 || populations[0].ResourceObserver != "official.slack.thread" {
+	if len(populations) != 1 {
 		t.Fatalf("populations = %+v", populations)
 	}
 }

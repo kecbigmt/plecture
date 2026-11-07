@@ -112,7 +112,8 @@ func TestTaskShow_ReportsExtendsChainWithPerLayerProvenance(t *testing.T) {
 	base := t.TempDir()
 	writeTaskFile(t, base, "resources", `
 [issue_pr]
-kind  = "resource_observer"
+kind  = "resource"
+name  = "fixture"
 match = '^https://github\.com/'
 
 [issue_pr.observe]
@@ -128,7 +129,7 @@ checks_status = { type = "string" }
 	writeTaskFile(t, base, "work", `
 [work]
 kind              = "task"
-resource_observer = "issue_pr"
+resource          = "issue_pr"
 instructions      = [{ text = "Resolve the issue." }]
 
 [work.done_when]
@@ -162,6 +163,7 @@ model = { type = "string", default = "opus" }
 	writeTaskFile(t, base, "claude_reviewer", `
 [claude_reviewer]
 kind = "workflow"
+resource = "issue"
 `)
 
 	detail, err := TaskShow(&config.Config{BaseDir: base}, "", "work_claude")

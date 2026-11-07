@@ -3,6 +3,7 @@
 package service
 
 import (
+	"github.com/kecbigmt/plecture/app/internal/domain"
 	"os"
 	"path/filepath"
 	"strings"
@@ -53,10 +54,10 @@ revision = { from = "resource.state.revision" }
 	// The work session is keyed to an issue; the pull request it opened is a
 	// fact its resource observation reports, and the chain names it.
 	const prURL = "https://github.com/testowner/testrepo/pull/56"
-	stubObservedFacts(t, cfg, ".", map[string]any{"checks_status": "SUCCESS", "revision": "sha1", "pr_url": prURL})
+	stubObservedFacts(t, cfg, map[string]any{"checks_status": "SUCCESS", "revision": "sha1", "pr_url": prURL})
 
 	url := "https://github.com/testowner/testrepo/issues/55"
-	work := "testowner/testrepo-55+default"
+	work := "testowner/testrepo-55"
 	reviewer := "testowner/testrepo-56+review-work"
 
 	if _, err := Up(cfg, store, UpParams{Identifier: url}); err != nil {
@@ -95,8 +96,8 @@ revision = { from = "resource.state.revision" }
 	}
 	// The reviewer is about the pull request the chain named, not the issue
 	// the work session is keyed to.
-	if spawned.ResourceID != prURL {
-		t.Fatalf("reviewer resource = %q, want the pull request the chain named (%q)", spawned.ResourceID, prURL)
+	if domain.Locator(spawned.Resource) != prURL {
+		t.Fatalf("reviewer resource = %q, want the pull request the chain named (%q)", domain.Locator(spawned.Resource), prURL)
 	}
 	// The reviewer session is a real session the workflow built, not a
 	// record: its nodes ran.
@@ -139,7 +140,7 @@ func TestIntegration_LegacyChainsFileIsRefused(t *testing.T) {
 		},
 		[]nodeFixture{{id: "tmux"}},
 	)
-	stubObservedFacts(t, cfg, ".", map[string]any{"checks_status": "SUCCESS", "revision": "sha1"})
+	stubObservedFacts(t, cfg, map[string]any{"checks_status": "SUCCESS", "revision": "sha1"})
 	dir := filepath.Join(cfg.BaseDir, "chains")
 	if err := os.MkdirAll(dir, 0o755); err != nil {
 		t.Fatal(err)

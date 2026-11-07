@@ -67,8 +67,7 @@ RUN /out/bin/plect init --yes \
   --catalog-source path:///opt/plect-repo \
   --catalog-subdir plugins \
   --enable tmux --enable claude --enable github \
-  --allowlist '^https://github\.com/your-org/' \
-  --workspace-dirs-root /var/lib/plect/workspace_dirs
+  --allowlist '^https://github\.com/your-org/'
 
 COPY --from=source /src/deploy/docker/example-config/workflows/ /etc/plect/workflows/
 

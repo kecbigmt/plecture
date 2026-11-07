@@ -18,10 +18,10 @@ const (
 // SubscriptionRetry is one provider operation that did not complete and is
 // retried by ordinary session activity.
 type SubscriptionRetry struct {
-	SessionID  string
-	Session    string
-	Action     string
-	ResourceID string
+	SessionID string
+	Session   string
+	Action    string
+	Resource  contract.Resource
 }
 
 // Tombstone returns name's most recently destroyed incarnation. The retained
@@ -121,41 +121,44 @@ func (db *DB) ClearChainAttempts(ctx context.Context, sessionID string) error {
 }
 
 // QueueSubscriptionRetry queues an operation against the live incarnation.
-func (db *DB) QueueSubscriptionRetry(ctx context.Context, session, action, resourceID string) error {
+func (db *DB) QueueSubscriptionRetry(ctx context.Context, session, action string, resource contract.Resource) error {
 	return db.WithImmediateTx(ctx, func(tx *sql.Tx) error {
 		id, err := currentSessionID(ctx, sqlcgen.New(tx), session)
 		if err != nil {
 			return err
 		}
-		return queueSubscriptionRetryTx(ctx, tx, id, action, resourceID)
+		return queueSubscriptionRetryTx(ctx, tx, id, action, &resource)
 	})
 }
 
 // QueueSubscriptionRetryByID records a teardown retry against the destroyed
 // incarnation that owned the original provider registration.
-func (db *DB) QueueSubscriptionRetryByID(ctx context.Context, sessionID, action, resourceID string) error {
+func (db *DB) QueueSubscriptionRetryByID(ctx context.Context, sessionID, action string, resource contract.Resource) error {
 	return db.WithImmediateTx(ctx, func(tx *sql.Tx) error {
-		return queueSubscriptionRetryTx(ctx, tx, sessionID, action, resourceID)
+		return queueSubscriptionRetryTx(ctx, tx, sessionID, action, &resource)
 	})
 }
 
-func queueSubscriptionRetryTx(ctx context.Context, tx *sql.Tx, sessionID, action, resourceID string) error {
+func queueSubscriptionRetryTx(ctx context.Context, tx *sql.Tx, sessionID, action string, resource *contract.Resource) error {
 	if action != subscriptionRetrySubscribe && action != subscriptionRetryUnsubscribe {
 		return fmt.Errorf("invalid subscription retry action %q", action)
 	}
-	_, err := tx.ExecContext(ctx, `INSERT INTO subscription_retries (session_id, action, resource_id) VALUES (?, ?, ?) ON CONFLICT(session_id, action, resource_id) DO NOTHING`, sessionID, action, resourceID)
+	if err := recordResourceTx(ctx, sqlcgen.New(tx), resource); err != nil {
+		return fmt.Errorf("queue subscription retry: %w", err)
+	}
+	_, err := tx.ExecContext(ctx, `INSERT INTO subscription_retries (session_id, action, resource_id) VALUES (?, ?, ?) ON CONFLICT(session_id, action, resource_id) DO NOTHING`, sessionID, action, resource.ID)
 	return err
 }
 
 // SubscriptionRetriesForLiveSession returns retries for name's live row.
 func (db *DB) SubscriptionRetriesForLiveSession(ctx context.Context, name string) ([]SubscriptionRetry, error) {
-	return db.subscriptionRetries(ctx, `SELECT r.session_id, s.name, r.action, r.resource_id FROM subscription_retries r JOIN sessions s ON s.id = r.session_id WHERE s.name = ? AND s.status <> 'destroyed' ORDER BY r.action, r.resource_id`, name)
+	return db.subscriptionRetries(ctx, `SELECT r.session_id, s.name, r.action, res.id, res.type, res.name, res.locator FROM subscription_retries r JOIN sessions s ON s.id = r.session_id JOIN resources res ON res.id = r.resource_id WHERE s.name = ? AND s.status <> 'destroyed' ORDER BY r.action, res.name`, name)
 }
 
 // DestroyedSubscriptionRetries returns retries whose retained session row is
 // destroyed. Callers drop subscribe attempts and retry unsubscribe attempts.
 func (db *DB) DestroyedSubscriptionRetries(ctx context.Context) ([]SubscriptionRetry, error) {
-	return db.subscriptionRetries(ctx, `SELECT r.session_id, s.name, r.action, r.resource_id FROM subscription_retries r JOIN sessions s ON s.id = r.session_id WHERE s.status = 'destroyed' ORDER BY s.name, r.action, r.resource_id`)
+	return db.subscriptionRetries(ctx, `SELECT r.session_id, s.name, r.action, res.id, res.type, res.name, res.locator FROM subscription_retries r JOIN sessions s ON s.id = r.session_id JOIN resources res ON res.id = r.resource_id WHERE s.status = 'destroyed' ORDER BY s.name, r.action, res.name`)
 }
 
 func (db *DB) subscriptionRetries(ctx context.Context, query string, args ...any) ([]SubscriptionRetry, error) {
@@ -168,7 +171,7 @@ func (db *DB) subscriptionRetries(ctx context.Context, query string, args ...any
 		defer rows.Close()
 		for rows.Next() {
 			var retry SubscriptionRetry
-			if err := rows.Scan(&retry.SessionID, &retry.Session, &retry.Action, &retry.ResourceID); err != nil {
+			if err := rows.Scan(&retry.SessionID, &retry.Session, &retry.Action, &retry.Resource.ID, &retry.Resource.Type, &retry.Resource.Name, &retry.Resource.Locator); err != nil {
 				return err
 			}
 			retries = append(retries, retry)
@@ -181,7 +184,22 @@ func (db *DB) subscriptionRetries(ctx context.Context, query string, args ...any
 // DeleteSubscriptionRetry removes a retry only after its outcome is known.
 func (db *DB) DeleteSubscriptionRetry(ctx context.Context, sessionID, action, resourceID string) error {
 	return db.WithImmediateTx(ctx, func(tx *sql.Tx) error {
-		_, err := tx.ExecContext(ctx, `DELETE FROM subscription_retries WHERE session_id = ? AND action = ? AND resource_id = ?`, sessionID, action, resourceID)
-		return err
+		if _, err := tx.ExecContext(ctx, `DELETE FROM subscription_retries WHERE session_id = ? AND action = ? AND resource_id = ?`, sessionID, action, resourceID); err != nil {
+			return err
+		}
+		return releaseResourcesTx(ctx, sqlcgen.New(tx), []string{resourceID})
+	})
+}
+
+func (db *DB) DeleteSubscriptionRetryForLiveSession(ctx context.Context, session, action, resourceID string) error {
+	return db.WithImmediateTx(ctx, func(tx *sql.Tx) error {
+		id, err := currentSessionID(ctx, sqlcgen.New(tx), session)
+		if err != nil {
+			return err
+		}
+		if _, err := tx.ExecContext(ctx, `DELETE FROM subscription_retries WHERE session_id = ? AND action = ? AND resource_id = ?`, id, action, resourceID); err != nil {
+			return err
+		}
+		return releaseResourcesTx(ctx, sqlcgen.New(tx), []string{resourceID})
 	})
 }

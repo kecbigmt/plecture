@@ -7,7 +7,6 @@ import (
 	"time"
 
 	"github.com/kecbigmt/plecture/app/internal/config"
-	"github.com/kecbigmt/plecture/app/internal/domain"
 	"github.com/kecbigmt/plecture/app/internal/eventlog"
 	"github.com/kecbigmt/plecture/app/internal/state"
 	"github.com/kecbigmt/plecture/app/internal/task"
@@ -18,17 +17,17 @@ import (
 type DestroyParams struct {
 	Identifier string
 	Force      bool
-	// CleanupInputs are opaque key/value intents forwarded verbatim to the
-	// workspace provider cleanup hook (see
-	// effect.WorkflowHookVars.CleanupInputs); core interprets none of them.
-	CleanupInputs map[string]string
-	Observer      task.Observer
+	Observer   task.Observer
 }
+
+// forceRequiresConfirmation follows every suggestion to re-run with --force,
+// because an agent that reads only the error would otherwise take the
+// suggestion as license to discard what destroy was protecting.
+const forceRequiresConfirmation = "--force discards what destroy protects: uncommitted changes, child sessions, and the record of a release nobody verified. Report this failure to a human and get their confirmation before re-running with --force."
 
 // DestroyResult holds the outcome of Destroy.
 type DestroyResult struct {
-	SessionName         string `json:"session_name"`
-	RemovedWorkspaceDir bool   `json:"removed_workspace_dir"`
+	SessionName string `json:"session_name"`
 	// CleanupWarnings carries task cleanup errors that were downgraded to
 	// warnings by --force. Without --force a cleanup error aborts Destroy and
 	// returns the error directly; this field is only populated when the user
@@ -62,7 +61,14 @@ func destroyUnlocked(cfg *config.Config, store *state.Store, params DestroyParam
 	if err != nil {
 		return nil, err
 	}
+	if err := requireSessionRoot(cfg, session); err != nil {
+		return nil, err
+	}
 	params.Observer = withNodeResultRecording(store, sessionName, params.Observer)
+	retired := config.RetiredRevisionSpellings(session)
+	if len(retired) > 0 && !params.Force {
+		return nil, retiredRevisionRefusal(session, "`destroy`")
+	}
 	flushPendingDeliveryLogged(cfg, store, sessionName)
 	// Tearing down an existing session is a per-session write; clamp it to the
 	// active guard so a guarded orchestrator can't destroy another owner's
@@ -99,16 +105,24 @@ func destroyUnlocked(cfg *config.Config, store *state.Store, params DestroyParam
 			return nil, &Error{
 				Code: ErrHasChildren,
 				Message: fmt.Sprintf(
-					"session %s has %d child session(s) that would be orphaned: %s\nUse `plect down %s` + `plect up %s` to reset without orphaning them, or re-run with `plect destroy %s --force` to destroy and orphan them.",
-					sessionName, len(children), strings.Join(children, ", "), sessionName, sessionName, sessionName,
+					"session %s has %d child session(s) that would be orphaned: %s\nUse `plect down %s` + `plect up %s` to reset without orphaning them, or re-run with `plect destroy %s --force` to destroy and orphan them.\n%s",
+					sessionName, len(children), strings.Join(children, ", "), sessionName, sessionName, sessionName, forceRequiresConfirmation,
 				),
 			}
 		}
 		result.CleanupWarnings = append(result.CleanupWarnings, fmt.Sprintf("orphaned %d child session(s): %s", len(children), strings.Join(children, ", ")))
 	}
+	if len(retired) > 0 {
+		result.CleanupWarnings = append(result.CleanupWarnings, fmt.Sprintf("workflow revision uses retired declaration spellings (%s); cleanup skipped, release not verified", strings.Join(retired, ", ")))
+		recordLifecycle(store, sessionName, "destroyed", "session destroyed")
+		if err := store.Destroy(sessionName); err != nil {
+			return nil, &Error{Code: ErrExecutionFailed, Message: fmt.Sprintf("failed to destroy state entry: %v", err)}
+		}
+		return result, nil
+	}
 	if session.Workflow != "" && session.WorkflowRevision == "" {
 		if !params.Force {
-			return nil, &Error{Code: ErrExecutionFailed, Message: fmt.Sprintf("session %q has no stored workflow revision; re-run with `plect destroy %s --force` to remove it without cleanup", sessionName, sessionName)}
+			return nil, &Error{Code: ErrExecutionFailed, Message: fmt.Sprintf("session %q has no stored workflow revision; re-run with `plect destroy %s --force` to remove it without cleanup.\n%s", sessionName, sessionName, forceRequiresConfirmation)}
 		}
 		result.CleanupWarnings = append(result.CleanupWarnings, "no stored workflow revision; cleanup skipped")
 		recordLifecycle(store, sessionName, "destroyed", "session destroyed")
@@ -118,68 +132,49 @@ func destroyUnlocked(cfg *config.Config, store *state.Store, params DestroyParam
 		return result, nil
 	}
 
-	// A workspace setup can fail before workspace overlays supply the plan's
-	// nodes. Its provider cleanup only needs the stored provider declaration.
 	var plan *task.Plan
 	needsPlan := len(session.Tasks) > 0 || (session.Workflow == "" && !params.Force)
-	for key, node := range session.Nodes {
-		if key != contract.WorkflowPseudoNodeID && node != nil && node.Status != contract.TaskStatusCleaned {
+	for _, node := range session.Nodes {
+		if node != nil && node.Status != contract.TaskStatusCleaned {
 			needsPlan = true
 		}
 	}
 	if needsPlan {
 		var planErr error
-		plan, planErr = buildPlanForSession(cfg, session.WorkspaceDirPath, session)
+		plan, planErr = buildPlanForSession(cfg, session)
 		if planErr != nil {
 			return nil, &Error{Code: ErrExecutionFailed, Message: planErr.Error()}
 		}
 	}
 
-	// A single reverse-instantiation teardown over every non-@workflow task —
-	// static plan nodes (run + session) and dynamic instances merged into one
+	// A single reverse-instantiation teardown over every task — static plan
+	// nodes (run + session) and dynamic instances merged into one
 	// seq-descending pass. This is strictly the reverse of the instantiation
 	// stack, so a static node instantiated after a dynamic one is still
-	// cleaned first regardless of scope. @workflow (workspace) is released
-	// last, below.
+	// cleaned first regardless of scope.
 	teardown, teardownErr := unifiedTeardownList(cfg, session, false)
 	if teardownErr != nil {
 		return nil, &Error{Code: ErrExecutionFailed, Message: teardownErr.Error()}
 	}
-	if cleanupErr := runTaskCleanup(context.Background(), teardown, sessionVars(cfg, session, plan), session, params.Observer); cleanupErr != nil {
+	vars := sessionVars(cfg, session, plan)
+	vars.Force = params.Force
+	vars.ReleaseAfterFailure = params.Force
+	if cleanupErr := runTaskCleanup(context.Background(), cfg, store, teardown, vars, session, params.Observer); cleanupErr != nil {
 		session.UpdatedAt = time.Now()
 		putBestEffort(store, session, "run cleanup failure")
 		if !params.Force {
-			return nil, &Error{Code: ErrExecutionFailed, Message: cleanupErr.Error()}
+			return nil, &Error{
+				Code:    ErrExecutionFailed,
+				Message: fmt.Sprintf("%v (session %s)\nRe-run with `plect destroy %s --force` to delete the state entry anyway.\n%s", cleanupErr, sessionName, sessionName, forceRequiresConfirmation),
+			}
 		}
 		result.CleanupWarnings = append(result.CleanupWarnings, fmt.Sprintf("cleanup: %v", cleanupErr))
 	}
 
 	// Persist any TaskState changes (status flips to cleaned) before we
-	// delete the entry, in case workspace directory removal fails and the
-	// user wants to inspect the persisted checkpoint post hoc.
+	// delete the entry, so a failed delete leaves the checkpoint inspectable.
 	session.UpdatedAt = time.Now()
 	putBestEffort(store, session, "post-run-cleanup checkpoint")
-
-	if wfState, ok := session.Nodes[contract.WorkflowPseudoNodeID]; ok && wfState != nil {
-		// Workflow setup acquired the workspace, so workflow cleanup owns
-		// its release — the core performs no workspace directory removal
-		// here. (Whether the workspace directory is actually deleted is the
-		// cleanup script's decision; setup/cleanup symmetry is the author's
-		// contract.)
-		cleanupErr := runWorkflowCleanupForDestroy(cfg, session, params.Force, params.CleanupInputs, params.Observer)
-		session.UpdatedAt = time.Now()
-		putBestEffort(store, session, "workflow cleanup for destroy")
-		if cleanupErr != nil {
-			if !params.Force {
-				return nil, &Error{
-					Code:    ErrExecutionFailed,
-					Message: fmt.Sprintf("%v (session %s)\nRe-run with `plect destroy %s --force` to delete the state entry anyway.", cleanupErr, sessionName, sessionName),
-				}
-			}
-			result.CleanupWarnings = append(result.CleanupWarnings, fmt.Sprintf("workflow cleanup: %v", cleanupErr))
-		}
-		result.RemovedWorkspaceDir = session.WorkspaceDirPath != "" && !fileExists(session.WorkspaceDirPath)
-	}
 
 	// The retained destroyed session row is the tombstone. Record its lifecycle
 	// transition before making the row non-live so the event shares its id.
@@ -195,7 +190,7 @@ func destroyUnlocked(cfg *config.Config, store *state.Store, params DestroyParam
 
 	// After the delete, so unwireDeliveryOnTeardown's fresh read sees the
 	// session as gone rather than skipping the unsubscribe as still needed.
-	if _, errMsg := unwireDeliveryOnTeardown(cfg, store, sessionName, session.ResourceID, session.ID, domain.SessionBranch(session)); errMsg != "" {
+	if _, errMsg := unwireDeliveryOnTeardown(cfg, store, sessionName, session.Resource, session.ID); errMsg != "" {
 		result.CleanupWarnings = append(result.CleanupWarnings, fmt.Sprintf("resource delivery unsubscribe: %s", errMsg))
 	}
 

@@ -177,8 +177,8 @@ export interface components {
             /** Format: date-time */
             lastActivityAt?: string;
             tasks?: components["schemas"]["SessionTaskSummary"][];
-            workspaceDirPath?: string;
-            workspaceDirExists: boolean;
+            workdir?: string;
+            workdirExists?: boolean;
             message?: components["schemas"]["SessionMessage"];
             warnings?: string[];
             destroyed?: boolean;
@@ -190,9 +190,8 @@ export interface components {
         SessionIdentity: {
             sessionName: string;
             /** @description Absent and empty are equivalent for every optional field on this model: the API omits an unset value rather than emitting it as `null` or `""`, mirroring the Go source's `omitempty` struct tags. */
-            resourceId?: string;
+            resource?: components["schemas"]["SessionResource"];
             title?: string;
-            branch?: string;
             workflow?: string;
             tag?: string;
             parentSession?: string;
@@ -214,6 +213,11 @@ export interface components {
             /** Format: date-time */
             updatedAt: string;
         };
+        SessionResource: {
+            type: string;
+            name: string;
+            locator: string;
+        };
         /** @enum {string} */
         SessionRunState: "up" | "down";
         SessionRuntime: {
@@ -224,8 +228,8 @@ export interface components {
             /** Format: date-time */
             lastActivityAt?: string;
             tasks?: components["schemas"]["SessionTaskSummary"][];
-            workspaceDirPath?: string;
-            workspaceDirExists: boolean;
+            workdir?: string;
+            workdirExists?: boolean;
             message?: components["schemas"]["SessionMessage"];
         };
         SessionSummary: {
@@ -235,11 +239,10 @@ export interface components {
             displayStatus: string;
             run: components["schemas"]["SessionRunState"];
             health?: components["schemas"]["SessionHealthState"];
-            resourceId: string;
+            resource?: components["schemas"]["SessionResource"];
             /** Format: date-time */
             lastActiveAt?: string;
             message?: components["schemas"]["SessionMessage"];
-            branch?: string;
             parentSession?: string;
             tasks?: components["schemas"]["SessionTaskSummary"][];
         };

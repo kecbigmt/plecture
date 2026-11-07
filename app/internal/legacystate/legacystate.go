@@ -6,6 +6,7 @@
 package legacystate
 
 import (
+	"bytes"
 	"encoding/json"
 	"fmt"
 	"sort"
@@ -49,6 +50,10 @@ func Parse(data []byte) (*StateFile, error) {
 		return nil, err
 	}
 
+	data, err := liftLegacyResources(data)
+	if err != nil {
+		return nil, err
+	}
 	var parsed struct {
 		Version        int                                `json:"version"`
 		Sessions       map[string]*domain.Session         `json:"sessions"`
@@ -215,9 +220,58 @@ func checkLayerIdentityMigrated(data []byte) error {
 // resource id, which is what a session created without an explicit alias
 // was looked up by.
 func migrateResourceID(session *domain.Session) {
-	if session.Alias == "" && session.ResourceID != "" {
-		session.Alias = session.ResourceID
+	if session.Alias == "" && session.Resource != nil {
+		session.Alias = session.Resource.Locator
 	}
+}
+
+// liftLegacyResources rewrites each identifier string the envelope stored
+// (a session's resource_id, a task's resource, a population member's
+// resource_id) as a resource that carries only its locator. The envelope never
+// recorded which declaration resolved an identifier, so the importer records
+// each as an untyped resource, as the resources migration does.
+func liftLegacyResources(data []byte) ([]byte, error) {
+	var doc map[string]any
+	decoder := json.NewDecoder(bytes.NewReader(data))
+	decoder.UseNumber()
+	if err := decoder.Decode(&doc); err != nil {
+		return nil, fmt.Errorf("parse state file: %w", err)
+	}
+	lift := func(entry map[string]any, from, to string) {
+		if locator, ok := entry[from].(string); ok {
+			delete(entry, from)
+			if locator != "" {
+				entry[to] = map[string]any{"locator": locator}
+			}
+		}
+	}
+	sessions, _ := doc["sessions"].(map[string]any)
+	for _, raw := range sessions {
+		session, ok := raw.(map[string]any)
+		if !ok {
+			continue
+		}
+		lift(session, "resource_id", "resource")
+		for _, key := range []string{"tasks", "nodes"} {
+			states, _ := session[key].(map[string]any)
+			for _, rawState := range states {
+				if state, ok := rawState.(map[string]any); ok {
+					lift(state, "resource", "resource")
+				}
+			}
+		}
+	}
+	populations, _ := doc["populations"].(map[string]any)
+	for _, raw := range populations {
+		population, _ := raw.(map[string]any)
+		members, _ := population["members"].(map[string]any)
+		for _, rawMember := range members {
+			if member, ok := rawMember.(map[string]any); ok {
+				lift(member, "resource_id", "resource")
+			}
+		}
+	}
+	return json.Marshal(doc)
 }
 
 // normalizeSessionTree derives Children from ParentSession, silently

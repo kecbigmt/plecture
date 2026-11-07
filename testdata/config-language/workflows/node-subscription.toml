@@ -1,0 +1,11 @@
+# plect-fixture: result=valid entry=definitions
+# reason: a node may bind one of its own produced output identifiers for delivery.
+
+[review]
+kind = "workflow"
+resource = "issue_pr"
+
+[[review.nodes]]
+id = "thread"
+uses = "official.slack.slack_thread"
+subscription = { from = "self.outputs.permalink" }

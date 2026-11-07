@@ -48,8 +48,8 @@ func (f *fakeReader) EventPage(name string, p service.EventPageParams) (service.
 func TestHandleList_ReturnsEveryEntryAsAnEnvelope(t *testing.T) {
 	now := time.Now()
 	svc := &fakeReader{entries: []service.ListEntry{
-		{SessionName: "team/workspace-a", DisplayStatus: "up", Run: domain.RunUp, ResourceID: "r1", LastActiveAt: &now},
-		{SessionName: "team/workspace-b", DisplayStatus: "down", Run: domain.RunDown, ResourceID: "r2"},
+		{SessionName: "team/workspace-a", DisplayStatus: "up", Run: domain.RunUp, Resource: testView("r1"), LastActiveAt: &now},
+		{SessionName: "team/workspace-b", DisplayStatus: "down", Run: domain.RunDown, Resource: testView("r2")},
 	}}
 
 	rec := doRequest(t, svc, http.MethodGet, "/sessions")
@@ -75,8 +75,8 @@ func TestHandleList_ReturnsEveryEntryAsAnEnvelope(t *testing.T) {
 // JSON preserves slice order regardless of what that order is.
 func TestHandleList_DoesNotReorderWhatServiceListReturns(t *testing.T) {
 	svc := &fakeReader{entries: []service.ListEntry{
-		{SessionName: "z/last", ResourceID: "r1"},
-		{SessionName: "a/first", ResourceID: "r2"},
+		{SessionName: "z/last", Resource: testView("r1")},
+		{SessionName: "a/first", Resource: testView("r2")},
 	}}
 
 	rec := doRequest(t, svc, http.MethodGet, "/sessions")
@@ -158,9 +158,9 @@ func TestHandleGet_ResponseJSONOmitsEveryUnsetOptionalKey(t *testing.T) {
 	decodeBody(t, rec, &raw)
 
 	unsetOptionalKeys := []string{
-		"resourceId", "title", "branch", "workflow", "tag", "parentSession",
+		"resource", "title", "workflow", "tag", "parentSession",
 		"children", "inputs", "health", "lastCheckedAt", "lastActivityAt",
-		"tasks", "workspaceDirPath", "message", "warnings", "destroyed",
+		"tasks", "workdir", "workdirExists", "message", "warnings", "destroyed",
 		"destroyedAt",
 	}
 	for _, key := range unsetOptionalKeys {
@@ -168,7 +168,7 @@ func TestHandleGet_ResponseJSONOmitsEveryUnsetOptionalKey(t *testing.T) {
 			t.Errorf("response JSON has key %q = %v, want it omitted (not even null)", key, raw[key])
 		}
 	}
-	for _, key := range []string{"sessionName", "createdAt", "run", "workspaceDirExists"} {
+	for _, key := range []string{"sessionName", "createdAt", "run"} {
 		if _, present := raw[key]; !present {
 			t.Errorf("response JSON is missing required key %q: %v", key, raw)
 		}

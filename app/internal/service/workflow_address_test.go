@@ -12,10 +12,12 @@ import (
 )
 
 // writePluginWorkflow stands up one catalog plugin that declares a whole
-// workflow — its effect and workspace provider included, so every reference
-// inside it is relative and resolves in the plugin's own namespace.
-func writePluginWorkflow(t *testing.T, wfID, marker string) (dir string) {
+// workflow — its effects and resource included, so every reference inside it
+// is relative and resolves in the plugin's own namespace. kind is the URL path
+// segment ("issues" or "pull") its resource recognizes.
+func writePluginWorkflow(t *testing.T, wfID, marker, kind string) (dir string) {
 	t.Helper()
+	t.Setenv("HOME", t.TempDir())
 	dir = t.TempDir()
 	write := func(rel, body string) {
 		t.Helper()
@@ -39,20 +41,42 @@ script = "echo '{}'"
 [noop.health.alive]
 type = "noop"
 `)
-	write(filepath.Join("workspaces", "space.toml"), `
+	write(filepath.Join("tasks", "space.toml"), `
 [space]
-kind  = "workspace_provider"
-match = '^https://github\.com/(?P<owner>[^/]+)/(?P<repo>[^/]+)/(issues|pull)/(?P<number>\d+)'
-name  = { expr = "match.owner + '/' + match.repo + '-' + match.number" }
+kind  = "effect"
+scope = "session"
 
 [space.setup]
 type   = "shell"
 script = "mkdir -p `+marker+` && printf '{\"workspace_dir\":\"`+marker+`\"}'"
+
+[space.health.alive]
+type = "noop"
+
+[space.outputs_schema]
+type = "object"
+
+[space.outputs_schema.properties]
+workspace_dir = { type = "string" }
+`)
+	write(filepath.Join("resources", "issue.toml"), `
+[issue]
+kind  = "resource"
+match = '^https://github\.com/(?P<owner>[^/]+)/(?P<repo>[^/]+)/`+kind+`/(?P<number>\d+)'
+name  = { expr = "match.owner + '/' + match.repo + '-' + match.number" }
+
+[issue.observe]
+type   = "shell"
+script = "echo '{}'"
 `)
 	write(filepath.Join("workflows", wfID+".toml"), `
 [`+wfID+`]
-kind               = "workflow"
-workspace_provider = "space"
+kind     = "workflow"
+resource = "issue"
+workdir  = { from = "nodes.space.outputs.workspace_dir" }
+
+[[`+wfID+`.nodes]]
+uses = "space"
 
 [[`+wfID+`.nodes]]
 uses = "noop"
@@ -66,7 +90,7 @@ uses = "noop"
 // value against the workflow it just resolved.
 func TestCreate_PluginOwnedWorkflowFreezesItsAddress(t *testing.T) {
 	store := testStore(t)
-	dir := writePluginWorkflow(t, "shared", filepath.Join(t.TempDir(), "wd"))
+	dir := writePluginWorkflow(t, "shared", filepath.Join(t.TempDir(), "wd"), "issues")
 	cfg := &config.Config{
 		BaseDir:    t.TempDir(),
 		PluginDirs: []string{dir},
@@ -96,8 +120,8 @@ func TestCreate_PluginOwnedWorkflowFreezesItsAddress(t *testing.T) {
 // session tag and that is naming rather than addressing.
 func TestCreate_TwoPluginsSharingAWorkflowIDRunSideBySide(t *testing.T) {
 	store := testStore(t)
-	dirA := writePluginWorkflow(t, "shared", filepath.Join(t.TempDir(), "a"))
-	dirB := writePluginWorkflow(t, "shared", filepath.Join(t.TempDir(), "b"))
+	dirA := writePluginWorkflow(t, "shared", filepath.Join(t.TempDir(), "a"), "issues")
+	dirB := writePluginWorkflow(t, "shared", filepath.Join(t.TempDir(), "b"), "pull")
 	cfg := &config.Config{
 		BaseDir:    t.TempDir(),
 		PluginDirs: []string{dirA, dirB},
@@ -107,12 +131,11 @@ func TestCreate_TwoPluginsSharingAWorkflowIDRunSideBySide(t *testing.T) {
 		},
 	}
 
-	url := "https://github.com/org/repo/issues/42"
-	for _, tc := range []struct{ address, tag string }{
-		{"official.a.shared", "a"},
-		{"official.b.shared", "b"},
+	for _, tc := range []struct{ url, address, tag string }{
+		{"https://github.com/org/repo/issues/42", "official.a.shared", "a"},
+		{"https://github.com/org/repo/pull/43", "official.b.shared", "b"},
 	} {
-		result, err := Create(cfg, store, CreateParams{URL: url, Workflow: tc.address, Tag: tc.tag})
+		result, err := Create(cfg, store, CreateParams{URL: tc.url, Workflow: tc.address, Tag: tc.tag})
 		if err != nil {
 			t.Fatalf("Create(%s): %v", tc.address, err)
 		}
@@ -175,6 +198,7 @@ script = "touch `+marker+`"
 	write(filepath.Join(base, "workflows", "coding.toml"), `
 [coding]
 kind = "workflow"
+resource = "issue"
 
 [[coding.nodes]]
 id   = "runner"
@@ -253,6 +277,7 @@ script = "touch `+marker+`"
 	write(filepath.Join(base, "workflows", "coding.toml"), `
 [coding]
 kind = "workflow"
+resource = "issue"
 
 [[coding.nodes]]
 id   = "runner"
@@ -279,25 +304,29 @@ uses = "official.acme.runner"
 	}
 }
 
-// Ambiguity has to name something the reader can pass to --workflow. Two
-// plugins declaring one id would otherwise print that id twice.
+// Ambiguity has to name something the reader can pass to --workflow. A plugin
+// workflow and a user-owned one declaring one id would otherwise print that id
+// twice.
 func TestDispatch_AmbiguityNamesAddressesNotIds(t *testing.T) {
-	dirA := writePluginWorkflow(t, "shared", filepath.Join(t.TempDir(), "a"))
-	dirB := writePluginWorkflow(t, "shared", filepath.Join(t.TempDir(), "b"))
+	dir := writePluginWorkflow(t, "shared", filepath.Join(t.TempDir(), "a"), "issues")
 	cfg := &config.Config{
 		BaseDir:    t.TempDir(),
-		PluginDirs: []string{dirA, dirB},
-		Plugins: []plugins.Mounted{
-			{ID: "official/a", Dir: dirA},
-			{ID: "official/b", Dir: dirB},
-		},
+		PluginDirs: []string{dir},
+		Plugins:    []plugins.Mounted{{ID: "official/a", Dir: dir}},
+	}
+	if err := os.MkdirAll(filepath.Join(cfg.BaseDir, "workflows"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	userWorkflow := "[shared]\nkind = \"workflow\"\nresource = \"official.a.issue\"\n\n[[shared.nodes]]\nuses = \"official.a.noop\"\n"
+	if err := os.WriteFile(filepath.Join(cfg.BaseDir, "workflows", "shared.toml"), []byte(userWorkflow), 0o644); err != nil {
+		t.Fatal(err)
 	}
 
-	_, _, err := dispatchResource(cfg, "", "https://github.com/org/repo/issues/42")
+	_, _, err := dispatchResource(cfg, "", "", "https://github.com/org/repo/issues/42")
 	if err == nil {
 		t.Fatal("expected two auto-selecting workflows to be ambiguous")
 	}
-	for _, want := range []string{"official.a.shared", "official.b.shared"} {
+	for _, want := range []string{"official.a.shared", ", shared)"} {
 		if !strings.Contains(err.Error(), want) {
 			t.Errorf("error = %v, want it to name %q", err, want)
 		}

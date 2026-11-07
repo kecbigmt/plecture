@@ -32,7 +32,8 @@ func observers(t *testing.T, body string) map[string]config.ResourceDef {
 func TestMatchResourceDef_NoMatch(t *testing.T) {
 	defs := observers(t, `
 [github]
-kind  = "resource_observer"
+kind  = "resource"
+name  = "fixture"
 match = '^https://github\.com/'
 
 [github.observe]
@@ -51,7 +52,8 @@ command = "true"
 func TestMatchResourceDef_Ambiguous(t *testing.T) {
 	defs := observers(t, `
 [a]
-kind  = "resource_observer"
+kind  = "resource"
+name  = "fixture"
 match = '^https://'
 
 [a.observe]
@@ -59,7 +61,8 @@ type    = "exec"
 command = "true"
 
 [b]
-kind  = "resource_observer"
+kind  = "resource"
+name  = "fixture"
 match = 'github\.com'
 
 [b.observe]
@@ -73,7 +76,7 @@ command = "true"
 }
 
 func TestResourceStatus_NoDefinition(t *testing.T) {
-	state, _, ok, err := ResourceStatus(nil, "https://github.com/o/r/pull/1", "", "", nil)
+	state, _, ok, err := ResourceStatus(nil, "https://github.com/o/r/pull/1", nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -85,7 +88,8 @@ func TestResourceStatus_NoDefinition(t *testing.T) {
 func TestResourceStatus_ObservesAndValidates(t *testing.T) {
 	defs := observers(t, `
 [github]
-kind  = "resource_observer"
+kind  = "resource"
+name  = "fixture"
 match = '^https://github\.com/'
 
 [github.observe]
@@ -101,7 +105,7 @@ required = ["resource_kind"]
 resource_kind = { type = "string" }
 checks_status = { type = "string" }
 `)
-	state, def, ok, err := ResourceStatus(defs, "https://github.com/o/r/pull/5", "", "", nil)
+	state, def, ok, err := ResourceStatus(defs, "https://github.com/o/r/pull/5", nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -115,12 +119,10 @@ checks_status = { type = "string" }
 
 func TestResourceStatus_ObserveReadsItsSurfaceRoots(t *testing.T) {
 	tests := []struct {
-		name             string
-		projection       string
-		branch           string
-		workspaceDirPath string
-		wantKey          string
-		want             string
+		name       string
+		projection string
+		wantKey    string
+		want       string
 	}{
 		{
 			name:       "resource.id",
@@ -128,34 +130,13 @@ func TestResourceStatus_ObserveReadsItsSurfaceRoots(t *testing.T) {
 			wantKey:    "value",
 			want:       "local-okf://kec/goals/x.md",
 		},
-		{
-			name:       "workspace.branch",
-			projection: `{ from = "workspace.branch" }`,
-			branch:     "issue/632+claude",
-			wantKey:    "value",
-			want:       "issue/632+claude",
-		},
-		{
-			name:             "workspace.dir",
-			projection:       `{ from = "workspace.dir" }`,
-			workspaceDirPath: "/tmp/wt/issue-632",
-			wantKey:          "value",
-			want:             "/tmp/wt/issue-632",
-		},
-		{
-			// A standalone observation has no session, so the root is absent
-			// rather than empty and the declared default is what arrives.
-			name:       "an absent workspace falls back to the declared default",
-			projection: `{ from = "workspace.dir", default = "unset" }`,
-			wantKey:    "value",
-			want:       "unset",
-		},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			defs := observers(t, `
 [echo]
-kind  = "resource_observer"
+kind  = "resource"
+name  = "fixture"
 match = '.*'
 
 [echo.observe]
@@ -163,7 +144,7 @@ type    = "exec"
 command = "printf"
 args    = ['{"value":"%s"}', `+tt.projection+`]
 `)
-			state, _, ok, err := ResourceStatus(defs, "local-okf://kec/goals/x.md", tt.branch, tt.workspaceDirPath, nil)
+			state, _, ok, err := ResourceStatus(defs, "local-okf://kec/goals/x.md", nil)
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -179,7 +160,8 @@ args    = ['{"value":"%s"}', `+tt.projection+`]
 func TestResourceStatus_ShellObserveReadsItsBindings(t *testing.T) {
 	defs := observers(t, `
 [echo]
-kind  = "resource_observer"
+kind  = "resource"
+name  = "fixture"
 match = '.*'
 
 [echo.observe]
@@ -191,7 +173,7 @@ printf '{"resource_id":"%s"}' "$resource_id"
 [echo.observe.bind]
 resource_id = { from = "resource.id" }
 `)
-	state, _, ok, err := ResourceStatus(defs, "local-okf://kec/goals/x.md", "", "", nil)
+	state, _, ok, err := ResourceStatus(defs, "local-okf://kec/goals/x.md", nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -203,7 +185,8 @@ resource_id = { from = "resource.id" }
 func TestResourceStatus_SchemaViolationErrors(t *testing.T) {
 	defs := observers(t, `
 [github]
-kind  = "resource_observer"
+kind  = "resource"
+name  = "fixture"
 match = '.*'
 
 [github.observe]
@@ -217,7 +200,7 @@ type = "object"
 [github.state_schema.properties]
 resource_kind = { type = "string" }
 `)
-	if _, _, _, err := ResourceStatus(defs, "x", "", "", nil); err == nil {
+	if _, _, _, err := ResourceStatus(defs, "x", nil); err == nil {
 		t.Error("expected a state_schema validation error")
 	}
 }
@@ -225,7 +208,8 @@ resource_kind = { type = "string" }
 func TestResourceStatus_NonZeroExitIsError(t *testing.T) {
 	defs := observers(t, `
 [x]
-kind  = "resource_observer"
+kind  = "resource"
+name  = "fixture"
 match = '.*'
 
 [x.observe]
@@ -233,7 +217,7 @@ type    = "exec"
 command = "sh"
 args    = ["-c", "echo boom >&2; exit 1"]
 `)
-	if _, _, _, err := ResourceStatus(defs, "x", "", "", nil); err == nil {
+	if _, _, _, err := ResourceStatus(defs, "x", nil); err == nil {
 		t.Error("expected observe failure to error")
 	}
 }
@@ -251,7 +235,8 @@ func TestFinalizeResource_NoDefinition(t *testing.T) {
 func TestFinalizeResource_NoFinalizeActionIsNoop(t *testing.T) {
 	defs := observers(t, `
 [github]
-kind  = "resource_observer"
+kind  = "resource"
+name  = "fixture"
 match = '.*'
 
 [github.observe]
@@ -271,7 +256,8 @@ func TestFinalizeResource_RunsAndSeesEvidence(t *testing.T) {
 	out := filepath.Join(t.TempDir(), "finalize.out")
 	defs := observers(t, `
 [local_okf]
-kind  = "resource_observer"
+kind  = "resource"
+name  = "fixture"
 match = '.*'
 
 [local_okf.observe]
@@ -330,7 +316,8 @@ func TestFinalizeResource_NoJudgesStillSerializesAnArray(t *testing.T) {
 	out := filepath.Join(t.TempDir(), "finalize.out")
 	defs := observers(t, `
 [local_okf]
-kind  = "resource_observer"
+kind  = "resource"
+name  = "fixture"
 match = '.*'
 
 [local_okf.observe]
@@ -358,7 +345,8 @@ stdin   = { json = { from = "judges" } }
 func TestFinalizeResource_ActionFailureErrors(t *testing.T) {
 	defs := observers(t, `
 [x]
-kind  = "resource_observer"
+kind  = "resource"
+name  = "fixture"
 match = '.*'
 
 [x.observe]

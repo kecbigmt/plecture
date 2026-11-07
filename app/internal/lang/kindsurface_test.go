@@ -18,7 +18,7 @@ func TestKindSurfaceRejectsAForeignField(t *testing.T) {
 			name: "a lifecycle field on a task document",
 			src: `[work]
 kind              = "task"
-resource_observer = "issue_pr"
+resource          = "issue_pr"
 instructions      = [{ text = "Resolve the issue." }]
 
 [work.setup]
@@ -49,7 +49,7 @@ workflow = "review_session"
 		{
 			name: "an observer reaching for a lifecycle",
 			src: `[goal]
-kind = "resource_observer"
+kind = "resource"
 
 [goal.cleanup]
 type = "exec"
@@ -68,7 +68,7 @@ args = ["forget"]
 
 func TestKindSurfaceAcceptsEveryDeclaredField(t *testing.T) {
 	src := `[goal]
-kind  = "resource_observer"
+kind  = "resource"
 match = '^local-okf://'
 
 [goal.observe]
@@ -109,12 +109,11 @@ func TestKindSurfaceMatchesSchema(t *testing.T) {
 		t.Fatal(err)
 	}
 	for kind, def := range map[Kind]string{
-		KindEffect:            "effectDefinition",
-		KindTask:              "taskDefinition",
-		KindChannel:           "channelDefinition",
-		KindWorkflow:          "workflowDefinition",
-		KindWorkspaceProvider: "workspaceProviderDefinition",
-		KindResourceObserver:  "resourceObserverDefinition",
+		KindEffect:   "effectDefinition",
+		KindTask:     "taskDefinition",
+		KindChannel:  "channelDefinition",
+		KindWorkflow: "workflowDefinition",
+		KindResource: "resourceDefinition",
 	} {
 		t.Run(string(kind), func(t *testing.T) {
 			var want []string

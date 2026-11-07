@@ -1,13 +1,22 @@
 # plect-fixture: result=valid entry=definitions
 # reason: a reference written inside a plugin uses the relative form, because catalog aliases are user-local.
 
+[issue]
+kind  = "resource"
+match = '^https://forge\.example/issues/(?P<number>\d+)$'
+name  = { expr = "'issue-' + match.number" }
+
 [worktree]
-kind = "workspace_provider"
+kind  = "effect"
+scope = "session"
 
 [worktree.setup]
 type = "exec"
 bin  = "github-worktree"
 args = ["setup", "--resource", { from = "resource.id" }]
+
+[worktree.health.alive]
+type = "noop"
 
 [runtime]
 kind  = "effect"
@@ -22,8 +31,12 @@ args = ["launch"]
 type = "noop"
 
 [review_session]
-kind               = "workflow"
-workspace_provider = "worktree"
+kind     = "workflow"
+resource = "issue"
+workdir  = { from = "nodes.worktree.outputs.workspace_dir" }
+
+[[review_session.nodes]]
+uses = "worktree"
 
 [[review_session.nodes]]
 uses = "runtime"

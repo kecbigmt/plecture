@@ -171,6 +171,8 @@ func (sup *Supervisor) buildDispatcher(name string, s *domain.Session) (*session
 		plugins:  cfg.Plugins,
 		terminal: terminal,
 
+		currentConfig: sup.cfg,
+
 		awaitingRepair: awaitingRepair,
 	}, false
 }

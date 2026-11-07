@@ -33,11 +33,25 @@ func TestCorpusFixture_QualifiedReferencesCompile(t *testing.T) {
 	repoRoot := repoRootForTest(t)
 	githubDir, claudeDir := t.TempDir(), t.TempDir()
 	tmux := mountShippedPlugin(t, repoRoot, "official", "plugins/tmux")
-	write(filepath.Join(githubDir, "config", "workspaces", "worktree.toml"), `
+	write(filepath.Join(githubDir, "config", "tasks", "worktree.toml"), `
 [worktree]
-kind = "workspace_provider"
+kind  = "effect"
+scope = "session"
 
 [worktree.setup]
+type    = "exec"
+command = "true"
+
+[worktree.health.alive]
+type = "noop"
+`)
+	write(filepath.Join(githubDir, "config", "resources", "issue.toml"), `
+[issue]
+kind  = "resource"
+match = '^acme://issue/(?P<id>\d+)$'
+name  = { expr = "'issue-' + match.id" }
+
+[issue.observe]
 type    = "exec"
 command = "true"
 `)
@@ -113,12 +127,12 @@ path = { type = "string", required = true }
 		t.Fatalf("plan run nodes = %v, want pane then agent", names)
 	}
 
-	providers, err := cfg.LoadWorkspaceProviders()
+	resources, err := cfg.LoadResourceDefs()
 	if err != nil {
-		t.Fatalf("LoadWorkspaceProviders: %v", err)
+		t.Fatalf("LoadResourceDefs: %v", err)
 	}
-	if _, ok := providers[wf.WorkspaceProvider]; !ok {
-		t.Errorf("workspace provider %q unresolved among %v", wf.WorkspaceProvider, config.Addresses(providers))
+	if _, ok := resources[wf.Resource]; !ok {
+		t.Errorf("workflow resource %q unresolved among %v", wf.Resource, config.Addresses(resources))
 	}
 	channels, err := cfg.LoadChannels()
 	if err != nil {

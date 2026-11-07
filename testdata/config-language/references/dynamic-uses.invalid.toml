@@ -3,6 +3,12 @@
 
 [session]
 kind = "workflow"
+resource = "ticket"
 
 [[session.nodes]]
 uses = { from = "session.inputs.runtime" }
+
+[ticket]
+kind  = "resource"
+match = '^ticket:(?P<number>\d+)$'
+name  = { from = "match.number" }

@@ -2,12 +2,11 @@
 # reason: a population session input may project only a property declared by the shared item_schema.
 
 [bad_item_path]
-kind               = "workflow"
-workspace_provider = "query_provider"
+kind     = "workflow"
+resource = "query_source"
 
 [[bad_item_path.populations]]
 name              = "dispatch"
-resource_observer = "query_source"
 uses              = ["poll"]
 poll_every        = "5m"
 

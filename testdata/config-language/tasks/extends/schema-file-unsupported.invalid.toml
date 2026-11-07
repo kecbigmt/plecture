@@ -3,7 +3,7 @@
 
 [base_task]
 kind              = "task"
-resource_observer = "issue_pr"
+resource          = "issue_pr"
 instructions      = [{ text = "Base." }]
 state_schema_file = "state.schema.json"
 

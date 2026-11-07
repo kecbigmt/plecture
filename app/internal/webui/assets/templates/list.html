@@ -36,7 +36,7 @@
         {{ template "input" (dict "id" "create-url" "name" "url" "label" "Resource ID" "placeholder" "e.g. https://github.com/owner/repo/issues/1" "required" true) }}
         {{ template "input" (dict "id" "create-tag" "name" "tag" "label" "Tag (optional)" "placeholder" "experiment") }}
         {{ template "input" (dict "id" "create-workflow" "name" "workflow" "label" "Workflow (optional)" "placeholder" "use when multiple workflows match") }}
-        {{ template "input" (dict "id" "create-task" "name" "task" "label" "Initial task (optional)" "placeholder" "work / review / respond / investigate / none") }}
+        {{ template "input" (dict "id" "create-task" "name" "task" "label" "Initial task (optional)" "placeholder" "task id; leave empty for no task") }}
         <div class="grid gap-1.5">
           <label for="create-inputs" class="text-label font-medium text-foreground">Inputs JSON (optional)</label>
           <textarea id="create-inputs" name="inputs" rows="3" placeholder='{"key":"value"}' class="flex w-full rounded-md border border-input bg-background px-3 py-2 font-mono text-body text-foreground placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"></textarea>

@@ -50,6 +50,7 @@ func verifyLiveness(goCtx context.Context, r Resolved, session SessionVars, exis
 			SourcePath: r.SourcePath,
 			From:       r.From,
 			Process:    existing.Process,
+			Dir:        existing.Directory,
 		}, session)
 	}
 	if len(existing.Layers) != len(r.Layers) {
@@ -72,6 +73,7 @@ func verifyLiveness(goCtx context.Context, r Resolved, session SessionVars, exis
 			From:       layer.From,
 			Env:        effect.EnclosingEnv(existing.Layers, i),
 			Process:    existing.Process,
+			Dir:        existing.Directory,
 		}
 		if err := RunAliveProbe(goCtx, probe, session); err != nil {
 			return fmt.Errorf("layer %q: %w", layer.EffectID, err)
@@ -90,6 +92,9 @@ func invalidateProducedNode(goCtx context.Context, r Resolved, ordered []Resolve
 		existing.FailedAt = time.Now()
 	}
 	toClean := transitiveDependents(r.NodeID, ordered)
+	if holder := dynamicWorkdirHolder(toClean, ordered, tasks); holder != "" {
+		return fmt.Errorf("node %q: liveness check failed (%v), but dynamic instance %q still runs in the workdir it would release; clean the instance up first", r.NodeID, aliveErr, holder)
+	}
 	if err := RunCleanup(goCtx, toClean, session, tasks, obs); err != nil {
 		return fmt.Errorf("node %q: liveness check failed (%v), cleanup: %w", r.NodeID, aliveErr, err)
 	}
@@ -109,6 +114,29 @@ func invalidateProducedNode(goCtx context.Context, r Resolved, ordered []Resolve
 		}
 	}
 	return nil
+}
+
+// dynamicWorkdirHolder names a live dynamic instance when the release would
+// include the workdir's producer. Only the service layer knows how to clean a
+// dynamic instance, so the release is refused instead.
+func dynamicWorkdirHolder(release, ordered []Resolved, tasks map[string]*contract.TaskState) string {
+	releasesProducer := false
+	for _, n := range release {
+		releasesProducer = releasesProducer || n.WorkdirProducer
+	}
+	if !releasesProducer {
+		return ""
+	}
+	planned := map[string]bool{}
+	for _, n := range ordered {
+		planned[n.NodeID] = true
+	}
+	for key, st := range tasks {
+		if !planned[key] && st != nil && st.Directory != "" && st.Status != contract.TaskStatusCleaned {
+			return key
+		}
+	}
+	return ""
 }
 
 // transitiveDependents filters ordered down to nodeID and whatever

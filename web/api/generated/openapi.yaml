@@ -313,7 +313,6 @@ components:
       type: object
       required:
         - run
-        - workspaceDirExists
       properties:
         run:
           $ref: '#/components/schemas/SessionRunState'
@@ -329,9 +328,9 @@ components:
           type: array
           items:
             $ref: '#/components/schemas/SessionTaskSummary'
-        workspaceDirPath:
+        workdir:
           type: string
-        workspaceDirExists:
+        workdirExists:
           type: boolean
         message:
           $ref: '#/components/schemas/SessionMessage'
@@ -361,12 +360,11 @@ components:
       properties:
         sessionName:
           type: string
-        resourceId:
-          type: string
+        resource:
+          allOf:
+            - $ref: '#/components/schemas/SessionResource'
           description: 'Absent and empty are equivalent for every optional field on this model: the API omits an unset value rather than emitting it as `null` or `""`, mirroring the Go source''s `omitempty` struct tags.'
         title:
-          type: string
-        branch:
           type: string
         workflow:
           type: string
@@ -409,6 +407,19 @@ components:
         updatedAt:
           type: string
           format: date-time
+    SessionResource:
+      type: object
+      required:
+        - type
+        - name
+        - locator
+      properties:
+        type:
+          type: string
+        name:
+          type: string
+        locator:
+          type: string
     SessionRunState:
       type: string
       enum:
@@ -418,7 +429,6 @@ components:
       type: object
       required:
         - run
-        - workspaceDirExists
       properties:
         run:
           $ref: '#/components/schemas/SessionRunState'
@@ -434,9 +444,9 @@ components:
           type: array
           items:
             $ref: '#/components/schemas/SessionTaskSummary'
-        workspaceDirPath:
+        workdir:
           type: string
-        workspaceDirExists:
+        workdirExists:
           type: boolean
         message:
           $ref: '#/components/schemas/SessionMessage'
@@ -446,7 +456,6 @@ components:
         - sessionName
         - displayStatus
         - run
-        - resourceId
       properties:
         sessionName:
           type: string
@@ -459,15 +468,13 @@ components:
           $ref: '#/components/schemas/SessionRunState'
         health:
           $ref: '#/components/schemas/SessionHealthState'
-        resourceId:
-          type: string
+        resource:
+          $ref: '#/components/schemas/SessionResource'
         lastActiveAt:
           type: string
           format: date-time
         message:
           $ref: '#/components/schemas/SessionMessage'
-        branch:
-          type: string
         parentSession:
           type: string
         tasks:

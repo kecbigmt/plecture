@@ -26,23 +26,23 @@ type Instance struct {
 // instance never exists in a state its own resource cannot support.
 func (v Validation) Instantiate(def *Definition, r *Registry, resourceID string, observe ObserveFunc) (*Instance, error) {
 	pos := Position{File: def.File, Path: def.ID}
-	at := childPos(pos, "resource_observer")
-	raw, ok := def.Body["resource_observer"]
+	at := childPos(pos, "resource")
+	raw, ok := def.Body["resource"]
 	if !ok {
 		return nil, newDiag(CodeFieldRequired, LayerStructural, at,
-			"a task document declares the resource observer it is written for")
+			"a task document declares the resource it is written for")
 	}
 	ref, err := staticRef(raw, at.Path)
 	if err != nil {
 		return nil, err
 	}
-	observer, err := r.ExpectKind(ref, v.From, KindResourceObserver, at.Path)
+	observer, err := r.ExpectKind(ref, v.From, KindResource, at.Path)
 	if err != nil {
 		return nil, err
 	}
 	if !recognizes(observer, resourceID) {
 		return nil, newDiag(CodeResourceObserverMismatch, LayerInstantiation, pos,
-			fmt.Sprintf("%q does not resolve to %q, the observer this document is written for", resourceID, ref))
+			fmt.Sprintf("%q does not resolve to %q, the resource this document is written for", resourceID, ref))
 	}
 	state, err := observe(observer, resourceID)
 	if err != nil {

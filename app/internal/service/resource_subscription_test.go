@@ -9,11 +9,12 @@ import (
 	"github.com/kecbigmt/plecture/app/internal/config"
 )
 
-func TestSubscribeUsesResourceWithoutWorkspaceProvider(t *testing.T) {
+func TestSubscribeRunsResourceHook(t *testing.T) {
 	base := t.TempDir()
 	record := filepath.Join(base, "record")
 	writeResourceDefFixture(t, base, "remote", `[remote]
-kind = "resource_observer"
+kind = "resource"
+name = "fixture"
 match = '^remote://'
 [remote.observe]
 type = "exec"
@@ -22,7 +23,7 @@ args = ['{}']
 [remote.subscribe]
 type = "exec"
 command = "sh"
-args = ["-c", "printf '%s|%s|%s' \"$1\" \"$2\" \"$3\" > \"$4\"", "hook", { from = "resource.id" }, { from = "session.name" }, { from = "session.branch", default = "" }, "`+record+`"]
+args = ["-c", "printf '%s|%s' \"$1\" \"$2\" > \"$3\"", "hook", { from = "resource.id" }, { from = "session.name" }, "`+record+`"]
 `)
 	cfg := &config.Config{BaseDir: base}
 	if err := Subscribe(cfg, subscribeStore(t, "session"), SubscribeParams{ResourceID: "remote://one", SessionName: "session"}); err != nil {
@@ -32,7 +33,7 @@ args = ["-c", "printf '%s|%s|%s' \"$1\" \"$2\" \"$3\" > \"$4\"", "hook", { from 
 	if err != nil {
 		t.Fatal(err)
 	}
-	if string(got) != "remote://one|session|" {
+	if string(got) != "remote://one|session" {
 		t.Fatalf("hook args = %q", got)
 	}
 }
@@ -40,7 +41,7 @@ args = ["-c", "printf '%s|%s|%s' \"$1\" \"$2\" \"$3\" > \"$4\"", "hook", { from 
 func TestSubscribeRejectsAmbiguousResourceDeclarations(t *testing.T) {
 	base := t.TempDir()
 	for _, id := range []string{"one", "two"} {
-		writeResourceDefFixture(t, base, id, "["+id+"]\nkind = \"resource_observer\"\nmatch = '^remote://'\n["+id+".observe]\ntype = \"exec\"\ncommand = \"printf\"\nargs = ['{}']\n["+id+".subscribe]\ntype = \"exec\"\ncommand = \"true\"\n")
+		writeResourceDefFixture(t, base, id, "["+id+"]\nkind = \"resource\"\nname = \"fixture\"\nmatch = '^remote://'\n["+id+".observe]\ntype = \"exec\"\ncommand = \"printf\"\nargs = ['{}']\n["+id+".subscribe]\ntype = \"exec\"\ncommand = \"true\"\n")
 	}
 	err := Subscribe(&config.Config{BaseDir: base}, subscribeStore(t, "session"), SubscribeParams{ResourceID: "remote://one", SessionName: "session"})
 	if err == nil || !strings.Contains(err.Error(), "multiple resource") {
@@ -52,7 +53,8 @@ func TestSubscribePassesResourceInputs(t *testing.T) {
 	base := t.TempDir()
 	record := filepath.Join(base, "record")
 	writeResourceDefFixture(t, base, "remote", `[remote]
-kind = "resource_observer"
+kind = "resource"
+name = "fixture"
 match = '^remote://'
 [remote.observe]
 type = "exec"

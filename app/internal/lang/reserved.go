@@ -2,6 +2,7 @@ package lang
 
 import (
 	"fmt"
+	"path/filepath"
 
 	"github.com/BurntSushi/toml"
 )
@@ -21,17 +22,44 @@ var ReservedFileNames = map[string]bool{
 	"plect.lock":    true,
 }
 
+// ProjectMarkerFileName marks the directory holding `.plect/` as a project
+// root, and is the one reserved file of a project definition root.
+const ProjectMarkerFileName = "project.toml"
+
+// ProjectReservedFileNames is a project definition root's counterpart to
+// ReservedFileNames. Only the marker is reserved: the machine-wide files'
+// names carry no meaning inside a project root.
+var ProjectReservedFileNames = map[string]bool{ProjectMarkerFileName: true}
+
+// projectMarker has no field beyond the dialect: a marker that carried
+// settings would make the project root a second machine configuration.
+type projectMarker struct {
+	SchemaVersion int `toml:"schema_version"`
+}
+
+// LoadProjectMarker validates a project root's marker under the same
+// dialect rules as the reserved root files.
+func LoadProjectMarker(path string) error {
+	var m projectMarker
+	meta, err := toml.DecodeFile(path, &m)
+	if err != nil {
+		return err
+	}
+	return validateReservedFile(path, meta, m.SchemaVersion)
+}
+
 // ConfigToml is the reserved config.toml: machine-wide settings governing
 // the whole user config tree.
 type ConfigToml struct {
 	SchemaVersion     int            `toml:"schema_version"`
-	WorkspaceDirsRoot string         `toml:"workspace_dirs_root"`
 	MaxUpChildren     *int           `toml:"max_up_children"`
 	ResourceAllowlist []string       `toml:"resource_allowlist"`
 	PluginDirs        []string       `toml:"plugin_dirs"`
 	Channels          []string       `toml:"channels"`
 	InputsSchema      map[string]any `toml:"inputs_schema"`
 	InputsSchemaFile  string         `toml:"inputs_schema_file"`
+
+	TrustedProjectRoots []string `toml:"trusted_project_roots"`
 }
 
 // CatalogsToml is the reserved catalogs.toml: the catalog aliases registered
@@ -94,6 +122,12 @@ func LoadConfigToml(path string) (*ConfigToml, error) {
 	if c.MaxUpChildren != nil && *c.MaxUpChildren < 1 {
 		return nil, newDiag(CodeFieldType, LayerStructural, Position{File: path, Path: "max_up_children"},
 			"max_up_children is a positive integer")
+	}
+	for i, root := range c.TrustedProjectRoots {
+		if !filepath.IsAbs(root) {
+			return nil, newDiag(CodeFieldType, LayerStructural, Position{File: path, Path: fmt.Sprintf("trusted_project_roots[%d]", i)},
+				"a trusted project root is an absolute path")
+		}
 	}
 	return &c, nil
 }

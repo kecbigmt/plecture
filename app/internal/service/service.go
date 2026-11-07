@@ -2,7 +2,6 @@ package service
 
 import (
 	"fmt"
-	"maps"
 	"os"
 	"regexp"
 	"slices"
@@ -12,6 +11,7 @@ import (
 	"github.com/kecbigmt/plecture/app/internal/config"
 	"github.com/kecbigmt/plecture/app/internal/domain"
 	"github.com/kecbigmt/plecture/app/internal/eventlog"
+	"github.com/kecbigmt/plecture/app/internal/publicoutput"
 	"github.com/kecbigmt/plecture/app/internal/state"
 	"github.com/kecbigmt/plecture/app/internal/task"
 	"github.com/kecbigmt/plecture/contracts/event"
@@ -43,24 +43,81 @@ func validateTagFormat(tag string) *Error {
 	return nil
 }
 
-// effectiveTag resolves the session-identity tag that becomes part of a
-// session name. An explicit --tag wins; otherwise the workflow id is the
-// default, so two workflows acting on one resource (a work workflow, a
-// review workflow) materialize distinct sessions instead of racing for one
-// branch/workspace.
-// The tag is never empty on the workspace-provider-dispatch paths — session
-// identity always carries a label.
-func effectiveTag(tag, workflowID string) (string, *Error) {
-	if tag != "" {
-		if err := validateTagFormat(tag); err != nil {
-			return "", err
-		}
-		return tag, nil
+// The workflow never contributes to the name, so two workflows on one
+// instance need a tag to run side by side.
+func (d dispatchResult) sessionName(tag string) (string, *Error) {
+	if tag == "" {
+		return d.Resource.Name, nil
 	}
-	if err := validateTagFormat(workflowID); err != nil {
-		return "", &Error{Code: ErrInvalidTag, Message: fmt.Sprintf("workflow id %q cannot seed a session tag (must match [a-zA-Z0-9_-]+); pass --tag explicitly", workflowID)}
+	if err := validateTagFormat(tag); err != nil {
+		return "", err
 	}
-	return workflowID, nil
+	return d.Resource.Name + "+" + tag, nil
+}
+
+// Two different entries can compose one name, so a name match alone is not
+// the same session; the recorded resource and tag are. A resource with no
+// recorded row yet cannot be the one an existing session references.
+func checkEntryCollision(existing *domain.Session, d dispatchResult, tag string) *Error {
+	if existing.Resource != nil && d.Resource.ID != "" && existing.Resource.ID == d.Resource.ID && existing.Tag == tag {
+		return nil
+	}
+	requested := fmt.Sprintf("%s with %s", describeResource(d.Resource), describeTag(tag))
+	if existing.Resource == nil {
+		return &Error{Code: ErrInvalidInput, Message: fmt.Sprintf("session %q collides with %s: the existing session records no entry resource; address it by its session name, or pass a --tag", existing.Name, requested)}
+	}
+	recorded := fmt.Sprintf("%s with %s", describeResource(*existing.Resource), describeTag(existing.Tag))
+	return &Error{Code: ErrInvalidInput, Message: fmt.Sprintf("session %q collides with %s: it was created for %s; pass a different --tag", existing.Name, requested, recorded)}
+}
+
+// Every resource-addressed reuse reads through entrySession, so none can reach
+// a session recorded for another entry. It reconciles d.Resource with the
+// recorded row, which is what a session created from d must reference. A
+// collision, including a name another resource type already holds, is
+// returned apart from err because a chain and a population handle it
+// differently from a read failure.
+func entrySession(store *state.Store, d *dispatchResult, tag string) (name string, session *domain.Session, collision *Error, err error) {
+	name, nameErr := d.sessionName(tag)
+	if nameErr != nil {
+		return "", nil, nil, nameErr
+	}
+	recorded, conflict, err := recordedResource(store, d.Resource)
+	if err != nil {
+		return name, nil, nil, err
+	}
+	if conflict != nil {
+		return name, nil, conflict, nil
+	}
+	d.Resource = recorded
+	existing, err := store.GetE(name)
+	if err != nil {
+		return name, nil, nil, fmt.Errorf("read session %q state: %w", name, err)
+	}
+	if existing == nil {
+		return name, nil, nil, nil
+	}
+	if collision := checkEntryCollision(existing, *d, tag); collision != nil {
+		return name, nil, collision, nil
+	}
+	return name, existing, nil, nil
+}
+
+func reusableEntrySession(store *state.Store, d *dispatchResult, tag string) (string, *domain.Session, *Error) {
+	name, session, collision, err := entrySession(store, d, tag)
+	if collision != nil {
+		return "", nil, collision
+	}
+	if err != nil {
+		return "", nil, asServiceError(err)
+	}
+	return name, session, nil
+}
+
+func describeTag(tag string) string {
+	if tag == "" {
+		return "no tag"
+	}
+	return fmt.Sprintf("tag %q", tag)
 }
 
 // resolveSession resolves an identifier (session name, create-time alias, or
@@ -69,7 +126,7 @@ func effectiveTag(tag, workflowID string) (string, *Error) {
 //  1. exact session name
 //  2. create-time alias (survives resolver rule changes; ambiguous when tag
 //     variants share the alias)
-//  3. resolver derivation (pure, offline — works during workspace provider
+//  3. resource derivation (pure, offline — works during external service
 //     outages)
 func resolveSession(cfg *config.Config, store *state.Store, identifier string) (string, *domain.Session, error) {
 	if session, err := store.GetE(identifier); err != nil {
@@ -93,13 +150,15 @@ func resolveSession(cfg *config.Config, store *state.Store, identifier string) (
 
 	sessionName := identifier
 	if cfg != nil {
-		if disp, matched, err := dispatchResource(cfg, "", identifier); err == nil && matched {
-			if session, err := store.GetE(disp.Name); err != nil {
+		if disp, matched, err := dispatchResource(cfg, "", "", identifier); err == nil && matched {
+			name, session, err := reusableEntrySession(store, &disp, "")
+			if err != nil {
 				return "", nil, err
-			} else if session != nil {
-				return disp.Name, session, nil
 			}
-			sessionName = disp.Name
+			if session != nil {
+				return name, session, nil
+			}
+			sessionName = name
 		}
 	}
 
@@ -189,15 +248,6 @@ func sessionTaskItems(cfg *config.Config, declarations taskDeclarations, session
 			if st == nil {
 				continue
 			}
-			if key == contract.WorkflowPseudoNodeID {
-				// The workflow pseudo-node carries session-level outputs (title,
-				// branch, ...) but no done_when or lifecycle status of its own —
-				// still one Task line + outputs, per the unified display rule.
-				if len(st.Outputs) > 0 {
-					items = append(items, sessionTaskItem{seq: st.Seq, instance: key, outputs: st.Outputs})
-				}
-				continue
-			}
 			taskID := taskIDForInstance(key, st)
 			var dwResult *task.DoneWhenResult
 			if r, ok := cached[key]; ok {
@@ -215,7 +265,7 @@ func sessionTaskItems(cfg *config.Config, declarations taskDeclarations, session
 			}
 			items = append(items, sessionTaskItem{
 				seq: st.Seq, instance: key, taskID: st.TaskID, scope: st.Scope, status: st.Status,
-				dynamic: dynamic, name: st.Name, resource: st.Resource, outputs: st.Outputs,
+				dynamic: dynamic, name: st.Name, resource: domain.Locator(st.Resource), outputs: st.Outputs,
 				state: st.State, observed: st.Observed,
 				doneWhen: dwResult, finalized: !st.FinalizedAt.IsZero(),
 			})
@@ -285,8 +335,11 @@ func childNames(sessions map[string]*domain.Session, name string) []string {
 
 // ListEntry represents a single entry in the session list.
 type ListEntry struct {
-	SessionName      string             `json:"session_name"`
-	Revision         string             `json:"revision,omitempty"`
+	SessionName string `json:"session_name"`
+	Revision    string `json:"revision,omitempty"`
+	// RetiredSpellings names the retired declaration spellings the pinned
+	// revision was written in; this release refuses that session's lifecycle.
+	RetiredSpellings []string           `json:"retired_spellings,omitempty"`
 	Title            string             `json:"title,omitempty"`
 	Run              domain.RunState    `json:"run"`
 	Sleep            string             `json:"sleep,omitempty"`
@@ -294,12 +347,11 @@ type ListEntry struct {
 	Health           domain.HealthState `json:"health,omitempty"`
 	HealthReason     string             `json:"health_reason,omitempty"`
 	DisplayStatus    string             `json:"display_status"`
-	ResourceID       string             `json:"resource_id"`
+	Resource         *ResourceView      `json:"resource,omitempty"`
 	Tracked          bool               `json:"tracked"`
 	LastActiveAt     *time.Time         `json:"last_active_at,omitempty"`
 	Message          *domain.Message    `json:"message,omitempty"`
-	Branch           string             `json:"branch,omitempty"`
-	WorkspaceDirPath string             `json:"workspace_dir_path,omitempty"`
+	Workdir          string             `json:"workdir,omitempty"`
 	ParentSession    string             `json:"parent_session,omitempty"`
 	// Tasks projects the session's dynamic instances and done_when-bearing
 	// tasks with their per-instance done_when status.
@@ -359,6 +411,7 @@ func buildListEntry(cfg *config.Config, store *state.Store, displayTasks taskDec
 	entry := ListEntry{
 		SessionName:      s.Name,
 		Revision:         shortWorkflowRevision(s.WorkflowRevision),
+		RetiredSpellings: config.RetiredRevisionSpellings(s),
 		Title:            cached.Title,
 		Run:              run,
 		Sleep:            sleep,
@@ -366,12 +419,11 @@ func buildListEntry(cfg *config.Config, store *state.Store, displayTasks taskDec
 		Health:           health,
 		HealthReason:     healthReason,
 		DisplayStatus:    cached.DisplayStatus,
-		ResourceID:       s.ResourceID,
+		Resource:         resourceView(s.Resource),
 		Tracked:          true,
 		LastActiveAt:     &s.UpdatedAt,
 		Message:          LatestStatusMessage(store, s.Name),
-		Branch:           domain.SessionBranch(s),
-		WorkspaceDirPath: s.WorkspaceDirPath,
+		Workdir:          listWorkdir(cfg, s),
 		ParentSession:    s.ParentSession,
 		Tasks:            taskViews(cfg, displayTasks, s, sessions),
 	}
@@ -457,22 +509,36 @@ type cachedInfo struct {
 	DisplayStatus string
 }
 
-// WorkspaceDir resolves an identifier to the session's workspace directory
-// using the full lookup order (name -> alias -> resolver derivation). The
-// workspace directory is whatever the workspace provider's setup recorded;
-// plect never recomputes it from the shape of the identifier.
-func WorkspaceDir(cfg *config.Config, store *state.Store, identifier string) (string, error) {
+// Workdir resolves an identifier to the directory its session's workflow
+// declares as `workdir`, evaluated against the outputs its producer recorded.
+// The directory is never stored: a session whose workflow declares none, or
+// whose producer is not produced, has no workdir.
+func Workdir(cfg *config.Config, store *state.Store, identifier string) (string, error) {
 	if _, session, err := resolveSession(cfg, store, identifier); err == nil {
-		if session.WorkspaceDirPath == "" {
-			return "", &Error{Code: ErrSessionNotFound, Message: fmt.Sprintf("session %q has no workspace directory recorded", session.Name)}
+		dir, dirErr := sessionWorkdir(cfg, session)
+		if dirErr != nil {
+			return "", &Error{Code: ErrNotProduced, Message: fmt.Sprintf("session %q has no workdir: %v", session.Name, dirErr)}
 		}
-		return session.WorkspaceDirPath, nil
+		if dir == "" {
+			return "", &Error{Code: ErrSessionNotFound, Message: fmt.Sprintf("session %q has no workdir: its workflow declares none", session.Name)}
+		}
+		return dir, nil
 	} else if svcErr, ok := err.(*Error); ok && svcErr.Code != ErrSessionNotFound {
 		// An ambiguous alias must surface rather than fall through.
 		return "", err
 	}
 
 	return "", &Error{Code: ErrSessionNotFound, Message: fmt.Sprintf("no state entry for session %q", identifier)}
+}
+
+// listWorkdir is the listing's best-effort workdir: empty when none is declared
+// or it cannot be evaluated yet, since a listing never fails on one session.
+func listWorkdir(cfg *config.Config, s *domain.Session) string {
+	dir, err := sessionWorkdir(cfg, s)
+	if err != nil {
+		return ""
+	}
+	return dir
 }
 
 // applyDisplay resolves the workflow's [display] values into cached when they
@@ -511,11 +577,8 @@ func applyDisplay(s *domain.Session, cached *cachedInfo) {
 }
 
 func workflowDisplayOutputs(s *domain.Session) map[string]any {
-	out := map[string]any{}
-	if ws, ok := s.Nodes[contract.WorkflowPseudoNodeID]; ok && ws != nil {
-		maps.Copy(out, ws.Outputs)
-	}
-	return out
+	outputs, _ := publicoutput.Of(s, publicoutput.ProducedOnly)
+	return outputs
 }
 
 // An empty report always appends because it is the only record of a fresh

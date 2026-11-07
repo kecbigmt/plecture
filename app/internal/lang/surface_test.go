@@ -11,22 +11,21 @@ func TestSurfaceRootsMatchValuesTable(t *testing.T) {
 		offered []string
 		foreign []string
 	}{
-		{surfaceProviderName, []string{"match.owner", "match.repo"}, []string{"session.name", "inputs.owner"}},
-		{surfaceProviderSetup, []string{"resource.id", "session.name", "session.inputs.owner", "inputs.owner", "prev.dir", "config.workspace_dirs_root"}, []string{"event.type", "self.outputs.dir", "force"}},
-		{surfaceProviderCleanup, []string{"self.outputs.workspace_dir", "inputs.x", "cleanup.inputs.delete_branch", "session.name", "config.workspace_dirs_root", "force"}, []string{"resource.id", "prev.dir"}},
-		{surfaceObserverSubscribe, []string{"session.name", "session.branch", "resource.id", "resource.inputs.token"}, []string{"inputs.x", "workspace.dir"}},
-		{surfaceObserverUnsubscribe, []string{"session.name", "session.branch", "resource.id", "resource.inputs.token"}, []string{"inputs.x", "workspace.dir"}},
-		{surfaceObserverObserve, []string{"resource.id", "workspace.dir", "workspace.branch"}, []string{"resource.revision", "judges", "session.name"}},
-		{surfaceObserverFinalize, []string{"resource.id", "session.name", "resource.revision", "judges"}, []string{"workspace.dir", "effect.instance", "inputs.x"}},
+		{surfaceResourceName, []string{"match.owner", "match.repo"}, []string{"session.name", "inputs.owner"}},
+		{surfaceResourceSubscribe, []string{"session.name", "resource.id", "resource.inputs.token"}, []string{"inputs.x", "workspace.dir", "session.branch"}},
+		{surfaceResourceUnsubscribe, []string{"session.name", "resource.id", "resource.inputs.token"}, []string{"inputs.x", "workspace.dir", "session.branch"}},
+		{surfaceResourceObserve, []string{"resource.id"}, []string{"resource.revision", "judges", "session.name", "workspace.dir", "workspace.branch"}},
+		{surfaceResourceQuery, []string{"inputs.scope"}, []string{"resource.inputs.token", "resource.id"}},
+		{surfaceResourceFinalize, []string{"resource.id", "session.name", "resource.revision", "judges"}, []string{"workspace.dir", "effect.instance", "inputs.x"}},
 		{surfaceWorkflowDisplay, []string{"workflow.outputs.concept_id", "session.inputs.task"}, []string{"nodes.pane.outputs.session_name", "resource.id"}},
-		{surfaceWorkflowNodeInputs, []string{"nodes.pane.outputs.session_name", "workflow.outputs.x", "session.name", "session.inputs.task", "workspace.dir"}, []string{"resource.id", "locals.x", "event.type"}},
+		{surfaceWorkflowNodeInputs, []string{"nodes.pane.outputs.session_name", "workflow.outputs.x", "session.name", "session.inputs.task"}, []string{"resource.id", "locals.x", "event.type", "workspace.dir"}},
 		{surfaceChannelDelivery, []string{"event.type", "event.body", "event.metadata.url", "inputs.queue_dir"}, []string{"workflow.outputs.branch", "session.name"}},
 		{surfaceChannelTimeout, []string{"inputs.enqueue_timeout"}, []string{"event.metadata.timeout", "session.name"}},
-		{surfaceEffectSetup, []string{"inputs.owner", "prev.x", "nodes.pane.outputs.session_name", "workflow.outputs.x", "session.name", "session.inputs.owner", "workspace.dir", "resource.id"}, []string{"event.metadata.owner", "self.outputs.x", "locals.x", "resource.state.checks_status"}},
-		{surfaceEffectCleanup, []string{"self.outputs.session_name", "self.process.identity", "inputs.x", "nodes.pane.outputs.x", "workflow.outputs.x", "session.name", "workspace.dir"}, []string{"resource.id", "prev.x"}},
-		{surfaceEffectHealth, []string{"self.outputs.session_name", "inputs.x", "session.name", "workspace.dir"}, []string{"nodes.pane.outputs.x", "resource.id", "self.process.identity"}},
+		{surfaceEffectSetup, []string{"inputs.owner", "prev.x", "nodes.pane.outputs.session_name", "workflow.outputs.x", "session.name", "session.inputs.owner", "resource.id"}, []string{"workspace.dir", "event.metadata.owner", "self.outputs.x", "locals.x", "resource.state.checks_status"}},
+		{surfaceEffectCleanup, []string{"self.outputs.session_name", "self.process.identity", "inputs.x", "force", "nodes.pane.outputs.x", "workflow.outputs.x", "session.name"}, []string{"resource.id", "prev.x", "workspace.dir", "cleanup.inputs.delete_branch"}},
+		{surfaceEffectHealth, []string{"self.outputs.session_name", "inputs.x", "session.name"}, []string{"nodes.pane.outputs.x", "resource.id", "self.process.identity", "workspace.dir"}},
 		{surfaceEffectTerminal, []string{"self.outputs.session_name", "session.name"}, []string{"inputs.x", "workspace.dir"}},
-		{surfaceEffectInner, []string{"inputs.tmux_session", "locals.guard_dir", "nodes.pane.outputs.session_name", "workflow.outputs.x", "session.name", "workspace.dir"}, []string{"inner.outputs.pid", "resource.id"}},
+		{surfaceEffectInner, []string{"inputs.tmux_session", "locals.guard_dir", "nodes.pane.outputs.session_name", "workflow.outputs.x", "session.name"}, []string{"inner.outputs.pid", "resource.id", "workspace.dir"}},
 		{surfaceEffectOutputsBind, []string{"inner.outputs.pid", "locals.guard_dir", "inputs.mcp_servers"}, []string{"session.inputs.owner", "resource.state.checks_status", "inner.inputs.x"}},
 		{surfaceTaskCompletion, []string{"resource.state.resource_kind", "self.state.verdict_revision"}, []string{"resource.id", "nodes.pane.outputs.session_name", "inputs.x"}},
 		{surfaceTaskInstruction, []string{"resource.id", "resource.state.revision", "self.state.verdict_revision", "inputs.instruction", "session.name", "workflow.outputs.x"}, []string{"nodes.pane.outputs.session_name", "locals.x"}},
@@ -52,11 +51,11 @@ func TestSurfaceRootsAcceptAWholeRoot(t *testing.T) {
 	if !surfaceChannelDelivery.offers("event") {
 		t.Error("event.* covers the whole event, which a channel body serializes")
 	}
-	if !surfaceObserverFinalize.offers("judges") {
+	if !surfaceResourceFinalize.offers("judges") {
 		t.Error("judges is a whole root on the finalize surface")
 	}
-	if surfaceObserverObserve.offers("workspace") {
-		t.Error("the observe surface lists workspace.dir and workspace.branch, not workspace itself")
+	if surfaceResourceObserve.offers("session") {
+		t.Error("the observe surface lists resource.id alone, not a session root")
 	}
 }
 

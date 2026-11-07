@@ -8,8 +8,8 @@ import (
 	"github.com/kecbigmt/plecture/app/internal/config"
 )
 
-// fixtureResourceMatch is a workspace-provider resolver for these tests'
-// fake resources — the same four-segment shape a real workspace provider
+// fixtureResourceMatch is a resource's match pattern for these tests'
+// fake resources — the same four-segment shape a real resource
 // resolves, but under a scheme no real provider claims, since none of
 // subscribeIfWired/unsubscribeIfWired's own logic is provider-specific: it
 // only needs a resolver that matches or doesn't, not a real one.
@@ -17,7 +17,7 @@ const fixtureResourceMatch = `^resource://(?P<owner>[^/]+)/(?P<repo>[^/]+)/(issu
 
 func TestSubscribeIfWired_EmptyResourceIsANoOp(t *testing.T) {
 	cfg := &config.Config{BaseDir: t.TempDir()}
-	wired, err := subscribeIfWired(cfg, "s", "", "")
+	wired, err := subscribeIfWired(cfg, "s", "")
 	if err != nil || wired {
 		t.Fatalf("wired=%v err=%v, want false, nil", wired, err)
 	}
@@ -25,12 +25,12 @@ func TestSubscribeIfWired_EmptyResourceIsANoOp(t *testing.T) {
 
 func TestSubscribeIfWired_NoProviderMatchIsSilentlySkipped(t *testing.T) {
 	cfg := &config.Config{BaseDir: t.TempDir()}
-	wired, err := subscribeIfWired(cfg, "s", "opaque-resource-no-provider-recognizes", "")
+	wired, err := subscribeIfWired(cfg, "s", "opaque-resource-no-provider-recognizes")
 	if err != nil {
 		t.Fatalf("subscribeIfWired: %v", err)
 	}
 	if wired {
-		t.Error("a resource no workspace provider matches must not be reported as wired")
+		t.Error("a resource no declaration matches must not be reported as wired")
 	}
 }
 
@@ -39,7 +39,7 @@ func TestSubscribeIfWired_ProviderWithoutSubscribeHookIsSilentlySkipped(t *testi
 	writeProviderDoc(t, baseDir, "fixture", fixtureResourceMatch, "")
 	cfg := &config.Config{BaseDir: baseDir}
 
-	wired, err := subscribeIfWired(cfg, "s", "resource://org/repo/pull/1", "")
+	wired, err := subscribeIfWired(cfg, "s", "resource://org/repo/pull/1")
 	if err != nil {
 		t.Fatalf("subscribeIfWired: %v", err)
 	}
@@ -52,7 +52,7 @@ func TestSubscribeIfWired_RunsSubscribeHookAndReportsWired(t *testing.T) {
 	rec := filepath.Join(t.TempDir(), "rec")
 	cfg := writeSubscribeProvider(t, "fixture", fixtureResourceMatch, rec)
 
-	wired, err := subscribeIfWired(cfg, "sess-7", "resource://org/repo/pull/7", "")
+	wired, err := subscribeIfWired(cfg, "sess-7", "resource://org/repo/pull/7")
 	if err != nil {
 		t.Fatalf("subscribeIfWired: %v", err)
 	}
@@ -96,8 +96,8 @@ args = ["`+record+`"]
 		name string
 		run  func() (bool, error)
 	}{
-		{"subscribe", func() (bool, error) { return subscribeIfWired(cfg, "s", resource, "") }},
-		{"unsubscribe", func() (bool, error) { return unsubscribeIfWired(cfg, "s", resource, "") }},
+		{"subscribe", func() (bool, error) { return subscribeIfWired(cfg, "s", resource) }},
+		{"unsubscribe", func() (bool, error) { return unsubscribeIfWired(cfg, "s", resource) }},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			ran, err := tc.run()
@@ -109,6 +109,14 @@ args = ["`+record+`"]
 			}
 		})
 	}
+	store := testStore(t)
+	seedSessionWithNodes(t, store, "s", "org/repo", 1, "work", nil)
+	if subscribed, msg := wireDeliveryOnSetup(cfg, store, "s", testResource(resource), false); subscribed || msg != "" {
+		t.Fatalf("automatic delivery subscribed=%v message=%q, want a quiet skip", subscribed, msg)
+	}
+	if got := subscriptionRetryCount(t, store, "s", retrySubscribe, resource, false); got != 0 {
+		t.Fatalf("automatic delivery queued %d retries for invalid empty inputs", got)
+	}
 }
 
 func TestSubscribeIfWired_IdempotentOnRepeatedCall(t *testing.T) {
@@ -116,7 +124,7 @@ func TestSubscribeIfWired_IdempotentOnRepeatedCall(t *testing.T) {
 	cfg := writeSubscribeProvider(t, "fixture", fixtureResourceMatch, rec)
 
 	for i := 0; i < 2; i++ {
-		if _, err := subscribeIfWired(cfg, "sess-7", "resource://org/repo/pull/7", ""); err != nil {
+		if _, err := subscribeIfWired(cfg, "sess-7", "resource://org/repo/pull/7"); err != nil {
 			t.Fatalf("subscribeIfWired[%d]: %v", i, err)
 		}
 	}
@@ -128,7 +136,7 @@ func TestSubscribeIfWired_AmbiguousMatchIsAnError(t *testing.T) {
 	writeProviderDoc(t, baseDir, "b", fixtureResourceMatch, "")
 	cfg := &config.Config{BaseDir: baseDir}
 
-	_, err := subscribeIfWired(cfg, "s", "resource://org/repo/pull/1", "")
+	_, err := subscribeIfWired(cfg, "s", "resource://org/repo/pull/1")
 	assertErrCode(t, err, ErrInvalidInput)
 }
 
@@ -136,7 +144,8 @@ func TestSubscribeIfWired_HookFailureSurfacesStderr(t *testing.T) {
 	baseDir := t.TempDir()
 	body := `
 [fixture]
-kind  = "resource_observer"
+kind  = "resource"
+name  = "fixture"
 match = '` + fixtureResourceMatch + `'
 
 [fixture.observe]
@@ -152,13 +161,13 @@ args    = ["-c", "echo boom >&2; exit 3"]
 	writeFileService(t, filepath.Join(baseDir, "resources", "fixture.toml"), body)
 	cfg := &config.Config{BaseDir: baseDir}
 
-	_, err := subscribeIfWired(cfg, "s", "resource://org/repo/pull/1", "")
+	_, err := subscribeIfWired(cfg, "s", "resource://org/repo/pull/1")
 	assertErrCode(t, err, ErrExecutionFailed)
 }
 
 func TestUnsubscribeIfWired_EmptyResourceIsANoOp(t *testing.T) {
 	cfg := &config.Config{BaseDir: t.TempDir()}
-	unsubscribed, err := unsubscribeIfWired(cfg, "s", "", "")
+	unsubscribed, err := unsubscribeIfWired(cfg, "s", "")
 	if err != nil || unsubscribed {
 		t.Fatalf("unsubscribed=%v err=%v, want false, nil", unsubscribed, err)
 	}
@@ -166,7 +175,7 @@ func TestUnsubscribeIfWired_EmptyResourceIsANoOp(t *testing.T) {
 
 func TestUnsubscribeIfWired_NoProviderMatchIsSilentlySkipped(t *testing.T) {
 	cfg := &config.Config{BaseDir: t.TempDir()}
-	unsubscribed, err := unsubscribeIfWired(cfg, "s", "opaque-resource-no-provider-recognizes", "")
+	unsubscribed, err := unsubscribeIfWired(cfg, "s", "opaque-resource-no-provider-recognizes")
 	if err != nil || unsubscribed {
 		t.Fatalf("unsubscribed=%v err=%v, want false, nil", unsubscribed, err)
 	}
@@ -177,7 +186,7 @@ func TestUnsubscribeIfWired_ProviderWithoutUnsubscribeHookIsSilentlySkipped(t *t
 	writeProviderDoc(t, baseDir, "fixture", fixtureResourceMatch, "")
 	cfg := &config.Config{BaseDir: baseDir}
 
-	unsubscribed, err := unsubscribeIfWired(cfg, "s", "resource://org/repo/pull/1", "")
+	unsubscribed, err := unsubscribeIfWired(cfg, "s", "resource://org/repo/pull/1")
 	if err != nil || unsubscribed {
 		t.Fatalf("unsubscribed=%v err=%v, want false, nil", unsubscribed, err)
 	}
@@ -187,7 +196,7 @@ func TestUnsubscribeIfWired_RunsUnsubscribeHook(t *testing.T) {
 	rec := filepath.Join(t.TempDir(), "rec")
 	cfg := writeSubscribeUnsubscribeProvider(t, "fixture", fixtureResourceMatch, "", rec)
 
-	unsubscribed, err := unsubscribeIfWired(cfg, "sess-7", "resource://org/repo/pull/7", "")
+	unsubscribed, err := unsubscribeIfWired(cfg, "sess-7", "resource://org/repo/pull/7")
 	if err != nil {
 		t.Fatalf("unsubscribeIfWired: %v", err)
 	}
@@ -210,7 +219,7 @@ func TestUnsubscribeIfWired_AmbiguousMatchIsSilentlySkipped(t *testing.T) {
 	writeProviderDoc(t, baseDir, "b", fixtureResourceMatch, "")
 	cfg := &config.Config{BaseDir: baseDir}
 
-	unsubscribed, err := unsubscribeIfWired(cfg, "s", "resource://org/repo/pull/1", "")
+	unsubscribed, err := unsubscribeIfWired(cfg, "s", "resource://org/repo/pull/1")
 	if err != nil || unsubscribed {
 		t.Fatalf("unsubscribed=%v err=%v, want false, nil", unsubscribed, err)
 	}
@@ -220,7 +229,8 @@ func TestUnsubscribeIfWired_HookFailureSurfacesStderr(t *testing.T) {
 	baseDir := t.TempDir()
 	body := `
 [fixture]
-kind  = "resource_observer"
+kind  = "resource"
+name  = "fixture"
 match = '` + fixtureResourceMatch + `'
 
 [fixture.observe]
@@ -236,21 +246,22 @@ args    = ["-c", "echo boom >&2; exit 3"]
 	writeFileService(t, filepath.Join(baseDir, "resources", "fixture.toml"), body)
 	cfg := &config.Config{BaseDir: baseDir}
 
-	unsubscribed, err := unsubscribeIfWired(cfg, "s", "resource://org/repo/pull/1", "")
+	unsubscribed, err := unsubscribeIfWired(cfg, "s", "resource://org/repo/pull/1")
 	if unsubscribed {
 		t.Error("a failed hook must not be reported as unsubscribed")
 	}
 	assertErrCode(t, err, ErrExecutionFailed)
 }
 
-// writeProviderDoc writes a minimal workspace provider with a resolver and a
-// no-op setup, plus the given extra table text (e.g. a subscribe hook),
+// writeProviderDoc writes a minimal resource declaration with a match and an
+// observer, plus the given extra table text (e.g. a subscribe hook),
 // verbatim.
 func writeProviderDoc(t *testing.T, baseDir, id, match, extra string) {
 	t.Helper()
 	body := `
 [` + id + `]
-kind  = "resource_observer"
+kind  = "resource"
+name  = "fixture"
 match = '` + match + `'
 
 [` + id + `.observe]

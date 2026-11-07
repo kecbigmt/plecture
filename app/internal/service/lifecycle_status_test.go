@@ -14,48 +14,33 @@ import (
 	contract "github.com/kecbigmt/plecture/contracts/state"
 )
 
-// genericResolverFields is a workspace-provider resolver pair with no
-// hosting-provider-shaped identifier, for a test that only needs Create's
-// URL-dispatch path to resolve to some session name, not any specific
-// provider's own URL convention.
-const genericResolverFields = `match = '^acceptance://(?P<acct>[^/]+)/(?P<num>\d+)'
+// genericResourceDoc declares a resource with no hosting-provider-shaped
+// identifier, for a test that only needs Create's URL dispatch to resolve to
+// some session name.
+const genericResourceDoc = `[generic]
+kind  = "resource"
+match = '^acceptance://(?P<acct>[^/]+)/(?P<num>\d+)'
 name  = { expr = "'sess-' + match.acct + '-' + match.num" }
-`
 
-// genericProviderRunningScript mirrors providerRunningScript
-// (dispatch_test.go) but under genericResolverFields instead of a
-// specific-hosting-provider-shaped match pattern.
-func genericProviderRunningScript(id, script string) string {
-	return providerDoc(id, genericResolverFields, `[%[1]s.setup]
-type    = "exec"
-command = "sh"
-args    = ["-c", `+fmt.Sprintf("%q", script)+`, "provider"]
-`)
-}
+[generic.observe]
+type   = "shell"
+script = "echo '{}'"
+`
 
 func TestCreate_LeavesSessionStatusDown(t *testing.T) {
 	store := testStore(t)
 	workdir := filepath.Join(t.TempDir(), "wd")
-	cfg := writeWorkflowFixture(t, t.TempDir(), "wf",
+	cfg := writeWorkflowFixture(t, "wf",
 		[]taskFixture{{id: "probe", scope: "session", setup: `echo '{}'`}},
 		[]nodeFixture{{id: "probe"}})
-	provID, body := providerAside("wf", genericProviderRunningScript("wf", fmt.Sprintf(`mkdir -p %s
-echo '{"workspace_dir":"%s"}'
-`, workdir, workdir)))
-	workspacesDir := filepath.Join(cfg.BaseDir, "workspaces")
-	if err := os.MkdirAll(workspacesDir, 0o755); err != nil {
-		t.Fatal(err)
-	}
-	if err := os.WriteFile(filepath.Join(workspacesDir, provID+".toml"), []byte(body), 0o644); err != nil {
-		t.Fatal(err)
-	}
-	addWorkflowFields(t, cfg, "wf", "workspace_provider = \""+provID+"\"\n")
+	useResource(t, cfg, "wf", "generic", genericResourceDoc)
+	attachWorkdirDir(t, cfg, "wf", workdir)
 
 	if _, err := Create(cfg, store, CreateParams{URL: "acceptance://acct/9"}); err != nil {
 		t.Fatalf("Create: %v", err)
 	}
 
-	s := store.Get("sess-acct-9+wf")
+	s := store.Get("sess-acct-9")
 	if s == nil {
 		t.Fatal("session not persisted")
 	}
@@ -70,7 +55,7 @@ func TestUp_SuccessfulLaunchSetsStatusUp(t *testing.T) {
 	}
 	store := testStore(t)
 	sessionName := "work-20"
-	cfg := writeWorkflowFixture(t, t.TempDir(), "default",
+	cfg := writeWorkflowFixture(t, "default",
 		[]taskFixture{{id: "runtime", scope: "run", setup: `echo '{}'`}},
 		[]nodeFixture{{id: "runtime"}},
 	)
@@ -97,7 +82,7 @@ func TestUp_FailedLaunchLeavesStatusDown(t *testing.T) {
 	}
 	store := testStore(t)
 	sessionName := "work-21"
-	cfg := writeWorkflowFixture(t, t.TempDir(), "default",
+	cfg := writeWorkflowFixture(t, "default",
 		[]taskFixture{{id: "runtime", scope: "run", setup: `exit 1`}},
 		[]nodeFixture{{id: "runtime"}},
 	)
@@ -117,7 +102,7 @@ func TestDown_SetsStatusDown(t *testing.T) {
 	}
 	store := testStore(t)
 	sessionName := "work-22"
-	cfg := writeWorkflowFixture(t, t.TempDir(), "default",
+	cfg := writeWorkflowFixture(t, "default",
 		[]taskFixture{{id: "runtime", scope: "run", setup: `echo '{}'`, cleanup: "true"}},
 		[]nodeFixture{{id: "runtime"}},
 	)
@@ -139,7 +124,7 @@ func TestDown_SetsStatusDown(t *testing.T) {
 
 func TestDown_SleepAndFullStopTransitions(t *testing.T) {
 	store := testStore(t)
-	cfg := writeWorkflowFixture(t, t.TempDir(), "default",
+	cfg := writeWorkflowFixture(t, "default",
 		[]taskFixture{{id: "runtime", scope: "run", setup: `echo '{}'`, cleanup: "true"}},
 		[]nodeFixture{{id: "runtime"}})
 	seedSessionWithNodes(t, store, "sleep-transition", "acct", 23, "default", nil)
@@ -210,7 +195,7 @@ func TestQueueSleep_EventFailureLeavesSessionStopped(t *testing.T) {
 
 func TestDownSleep_EventFailureLeavesSessionStopped(t *testing.T) {
 	store := testStore(t)
-	cfg := writeWorkflowFixture(t, t.TempDir(), "default",
+	cfg := writeWorkflowFixture(t, "default",
 		[]taskFixture{{id: "runtime", scope: "run", setup: `echo '{}'`, cleanup: "true"}},
 		[]nodeFixture{{id: "runtime"}})
 	seedSessionWithNodes(t, store, "sleep-failure", "acct", 1, "default", nil)
@@ -229,8 +214,9 @@ func TestUp_FailedForceRecreateFromUpSessionSetsStatusDown(t *testing.T) {
 	}
 	store := testStore(t)
 	sessionName := "work-23"
-	cfg := writeWorkflowFixture(t, t.TempDir(), "default",
-		[]taskFixture{{id: "runtime", scope: "run", setup: `echo '{}'`, cleanup: "true"}},
+	marker := filepath.Join(t.TempDir(), "teardown-fails")
+	cfg := writeWorkflowFixture(t, "default",
+		[]taskFixture{{id: "runtime", scope: "run", setup: `echo '{}'`, cleanup: fmt.Sprintf("[ ! -e %q ]", marker)}},
 		[]nodeFixture{{id: "runtime"}},
 	)
 	seedSessionWithNodes(t, store, sessionName, "acct", 23, "default", nil)
@@ -241,8 +227,11 @@ func TestUp_FailedForceRecreateFromUpSessionSetsStatusDown(t *testing.T) {
 		t.Fatalf("precondition: Status after Up = %q, want %q", s.Status, contract.SessionStatusUp)
 	}
 
+	if err := os.WriteFile(marker, nil, 0o644); err != nil {
+		t.Fatal(err)
+	}
 	if _, err := Up(cfg, store, UpParams{Identifier: sessionName, ForceRecreate: true}); err == nil {
-		t.Fatal("Up --force-recreate: want an error (fixture workflow declares no workspace provider)")
+		t.Fatal("Up --force-recreate: want an error from the failing teardown")
 	}
 	if s := store.Get(sessionName); s.Status != contract.SessionStatusDown {
 		t.Fatalf("Status after failed force-recreate = %q, want %q", s.Status, contract.SessionStatusDown)
@@ -252,7 +241,7 @@ func TestUp_FailedForceRecreateFromUpSessionSetsStatusDown(t *testing.T) {
 func TestDown_PlanConstructionFailureSetsStatusDown(t *testing.T) {
 	store := testStore(t)
 	sessionName := "work-24"
-	cfg := writeWorkflowFixture(t, t.TempDir(), "default",
+	cfg := writeWorkflowFixture(t, "default",
 		[]taskFixture{{id: "runtime", scope: "run", cleanup: "true"}},
 		[]nodeFixture{{id: "runtime"}},
 	)

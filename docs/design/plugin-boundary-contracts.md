@@ -36,8 +36,8 @@ plugins:
 | `tmux` | tmux-backed interactive endpoint task and terminal operation declarations | interactive endpoint, terminal operations, task lifecycle | agent CLIs, agent-TUI submit/readiness logic, chat delivery, VCS guards |
 | `claude` | Claude Code launch tasks, initial-prompt submit/readiness logic, structured Claude Code delivery, channel-server service, Claude activity hook | interactive endpoint, terminal operations, conversation events, task lifecycle | tmux, Codex, chat-service adapters, VCS guards |
 | `codex` | Codex TUI and `codex exec` launch tasks, initial-prompt and terminal-submit readiness logic, queue worker, enqueue channel, Codex activity hook | interactive endpoint, terminal operations, conversation events, task lifecycle | tmux, Claude, chat-service adapters, VCS guards |
-| `slack` | Slack adapter service, Slack thread binding and workspace provider, Slack event ingress and egress | conversation events, workspace providers, plugin services, channel delivery | agent runtimes, channel-server sockets, VCS guards |
-| `github` | GitHub resource observation, workspace acquisition, watcher service, GitHub CLI write guard | resource definitions, workspace providers, subscriptions, plugin services | session runtime tasks, chat-service adapters |
+| `slack` | Slack adapter service, Slack thread binding and the `thread_dir` effect, Slack event ingress and egress | conversation events, session-scoped effects, plugin services, channel delivery | agent runtimes, channel-server sockets, VCS guards |
+| `github` | GitHub resource observation, the `worktree` effect, watcher service, GitHub CLI write guard | resource definitions, session-scoped effects, subscriptions, plugin services | session runtime tasks, chat-service adapters |
 
 A plugin with only workflow, task, channel, or other configuration
 resources is still a plugin. A shared review workflow may be distributed as a
@@ -185,7 +185,8 @@ provider-neutral consumer.
 The team review workflow is configuration-level composition:
 
 1. a resource definition observes the review request;
-2. a workspace provider acquires the work surface;
+2. a session-scoped effect acquires the work surface, and the workflow
+   names its directory output as `workdir`;
 3. a workflow starts a selected multiplexer endpoint and a selected agent
    runtime;
 4. a delivery plugin binds the team conversation and maps messages through the
@@ -208,7 +209,7 @@ denial, rather than two shims chained through the PATH-prepend input. Auth
 and deny ordering both live in that one wrapper, deny checked first, so a
 call about to be denied never costs a mint.
 
-The GitHub workspace provider has a separate App-auth path for raw git
+The GitHub `worktree` effect has a separate App-auth path for raw git
 network operations. Sessions opt in by supplying the same task-level App
 inputs `gh_app_guard` accepts: `app_id`, optional `installation_id`, optional
 `owner`/`repo`, and `private_key_path`. The setup hook reads those values from
@@ -237,7 +238,7 @@ plect up https://github.com/acme/widgets/issues/42 --inputs '{
 ```
 
 The shipped task schemas expose the same App input shape as the guard task,
-and the workspace provider also validates the runtime values it consumes:
+and the `worktree` effect also validates the runtime values it consumes:
 `app_id` and `installation_id` are decimal strings, `owner` is a GitHub login
 string, `repo` is a GitHub repository-name string, and `private_key_path` is a
 path string restricted to alphanumeric characters plus `_`, `.`, `/`, `:`, and

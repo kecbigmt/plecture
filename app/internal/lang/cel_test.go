@@ -17,7 +17,7 @@ func TestCheckExpressionAcceptsTheProfile(t *testing.T) {
 		{"an admitted strings-extension function", surfaceEffectOutputsBind, "inputs.mcp_servers.map(s, s.name).join(',')"},
 		{"another admitted strings-extension function", surfaceEffectInner, "inputs.branch.lowerAscii()"},
 		{"live roots on a completion leaf", surfaceTaskCompletion, "self.state.verdict_revision == resource.state.revision"},
-		{"named regex captures", surfaceProviderName, "match.owner + '/' + match.repo + '-' + match.number"},
+		{"named regex captures", surfaceResourceName, "match.owner + '/' + match.repo + '-' + match.number"},
 	}
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {

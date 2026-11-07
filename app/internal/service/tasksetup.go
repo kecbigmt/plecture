@@ -11,6 +11,7 @@ import (
 
 	"github.com/kecbigmt/plecture/app/internal/config"
 	"github.com/kecbigmt/plecture/app/internal/domain"
+	"github.com/kecbigmt/plecture/app/internal/publicoutput"
 	"github.com/kecbigmt/plecture/app/internal/state"
 	"github.com/kecbigmt/plecture/app/internal/task"
 	contract "github.com/kecbigmt/plecture/contracts/state"
@@ -100,6 +101,9 @@ func TaskSetup(cfg *config.Config, store *state.Store, params TaskSetupParams) (
 	if err != nil {
 		return nil, err
 	}
+	if err := requireSessionRoot(cfg, session); err != nil {
+		return nil, err
+	}
 	flushPendingDeliveryLogged(cfg, store, resolvedName)
 	if session.Nodes == nil {
 		session.Nodes = make(map[string]*contract.TaskState)
@@ -143,6 +147,10 @@ func TaskSetup(cfg *config.Config, store *state.Store, params TaskSetupParams) (
 	if extraErr != nil {
 		return nil, extraErr
 	}
+	bound, boundErr := boundResource(cfg, store, params.Resource)
+	if boundErr != nil {
+		return nil, boundErr
+	}
 
 	// The bound resource is the instance's own resource, exposed to its setup /
 	// done_when as .ResourceID (overriding the session's when present).
@@ -150,8 +158,12 @@ func TaskSetup(cfg *config.Config, store *state.Store, params TaskSetupParams) (
 	// one definition directly, not a workflow node) — a terminal binding is
 	// unavailable, same as taskcleanup.go's single-instance teardown.
 	vars := sessionVars(cfg, session, nil)
-	if params.Resource != "" {
-		vars.ResourceID = params.Resource
+	if bound != nil {
+		vars.ResourceID = bound.Locator
+	}
+	dir, dirErr := sessionWorkdir(cfg, session)
+	if dirErr != nil {
+		return nil, &Error{Code: ErrExecutionFailed, Message: dirErr.Error()}
 	}
 
 	// Phase 1 — reserve a per-task instance number + key under the state lock.
@@ -183,8 +195,9 @@ func TaskSetup(cfg *config.Config, store *state.Store, params TaskSetupParams) (
 			// outputs, which reads as not-done (done_when pending) rather than
 			// claiming work that never ran.
 			Status:        contract.TaskStatusProduced,
+			Directory:     dir,
 			Inputs:        inputs,
-			Resource:      params.Resource,
+			Resource:      bound,
 			Name:          params.Name,
 			ExtraDoneWhen: extraDoneWhen,
 			Seq:           task.NextSeq(s.Nodes, s.Tasks),
@@ -207,8 +220,8 @@ func TaskSetup(cfg *config.Config, store *state.Store, params TaskSetupParams) (
 	start := time.Now()
 
 	// Phase 2 — run setup WITHOUT the lock (it may shell out for a while). The
-	// @workflow outputs come from the pre-reservation snapshot (stable).
-	setupResult, setupErr := task.ExecuteTaskSetup(context.Background(), resolved, inputs, vars, session.Nodes)
+	// public outputs come from the pre-reservation snapshot (stable).
+	setupResult, setupErr := task.ExecuteTaskSetup(context.Background(), resolved, inputs, vars, session.Nodes, dir)
 	stderr := setupResult.Stderr
 
 	// Phase 3 — merge the result back into the reserved key under the lock,
@@ -269,9 +282,9 @@ func TaskSetup(cfg *config.Config, store *state.Store, params TaskSetupParams) (
 	recordLifecycle(store, resolvedName, "task_setup", fmt.Sprintf("instantiated %s", key))
 	// Turn an `instruction` output into the plect.instruction event its workflow
 	// [[event.channel]] delivers.
-	appendInstruction(store, resolvedName, key, params.Resource, instructionOutput(resultOutputs))
+	appendInstruction(store, resolvedName, key, domain.Locator(bound), instructionOutput(resultOutputs))
 
-	subscribed, subscribeErrMsg := wireDeliveryOnSetup(cfg, store, resolvedName, params.Resource, domain.SessionBranch(session))
+	subscribed, subscribeErrMsg := wireDeliveryOnSetup(cfg, store, resolvedName, bound, false)
 
 	return &TaskSetupResult{
 		SessionName:    resolvedName,
@@ -279,7 +292,7 @@ func TaskSetup(cfg *config.Config, store *state.Store, params TaskSetupParams) (
 		TaskID:         params.TaskID,
 		Scope:          resolved.Scope,
 		Name:           params.Name,
-		Resource:       params.Resource,
+		Resource:       domain.Locator(bound),
 		Subscribed:     subscribed,
 		SubscribeError: subscribeErrMsg,
 		Outputs:        resultOutputs,
@@ -305,7 +318,7 @@ func parseExtraDoneWhen(raw string) (json.RawMessage, error) {
 }
 
 // bindDynamicInputs resolves each input the task declares to a value, using
-// the precedence: --input > @workflow (workspace provider) outputs > session inputs.
+// the precedence: --input > workflow public outputs > session inputs.
 // When the task declares an inputs schema, only its declared properties are
 // bound and an --input key it does not declare is rejected (a typo surfaces
 // instead of being silently dropped); required-but-unbound inputs are caught by
@@ -335,10 +348,7 @@ func bindDynamicInputs(def config.TaskDefinition, cliInputs map[string]string, s
 		}
 	}
 
-	var wfOutputs map[string]any
-	if st, ok := session.Nodes[contract.WorkflowPseudoNodeID]; ok && st != nil {
-		wfOutputs = st.Outputs
-	}
+	wfOutputs, _ := publicoutput.Of(session, publicoutput.ProducedOnly)
 
 	out := make(map[string]any, len(names))
 	for _, name := range names {

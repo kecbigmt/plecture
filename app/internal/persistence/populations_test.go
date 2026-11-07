@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	contract "github.com/kecbigmt/plecture/contracts/state"
 	"testing"
 
 	"github.com/kecbigmt/plecture/app/internal/domain"
@@ -13,7 +14,7 @@ var errBoom = errors.New("boom")
 
 func TestPopulation_MissingReturnsNilNil(t *testing.T) {
 	db := migratedTestDB(t)
-	got, err := db.Population(context.Background(), "nonexistent")
+	got, err := db.Population(context.Background(), contract.PopulationProvenance{Workflow: "nonexistent"})
 	if err != nil {
 		t.Fatalf("Population: %v", err)
 	}
@@ -26,17 +27,17 @@ func TestUpdatePopulation_CreatesAndPersistsMembers(t *testing.T) {
 	db := migratedTestDB(t)
 	ctx := context.Background()
 
-	err := db.UpdatePopulation(ctx, "wf/pop", func(p *domain.PopulationState) error {
+	err := db.UpdatePopulation(ctx, contract.PopulationProvenance{Workflow: "wf", Name: "pop"}, func(p *domain.PopulationState) error {
 		p.Workflow = "wf"
 		p.Name = "pop"
-		p.Members["res-1"] = &domain.PopulationMember{ResourceID: "res-1", Generation: 1, PendingUp: true, Item: map[string]any{"k": "v"}}
+		p.Members["res-1"] = &domain.PopulationMember{Resource: *testResource("res-1", "t://res-1"), Generation: 1, PendingUp: true, Item: map[string]any{"k": "v"}}
 		return nil
 	})
 	if err != nil {
 		t.Fatalf("UpdatePopulation: %v", err)
 	}
 
-	got, err := db.Population(ctx, "wf/pop")
+	got, err := db.Population(ctx, contract.PopulationProvenance{Workflow: "wf", Name: "pop"})
 	if err != nil {
 		t.Fatalf("Population: %v", err)
 	}
@@ -63,7 +64,7 @@ func TestUpdatePopulation_ReplacesMembersRatherThanAccumulating(t *testing.T) {
 	ctx := context.Background()
 
 	mutate := func(fn func(*domain.PopulationState)) {
-		if err := db.UpdatePopulation(ctx, "wf/pop", func(p *domain.PopulationState) error {
+		if err := db.UpdatePopulation(ctx, contract.PopulationProvenance{Workflow: "wf", Name: "pop"}, func(p *domain.PopulationState) error {
 			fn(p)
 			return nil
 		}); err != nil {
@@ -72,14 +73,14 @@ func TestUpdatePopulation_ReplacesMembersRatherThanAccumulating(t *testing.T) {
 	}
 
 	mutate(func(p *domain.PopulationState) {
-		p.Members["a"] = &domain.PopulationMember{ResourceID: "a", Generation: 1}
+		p.Members["a"] = &domain.PopulationMember{Resource: *testResource("a", "t://a"), Generation: 1}
 	})
 	mutate(func(p *domain.PopulationState) {
 		delete(p.Members, "a")
-		p.Members["b"] = &domain.PopulationMember{ResourceID: "b", Generation: 1}
+		p.Members["b"] = &domain.PopulationMember{Resource: *testResource("b", "t://b"), Generation: 1}
 	})
 
-	got, err := db.Population(ctx, "wf/pop")
+	got, err := db.Population(ctx, contract.PopulationProvenance{Workflow: "wf", Name: "pop"})
 	if err != nil {
 		t.Fatalf("Population: %v", err)
 	}
@@ -96,7 +97,7 @@ func TestUpdatePopulation_FnErrorAbortsWithoutWriting(t *testing.T) {
 	ctx := context.Background()
 
 	wantErr := errBoom
-	err := db.UpdatePopulation(ctx, "wf/pop", func(p *domain.PopulationState) error {
+	err := db.UpdatePopulation(ctx, contract.PopulationProvenance{Workflow: "wf", Name: "pop"}, func(p *domain.PopulationState) error {
 		p.Workflow = "should-not-persist"
 		return wantErr
 	})
@@ -104,7 +105,7 @@ func TestUpdatePopulation_FnErrorAbortsWithoutWriting(t *testing.T) {
 		t.Fatalf("UpdatePopulation error = %v, want %v", err, wantErr)
 	}
 
-	got, err := db.Population(ctx, "wf/pop")
+	got, err := db.Population(ctx, contract.PopulationProvenance{Workflow: "wf", Name: "pop"})
 	if err != nil {
 		t.Fatalf("Population: %v", err)
 	}
@@ -118,7 +119,7 @@ func TestUpdatePopulation_MembersMapIsNeverNilInsideFn(t *testing.T) {
 	ctx := context.Background()
 
 	var sawNilMembers bool
-	if err := db.UpdatePopulation(ctx, "wf/pop", func(p *domain.PopulationState) error {
+	if err := db.UpdatePopulation(ctx, contract.PopulationProvenance{Workflow: "wf", Name: "pop"}, func(p *domain.PopulationState) error {
 		if p.Members == nil {
 			sawNilMembers = true
 		}
@@ -138,14 +139,14 @@ func TestUpdatePopulation_LastBlockersRoundTripsThroughChildTableInOrder(t *test
 	db := migratedTestDB(t)
 	ctx := context.Background()
 
-	if err := db.UpdatePopulation(ctx, "wf/pop", func(p *domain.PopulationState) error {
-		p.Members["r1"] = &domain.PopulationMember{ResourceID: "r1", LastBlockers: []string{"open PR", "failing check"}}
+	if err := db.UpdatePopulation(ctx, contract.PopulationProvenance{Workflow: "wf", Name: "pop"}, func(p *domain.PopulationState) error {
+		p.Members["r1"] = &domain.PopulationMember{Resource: *testResource("r1", "t://r1"), LastBlockers: []string{"open PR", "failing check"}}
 		return nil
 	}); err != nil {
 		t.Fatalf("UpdatePopulation: %v", err)
 	}
 
-	got, err := db.Population(ctx, "wf/pop")
+	got, err := db.Population(ctx, contract.PopulationProvenance{Workflow: "wf", Name: "pop"})
 	if err != nil {
 		t.Fatalf("Population: %v", err)
 	}
@@ -165,13 +166,13 @@ func TestUpdatePopulation_LastBlockersRoundTripsThroughChildTableInOrder(t *test
 
 	// A later evaluation with fewer blockers replaces the list rather than
 	// accumulating it.
-	if err := db.UpdatePopulation(ctx, "wf/pop", func(p *domain.PopulationState) error {
+	if err := db.UpdatePopulation(ctx, contract.PopulationProvenance{Workflow: "wf", Name: "pop"}, func(p *domain.PopulationState) error {
 		p.Members["r1"].LastBlockers = []string{"open PR"}
 		return nil
 	}); err != nil {
 		t.Fatalf("UpdatePopulation (replace): %v", err)
 	}
-	got, err = db.Population(ctx, "wf/pop")
+	got, err = db.Population(ctx, contract.PopulationProvenance{Workflow: "wf", Name: "pop"})
 	if err != nil {
 		t.Fatalf("Population (after replace): %v", err)
 	}
@@ -194,10 +195,9 @@ func TestUpdatePopulation_LastDecisionRoundTripsThroughDecisionKindAndReason(t *
 		{"reason containing a colon", "plect.workflow_population.destroy:blocked: awaiting review"},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
-			key := "wf/" + tc.name
+			key := contract.PopulationProvenance{Workflow: "wf", Name: tc.name}
 			if err := db.UpdatePopulation(ctx, key, func(p *domain.PopulationState) error {
-				p.Workflow, p.Name = splitPopulationKey(key)
-				p.Members["r1"] = &domain.PopulationMember{ResourceID: "r1", LastDecision: tc.lastDecision}
+				p.Members["r1"] = &domain.PopulationMember{Resource: *testResource("r1", "t://r1"), LastDecision: tc.lastDecision}
 				return nil
 			}); err != nil {
 				t.Fatalf("UpdatePopulation: %v", err)
@@ -215,5 +215,30 @@ func TestUpdatePopulation_LastDecisionRoundTripsThroughDecisionKindAndReason(t *
 				t.Errorf("LastDecision = %q, want %q", member.LastDecision, tc.lastDecision)
 			}
 		})
+	}
+}
+
+func TestUpdatePopulation_SameNameInAnotherContextIsAnotherPopulation(t *testing.T) {
+	db := migratedTestDB(t)
+	ctx := context.Background()
+	widgets := contract.PopulationProvenance{ProjectRoot: "/projects/widgets", Workflow: "review", Name: "standing"}
+	global := contract.PopulationProvenance{Workflow: "review", Name: "standing"}
+	for key, resource := range map[contract.PopulationProvenance]string{widgets: "res-w", global: "res-g"} {
+		if err := db.UpdatePopulation(ctx, key, func(p *domain.PopulationState) error {
+			p.Members[resource] = &domain.PopulationMember{Resource: *testResource(resource, "t://"+resource)}
+			return nil
+		}); err != nil {
+			t.Fatalf("UpdatePopulation(%+v): %v", key, err)
+		}
+	}
+
+	for key, want := range map[contract.PopulationProvenance]string{widgets: "res-w", global: "res-g"} {
+		got, err := db.Population(ctx, key)
+		if err != nil || got == nil {
+			t.Fatalf("Population(%+v) = %v, %v", key, got, err)
+		}
+		if len(got.Members) != 1 || got.Members[want] == nil || got.ProjectRoot != key.ProjectRoot {
+			t.Errorf("Population(%+v) = root %q members %v, want only %q", key, got.ProjectRoot, got.Members, want)
+		}
 	}
 }

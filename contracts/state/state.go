@@ -91,18 +91,6 @@ const (
 	SessionStatusDestroyed = "destroyed"
 )
 
-// WorkflowPseudoNodeID is the reserved Session.Nodes key for the
-// workflow-level setup/cleanup pseudo-node. The "@" prefix is outside the
-// node-id grammar ([A-Za-z_][A-Za-z0-9_]*), so it can never collide with a
-// real workflow node.
-const WorkflowPseudoNodeID = "@workflow"
-
-// OutputKeyWorkspaceDir is the reserved output key naming the session's
-// acquired workspace directory. It is always immutable: declaring it
-// `mutable = true` in an outputs schema is a load error, and
-// `plect state set-output` rejects it.
-const OutputKeyWorkspaceDir = "workspace_dir"
-
 // TaskState records the persisted outcome of a task's setup/cleanup.
 // Runtime liveness is not stored here — it is determined on demand by the
 // task's declared alive probe.
@@ -114,14 +102,14 @@ const OutputKeyWorkspaceDir = "workspace_dir"
 // Seq / Resource support dynamic instantiation:
 //
 //   - Seq is the monotonically increasing instantiation order across every
-//     task in the session (workflow pseudo-node, static DAG nodes, and
-//     dynamic `plect task setup` instances, i.e. across both Session.Nodes and
-//     Session.Tasks). Teardown reclaims tasks in descending Seq — the reverse
-//     of the single instantiation stack — so an task always outlives anything
+//     task in the session (static DAG nodes and dynamic `plect task setup`
+//     instances, i.e. across both Session.Nodes and Session.Tasks). Teardown
+//     reclaims tasks in descending Seq — the reverse of the single
+//     instantiation stack — so an task always outlives anything
 //     that depends on it. Zero on legacy state written before this field
 //     existed (such entries fall back to plan order).
-//   - Resource is the `--resource` value bound at instantiation (the external
-//     resource this instance works on); empty for instances with no resource.
+//   - Resource is the resource bound at instantiation (the external resource
+//     this instance works on); nil for instances with no resource.
 //   - Name is a `--name` instance identity for a dynamic instance: when set, the
 //     instance key IS the name (session-global unique, no `<task>#` prefix), so
 //     a second `setup --name <name>` collides. Empty for the numbered
@@ -133,14 +121,18 @@ type TaskState struct {
 	// referenced definition's own id, and omits it when that equals the node
 	// id; either way the workflow is what names the node's declaration, so a
 	// node's value is not an address and is not resolved as one.
-	TaskID   string         `json:"task_id,omitempty"`
-	Status   string         `json:"status"`             // "produced" | "failed" | "cleaned"
-	Inputs   map[string]any `json:"inputs,omitempty"`   // resolved node inputs (post-template), persisted for cleanup
-	Outputs  map[string]any `json:"outputs,omitempty"`  // parsed JSON from setup stdout
-	Seq      int            `json:"seq,omitempty"`      // instantiation order; 0 = legacy/unset
-	Resource string         `json:"resource,omitempty"` // bound --resource at instantiation
-	Name     string         `json:"name,omitempty"`     // --name instance identity (key == name when set)
-	Layers   []LayerState   `json:"layers,omitempty"`   // per-layer record for a nested task; empty for a plain one
+	TaskID       string         `json:"task_id,omitempty"`
+	Status       string         `json:"status"`                 // "produced" | "failed" | "cleaned"
+	Inputs       map[string]any `json:"inputs,omitempty"`       // resolved node inputs (post-template), persisted for cleanup
+	Outputs      map[string]any `json:"outputs,omitempty"`      // parsed JSON from setup stdout
+	Seq          int            `json:"seq,omitempty"`          // instantiation order; 0 = legacy/unset
+	Resource     *Resource      `json:"resource,omitempty"`     // bound --resource at instantiation
+	Subscription *Resource      `json:"subscription,omitempty"` // resource a workflow node's subscription bound
+	Name         string         `json:"name,omitempty"`         // --name instance identity (key == name when set)
+	Layers       []LayerState   `json:"layers,omitempty"`       // per-layer record for a nested task; empty for a plain one
+	// Directory is the directory this instance's setup ran in, recorded so
+	// cleanup runs there. Empty when setup ran with no explicit directory.
+	Directory string `json:"directory,omitempty"`
 	// Process is the identity core recorded for the process named by this
 	// instance's `process` alive probe, captured when setup produced it. It is
 	// core's own record, not an output: nil for an instance whose effect
@@ -239,6 +231,23 @@ type LayerState struct {
 	Error                string    `json:"error,omitempty"`
 }
 
+// Resource is one recorded external resource. Every column that refers to a
+// resource (resource_id, and a node's subscription_id) stores its ID: an opaque
+// id, never the identifier string resource actions receive, which is Locator.
+type Resource struct {
+	ID string `json:"id,omitempty"`
+	// Type is the declaration the resource resolved through. It is empty for
+	// an identifier no declaration resolved, whose Name is then its own ID.
+	Type string `json:"type,omitempty"`
+	// Name is the slug the declaration's `name` derived. It is unique across
+	// types, because a session takes its name from it, and it is what makes
+	// two spellings of one identifier the same resource.
+	Name string `json:"name"`
+	// Locator is the identifier first resolved to this resource; a later
+	// spelling that derives the same Name never replaces it.
+	Locator string `json:"locator"`
+}
+
 // Session is the shared representation of a plect session's durable state.
 // This contains all fields that external consumers may read.
 //
@@ -246,12 +255,9 @@ type LayerState struct {
 // time so subsequent up/down/destroy use a stable plan regardless of config
 // changes. Empty means the legacy inline-`[[tasks]]` path was used.
 //
-// ResourceID is the canonical external resource this session works on (any
-// string — the workspace provider that resolved it decides what the string
-// means); Alias preserves the original create-time input so lookups survive
-// resolver rule changes. Anything resource-shaped beyond those two (a
-// repository, a number, a permalink) is a workspace provider setup output,
-// not a session field.
+// Alias preserves the original create-time input so lookups survive resolver
+// rule changes. Anything resource-shaped beyond Resource (a repository, a
+// number, a permalink) is an effect's setup output, not a session field.
 type Session struct {
 	// ID is the durable surrogate identity minted once at creation (or
 	// recreation under a reused name) and never changed thereafter;
@@ -261,7 +267,12 @@ type Session struct {
 	Status      string    `json:"status,omitempty"`
 	SleepSince  time.Time `json:"sleep_since,omitzero"`
 	DestroyedAt time.Time `json:"destroyed_at,omitzero"`
-	ResourceID  string    `json:"resource_id,omitempty"`
+	// Resource is the entry resource the session was created for; its ID is
+	// what the session's resource_id stores.
+	Resource *Resource `json:"resource,omitempty"`
+	// Tag is recorded rather than parsed back out of Name because a resource
+	// name may itself contain the tag separator.
+	Tag string `json:"tag,omitempty"`
 	// ParentSessionID and RootSessionID are ParentSession's durable
 	// identity, resolved once and never re-resolved on a later write, so a
 	// destroyed-and-recreated parent never retargets this session.
@@ -270,17 +281,22 @@ type Session struct {
 	// ParentSession is a read-side projection of the above onto the
 	// referenced session's current name ("root:"-prefixed for
 	// RootSessionID), not itself a write-time identity.
-	ParentSession        string                `json:"parent_session,omitempty"`
-	Children             []string              `json:"children,omitempty"`
-	Alias                string                `json:"alias,omitempty"`
-	WorkspaceDirPath     string                `json:"workspace_dir_path"`
-	Workflow             string                `json:"workflow,omitempty"`
-	WorkflowRevision     string                `json:"workflow_revision,omitempty"`
-	WorkflowRevisionBody string                `json:"-"`
-	Population           *PopulationProvenance `json:"population,omitempty"`
-	Inputs               map[string]any        `json:"inputs,omitempty"`
-	// Nodes holds workflow DAG node production records, keyed by node id,
-	// including the @workflow pseudo-node (WorkflowPseudoNodeID). Tasks holds
+	ParentSession        string   `json:"parent_session,omitempty"`
+	Children             []string `json:"children,omitempty"`
+	Alias                string   `json:"alias,omitempty"`
+	Workflow             string   `json:"workflow,omitempty"`
+	WorkflowRevision     string   `json:"workflow_revision,omitempty"`
+	WorkflowRevisionBody string   `json:"-"`
+	// ProjectRoot is the canonical project root whose definitions configured
+	// the session, and empty for the global-only context. Later operations
+	// load configuration from it rather than from their caller's cwd, so
+	// where an operator happens to stand cannot change which nodes a session
+	// has.
+	ProjectRoot string                `json:"-"`
+	Population  *PopulationProvenance `json:"population,omitempty"`
+	Inputs      map[string]any        `json:"inputs,omitempty"`
+	// Nodes holds workflow DAG node production records, keyed by node id.
+	// Tasks holds
 	// `plect task setup` instances, keyed by instance handle (a `--name` or
 	// the numbered `<task>#<n>` form) — a disjoint namespace from node ids (a
 	// `--name` collision is checked against both).
@@ -316,10 +332,14 @@ type Session struct {
 }
 
 // PopulationProvenance is the sole lifecycle authority an automatic
-// workflow-population evaluator may use to mutate or destroy a session.
+// workflow-population evaluator may use to mutate or destroy a session, and
+// the identity of that population. ProjectRoot is the configuration context
+// that declares it, empty for the global-only context, so one name in two
+// project roots is two populations.
 type PopulationProvenance struct {
-	Workflow string `json:"workflow"`
-	Name     string `json:"name"`
+	ProjectRoot string `json:"project_root,omitempty"`
+	Workflow    string `json:"workflow"`
+	Name        string `json:"name"`
 }
 
 // HealthState is core's own record of the last opaque activity fingerprint,

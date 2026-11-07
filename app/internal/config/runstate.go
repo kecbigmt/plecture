@@ -27,8 +27,7 @@ func (c *Config) ResolveSessionWorkflow(s *domain.Session) (*WorkflowFile, error
 	return nil, fmt.Errorf("session %q has no stored workflow revision", s.Name)
 }
 
-// runScopeCache memoizes CurrentPlanRunScopedNodeSet by (workflow,
-// workspaceDirPath); a pointer field since an embedded sync.Mutex would
+// runScopeCache memoizes CurrentPlanRunScopedNodeSet by (workflow, revision); a pointer field since an embedded sync.Mutex would
 // lock-copy Config, which tests copy by value.
 type runScopeCache struct {
 	mu    sync.Mutex
@@ -36,9 +35,8 @@ type runScopeCache struct {
 }
 
 type runScopeCacheKey struct {
-	workflow         string
-	revision         string
-	workspaceDirPath string
+	workflow string
+	revision string
 }
 
 type runScopeCacheEntry struct {
@@ -77,7 +75,7 @@ func (c *Config) runScopeCacheInstance() *runScopeCache {
 // The cache key includes the revision because one config instance can observe
 // sessions pinned to different declarations of the same workflow.
 func (c *Config) CurrentPlanRunScopedNodeSet(s *domain.Session) (set map[string]bool, ok bool) {
-	key := runScopeCacheKey{workflow: s.Workflow, revision: s.WorkflowRevision, workspaceDirPath: s.WorkspaceDirPath}
+	key := runScopeCacheKey{workflow: s.Workflow, revision: s.WorkflowRevision}
 	cache := c.runScopeCacheInstance()
 	if entry, hit := cache.get(key); hit {
 		return entry.set, entry.ok

@@ -25,7 +25,7 @@ out of scope here (see "Extending this image" below).
 - `/etc/plect`: a neutral example config — `config.toml`, `catalogs.toml`,
   `plect.lock`, and one example workflow
   (`workflows/example_work.toml`) that composes the enabled plugins into a
-  dispatchable session (GitHub issue/PR worktree → tmux pane → Claude Code,
+  dispatchable session (GitHub issue worktree → tmux pane → Claude Code,
   authenticated as a GitHub App installation via `gh_app_guard` instead of
   an operator's personal `gh auth login`).
 
@@ -87,7 +87,7 @@ itself.
 ## Fault injection harness
 
 `deploy/docker/fault/run.sh` builds a base image, then derives a test image
-with a local workspace provider and a stub `claude` binary. It uses a named
+with a local resource and directory effect and a stub `claude` binary. It uses a named
 volume at `/var/lib/plect`, creates a session through the packaged `plect`,
 and verifies that the stub records a prompt and leaves an uncommitted worktree
 change. Docker and Go are required.
@@ -185,7 +185,7 @@ container restart; everything else is recreated on boot.
 | `XDG_STATE_HOME` | `/var/lib/plect/state` | Yes — plugin runtime state (e.g. agent activity-probe records). |
 | `XDG_RUNTIME_DIR` | `/run/plect` | **No** — UDS paths (the bus socket). Recreated fresh every boot by `entrypoint.sh`; a stale socket path from a previous boot must never be reused. |
 | `PLECT_BUS_SOCKET` | `/run/plect/bus.sock` | No (under `XDG_RUNTIME_DIR`). |
-| — | `/var/lib/plect/workspace_dirs` | Yes — git worktrees (`workspace_dirs_root` in the example `config.toml`). |
+| — | `/var/lib/plect/workspace_dirs` | Yes — git worktrees (the example workflow's `worktree` node passes it as `dirs_root`). |
 | — | `/var/lib/plect/codex-exec` | Yes, if a downstream config wires `official.codex.exec_runtime`'s `state_root` here — otherwise unused; created regardless so that wiring needs no image change. |
 
 Restart behavior to expect: `plect serve` and plugin services restart and
@@ -283,7 +283,7 @@ COPY --chown=root:root your-config/ /etc/plect/
 ```
 
 That downstream `COPY` can add new files under `/etc/plect/workflows/`,
-replace `config.toml`'s `resource_allowlist`/`workspace_dirs_root`, or add a
+replace `config.toml`'s `resource_allowlist`, or add a
 same-id override in a new file (user-owned config always wins over a plugin
 layer's, see `docs/design/plugin-packaging.md`'s Shadowing and precedence
 section) — none of it requires a change in this repository. Enabling a

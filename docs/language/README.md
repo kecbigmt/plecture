@@ -92,12 +92,15 @@ the environment declared for that site.
 The implementation may reorder these for efficiency; the responsibility
 boundaries do not move.
 
-A reference is always `<subject>.<store>.<key>`. The subject says whose facts
+A reference to a contract-backed fact is always `<subject>.<store>.<key>`.
+The subject says whose facts
 these are — `self`, `inner`, `resource`, `nodes.<id>`, `workflow` — and the
 store says which of that subject's contracts they come from: `outputs`, `state`,
 `inputs`. So an effect reads its own production records as `self.outputs.<key>`, a
 task document its own state as `self.state.<key>`, and the resource it is bound
-to as `resource.state.<key>`.
+to as `resource.state.<key>`. Identity values such as `resource.id`,
+`session.name`, and `session.tag` are not contract-backed and have no store
+segment; [values](values.md) lists where each is available.
 
 Static resolution — references, kinds, and root existence — is never dropped. Projecting JSON Schema into CEL type information, and checking an
 expression's result type against its field, is the first thing dropped if
@@ -148,7 +151,7 @@ the CLI's name would claim the language's rules for one of its consumers.
 | `PLECTURE-CFG-TASK-INSTRUCTION-CONTROL-FLOW` | semantic | An instruction body carries a `{{ ... }}` construct other than a dotted-path projection. |
 | `PLECTURE-CFG-FROM-ROOT` | structural / semantic | A value reads a root the containing surface does not offer. It is structural where a surface's roots are a fixed prefix set, as on an effect's `outputs.bind` and a task document's completion leaves, and semantic otherwise. |
 | `PLECTURE-CFG-FROM-PATH` | semantic | A projection names a field the resolved contract does not declare. |
-| `PLECTURE-CFG-RESOURCE-OBSERVER-MISMATCH` | instantiation | An instance's resource does not resolve to the resource its task document declares. |
+| `PLECTURE-CFG-RESOURCE-OBSERVER-MISMATCH` | semantic / instantiation | An instance's resource does not resolve to the resource its task document declares. It is semantic where a chain selects a task the target workflow's entry resource cannot satisfy, and instantiation otherwise. |
 | `PLECTURE-CFG-FIRST-OBSERVE-FAILED` | instantiation | The observation instantiation performs failed, so no instance is created; the resource's own error is reported. |
 | `PLECTURE-CFG-BIN-UNKNOWN` | semantic | An executable reference resolves to no declared executable. |
 | `PLECTURE-CFG-TERMINAL-UNAVAILABLE` | semantic | A terminal capability is consumed where no effect in the plan declares that verb. |

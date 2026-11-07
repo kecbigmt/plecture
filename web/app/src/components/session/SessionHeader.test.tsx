@@ -44,8 +44,7 @@ describe("SessionHeader", () => {
       jsonResponse({
         sessionName: "team/a",
         run: "up",
-        resourceId: "https://example.com/issues/1",
-        workspaceDirExists: true,
+        resource: { type: "issue", name: "res", locator: "https://example.com/issues/1" },
         createdAt: "2026-01-01T00:00:00Z",
       }),
     );
@@ -60,8 +59,6 @@ describe("SessionHeader", () => {
         sessionName: "team/a",
         run: "up",
         health: "stalled",
-        resourceId: "",
-        workspaceDirExists: true,
         createdAt: "2026-01-01T00:00:00Z",
       }),
     );

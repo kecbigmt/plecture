@@ -23,7 +23,7 @@ export function SessionHeader({
             <>
               <StatusPill>{detail.data.run}</StatusPill>
               {detail.data.health && <StatusPill>{detail.data.health}</StatusPill>}
-              <ResourceValue value={detail.data.resourceId ?? ""} />
+              <ResourceValue value={detail.data.resource?.locator ?? ""} />
             </>
           )}
         </div>

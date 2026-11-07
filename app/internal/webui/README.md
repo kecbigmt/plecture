@@ -231,8 +231,8 @@ to run and observe, and cannot be automated as a CI check.
    landing back on `/app/`.
 4. **Hierarchy and detail.** Confirm the real session tree renders,
    expand/collapse a parent with children, select a session with a real
-   `resource_id`/branch, open Details, and confirm the resource renders as
-   a link (HTTP(S)) or copyable text (everything else).
+   resource, open Details, and confirm its locator renders as a link
+   (HTTP(S)) or copyable text (everything else).
 5. **History and live update.** Open a session with recorded history,
    confirm it renders, then from another terminal publish a real event
    (`plect event publish <session> --type user.emit --summary "smoke test"`)

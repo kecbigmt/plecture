@@ -1,7 +1,11 @@
 [fault_recovery]
 kind               = "workflow"
 name               = "Docker fault recovery fixture"
-workspace_provider = "fault_workspace"
+resource           = "fault_resource"
+workdir            = { from = "nodes.fault_workspace.outputs.workspace_dir" }
+
+[[fault_recovery.nodes]]
+uses = "fault_workspace"
 
 [[fault_recovery.nodes]]
 uses = "official.tmux.pane"

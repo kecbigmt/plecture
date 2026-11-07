@@ -18,7 +18,7 @@ import (
 // instance.
 func TestStatus_WorkCarriesActionHeartbeatBudgetAndChains(t *testing.T) {
 	store := testStore(t)
-	cfg := writeWorkflowFixture(t, t.TempDir(), "wf",
+	cfg := writeWorkflowFixture(t, "wf",
 		[]taskFixture{workTaskWithChain(`
 [[chains]]
 id       = "review"
@@ -71,7 +71,7 @@ revision = "{{.Work.outputs.revision}}"
 
 func TestStatus_ReportsEventSleepAndQueuePosition(t *testing.T) {
 	store := testStore(t)
-	cfg := writeWorkflowFixture(t, t.TempDir(), "wf",
+	cfg := writeWorkflowFixture(t, "wf",
 		[]taskFixture{{id: "runtime", scope: "run", setup: "echo '{}'", cleanup: "true"}},
 		[]nodeFixture{{id: "runtime"}})
 	seedSessionWithNodes(t, store, "first", "acct", 1, "wf", nil)
@@ -97,7 +97,7 @@ func TestStatus_ReportsEventSleepAndQueuePosition(t *testing.T) {
 
 func TestStatus_ReportsSuspendedWakeFailure(t *testing.T) {
 	store := testStore(t)
-	cfg := writeWorkflowFixture(t, t.TempDir(), "wf",
+	cfg := writeWorkflowFixture(t, "wf",
 		[]taskFixture{{id: "runtime", scope: "run", setup: "exit 1"}},
 		[]nodeFixture{{id: "runtime"}})
 	seedSessionWithNodes(t, store, "failed-wake", "acct", 1, "wf", nil)
@@ -320,7 +320,7 @@ func TestStatus_IdentityCarriesCreateTimeInputs(t *testing.T) {
 
 func TestStatus_SlackThreadNodeOutputsAreReadableUnderTheNode(t *testing.T) {
 	store := testStore(t)
-	cfg := writeWorkflowFixture(t, t.TempDir(), "default",
+	cfg := writeWorkflowFixture(t, "default",
 		[]taskFixture{{id: "slack_thread", scope: contract.TaskScopeSession, setup: "true"}},
 		[]nodeFixture{{id: "slack_thread"}})
 	seedSessionWithNodes(t, store, "owner/repo-1", "owner/repo", 1, "default", map[string]*contract.TaskState{
@@ -361,7 +361,7 @@ func TestStatus_SlackThreadNodeOutputsAreReadableUnderTheNode(t *testing.T) {
 // never the instance's full (unfiltered) outputs map.
 func TestSummarize_FiltersToDoneWhenInstancesAndOmitsRawOutputs(t *testing.T) {
 	store := testStore(t)
-	cfg := writeWorkflowFixture(t, t.TempDir(), "wf",
+	cfg := writeWorkflowFixture(t, "wf",
 		[]taskFixture{
 			workTaskWithChain(`
 [[chains]]
@@ -382,7 +382,7 @@ all = [
 		"revision":      "sha1",
 		"instruction":   "a very long unreferenced instruction blob",
 	})
-	if err := store.UpdatePopulation("wf/dispatch", func(population *state.PopulationState) error {
+	if err := store.UpdatePopulation(contract.PopulationProvenance{Workflow: "wf", Name: "dispatch"}, func(population *state.PopulationState) error {
 		population.Workflow = "wf"
 		population.Name = "dispatch"
 		return nil
@@ -439,14 +439,14 @@ all = [
 func TestTombstoneStatusResult_ReportsNodesAndTasksSeparately(t *testing.T) {
 	const migratedTombstoneJSON = `{
 		"session_name": "org/repo-1",
-		"resource_id": "https://github.com/org/repo/issues/1",
+		"resource": {"name": "org/repo-1", "locator": "https://github.com/org/repo/issues/1"},
 		"workflow": "default",
 		"nodes": {
 			"@workflow": {"scope": "session", "status": "cleaned", "outputs": {"branch": "issue/1"}},
 			"tmux": {"scope": "run", "status": "cleaned", "outputs": {}}
 		},
 		"tasks": {
-			"review#1": {"scope": "session", "status": "produced", "task_id": "review", "resource": "pr-1", "outputs": {"checks_status": "SUCCESS"}}
+			"review#1": {"scope": "session", "status": "produced", "task_id": "review", "resource": {"name": "pr-1", "locator": "pr-1"}, "outputs": {"checks_status": "SUCCESS"}}
 		},
 		"created_at": "2026-01-01T00:00:00Z",
 		"updated_at": "2026-01-02T00:00:00Z",
@@ -484,7 +484,7 @@ func TestTombstoneStatusResult_TasksOnlyShapeIsNotMistakenForLegacy(t *testing.T
 	const tasksOnlyTombstoneJSON = `{
 		"session_name": "org/repo-2",
 		"tasks": {
-			"review#1": {"scope": "session", "status": "produced", "task_id": "review", "resource": "pr-2", "outputs": {}}
+			"review#1": {"scope": "session", "status": "produced", "task_id": "review", "resource": {"name": "pr-2", "locator": "pr-2"}, "outputs": {}}
 		},
 		"created_at": "2026-01-01T00:00:00Z",
 		"updated_at": "2026-01-02T00:00:00Z",

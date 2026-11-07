@@ -19,7 +19,7 @@
 # `session/runtime` plugin, split along the terminal/agent-runtime/
 # chat-delivery boundary that plugin used to merge.
 schema_version = 2
-description = "Plecture's official plugin catalog: reusable workspace provider, resource, task, and channel packs shipped from this repository."
+description = "Plecture's official plugin catalog: reusable effect, resource, task, and channel packs shipped from this repository."
 
 plugins = [
   "tmux",

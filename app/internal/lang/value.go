@@ -17,15 +17,13 @@ const (
 	FormJSON     ValueForm = "json"
 )
 
-// ValueClass says which forms one location accepts. The three classes are
-// the schema's three value surfaces: a workflow's workspace-provider
-// parameters take literal data, most surfaces consume data, and only an
-// action binding and an action's argv can consume a Plecture capability.
+// ValueClass says which forms one location accepts. The two classes are the
+// schema's value surfaces: most surfaces consume data, and only an action
+// binding and an action's argv can consume a Plecture capability.
 type ValueClass int
 
 const (
-	ClassLiteral ValueClass = iota
-	ClassData
+	ClassData ValueClass = iota
 	ClassBinding
 )
 
@@ -116,10 +114,6 @@ func ParseValue(raw any, class ValueClass, pos Position) (*Value, error) {
 	tbl, isTable := raw.(map[string]any)
 	if !isTable {
 		return &Value{Form: FormLiteral, Literal: raw, Pos: pos}, nil
-	}
-	if class == ClassLiteral {
-		return nil, newDiag(CodeValueTagSurface, LayerStructural, pos,
-			"this surface accepts literal data only")
 	}
 	return parseTagged(tbl, class, pos)
 }

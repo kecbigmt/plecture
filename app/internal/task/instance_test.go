@@ -11,6 +11,7 @@ import (
 
 	"github.com/kecbigmt/plecture/app/internal/config"
 	"github.com/kecbigmt/plecture/app/internal/lang"
+	"github.com/kecbigmt/plecture/app/internal/publicoutput"
 	contract "github.com/kecbigmt/plecture/contracts/state"
 )
 
@@ -89,7 +90,7 @@ func TestExecuteTaskSetup_ParsesOutputs(t *testing.T) {
 	def := config.TaskDefinition{ID: "review", Scope: "session", Setup: shellStub(`echo '{"ready":"yes"}'`)}
 	r := resolveDef(t, def, "review#1")
 
-	result, err := ExecuteTaskSetup(context.Background(), r, nil, SessionVars{Name: "x"}, map[string]*contract.TaskState{})
+	result, err := ExecuteTaskSetup(context.Background(), r, nil, SessionVars{Name: "x"}, map[string]*contract.TaskState{}, "")
 	if err != nil {
 		t.Fatalf("ExecuteTaskSetup: %v", err)
 	}
@@ -117,7 +118,7 @@ func TestExecuteTaskSetup_InputSchemaRejection(t *testing.T) {
 	r := resolveDef(t, def, "work#1")
 	// No intent bound → schema validation fails; ExecuteTaskSetup returns an
 	// error and writes no state (the caller persists produced/failed).
-	if _, err := ExecuteTaskSetup(context.Background(), r, map[string]any{}, SessionVars{}, nil); err == nil {
+	if _, err := ExecuteTaskSetup(context.Background(), r, map[string]any{}, SessionVars{}, nil, ""); err == nil {
 		t.Fatal("expected input schema validation error")
 	}
 }
@@ -141,7 +142,7 @@ func TestRunCleanup_DynamicInstanceReadsItsOwnOutputs(t *testing.T) {
 		},
 	}}
 	tasks := map[string]*contract.TaskState{
-		"review#1": {Scope: "session", Status: contract.TaskStatusProduced, Resource: "pr-99", Outputs: map[string]any{"resource": "pr-99"}},
+		"review#1": {Scope: "session", Status: contract.TaskStatusProduced, Resource: testResource("pr-99"), Outputs: map[string]any{"resource": "pr-99"}},
 	}
 	if err := RunCleanup(context.Background(), []Resolved{r}, SessionVars{ResourceID: "session-res"}, tasks, nil); err != nil {
 		t.Fatalf("RunCleanup: %v", err)
@@ -155,7 +156,7 @@ func TestRunCleanup_DynamicInstanceReadsItsOwnOutputs(t *testing.T) {
 	}
 }
 
-func TestExecuteTaskSetup_SeesWorkflowOutputs(t *testing.T) {
+func TestExecuteTaskSetup_SeesPublicOutputs(t *testing.T) {
 	if _, err := exec.LookPath("bash"); err != nil {
 		t.Skip("bash not available")
 	}
@@ -165,15 +166,18 @@ func TestExecuteTaskSetup_SeesWorkflowOutputs(t *testing.T) {
 		Bind:   map[string]*lang.Value{"branch": {Form: lang.FormFrom, From: "workflow.outputs.branch"}},
 	}}
 	r := resolveDef(t, def, "review#1")
-	wfTasks := map[string]*contract.TaskState{
-		contract.WorkflowPseudoNodeID: {Status: contract.TaskStatusProduced, Outputs: map[string]any{"branch": "feat/x"}},
+	nodes := map[string]*contract.TaskState{
+		"checkout": {Status: contract.TaskStatusProduced, Outputs: map[string]any{"ref": "feat/x"}},
 	}
-	result, err := ExecuteTaskSetup(context.Background(), r, nil, SessionVars{}, wfTasks)
+	vars := SessionVars{PublicOutputs: publicoutput.Declaration{Bindings: map[string]*lang.Value{
+		"branch": {Form: lang.FormFrom, From: "nodes.checkout.outputs.ref"},
+	}}}
+	result, err := ExecuteTaskSetup(context.Background(), r, nil, vars, nodes, "")
 	if err != nil {
 		t.Fatalf("ExecuteTaskSetup: %v", err)
 	}
 	if result.Outputs["branch"] != "feat/x" {
-		t.Errorf("expected @workflow outputs visible, got %v", result.Outputs)
+		t.Errorf("expected public outputs visible, got %v", result.Outputs)
 	}
 }
 
@@ -189,7 +193,7 @@ func TestExecuteTaskSetup_NestedRunsTheWholeChain(t *testing.T) {
 		config.TaskDefinition{ID: "outer", Scope: "run", Setup: shellStub("outer-setup")},
 		config.TaskDefinition{ID: "inner", Scope: "run", Setup: shellStub("inner-setup")},
 	)
-	result, err := ExecuteTaskSetup(context.Background(), ordered[0], nil, SessionVars{Name: "s"}, nil)
+	result, err := ExecuteTaskSetup(context.Background(), ordered[0], nil, SessionVars{Name: "s"}, nil, "")
 	if err != nil {
 		t.Fatalf("ExecuteTaskSetup: %v", err)
 	}
@@ -213,7 +217,7 @@ func TestExecuteTaskSetup_NestedFailureKeepsProducedLayers(t *testing.T) {
 		config.TaskDefinition{ID: "outer", Scope: "run", Setup: shellStub("outer-setup")},
 		config.TaskDefinition{ID: "inner", Scope: "run", Setup: shellStub("inner-setup")},
 	)
-	result, err := ExecuteTaskSetup(context.Background(), ordered[0], nil, SessionVars{Name: "s"}, nil)
+	result, err := ExecuteTaskSetup(context.Background(), ordered[0], nil, SessionVars{Name: "s"}, nil, "")
 	if err == nil {
 		t.Fatal("ExecuteTaskSetup: want an error when the inner setup fails, got nil")
 	}

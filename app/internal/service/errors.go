@@ -1,5 +1,7 @@
 package service
 
+import "errors"
+
 // Error codes for machine-readable error identification.
 const (
 	ErrInvalidURL         = "invalid_url"
@@ -25,4 +27,12 @@ type Error struct {
 
 func (e *Error) Error() string {
 	return e.Message
+}
+
+func asServiceError(err error) *Error {
+	var svcErr *Error
+	if errors.As(err, &svcErr) {
+		return svcErr
+	}
+	return &Error{Code: ErrExecutionFailed, Message: err.Error()}
 }

@@ -197,9 +197,10 @@ path = "bin/watcher"
 schema_version = 2
 plect_min_version = "0.0.0"
 `)
-	writeFile(t, filepath.Join(catalogDir, "github", "config", "workspaces", "github.toml"), `
+	writeFile(t, filepath.Join(catalogDir, "github", "config", "tasks", "github.toml"), `
 [github]
-kind = "workspace_provider"
+kind  = "effect"
+scope = "session"
 
 [github.setup]
 type    = "exec"
@@ -208,6 +209,9 @@ command = "true"
 [github.cleanup]
 type = "exec"
 bin  = "local/runtime/watcher"
+
+[github.health.alive]
+type = "noop"
 `)
 
 	writeCatalogsToml(t, tmpHome, `
@@ -224,12 +228,12 @@ plugins = ["github"]
 		t.Fatalf("Load: unexpected error: %v", err)
 	}
 
-	_, err = cfg.LoadWorkspaceProviders()
+	_, err = cfg.LoadTaskDefinitions("")
 	if err == nil {
-		t.Fatal("LoadWorkspaceProviders: want an error for a bin reference to an unmounted plugin, got nil")
+		t.Fatal("LoadTaskDefinitions: want an error for a bin reference to an unmounted plugin, got nil")
 	}
 	if !strings.Contains(err.Error(), "local/runtime") {
-		t.Errorf("LoadWorkspaceProviders error = %v, want it to name the missing plugin \"local/runtime\"", err)
+		t.Errorf("LoadTaskDefinitions error = %v, want it to name the missing plugin \"local/runtime\"", err)
 	}
 }
 
@@ -261,7 +265,8 @@ plect_min_version = "0.0.0"
 	writeFile(t, filepath.Join(tmpHome, ".config", "plect", "config.toml"), "schema_version = 2\n")
 	writeFile(t, filepath.Join(tmpHome, ".config", "plect", "resources", "github.toml"), `
 [github]
-kind  = "resource_observer"
+kind  = "resource"
+name  = "fixture"
 match = "^gh:"
 
 [github.observe]

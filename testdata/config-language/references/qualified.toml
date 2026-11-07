@@ -2,8 +2,13 @@
 # reason: a user-owned layer references catalog content through the catalog-qualified dotted form.
 
 [my_review]
-kind               = "workflow"
-workspace_provider = "official.github.worktree"
+kind     = "workflow"
+resource = "official.github.issue"
+workdir  = { from = "nodes.worktree.outputs.workspace_dir" }
+
+[[my_review.nodes]]
+id   = "worktree"
+uses = "official.github.worktree"
 
 [[my_review.nodes]]
 uses = "official.tmux.pane"

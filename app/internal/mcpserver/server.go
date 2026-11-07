@@ -10,6 +10,7 @@ import (
 	"github.com/mark3labs/mcp-go/server"
 
 	"github.com/kecbigmt/plecture/app/internal/config"
+	"github.com/kecbigmt/plecture/app/internal/lang"
 	"github.com/kecbigmt/plecture/app/internal/service"
 	"github.com/kecbigmt/plecture/app/internal/state"
 )
@@ -72,7 +73,10 @@ var upTool = mcp.NewTool("plect_up",
 		mcp.Description("Workflow id forwarded to the auto-create path (resolver-less workflows need this). Rejected when the session already exists."),
 	),
 	mcp.WithString("task",
-		mcp.Description("Shorthand for inputs.task, forwarded to the auto-create path. Rejected when the session already exists."),
+		mcp.Description("Initial task to instantiate as the session's initial instance (resource-identifier only). Its resource type must claim the resource it binds; omit it for a session with no task."),
+	),
+	mcp.WithString("task_resource",
+		mcp.Description("Concrete resource the initial task binds. Defaults to the entry resource identifier; requires task."),
 	),
 	mcp.WithBoolean("force_recreate",
 		mcp.Description("Rebuild the session runtime for an existing session instead of resuming existing task outputs."),
@@ -88,23 +92,26 @@ var downTool = mcp.NewTool("plect_down",
 	mcp.WithBoolean("sleep", mcp.Description("Wake on the next inbound event, subject to available capacity")),
 )
 
+// forceConfirmation is stated on both the tool and its force argument because
+// a client may surface either one alone.
+const forceConfirmation = "Before setting force, tell a human why destroy without it failed and get their confirmation."
+
+const forceEffect = "force runs destroy to the end whatever stands in the way: it orphans child sessions, removes a session with no stored workflow revision, demotes cleanup failures to warnings and deletes the record without verifying the release, releases the prerequisites of a node whose cleanup failed, and tells each effect's cleanup it may override its own safeguards, such as discarding uncommitted changes in a directory it created. What those safeguards protected can be lost."
+
 var destroyTool = mcp.NewTool("plect_destroy",
-	mcp.WithDescription("Tear down a session: run-scoped cleanup (auto-down) → session-scoped cleanup → workspace directory removal → state entry deletion. Fail-fast by default; --force demotes cleanup errors to warnings so a stuck session can be freed. Also fails closed (code has_children) if the session has child sessions, since deleting it would orphan them; --force orphans them instead, reported via cleanup_warnings."),
+	mcp.WithDescription("Tear down a session: run-scoped cleanup (auto-down) → session-scoped cleanup → state entry deletion. Fails fast on a cleanup error and keeps the session, and fails closed (code has_children) if the session has child sessions. "+forceEffect+" "+forceConfirmation),
 	mcp.WithToolAnnotation(mcp.ToolAnnotation{DestructiveHint: boolPtr(true)}),
 	mcp.WithString("session",
 		mcp.Required(),
 		mcp.Description("Resource identifier or session name (e.g. session-123)"),
 	),
 	mcp.WithBoolean("force",
-		mcp.Description("Demote cleanup errors to warnings so teardown continues through workspace directory cleanup and state deletion; also passes the force intent to cleanup hooks and proceeds when the session has child sessions, orphaning them instead of aborting"),
-	),
-	mcp.WithObject("cleanup_inputs",
-		mcp.Description("Opaque key/value cleanup intents forwarded to workspace provider cleanup, unexamined by core; consult the workspace provider's own docs for which keys it reads"),
+		mcp.Description("Ignore destroy's safeguards and errors and run it to the end; can lose uncommitted changes, orphan child sessions, and delete records whose release was never verified. "+forceConfirmation),
 	),
 )
 
 var statusTool = mcp.NewTool("plect_status",
-	mcp.WithDescription("Report a session's four fact layers: identity (resource id / workflow / tag / tree position), runtime (declared alive-probe liveness, workspace directory existence, run-scoped task state), work (each task instance's outputs, done_when evaluation, heartbeat budget, and chain plan), and flow (recent events). No workspace-provider-specific field — everything renders generically from outputs / done_when / events."),
+	mcp.WithDescription("Report a session's four fact layers: identity (resource id / workflow / tag / tree position), runtime (declared alive-probe liveness, work directory existence, run-scoped task state), work (each task instance's outputs, done_when evaluation, heartbeat budget, and chain plan), and flow (recent events). No plugin-specific field — everything renders generically from outputs / done_when / events."),
 	mcp.WithToolAnnotation(mcp.ToolAnnotation{ReadOnlyHint: boolPtr(true)}),
 	mcp.WithString("url",
 		mcp.Required(),
@@ -130,7 +137,7 @@ var listTool = mcp.NewTool("plect_list",
 )
 
 var workflowListTool = mcp.NewTool("plect_workflow_list",
-	mcp.WithDescription("List workflows discoverable via the .plect/workflows cascade. Each entry surfaces id/name/description so an agent can pick the right workflow before calling plect_workflow_show or plect_up."),
+	mcp.WithDescription("List the workflows of the server's configuration context: plugin and global workflows, then those of the trusted project root its working directory selects. Each entry surfaces id/name/description so an agent can pick the right workflow before calling plect_workflow_show or plect_up."),
 	mcp.WithToolAnnotation(mcp.ToolAnnotation{ReadOnlyHint: boolPtr(true)}),
 )
 
@@ -168,16 +175,29 @@ func handleWorkflowRebase(ctx context.Context, request mcp.CallToolRequest) (*mc
 	return jsonResult(map[string]any{"ok": true, "session_name": result.SessionName, "from": result.From, "to": result.To, "class": result.Class, "recreate_nodes": result.RecreateNodes, "reasons": result.Reasons})
 }
 
+// callerProjectRoot reports an untrusted root as an error rather than a
+// prompt, because the server has no one to ask.
+func callerProjectRoot(cfg *config.Config) (string, error) {
+	if root, found, err := service.SessionProjectRoot(cfg, state.NewStore(""), os.Getwd); found || err != nil {
+		return root, err
+	}
+	dir, err := os.Getwd()
+	if err != nil {
+		return "", err
+	}
+	return cfg.SelectProjectRoot(dir)
+}
+
 func handleWorkflowList(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
 	cfg, err := config.Load()
 	if err != nil {
 		return errorResult(err), nil
 	}
-	cwd, err := os.Getwd()
+	root, err := callerProjectRoot(cfg)
 	if err != nil {
 		return errorResult(err), nil
 	}
-	workflows, err := service.WorkflowList(cfg, cwd)
+	workflows, err := service.WorkflowList(cfg, root)
 	if err != nil {
 		return errorResult(err), nil
 	}
@@ -196,11 +216,11 @@ func handleWorkflowShow(ctx context.Context, request mcp.CallToolRequest) (*mcp.
 	if id == "" {
 		return mcp.NewToolResultError("id is required"), nil
 	}
-	cwd, err := os.Getwd()
+	root, err := callerProjectRoot(cfg)
 	if err != nil {
 		return errorResult(err), nil
 	}
-	detail, err := service.WorkflowShow(cfg, cwd, id)
+	detail, err := service.WorkflowShow(cfg, root, id)
 	if err != nil {
 		return errorResult(err), nil
 	}
@@ -222,9 +242,11 @@ func handleUp(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallToolRe
 		return mcp.NewToolResultError("session is required"), nil
 	}
 
-	inputs, err := service.MergeTaskInput(getObjectArg(request, "inputs"), request.GetString("task", ""))
-	if err != nil {
-		return mcp.NewToolResultError(err.Error()), nil
+	root := ""
+	if recognized, _ := service.RecognizesResource(cfg, identifier); recognized {
+		if root, err = callerProjectRoot(cfg); err != nil {
+			return errorResult(err), nil
+		}
 	}
 
 	result, err := service.Up(cfg, store, service.UpParams{
@@ -232,8 +254,10 @@ func handleUp(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallToolRe
 		Tag:           request.GetString("tag", ""),
 		Workflow:      request.GetString("workflow", ""),
 		ParentSession: request.GetString("parent", ""),
-		Inputs:        inputs,
+		Inputs:        getObjectArg(request, "inputs"),
+		InitialTask:   service.InitialTaskSelection(request.GetString("task", ""), request.GetString("task_resource", "")),
 		ForceRecreate: request.GetBool("force_recreate", false),
+		ProjectRoot:   root,
 	})
 	if err != nil {
 		return errorResult(err), nil
@@ -284,19 +308,21 @@ func handleDestroy(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallT
 		return mcp.NewToolResultError("session is required"), nil
 	}
 
+	if _, ok := request.GetArguments()["cleanup_inputs"]; ok {
+		return mcp.NewToolResultError(fmt.Sprintf("cleanup_inputs is retired: what a cleanup releases is decided when the session is created; see %s", lang.WorkspaceProviderMigrationGuide)), nil
+	}
+
 	result, err := service.Destroy(cfg, store, service.DestroyParams{
-		Identifier:    identifier,
-		Force:         request.GetBool("force", false),
-		CleanupInputs: getStringMapArg(request, "cleanup_inputs"),
+		Identifier: identifier,
+		Force:      request.GetBool("force", false),
 	})
 	if err != nil {
 		return errorResult(err), nil
 	}
 
 	resp := map[string]any{
-		"ok":                    true,
-		"session_name":          result.SessionName,
-		"removed_workspace_dir": result.RemovedWorkspaceDir,
+		"ok":           true,
+		"session_name": result.SessionName,
 	}
 	if len(result.CleanupWarnings) > 0 {
 		resp["cleanup_warnings"] = result.CleanupWarnings

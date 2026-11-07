@@ -54,7 +54,8 @@ type sessionDispatcher struct {
 	// dispatcher build (see resolveTerminalOwner). Nil means the workflow
 	// declares none; a channel that consumes no terminal verb is unaffected
 	// either way.
-	terminal *terminalOwner
+	terminal      *terminalOwner
+	currentConfig func() *config.Config
 	// awaitingRepair is injected because the judgment lives in internal/service,
 	// which imports this package. Nil means a failed delivery is never held.
 	awaitingRepair func(session string) (bool, error)
@@ -233,13 +234,12 @@ func (d *sessionDispatcher) processEvent(ctx context.Context, s *domain.Session,
 			opts := channel.DeliverOptions{
 				Bin: func(ref string) (string, error) { return bins.ResolveBin(ref, def.Ownership()) },
 				Terminal: terminalResolver(s, d.terminal, task.SessionVars{
-					Name:             s.Name,
-					ResourceID:       s.ResourceID,
-					WorkspaceDirPath: s.WorkspaceDirPath,
-					Branch:           domain.SessionBranch(s),
-					Inputs:           s.Inputs,
-					Plugins:          d.plugins,
-				}),
+					Name:       s.Name,
+					ResourceID: domain.Locator(s.Resource),
+					Tag:        s.Tag,
+					Inputs:     s.Inputs,
+					Plugins:    d.plugins,
+				}, d.currentConfig),
 			}
 			attempts, derr := channel.DeliverWithRetryAndOptions(ctx, def, inputs, ev, d.policy, opts)
 			mu.Lock()

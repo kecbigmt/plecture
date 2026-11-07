@@ -5,14 +5,12 @@
       "displayStatus": "up · healthy",
       "run": "up",
       "health": "healthy",
-      "resourceId": "https://example.com/team/workspace/issues/1",
-      "branch": "issue/1"
+      "resource": {"type": "issue", "name": "team/workspace-1", "locator": "https://example.com/team/workspace/issues/1"}
     },
     {
       "sessionName": "team/workspace-b",
       "displayStatus": "down",
-      "run": "down",
-      "resourceId": ""
+      "run": "down"
     }
   ],
   "count": 2

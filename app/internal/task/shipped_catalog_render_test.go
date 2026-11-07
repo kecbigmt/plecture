@@ -1,6 +1,7 @@
 package task
 
 import (
+	"os"
 	"path/filepath"
 	"runtime"
 	"strings"
@@ -21,6 +22,60 @@ func loadShippedCatalogTasks(t *testing.T) (map[string]config.TaskDefinition, []
 		t.Fatalf("LoadTaskDefinitions(shipped catalog): %v", err)
 	}
 	return tasks, cfg.Plugins
+}
+
+func TestShippedSlackReviewExampleSubscribesThroughThreadResource(t *testing.T) {
+	cfg := shippedCatalogConfig(t)
+	cfg.BaseDir = t.TempDir()
+	source := filepath.Join(repoRootForTest(t), "plugins", "slack", "examples", "review-thread-workflow.toml")
+	data, err := os.ReadFile(source)
+	if err != nil {
+		t.Fatal(err)
+	}
+	target := filepath.Join(cfg.BaseDir, "workflows", "review-thread-workflow.toml")
+	if err := os.MkdirAll(filepath.Dir(target), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(target, data, 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	workflows, err := cfg.LoadWorkflows("")
+	if err != nil {
+		t.Fatalf("load shipped Slack review example: %v", err)
+	}
+	wf, ok := workflows["pr_review_with_slack"]
+	if !ok {
+		t.Fatal("shipped Slack review example has no pr_review_with_slack workflow")
+	}
+	var subscription string
+	for _, node := range wf.Nodes {
+		if node.ID == "slack_thread" {
+			if node.Uses != "official.slack.slack_thread" {
+				t.Fatalf("slack_thread uses %q", node.Uses)
+			}
+			subscription = node.Subscription
+		}
+	}
+	if subscription != "permalink" {
+		t.Fatalf("slack_thread subscription = %q, want permalink", subscription)
+	}
+	if _, err := cfg.CaptureWorkflowRevision("", "pr_review_with_slack"); err != nil {
+		t.Fatalf("capture shipped Slack review workflow: %v", err)
+	}
+
+	resources, err := cfg.LoadResourceDefs()
+	if err != nil {
+		t.Fatalf("load shipped resources: %v", err)
+	}
+	const permalink = "https://example.slack.com/archives/C123/p1234567890123456"
+	address, resource, matched, err := MatchResourceDef(resources, permalink)
+	if err != nil {
+		t.Fatalf("match Slack thread permalink: %v", err)
+	}
+	if !matched || address != "official.slack.thread" || resource.Subscribe == nil {
+		t.Fatalf("thread permalink matches resource %q (matched=%v, subscribe=%v)", address, matched, resource.Subscribe != nil)
+	}
 }
 
 // shippedCatalogConfig mounts this repository's own official catalog
@@ -64,12 +119,10 @@ func TestShippedCatalog_EffectActionsResolve(t *testing.T) {
 	tasks, mounted := loadShippedCatalogTasks(t)
 
 	session := SessionVars{
-		Name:             "test-session",
-		ResourceID:       "owner:test",
-		WorkspaceDirPath: "/tmp/test-workdir",
-		Branch:           "issue/1",
-		Plugins:          mounted,
-		Inputs:           map[string]any{},
+		Name:       "test-session",
+		ResourceID: "owner:test",
+		Plugins:    mounted,
+		Inputs:     map[string]any{},
 		// Every shipped agent effect composes the plan's terminal verbs
 		// against whichever effect declares them — this kitchen-sink
 		// resolution has no real multiplexer in scope, so a stand-in stands
@@ -102,6 +155,9 @@ func TestShippedCatalog_EffectActionsResolve(t *testing.T) {
 		"dir":            "/tmp/plect-gh-guard.x",
 		"thread_ts":      "1234567890.123456",
 		"permalink":      "https://example.slack.com/archives/C123/p1234567890123456",
+		"workspace_dir":  "/tmp/wd",
+		"branch":         "issue/1",
+		"delete_branch":  false,
 	}
 	inputs := map[string]any{
 		"terminal_ready":   "test-session",
@@ -117,6 +173,7 @@ func TestShippedCatalog_EffectActionsResolve(t *testing.T) {
 		"owner":            "acme",
 		"assignees":        "",
 		"instruction":      "",
+		"workspace_dir":    "/tmp/wd",
 		"base_url":         "http://127.0.0.1:7890",
 		"channel_id":       "C123",
 		"root_text":        "[AI review] Fix widgets — https://github.com/acme/widgets/pull/7",
@@ -390,4 +447,43 @@ func TestShippedCatalog_TaskDocumentInstructionsRender(t *testing.T) {
 			t.Errorf("task document %q rendered to an empty body", address)
 		}
 	}
+}
+
+func TestShippedGithubWorktree_BranchTagIsTheSessionTag(t *testing.T) {
+	tasks, mounted := loadShippedCatalogTasks(t)
+	var worktree *config.TaskDefinition
+	for address, def := range tasks {
+		if strings.HasSuffix(address, "github.worktree") {
+			def := def
+			worktree = &def
+		}
+	}
+	if worktree == nil {
+		t.Fatal("shipped github worktree effect not found")
+	}
+	ctx := RenderContext{
+		Inputs: map[string]any{},
+		Session: SessionVars{
+			Name:       "acme/widgets-42+draft+review",
+			Tag:        "review",
+			ResourceID: "https://github.com/acme/widgets/issues/42",
+			Plugins:    mounted,
+		},
+		SourcePath: worktree.SourcePath,
+	}
+	resolved, err := resolveEffect(worktree.Setup, setupRoots(ctx), ctx, worktree.Ownership(), nil)
+	if err != nil {
+		t.Fatalf("resolve setup: %v", err)
+	}
+	defer resolved.Close()
+	argv := resolved.Argv()
+	for i, arg := range argv {
+		if arg == "--tag" && i+1 < len(argv) {
+			if argv[i+1] != "review" {
+				t.Errorf("--tag = %q, want the recorded tag review", argv[i+1])
+			}
+			return
+		}
+	}
+	t.Errorf("setup argv %q passes no --tag", argv)
 }

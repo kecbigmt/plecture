@@ -43,7 +43,8 @@ type NodeExecution struct {
 	Name                    sql.NullString
 	Scope                   string
 	Status                  string
-	Resource                sql.NullString
+	ResourceID              sql.NullString
+	SubscriptionID          sql.NullString
 	InputsJson              sql.NullString
 	OutputsJson             sql.NullString
 	StateJson               sql.NullString
@@ -57,6 +58,7 @@ type NodeExecution struct {
 	CleanedAt               sql.NullString
 	FinalizedAt             sql.NullString
 	ProcessJson             sql.NullString
+	Directory               sql.NullString
 }
 
 type NodeExecutionDependency struct {
@@ -87,11 +89,13 @@ type NodeInstance struct {
 }
 
 type Population struct {
-	Workflow string
-	Name     string
+	ProjectRoot string
+	Workflow    string
+	Name        string
 }
 
 type PopulationMember struct {
+	ProjectRoot              string
 	Workflow                 string
 	Name                     string
 	ResourceID               string
@@ -113,11 +117,20 @@ type PopulationMember struct {
 }
 
 type PopulationMemberBlocker struct {
-	Workflow   string
-	Name       string
-	ResourceID string
-	Position   int64
-	Reason     string
+	ProjectRoot string
+	Workflow    string
+	Name        string
+	ResourceID  string
+	Position    int64
+	Reason      string
+}
+
+type Resource struct {
+	ID        string
+	Type      string
+	Name      string
+	Locator   string
+	CreatedAt string
 }
 
 type Session struct {
@@ -129,10 +142,11 @@ type Session struct {
 	ParentSessionID          sql.NullString
 	RootSessionID            sql.NullString
 	ResourceID               sql.NullString
+	Tag                      sql.NullString
 	Alias                    sql.NullString
 	Workflow                 string
 	WorkflowRevision         sql.NullString
-	WorkspaceDir             sql.NullString
+	ProjectRoot              string
 	PopulationWorkflow       sql.NullString
 	PopulationName           sql.NullString
 	InputsJson               sql.NullString
@@ -206,7 +220,7 @@ type TaskInstance struct {
 	Scope                   string
 	Status                  string
 	Sequence                int64
-	Resource                sql.NullString
+	ResourceID              sql.NullString
 	Named                   bool
 	InputsJson              sql.NullString
 	OutputsJson             sql.NullString
@@ -220,6 +234,7 @@ type TaskInstance struct {
 	CleanedAt               sql.NullString
 	FinalizedAt             sql.NullString
 	ProcessJson             sql.NullString
+	Directory               sql.NullString
 }
 
 type TaskInstanceLayer struct {

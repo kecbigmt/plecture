@@ -14,7 +14,7 @@ import (
 	"github.com/kecbigmt/plecture/app/internal/plugins"
 )
 
-// MatchResourceDef finds the resource observer whose `match` recognizes
+// MatchResourceDef finds the resource whose `match` recognizes
 // resourceID. Ok=false with a nil error means no observer claims this id —
 // a legitimate, common case: most instance-local resources have no declared
 // kind, and stay the opaque passthrough dynamic instantiation already
@@ -50,21 +50,17 @@ func MatchResourceDef(defs map[string]config.ResourceDef, resourceID string) (st
 	}
 }
 
-// ResourceStatus observes a resource id: it finds the resource observer whose
+// ResourceStatus observes a resource id: it finds the resource whose
 // `match` accepts the id, runs its `observe` action, and validates the
 // result against the observer's state schema. Ok=false with a nil error
 // means no observer recognizes this id — the Resource contract is
-// optional, most instance-local resources have no declared kind. branch and
-// workspaceDirPath describe the owning session (both empty for a standalone
-// `plect resource status` call, which has no owning session) — an observe
-// action may derive the current branch from the workspace directory as its
-// primary identity signal for the resource.
-func ResourceStatus(defs map[string]config.ResourceDef, resourceID string, branch string, workspaceDirPath string, mountedPlugins []plugins.Mounted) (map[string]any, config.ResourceDef, bool, error) {
+// optional, most instance-local resources have no declared kind.
+func ResourceStatus(defs map[string]config.ResourceDef, resourceID string, mountedPlugins []plugins.Mounted) (map[string]any, config.ResourceDef, bool, error) {
 	_, def, ok, err := MatchResourceDef(defs, resourceID)
 	if err != nil || !ok {
 		return nil, def, ok, err
 	}
-	state, err := ObserveResource(def, resourceID, branch, workspaceDirPath, mountedPlugins)
+	state, err := ObserveResource(def, resourceID, mountedPlugins)
 	return state, def, true, err
 }
 
@@ -73,15 +69,8 @@ func ResourceStatus(defs map[string]config.ResourceDef, resourceID string, branc
 // path a declaration takes when it states which observer it is written for,
 // so nothing is matched by pattern: the declaration already said which
 // observer reports this resource.
-func ObserveResource(def config.ResourceDef, resourceID string, branch string, workspaceDirPath string, mountedPlugins []plugins.Mounted) (map[string]any, error) {
+func ObserveResource(def config.ResourceDef, resourceID string, mountedPlugins []plugins.Mounted) (map[string]any, error) {
 	env := lang.Roots{"resource": map[string]any{"id": resourceID}}
-	// An absent workspace is absent from the environment rather than present
-	// and empty: that is what lets a standalone observation's `default` fire
-	// instead of handing the executable an empty flag value it cannot tell
-	// from a real one.
-	if workspace := presentKeys(map[string]string{"dir": workspaceDirPath, "branch": branch}); workspace != nil {
-		env["workspace"] = workspace
-	}
 	stdout, stderr, runErr := runResourceAction(def, def.Observe, env, mountedPlugins)
 	if runErr != nil {
 		if msg := strings.TrimSpace(string(stderr)); msg != "" {

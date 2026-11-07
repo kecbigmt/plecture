@@ -1,0 +1,7 @@
+# plect-fixture: result=invalid layer=structural diagnostic=PLECTURE-CFG-FROM-ROOT entry=definitions
+# reason: workdir reads a node's output by the node's id, so a projection of the declaring node's own outputs names no node at all.
+
+[pull_review]
+kind     = "workflow"
+resource = "pull_request"
+workdir  = { from = "self.outputs.workspace_dir" }

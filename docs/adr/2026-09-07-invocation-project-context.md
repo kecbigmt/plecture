@@ -1,5 +1,7 @@
 ---
-superseded_by: 2026-09-08-minimum-cleanup-contract
+superseded_by:
+  - 2026-09-08-minimum-cleanup-contract
+  - 2026-11-07-destroy-without-plugin-cleanup-inputs
 ---
 
 # Invocation-selected project configuration context

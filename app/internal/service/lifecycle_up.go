@@ -20,9 +20,9 @@ import (
 // UpParams holds parameters for Up.
 type UpParams struct {
 	Identifier string // URL or session name
-	// Tag derives a tagged session name from a URL identifier. Only valid
-	// when Identifier is a URL; combining Tag with a bare session name
-	// returns ErrInvalidTag so misuse surfaces immediately rather than
+	// Tag appends one segment to the entry resource's instance name. Only
+	// valid when Identifier is a resource; combining Tag with a bare session
+	// name returns ErrInvalidTag so misuse surfaces immediately rather than
 	// silently ignoring the flag.
 	Tag           string
 	Workflow      string         // forwarded to auto-create; rejected when state already exists
@@ -34,7 +34,13 @@ type UpParams struct {
 	// preserving durable identity and event log state.
 	ForceRecreate  bool
 	HumanInitiated bool
-	repair         bool
+	// ProjectRoot selects the workflows a resource dispatches to and is
+	// forwarded to auto-create; see CreateParams.
+	ProjectRoot string
+	// InitialTask is the caller's task selection, instantiated as the
+	// session's initial instance. Only valid with a resource identifier.
+	InitialTask *InitialTask
+	repair      bool
 }
 
 // UpResult holds the outcome of Up.
@@ -68,6 +74,7 @@ func Up(cfg *config.Config, store *state.Store, params UpParams) (*UpResult, err
 		if upErr != nil {
 			return upErr
 		}
+		flushPendingDeliveryLogged(cfg, store, name)
 		if params.HumanInitiated {
 			if err := resetRepairStreak(store, name, "manual_up"); err != nil {
 				return &Error{Code: ErrExecutionFailed, Message: fmt.Sprintf("up completed but repair reset event failed: %v", err)}
@@ -82,13 +89,13 @@ func Up(cfg *config.Config, store *state.Store, params UpParams) (*UpResult, err
 }
 
 func upLifecycleLockName(cfg *config.Config, store *state.Store, params UpParams) (string, error) {
-	disp, matched, err := dispatchResource(cfg, params.Workflow, params.Identifier)
+	disp, matched, err := dispatchResource(cfg, params.ProjectRoot, params.Workflow, params.Identifier)
 	if err == nil && matched {
-		tag, tagErr := effectiveTag(params.Tag, disp.Workflow.ID)
-		if tagErr != nil {
-			return "", tagErr
+		name, nameErr := disp.sessionName(params.Tag)
+		if nameErr != nil {
+			return "", nameErr
 		}
-		return disp.Name + "+" + tag, nil
+		return name, nil
 	}
 	return resolveSessionName(cfg, store, params.Identifier)
 }
@@ -96,7 +103,8 @@ func upLifecycleLockName(cfg *config.Config, store *state.Store, params UpParams
 func upUnlocked(cfg *config.Config, store *state.Store, params UpParams) (*UpResult, error) {
 	identifier := params.Identifier
 	forceRecreateExisting := false
-	disp, matched, dispErr := dispatchResource(cfg, params.Workflow, params.Identifier)
+	var initialTask *initialTaskBinding
+	disp, matched, dispErr := dispatchResource(cfg, params.ProjectRoot, params.Workflow, params.Identifier)
 	if dispErr != nil {
 		if params.Tag == "" {
 			if _, existing, lookupErr := resolveSession(cfg, store, params.Identifier); lookupErr == nil && existing != nil {
@@ -118,19 +126,13 @@ func upUnlocked(cfg *config.Config, store *state.Store, params UpParams) (*UpRes
 		return nil, &Error{Code: ErrExecutionFailed, Message: dispErr.Error()}
 	}
 	if matched {
-		// Resolver dispatch: the identifier is a resource id. Mirror the URL
-		// auto-create semantics below with the resolver-derived session name.
-		// The effective tag (explicit --tag or the workflow-id default) is
-		// resolved here and forwarded to Create so up and create converge on
-		// the same tagged session name.
-		tag, tagErr := effectiveTag(params.Tag, disp.Workflow.ID)
-		if tagErr != nil {
-			return nil, tagErr
+		tag := params.Tag
+		if refusal := retiredEntryRefusal(store, &disp, tag); refusal != nil {
+			return nil, refusal
 		}
-		sessionName := disp.Name + "+" + tag
-		existing, err := store.GetE(sessionName)
-		if err != nil {
-			return nil, &Error{Code: ErrExecutionFailed, Message: fmt.Sprintf("read session %q state: %v", sessionName, err)}
+		sessionName, existing, entryErr := reusableEntrySession(store, &disp, tag)
+		if entryErr != nil {
+			return nil, entryErr
 		}
 		if existing != nil {
 			switch {
@@ -146,6 +148,11 @@ func upUnlocked(cfg *config.Config, store *state.Store, params UpParams) (*UpRes
 		}
 		if params.Workflow != "" && existing != nil && params.Workflow != existing.Workflow {
 			return nil, &Error{Code: ErrInvalidInput, Message: fmt.Sprintf("--workflow %q does not match the session's frozen workflow %q", params.Workflow, existing.Workflow)}
+		}
+		var taskErr error
+		initialTask, taskErr = checkInitialTask(cfg, params.ProjectRoot, params.Identifier, existing, params.InitialTask)
+		if taskErr != nil {
+			return nil, taskErr
 		}
 		// Before Create: a rejected new child must leave no state entry.
 		// ForceRecreate excludes even an up target, since it tears the
@@ -181,7 +188,14 @@ func upUnlocked(cfg *config.Config, store *state.Store, params UpParams) (*UpRes
 				ParentSession: params.ParentSession,
 				Observer:      params.Observer,
 				Population:    params.Population,
+				ProjectRoot:   params.ProjectRoot,
 			}); err != nil {
+				return nil, err
+			}
+		}
+		// A queued up runs no recreate, so only one that proceeds defers this.
+		if !(params.ForceRecreate && existing != nil) || capped {
+			if err := ensureInitialTask(cfg, store, sessionName, initialTask); err != nil {
 				return nil, err
 			}
 		}
@@ -191,16 +205,26 @@ func upUnlocked(cfg *config.Config, store *state.Store, params UpParams) (*UpRes
 		identifier = sessionName
 	} else {
 		if params.Tag != "" {
-			return nil, &Error{Code: ErrInvalidTag, Message: "--tag is only valid when the identifier is a resource a workflow resolver matches; a session name already encodes the tag"}
+			return nil, &Error{Code: ErrInvalidTag, Message: "--tag is only valid when the identifier is a resource; a session name already encodes the tag"}
 		}
 		if params.Inputs != nil {
 			return nil, &Error{Code: ErrInvalidInput, Message: "--input is only valid on the auto-create path; a bare session name implies an existing session"}
 		}
+		if params.InitialTask != nil {
+			return nil, &Error{Code: ErrInvalidInput, Message: "--task is only valid with a resource identifier; to add a task to an existing session, run `plect task setup`"}
+		}
+
 	}
 
 	sessionName, session, err := resolveSession(cfg, store, identifier)
 	if err != nil {
 		return nil, err
+	}
+	if err := requireSessionRoot(cfg, session); err != nil {
+		return nil, err
+	}
+	if refusal := retiredRevisionRefusal(session, "`up`"); refusal != nil {
+		return nil, refusal
 	}
 	wasSleeping := !session.SleepSince.IsZero()
 	// This covers every path below, including callers that pass no
@@ -211,6 +235,9 @@ func upUnlocked(cfg *config.Config, store *state.Store, params UpParams) (*UpRes
 	// via Create — this catches `plect up <bare-existing-session>`, which skips it.
 	if guardErr := checkSessionGuard(cfg, sessionName); guardErr != nil {
 		return nil, guardErr
+	}
+	if !matched && params.Workflow != "" && params.Workflow != session.Workflow {
+		return nil, &Error{Code: ErrInvalidInput, Message: fmt.Sprintf("--workflow %q does not match the session's frozen workflow %q", params.Workflow, session.Workflow)}
 	}
 	// Mirrors the matched branch's reservation above, for a bare-name
 	// session going straight from down to up.
@@ -242,19 +269,27 @@ func upUnlocked(cfg *config.Config, store *state.Store, params UpParams) (*UpRes
 		session.Tasks = make(map[string]*contract.TaskState)
 	}
 
-	plan, err := buildPlanForSession(cfg, session.WorkspaceDirPath, session)
+	plan, err := buildPlanForSession(cfg, session)
 	if err != nil {
 		return nil, &Error{Code: ErrExecutionFailed, Message: err.Error()}
 	}
-	wf, wfErr := loadSessionWorkflow(cfg, session.WorkspaceDirPath, session)
+	wf, wfErr := loadSessionWorkflow(cfg, session)
 	if wfErr != nil {
 		return nil, &Error{Code: ErrExecutionFailed, Message: wfErr.Error()}
 	}
 	if params.ForceRecreate && forceRecreateExisting {
 		var recreateErr error
+		// The recreate discards every task instance, and the initial instance
+		// is the only record of the selection it was created with.
+		if initial := session.Tasks[initialInstance]; initialTask == nil && initial != nil {
+			initialTask = &initialTaskBinding{TaskID: initial.TaskID, Resource: domain.Locator(initial.Resource)}
+		}
 		plan, recreateErr = recreateSessionRuntime(cfg, store, sessionName, session, wf, plan, params.Observer)
 		if recreateErr != nil {
-			return nil, recreateErr
+			return nil, keepInitialSelection(cfg, store, sessionName, initialTask, recreateErr)
+		}
+		if err := ensureInitialTask(cfg, store, sessionName, initialTask); err != nil {
+			return nil, keepInitialSelection(cfg, store, sessionName, initialTask, err)
 		}
 	} else if cleanupErr := cleanupStaleWorkflowNodes(cfg, store, sessionName, session, plan, params.Observer); cleanupErr != nil {
 		return nil, cleanupErr
@@ -265,7 +300,7 @@ func upUnlocked(cfg *config.Config, store *state.Store, params UpParams) (*UpRes
 			previousRunSetups[node.NodeID] = old.SetupAt
 		}
 	}
-	setupErr := runNodeSetup(context.Background(), plan.UpOrder(), sessionVars(cfg, session, plan), session, params.Observer)
+	wiredNodes, setupErr := runNodeSetup(context.Background(), cfg, store, plan.UpOrder(), sessionVars(cfg, session, plan), session, params.Observer)
 	session.UpdatedAt = time.Now()
 	// A run-scope node's setup script can itself shell out to a nested `plect
 	// task setup` against this same session (e.g. goal_bootstrap re-deriving
@@ -275,9 +310,10 @@ func upUnlocked(cfg *config.Config, store *state.Store, params UpParams) (*UpRes
 	// would then overwrite disk with our in-memory map, taken before the
 	// nested write landed, silently dropping it — the same hazard mergeTasks
 	// already exists to close for Create's initial_task dispatcher.
-	if err := mergeTasks(store, sessionName, session); err != nil {
+	if err := mergeTasksWithSubscriptions(cfg, store, sessionName, session, wiredNodes); err != nil {
 		return nil, &Error{Code: ErrExecutionFailed, Message: fmt.Sprintf("failed to save session state: %v", err)}
 	}
+	wireProducedNodeSubscriptions(cfg, store, sessionName, wiredNodes)
 	if setupErr != nil {
 		return nil, &Error{Code: ErrExecutionFailed, Message: setupErr.Error()}
 	}
@@ -331,7 +367,7 @@ func upUnlocked(cfg *config.Config, store *state.Store, params UpParams) (*UpRes
 				Summary: "population member is up",
 				Metadata: map[string]string{
 					"workflow": session.Population.Workflow, "population": session.Population.Name,
-					"resource": session.ResourceID, "reason": "up",
+					"resource": domain.Locator(session.Resource), "reason": "up",
 				},
 			})
 			if err != nil {
@@ -361,7 +397,7 @@ func cleanupStaleWorkflowNodes(cfg *config.Config, store *state.Store, sessionNa
 	if len(stale) == 0 {
 		return nil
 	}
-	cleanupErr := runTaskCleanup(context.Background(), stale, sessionVars(cfg, session, plan), session, observer)
+	cleanupErr := runTaskCleanup(context.Background(), cfg, store, stale, sessionVars(cfg, session, plan), session, observer)
 	session.UpdatedAt = time.Now()
 	if err := persistStaleWorkflowCleanup(store, sessionName, session, stale); err != nil {
 		return &Error{Code: ErrExecutionFailed, Message: fmt.Sprintf("failed to save session state: %v", err)}
@@ -437,7 +473,7 @@ func staleProducedWorkflowNodes(cfg *config.Config, session *domain.Session, pla
 	var items []seqResolved
 	for _, key := range sortedTaskKeys(session.Nodes) {
 		st := session.Nodes[key]
-		if st == nil || st.Status == contract.TaskStatusCleaned || key == contract.WorkflowPseudoNodeID || current[key] {
+		if st == nil || st.Status == contract.TaskStatusCleaned || current[key] {
 			continue
 		}
 		taskID := taskIDForInstance(key, st)
@@ -474,7 +510,12 @@ func recreateSessionRuntime(cfg *config.Config, store *state.Store, sessionName 
 	if teardownErr != nil {
 		return nil, &Error{Code: ErrExecutionFailed, Message: teardownErr.Error()}
 	}
-	cleanupErr := runTaskCleanup(context.Background(), teardown, sessionVars(cfg, session, teardownPlan), session, observer)
+	// An internal reset, not an explicit operator destroy: there is no
+	// destruction intent to forward, and the environment is rebuilt right
+	// after, so a dirty checkout is not a reason to refuse.
+	vars := sessionVars(cfg, session, teardownPlan)
+	vars.Force = true
+	cleanupErr := runTaskCleanup(context.Background(), cfg, store, teardown, vars, session, observer)
 	session.UpdatedAt = time.Now()
 	if cleanupErr != nil {
 		if err := mergeTasks(store, sessionName, session); err != nil {
@@ -483,19 +524,6 @@ func recreateSessionRuntime(cfg *config.Config, store *state.Store, sessionName 
 		return nil, &Error{Code: ErrExecutionFailed, Message: cleanupErr.Error()}
 	}
 
-	if wfState, ok := session.Nodes[contract.WorkflowPseudoNodeID]; ok && wfState != nil {
-		// Internal reset path, not an explicit operator destroy: no cleanup
-		// intents to forward.
-		if workflowCleanupErr := runWorkflowCleanupForDestroy(cfg, session, true, nil, observer); workflowCleanupErr != nil {
-			session.UpdatedAt = time.Now()
-			if err := mergeTasks(store, sessionName, session); err != nil {
-				return nil, &Error{Code: ErrExecutionFailed, Message: fmt.Sprintf("failed to save session state: %v", err)}
-			}
-			return nil, &Error{Code: ErrExecutionFailed, Message: workflowCleanupErr.Error()}
-		}
-	}
-
-	session.WorkspaceDirPath = ""
 	session.Nodes = make(map[string]*contract.TaskState)
 	session.Tasks = make(map[string]*contract.TaskState)
 	session.Health = nil
@@ -514,24 +542,7 @@ func recreateSessionRuntime(cfg *config.Config, store *state.Store, sessionName 
 		return nil, &Error{Code: ErrExecutionFailed, Message: fmt.Sprintf("failed to save session state: %v", err)}
 	}
 
-	outputs, setupErr := runWorkflowSetupForSession(cfg, wf, session, observer)
-	session.UpdatedAt = time.Now()
-	if outputs != nil {
-		if workspaceDir, ok := outputs[contract.OutputKeyWorkspaceDir].(string); ok {
-			session.WorkspaceDirPath = workspaceDir
-		}
-		// A git-backed provider's own "branch" output (domain.SessionBranch)
-		// needs no mirroring here: it already lives in this @workflow node's
-		// Outputs, persisted by replaceRuntimeState below.
-	}
-	if err := replaceRuntimeState(store, sessionName, session); err != nil {
-		return nil, &Error{Code: ErrExecutionFailed, Message: fmt.Sprintf("failed to save session state: %v", err)}
-	}
-	if setupErr != nil {
-		return nil, &Error{Code: ErrExecutionFailed, Message: setupErr.Error()}
-	}
-
-	setupPlan, planErr := buildPlanForSession(cfg, session.WorkspaceDirPath, session)
+	setupPlan, planErr := buildPlanForSession(cfg, session)
 	if planErr != nil {
 		return nil, &Error{Code: ErrExecutionFailed, Message: planErr.Error()}
 	}
@@ -539,34 +550,30 @@ func recreateSessionRuntime(cfg *config.Config, store *state.Store, sessionName 
 	if err := replaceRuntimeState(store, sessionName, session); err != nil {
 		return nil, &Error{Code: ErrExecutionFailed, Message: fmt.Sprintf("failed to save session state: %v", err)}
 	}
-	setupErr = runNodeSetup(context.Background(), setupPlan.Session, sessionVars(cfg, session, setupPlan), session, observer)
+	wiredNodes, setupErr := runNodeSetup(context.Background(), cfg, store, setupPlan.Session, sessionVars(cfg, session, setupPlan), session, observer)
 	session.UpdatedAt = time.Now()
-	if err := mergeTasks(store, sessionName, session); err != nil {
+	if err := mergeTasksWithSubscriptions(cfg, store, sessionName, session, wiredNodes); err != nil {
 		return nil, &Error{Code: ErrExecutionFailed, Message: fmt.Sprintf("failed to save session state: %v", err)}
 	}
+	wireProducedNodeSubscriptions(cfg, store, sessionName, wiredNodes)
 	if setupErr != nil {
 		return nil, &Error{Code: ErrExecutionFailed, Message: setupErr.Error()}
 	}
 	return setupPlan, nil
 }
 
-func runWorkflowSetupForSession(cfg *config.Config, wf config.WorkflowFile, session *domain.Session, observer task.Observer) (map[string]any, error) {
-	prov, err := cfg.WorkspaceProviderForSession(session)
-	if err != nil {
-		return nil, err
+// retiredEntryRefusal runs ahead of the entry-collision check because a
+// session from the previous release records no entry resource, so the
+// collision would hide the migration procedure that session actually needs.
+// A read failure is left for the collision check to report.
+func retiredEntryRefusal(store *state.Store, disp *dispatchResult, tag string) *Error {
+	name, nameErr := disp.sessionName(tag)
+	if nameErr != nil {
+		return nil
 	}
-	provInputs, inputsErr := resolveWorkspaceProviderInputs(prov, wf)
-	if inputsErr != nil {
-		return nil, inputsErr
+	target, readErr := store.GetE(name)
+	if readErr != nil {
+		return nil
 	}
-	vars := effect.WorkflowHookVars{
-		ResourceID:        session.ResourceID,
-		SessionName:       session.Name,
-		WorkspaceDirsRoot: cfg.WorkspaceDirsRoot,
-		SessionInputs:     session.Inputs,
-		Inputs:            provInputs,
-		Plugins:           cfg.Plugins,
-		SourcePath:        prov.SourcePath,
-	}
-	return runWorkflowSetup(prov, vars, session, observer)
+	return retiredRevisionRefusal(target, "`up`")
 }

@@ -28,7 +28,8 @@ func TestLoadResourceDefs_TwoAddressablePluginsShareAnID(t *testing.T) {
 	observer := func(match string) string {
 		return `
 [github]
-kind  = "resource_observer"
+kind  = "resource"
+name  = "fixture"
 match = '` + match + `'
 
 [github.observe]
@@ -71,28 +72,6 @@ func TestLoadChannels_TwoAddressablePluginsShareAnID(t *testing.T) {
 	}
 }
 
-func TestLoadWorkspaceProviders_TwoAddressablePluginsShareAnID(t *testing.T) {
-	provider := func(cmd string) string {
-		return `
-[worktree]
-kind = "workspace_provider"
-
-[worktree.setup]
-type    = "exec"
-command = "` + cmd + `"
-`
-	}
-	cfg := twoAddressablePlugins(t, filepath.Join("workspaces", "worktree.toml"), provider("a"), provider("b"))
-
-	got, err := cfg.LoadWorkspaceProviders()
-	if err != nil {
-		t.Fatalf("LoadWorkspaceProviders: %v", err)
-	}
-	if got["official.a.worktree"].Setup.Command != "a" || got["official.b.worktree"].Setup.Command != "b" {
-		t.Errorf("both plugins' worktree providers should coexist; keys = %v", sortedKeysOf(got))
-	}
-}
-
 func TestLoadTaskDefinitions_TwoAddressablePluginsShareAnID(t *testing.T) {
 	effect := func(script string) string {
 		return `
@@ -127,6 +106,7 @@ func TestLoadWorkflows_TwoAddressablePluginsShareAnID(t *testing.T) {
 		return `
 [shared]
 kind = "workflow"
+resource = "issue"
 
 [[shared.nodes]]
 uses = "` + uses + `"
@@ -152,7 +132,8 @@ func TestLoadResourceDefs_UserOwnedDeclarationKeepsItsBareID(t *testing.T) {
 	base := t.TempDir()
 	writeFile(t, filepath.Join(base, "resources", "github.toml"), `
 [github]
-kind  = "resource_observer"
+kind  = "resource"
+name  = "fixture"
 match = '^x'
 
 [github.observe]

@@ -147,6 +147,7 @@ func (r *sessionReactor) run(ctx context.Context) {
 	channelHealthTicker := time.NewTicker(channelHealthEvery)
 	defer channelHealthTicker.Stop()
 	r.checkChannelHealth(ctx)
+	service.RetryPendingDelivery(r.cfg, r.state, r.session)
 
 	// Immediate check, not just on the first tick of heartbeat: a resident
 	// process that was down past `heartbeat` must sweep the backlog on
@@ -180,6 +181,7 @@ func (r *sessionReactor) run(ctx context.Context) {
 			r.checkHealth(ctx)
 		case <-channelHealthTicker.C:
 			r.checkChannelHealth(ctx)
+			service.RetryPendingDelivery(r.cfg, r.state, r.session)
 		}
 	}
 }

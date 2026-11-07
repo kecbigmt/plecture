@@ -1,0 +1,6 @@
+# plect-fixture: result=invalid layer=structural diagnostic=PLECTURE-CFG-REF-DYNAMIC entry=definitions
+# reason: a workflow's entry resource is static topology and is never computed.
+
+[session]
+kind     = "workflow"
+resource = { from = "session.inputs.resource" }

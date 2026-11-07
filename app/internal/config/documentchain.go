@@ -32,9 +32,12 @@ type DocumentChain struct {
 	// Inputs are the session inputs a fire hands the spawned workflow, as
 	// values over the chain-input roots. A chain's target is topology, so
 	// `workflow` beside them is a static reference and never a value.
-	Inputs     map[string]*lang.Value
-	TaskID     string
-	SourcePath string
+	Inputs map[string]*lang.Value
+	// InitialTask is the task document the spawned session starts with,
+	// bound to its entry resource; empty spawns a session with no task.
+	InitialTask string
+	TaskID      string
+	SourcePath  string
 }
 
 // EffectivePlacement returns the placement, defaulting to sibling.
@@ -106,6 +109,7 @@ func documentChainsFrom(def *lang.Definition, path string) ([]DocumentChain, err
 			{"id", &ch.ID},
 			{"workflow", &ch.Workflow},
 			{"placement", &ch.Placement},
+			{"task", &ch.InitialTask},
 		} {
 			value, present := entry[field.key]
 			if !present {

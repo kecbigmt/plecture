@@ -9,7 +9,6 @@ function summary(overrides: Partial<SessionSummary> & { sessionName: string }): 
   return {
     displayStatus: "up",
     run: "up",
-    resourceId: "",
     ...overrides,
   };
 }

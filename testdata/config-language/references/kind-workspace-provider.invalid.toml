@@ -1,0 +1,10 @@
+# plect-fixture: result=invalid layer=structural diagnostic=PLECTURE-CFG-KIND-UNKNOWN entry=definitions
+# reason: a session environment is an ordinary session-scoped effect, so the retired workspace_provider kind is refused with a pointer to the migration.
+
+[worktree]
+kind = "workspace_provider"
+
+[worktree.setup]
+type = "exec"
+bin  = "github-worktree"
+args = ["setup"]

@@ -21,7 +21,6 @@ import (
 	"github.com/kecbigmt/plecture/app/internal/service"
 	"github.com/kecbigmt/plecture/app/internal/state"
 	"github.com/kecbigmt/plecture/contracts/event"
-	contract "github.com/kecbigmt/plecture/contracts/state"
 	"github.com/mxschmitt/playwright-go"
 )
 
@@ -69,18 +68,11 @@ func publish(t *testing.T, svc *LiveService, session string, p service.EventPubl
 // inspection, and history reading in one flow.
 func TestBrowserAcceptance_LoginNavigatesHierarchyAndShowsHistory(t *testing.T) {
 	store := state.NewStore(t.TempDir())
-	seedSession(t, store, &domain.Session{Name: "browser-root", ResourceID: "https://github.com/browser-accept/issues/1"})
+	seedSession(t, store, &domain.Session{Name: "browser-root", Resource: testResource("https://github.com/browser-accept/issues/1")})
 	seedSession(t, store, &domain.Session{
 		Name:          "browser-child",
 		ParentSession: "browser-root",
-		ResourceID:    "https://github.com/browser-accept/issues/2",
-		Nodes: map[string]*contract.TaskState{
-			contract.WorkflowPseudoNodeID: {
-				Scope:   contract.TaskScopeSession,
-				Status:  contract.TaskStatusProduced,
-				Outputs: map[string]any{"branch": "issue/2"},
-			},
-		},
+		Resource:      testResource("https://github.com/browser-accept/issues/2"),
 	})
 
 	origin, svc := browserOrigin(t, store, &Config{AuthToken: "s3cr3t-token"})
@@ -131,9 +123,6 @@ func TestBrowserAcceptance_LoginNavigatesHierarchyAndShowsHistory(t *testing.T) 
 		t.Fatalf("open details: %v", err)
 	}
 	details := page.GetByRole("complementary", playwright.PageGetByRoleOptions{Name: "Details"})
-	if err := expect.Locator(details.GetByText("issue/2")).ToBeVisible(); err != nil {
-		t.Fatalf("detail pane should show the session's branch: %v", err)
-	}
 	if err := expect.Locator(details.GetByRole("link", playwright.LocatorGetByRoleOptions{
 		Name: "https://github.com/browser-accept/issues/2", Exact: playwright.Bool(true),
 	})).ToBeVisible(); err != nil {

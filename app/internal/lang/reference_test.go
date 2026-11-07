@@ -59,7 +59,7 @@ func TestReferencesQualifiedFixtureIsValid(t *testing.T) {
 	// catalog would enable; a companion registry stands in for that catalog,
 	// the way a fuller end-to-end load would supply it.
 	reg := NewRegistry([]PluginLayer{
-		{Alias: "official", Path: "github", Defs: []*Definition{defOf("worktree", KindWorkspaceProvider, nil)}},
+		{Alias: "official", Path: "github", Defs: []*Definition{defOf("worktree", KindEffect, nil), defOf("issue", KindResource, nil)}},
 		{Alias: "official", Path: "tmux", Defs: []*Definition{defOf("pane", KindEffect, nil)}},
 		{Alias: "official", Path: "claude", Defs: []*Definition{
 			defOf("runtime", KindEffect, nil),
@@ -102,7 +102,7 @@ func TestReferencesAliasRequiredFixtureIsRejected(t *testing.T) {
 	// never in the user layer: that is what makes the omitted alias the
 	// documented violation rather than a plain unknown reference.
 	github := []*Definition{
-		defOf("worktree", KindWorkspaceProvider, nil),
+		defOf("issue", KindResource, nil),
 		defOf("runtime", KindEffect, nil),
 	}
 	reg := NewRegistry([]PluginLayer{{Alias: "official", Path: "github", Defs: github}}, defs)
@@ -187,29 +187,15 @@ func TestReferencesTaskInNodeFixtureIsRejected(t *testing.T) {
 	assertDiagnostic(t, err, CodeKindMismatch, LayerSemantic)
 }
 
-func TestWorkflowsDynamicWorkspaceProviderFixtureIsRejected(t *testing.T) {
-	defs, err := ParseDefinitionDocument("dynamic-workspace-provider.toml",
-		readConfigLanguageFixture(t, "workflows/dynamic-workspace-provider.invalid.toml"))
+func TestWorkflowsDynamicResourceFixtureIsRejected(t *testing.T) {
+	defs, err := ParseDefinitionDocument("dynamic-resource.toml",
+		readConfigLanguageFixture(t, "workflows/dynamic-resource.invalid.toml"))
 	if err != nil {
 		t.Fatalf("unexpected parse error: %v", err)
 	}
 	reg := NewRegistry(nil, defs)
 	err = ResolveWorkflowRefs(defs[0], Ownership{}, reg)
 	assertDiagnostic(t, err, CodeRefDynamic, LayerStructural)
-}
-
-func TestWorkflowsProviderInputsDynamicFixtureIsRejected(t *testing.T) {
-	defs, err := ParseDefinitionDocument("provider-inputs-dynamic.toml",
-		readConfigLanguageFixture(t, "workflows/provider-inputs-dynamic.invalid.toml"))
-	if err != nil {
-		t.Fatalf("unexpected parse error: %v", err)
-	}
-	// "worktree" only needs to exist and be the right kind: this fixture's
-	// violation is workspace_provider_inputs carrying a computed value, not
-	// the workspace_provider reference itself.
-	reg := NewRegistry(nil, append(defs, defOf("worktree", KindWorkspaceProvider, nil)))
-	err = ResolveWorkflowRefs(defs[0], Ownership{}, reg)
-	assertDiagnostic(t, err, CodeValueTagSurface, LayerStructural)
 }
 
 func TestWorkflowsNodesFixtureIsValid(t *testing.T) {
@@ -228,7 +214,7 @@ func TestWorkflowsNodesFixtureIsValid(t *testing.T) {
 	}, append(defs,
 		defOf("pane", KindEffect, nil),
 		defOf("initial_task", KindEffect, nil),
-		defOf("okf_bundle", KindWorkspaceProvider, nil),
+		defOf("okf_goal", KindResource, nil),
 	))
 	if err := ResolveWorkflowRefs(defs[0], Ownership{}, reg); err != nil {
 		t.Fatalf("unexpected error: %v", err)
@@ -248,4 +234,8 @@ func TestResolveConfigChannelsWrongKind(t *testing.T) {
 	reg := NewRegistry(nil, []*Definition{defOf("notify", KindEffect, nil)})
 	err := ResolveConfigChannels(cfg, reg)
 	assertDiagnostic(t, err, CodeKindMismatch, LayerSemantic)
+}
+
+func defOf(id string, kind Kind, body map[string]any) *Definition {
+	return &Definition{ID: id, Kind: kind, Body: body, File: id + ".toml"}
 }

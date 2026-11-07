@@ -61,7 +61,7 @@ session-global singleton: the instance key IS the name and a second
 'plect task cleanup <name>' first. --resource binds the external resource this
 instance works on (exposed to its setup/done_when as .ResourceID); it is
 decoupled from the instance's identity. Binding implies delivery: when a
-workspace provider recognizes --resource, it is also registered for event
+resource declaration recognizes --resource, it is also registered for event
 delivery to the session (the same registration 'plect subscribe' performs),
 so done_when re-evaluation and chain firing react to its events instead of
 waiting for the heartbeat. 'plect task cleanup' drops that registration once
@@ -196,10 +196,11 @@ Example:
 var taskShowCmd = &cobra.Command{
 	Use:   "show <task-id>",
 	Short: "Show a task definition, including its nesting or extends chain",
-	Long: `Print one task definition as the cascade resolves it: its id, the scope its
-instances take, the file it was loaded from, and — when the task is nested —
-every layer of the chain from the outermost task inward to the innermost one,
-with each layer's 'inner' reference and the file it resolved to.
+	Long: `Print one task definition as the current directory's configuration context
+resolves it: its id, the scope its instances take, the file it was loaded
+from, and — when the task is nested — every layer of the chain from the
+outermost task inward to the innermost one, with each layer's 'inner'
+reference and the file it resolved to.
 
 For a task document that declares 'extends', prints the composed extends
 chain instead, outermost (this declaration) first, naming for every layer the
@@ -213,11 +214,11 @@ Use --json for the same picture as a structured document.`,
 		if err != nil {
 			return err
 		}
-		cwd, err := os.Getwd()
+		root, err := selectProjectRoot(cmd, cfg)
 		if err != nil {
-			return fmt.Errorf("getwd: %w", err)
+			return err
 		}
-		detail, err := service.TaskShow(cfg, cwd, args[0])
+		detail, err := service.TaskShow(cfg, root, args[0])
 		if err != nil {
 			return err
 		}

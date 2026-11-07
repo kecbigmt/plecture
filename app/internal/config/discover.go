@@ -20,82 +20,23 @@ type discoveredLayer struct {
 	defs  []*lang.Definition
 }
 
-// A layer's trust decides what it may declare, and the three answers are not
-// the same shape. A kind a layer may declare is loaded; a kind it must not
-// declare is a load error, because reading it as absent would leave the author
-// believing their declaration is live; and a kind that simply does not reach
-// this layer is skipped, because a project's own directory holding one is not
-// a mistake — it just does not participate.
-//
-// A workspace provider, a resource observer and a channel are trusted-base
-// content: they decide how a session's identity is resolved and how a process
-// is reached, so one in an ancestor overlay is skipped — it does not
-// participate, and does not stop the layer loading either. Effects and task
-// documents do reach an ancestor overlay, since a project may add its own
-// lifecycle and its own work; they never reach the workspace directory, which
-// is cloned content, so shell there or a declaration of the work the clone is
-// about is refused outright.
-var (
-	loadedKinds = map[layerScope]map[lang.Kind]bool{
-		layerScopeTrusted: {
-			lang.KindWorkspaceProvider: true,
-			lang.KindResourceObserver:  true,
-			lang.KindChannel:           true,
-			lang.KindEffect:            true,
-			lang.KindTask:              true,
-			lang.KindWorkflow:          true,
-		},
-		layerScopeOverlay: {
-			lang.KindEffect:   true,
-			lang.KindTask:     true,
-			lang.KindWorkflow: true,
-		},
-		layerScopeWorkspaceDir: {
-			lang.KindWorkflow: true,
-		},
-	}
-	refusedKinds = map[layerScope]map[lang.Kind]string{
-		layerScopeWorkspaceDir: {
-			lang.KindEffect: "clone content must not carry shell",
-			lang.KindTask:   "clone content must not declare the work it is about",
-		},
-	}
-)
-
-// layerScope names how far a layer's trust reaches, which is what decides
-// which kinds it may declare.
-type layerScope int
-
-const (
-	// layerScopeTrusted is a plugin's own config root or the machine's global
-	// config: machine-owned, so anything may be declared there.
-	layerScopeTrusted layerScope = iota
-	// layerScopeOverlay is an ancestor `.plect/` directory above the
-	// workspace directory: trusted, but a project's own.
-	layerScopeOverlay
-	// layerScopeWorkspaceDir is the `.plect/` directory inside the workspace
-	// directory: cloned, untrusted content.
-	layerScopeWorkspaceDir
-)
-
-func (l layerDir) scope() layerScope {
-	switch {
-	case l.workspaceDir:
-		return layerScopeWorkspaceDir
-	case l.plugin || l.global:
-		return layerScopeTrusted
-	default:
-		return layerScopeOverlay
-	}
+// A resource or channel in a project root is refused rather than skipped: a
+// declaration that silently does nothing reads as one that took effect.
+var projectKinds = map[lang.Kind]bool{
+	lang.KindEffect:   true,
+	lang.KindTask:     true,
+	lang.KindWorkflow: true,
 }
 
 // discoverLayers reads every cascade layer's definition root once, in
-// shallowest-first order. workspaceDirPath selects the ancestor overlays; an
-// empty one means the trusted base layers alone, which is what a caller
-// outside any workspace directory sees.
-func (c *Config) discoverLayers(workspaceDirPath string) ([]discoveredLayer, error) {
-	out := make([]discoveredLayer, 0, len(c.PluginDirs)+2)
-	for _, layer := range c.definitionRoots(workspaceDirPath) {
+// shallowest-first order. An empty projectRoot reads the base layers alone.
+func (c *Config) discoverLayers(projectRoot string) ([]discoveredLayer, error) {
+	roots, err := c.definitionRoots(projectRoot)
+	if err != nil {
+		return nil, err
+	}
+	out := make([]discoveredLayer, 0, len(roots))
+	for _, layer := range roots {
 		defs, err := discoverLayer(layer)
 		if err != nil {
 			return nil, err
@@ -118,28 +59,20 @@ func discoverLayer(layer layerDir) ([]*lang.Definition, error) {
 	if err := checkRetiredChainsDir(layer.dir); err != nil {
 		return nil, err
 	}
-	discovered, err := lang.DiscoverRoot(layer.dir, lang.ReservedFileNames)
+	reserved := lang.ReservedFileNames
+	if layer.project {
+		reserved = lang.ProjectReservedFileNames
+	}
+	defs, err := lang.DiscoverRoot(layer.dir, reserved)
 	if err != nil {
 		return nil, err
 	}
-	scope := layer.scope()
-	loaded := loadedKinds[scope]
-	refused := refusedKinds[scope]
-	var defs []*lang.Definition
-	for _, def := range discovered {
-		if because, no := refused[def.Kind]; no {
-			return nil, fmt.Errorf("%s: %q declares kind %q, which a `.plect/` directory inside the workspace directory may not (%s); move it to the global layer, a plugin, or an overlay above the workspace dir", def.File, def.ID, def.Kind, because)
+	if layer.project {
+		for _, def := range defs {
+			if !projectKinds[def.Kind] {
+				return nil, fmt.Errorf("%s: %s %q cannot be declared in a project root; declare it in the global config", def.File, def.Kind, def.ID)
+			}
 		}
-		if !loaded[def.Kind] {
-			continue
-		}
-		if scope == layerScopeWorkspaceDir && filepath.Dir(def.File) != filepath.Join(layer.dir, "workflows") {
-			// The workspace-dir layer is not a definition root: only
-			// `.plect/workflows/` is read there, so the directory is the
-			// allowlist rather than author organization.
-			continue
-		}
-		defs = append(defs, def)
 	}
 	sort.SliceStable(defs, func(i, j int) bool { return defs[i].ID < defs[j].ID })
 	return defs, nil
@@ -190,9 +123,6 @@ type resolvedDefinition struct {
 	// prefix is what a relative reference written inside this declaration
 	// resolves against, empty for a declaration the user owns.
 	prefix string
-	// source is the shallowest layer that declared the id, which is the file
-	// a relative schema path resolves against and the layer a reference
-	// written in the declaration resolves in.
 	source string
 }
 
@@ -242,8 +172,7 @@ func referenceAddress(prefix, ref string) (string, error) {
 
 // resolveNamespace folds one kind's declarations across the cascade, grouped
 // by the address each declaration answers to. Within one address a deeper
-// user-owned layer replaces what a shallower one declared, except a workflow,
-// which merges by the cascade rules.
+// user-owned layer replaces what a shallower one declared as a whole.
 //
 // Two mounted plugins declaring one id land on different addresses and both
 // stay reachable, and a user-owned declaration sharing an id with a plugin's
@@ -261,11 +190,10 @@ func referenceAddress(prefix, ref string) (string, error) {
 // and an instantiation wants the document.
 func (c *Config) resolveNamespace(layers []discoveredLayer, kind lang.Kind) ([]resolvedDefinition, error) {
 	type group struct {
-		defs       []*lang.Definition
+		def        *lang.Definition
 		fromPlugin bool
 		pluginID   string
 		prefix     string
-		source     string
 		// unaliased names the file of the identity-less plugin layer that
 		// already claimed this address, which is what the second one collides
 		// with.
@@ -278,10 +206,7 @@ func (c *Config) resolveNamespace(layers []discoveredLayer, kind lang.Kind) ([]r
 			address := definitionAddress(discovered.layer, def.ID)
 			g, seen := groups[address]
 			if !seen {
-				// The shallowest declarer keeps source, so a deeper layer
-				// extending a workflow does not move what its relative paths
-				// resolve against.
-				g = &group{source: def.File, prefix: addressPrefix(discovered.layer)}
+				g = &group{prefix: addressPrefix(discovered.layer)}
 				groups[address] = g
 				order = append(order, address)
 			}
@@ -291,7 +216,7 @@ func (c *Config) resolveNamespace(layers []discoveredLayer, kind lang.Kind) ([]r
 				}
 				g.unaliased = def.File
 			}
-			g.defs = append(g.defs, def)
+			g.def = def
 			g.fromPlugin = discovered.layer.plugin
 			g.pluginID = discovered.layer.pluginID
 		}
@@ -300,39 +225,31 @@ func (c *Config) resolveNamespace(layers []discoveredLayer, kind lang.Kind) ([]r
 	out := make([]resolvedDefinition, 0, len(order))
 	for _, address := range order {
 		g := groups[address]
-		var merged []*lang.Definition
-		for _, def := range g.defs {
-			combined, err := lang.MergeLayer(merged, []*lang.Definition{def})
-			if err != nil {
-				return nil, err
-			}
-			merged = combined
-		}
 		out = append(out, resolvedDefinition{
-			def:        merged[0],
+			def:        g.def,
 			fromPlugin: g.fromPlugin,
 			pluginID:   g.pluginID,
 			address:    address,
 			prefix:     g.prefix,
-			source:     g.source,
+			source:     g.def.File,
 		})
 	}
 	return out, nil
 }
 
 // canonicalizeWorkflowRefs rewrites a workflow's static references — its
-// workspace provider, each node's `uses`, and each event channel's `uses` — to
+// each node's `uses` and each event channel's `uses` — to
 // the addresses they select, so the runtime resolves topology by map lookup
 // instead of re-reading the reference grammar at every site.
 func canonicalizeWorkflowRefs(wf *WorkflowFile, prefix string) error {
 	if prefix == "" {
 		return nil
 	}
-	provider, err := referenceAddress(prefix, wf.WorkspaceProvider)
+	resource, err := referenceAddress(prefix, wf.Resource)
 	if err != nil {
-		return fmt.Errorf("workflow %q workspace_provider: %w", wf.ID, err)
+		return fmt.Errorf("workflow %q resource: %w", wf.ID, err)
 	}
-	wf.WorkspaceProvider = provider
+	wf.Resource = resource
 	for i := range wf.Nodes {
 		uses, err := referenceAddress(prefix, wf.Nodes[i].Uses)
 		if err != nil {
@@ -348,11 +265,6 @@ func canonicalizeWorkflowRefs(wf *WorkflowFile, prefix string) error {
 		wf.Event.Channel[i].Uses = uses
 	}
 	for i := range wf.Populations {
-		observer, err := referenceAddress(prefix, wf.Populations[i].ResourceObserver)
-		if err != nil {
-			return fmt.Errorf("workflow %q population %q resource_observer: %w", wf.ID, wf.Populations[i].Name, err)
-		}
-		wf.Populations[i].ResourceObserver = observer
 		task, err := referenceAddress(prefix, wf.Populations[i].Session.Task)
 		if err != nil {
 			return fmt.Errorf("workflow %q population %q session.task: %w", wf.ID, wf.Populations[i].Name, err)
@@ -362,17 +274,17 @@ func canonicalizeWorkflowRefs(wf *WorkflowFile, prefix string) error {
 	return nil
 }
 
-// canonicalizeDocumentRefs rewrites a task document's observer reference and
+// canonicalizeDocumentRefs rewrites a task document's resource reference and
 // each chain's workflow reference to the addresses they select.
 func canonicalizeDocumentRefs(doc *TaskDocument, prefix string) error {
 	if prefix == "" {
 		return nil
 	}
-	observer, err := referenceAddress(prefix, doc.ResourceObserver)
+	resource, err := referenceAddress(prefix, doc.Resource)
 	if err != nil {
-		return fmt.Errorf("task %q resource_observer: %w", doc.ID, err)
+		return fmt.Errorf("task %q resource: %w", doc.ID, err)
 	}
-	doc.ResourceObserver = observer
+	doc.Resource = resource
 	extends, err := referenceAddress(prefix, doc.Extends)
 	if err != nil {
 		return fmt.Errorf("task %q extends: %w", doc.ID, err)
@@ -384,6 +296,11 @@ func canonicalizeDocumentRefs(doc *TaskDocument, prefix string) error {
 			return fmt.Errorf("task %q chain %q: %w", doc.ID, doc.Chains[i].ID, err)
 		}
 		doc.Chains[i].Workflow = workflow
+		initialTask, err := referenceAddress(prefix, doc.Chains[i].InitialTask)
+		if err != nil {
+			return fmt.Errorf("task %q chain %q task: %w", doc.ID, doc.Chains[i].ID, err)
+		}
+		doc.Chains[i].InitialTask = initialTask
 	}
 	return nil
 }

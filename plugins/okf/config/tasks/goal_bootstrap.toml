@@ -1,5 +1,5 @@
 # Auto-recreates missing pursue_goal instances for every open local-okf goal
-# under the orchestrator workspace directory's knowledge/bundle/goals/. A
+# under the orchestrator's workspace_dir input's knowledge/bundle/goals/. A
 # pursue_goal instance is session-scoped, so a destroy→up cycle silently
 # drops it and the tick reactor's heartbeat starves (nothing left to
 # re-evaluate). scope="run" re-scans on every `up`.
@@ -20,7 +20,7 @@ args = [
   "task",
   "bootstrap",
   "--workspace-dir",
-  { from = "workspace.dir" },
+  { from = "inputs.workspace_dir" },
   "--owner",
   { from = "inputs.owner" },
   "--session",
@@ -37,11 +37,14 @@ type = "noop"
 
 [goal_bootstrap.inputs_schema]
 type                 = "object"
-required             = ["owner"]
+required             = ["owner", "workspace_dir"]
 additionalProperties = false
 
 [goal_bootstrap.inputs_schema.properties]
 owner = { type = "string" }
+# Named explicitly rather than read from the working directory, so the scan
+# root does not depend on whether this node happens to run in the workdir.
+workspace_dir = { type = "string" }
 # assignees is a JSON array string of this orchestrator's own identity
 # strings (`user:<login>` / `team:<slug>`, the same vocabulary a goal
 # file's frontmatter `assignee` field uses). Empty/unset means the filter
