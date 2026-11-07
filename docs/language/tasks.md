@@ -245,8 +245,10 @@ A task document is authored. Its identity is the id its declaration carries,
 in the one per-layer namespace every kind shares, and references resolve to it
 by that id.
 
-A task instance is created from a document, by dynamic instantiation or by
-another document's chain spawn. Its identity is its resource plus its instance
+A task instance is created from a document, by dynamic instantiation or as a
+session's initial task, which the initiating caller selects with `plect up
+--task`, another document's chain spawn, or a population's `session.task` (see
+[Resource binding](#resource-binding)). Its identity is its resource plus its instance
 name. The two identities are orthogonal: one document backs many instances, and
 an instance's resource says nothing about which id declared it.
 

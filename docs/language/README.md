@@ -92,12 +92,15 @@ the environment declared for that site.
 The implementation may reorder these for efficiency; the responsibility
 boundaries do not move.
 
-A reference is always `<subject>.<store>.<key>`. The subject says whose facts
+A reference to a contract-backed fact is always `<subject>.<store>.<key>`.
+The subject says whose facts
 these are — `self`, `inner`, `resource`, `nodes.<id>`, `workflow` — and the
 store says which of that subject's contracts they come from: `outputs`, `state`,
 `inputs`. So an effect reads its own production records as `self.outputs.<key>`, a
 task document its own state as `self.state.<key>`, and the resource it is bound
-to as `resource.state.<key>`.
+to as `resource.state.<key>`. Identity values such as `resource.id`,
+`session.name`, and `session.tag` are not contract-backed and have no store
+segment; [values](values.md) lists where each is available.
 
 Static resolution — references, kinds, and root existence — is never dropped. Projecting JSON Schema into CEL type information, and checking an
 expression's result type against its field, is the first thing dropped if
