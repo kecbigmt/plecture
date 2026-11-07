@@ -5,8 +5,3 @@
 -- composes such a name reports a collision instead of guessing.
 ALTER TABLE sessions ADD COLUMN resource_type TEXT;
 ALTER TABLE sessions ADD COLUMN tag TEXT;
-
--- +goose Down
--- Dropping the columns discards the recorded entry resources.
-ALTER TABLE sessions DROP COLUMN tag;
-ALTER TABLE sessions DROP COLUMN resource_type;

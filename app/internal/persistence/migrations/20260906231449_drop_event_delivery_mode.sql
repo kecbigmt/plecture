@@ -8,6 +8,3 @@
 -- (verified by TestSchemaSQL_MatchesMigrationHistory), so the regen_check CI
 -- step's `atlas migrate diff` finds no further diff against it.
 ALTER TABLE `events` DROP COLUMN `delivery_mode`;
-
--- +goose Down
-ALTER TABLE `events` ADD COLUMN `delivery_mode` text NOT NULL DEFAULT '';

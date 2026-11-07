@@ -21,27 +21,3 @@ CREATE TABLE `populations` (`workflow` text NOT NULL, `name` text NOT NULL, PRIM
 CREATE TABLE `population_members` (`workflow` text NOT NULL, `name` text NOT NULL, `resource_id` text NOT NULL, `session_name` text NULL, `generation` integer NOT NULL DEFAULT 0, `accepted_at` text NULL, `last_appearance` text NULL, `last_inbound` text NULL, `tombstoned` boolean NOT NULL DEFAULT 0, `pending_up` boolean NOT NULL DEFAULT 0, `decision_kind` text NULL, `decision_reason` text NULL, `item_json` text NOT NULL DEFAULT '{}', `last_blockers_json` text NOT NULL DEFAULT '[]', PRIMARY KEY (`workflow`, `name`, `resource_id`), CONSTRAINT `0` FOREIGN KEY (`workflow`, `name`) REFERENCES `populations` (`workflow`, `name`) ON UPDATE NO ACTION ON DELETE CASCADE, CHECK (tombstoned IN (0, 1)), CHECK (pending_up IN (0, 1)), CHECK (decision_kind IN ('plect.workflow_population.destroy', 'plect.workflow_population.destroy_deferred', 'plect.workflow_population.destroy_dry_run')));
 -- create "up_reservations" table
 CREATE TABLE `up_reservations` (`child_session_name` text NULL, `parent_session_name` text NULL, `virtual_root` boolean NOT NULL DEFAULT 0, `pid` integer NOT NULL, `reserved_at` text NOT NULL, PRIMARY KEY (`child_session_name`), CHECK (virtual_root IN (0, 1)), CHECK ((parent_session_name IS NOT NULL) != (virtual_root = 1)));
-
--- +goose Down
--- reverse: create "up_reservations" table
-DROP TABLE `up_reservations`;
--- reverse: create "population_members" table
-DROP TABLE `population_members`;
--- reverse: create "populations" table
-DROP TABLE `populations`;
--- reverse: create "task_done_when_judges" table
-DROP TABLE `task_done_when_judges`;
--- reverse: create "task_done_when_states" table
-DROP TABLE `task_done_when_states`;
--- reverse: create index "task_instances_session_name_instance_name" to table: "task_instances"
-DROP INDEX `task_instances_session_name_instance_name`;
--- reverse: create "task_instances" table
-DROP TABLE `task_instances`;
--- reverse: create "node_instances" table
-DROP TABLE `node_instances`;
--- reverse: create index "sessions_parent_idx" to table: "sessions"
-DROP INDEX `sessions_parent_idx`;
--- reverse: create index "sessions_alias_idx" to table: "sessions"
-DROP INDEX `sessions_alias_idx`;
--- reverse: create "sessions" table
-DROP TABLE `sessions`;

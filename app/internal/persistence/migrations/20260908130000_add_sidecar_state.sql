@@ -13,7 +13,3 @@ CREATE TABLE subscription_retries (
     resource_id TEXT NOT NULL,
     PRIMARY KEY (session_id, action, resource_id)
 );
-
--- +goose Down
-DROP TABLE subscription_retries;
-DROP TABLE chain_attempts;

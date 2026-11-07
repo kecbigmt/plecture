@@ -19,8 +19,3 @@ DELETE FROM node_instances WHERE node_id = '@workflow';
 ALTER TABLE sessions DROP COLUMN workspace_dir;
 ALTER TABLE node_executions ADD COLUMN directory TEXT;
 ALTER TABLE task_instances ADD COLUMN directory TEXT;
-
--- +goose Down
-ALTER TABLE task_instances DROP COLUMN directory;
-ALTER TABLE node_executions DROP COLUMN directory;
-ALTER TABLE sessions ADD COLUMN workspace_dir TEXT;

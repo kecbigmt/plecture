@@ -6,10 +6,3 @@ CREATE TABLE `workflow_revisions` (`digest` text NULL, `workflow` text NOT NULL,
 CREATE TABLE `workflow_revision_migration` (`id` integer PRIMARY KEY CHECK (id = 1), `completed` integer NOT NULL CHECK (completed IN (0, 1)));
 INSERT INTO `workflow_revision_migration` (`id`, `completed`)
 SELECT 1, CASE WHEN EXISTS (SELECT 1 FROM `sessions` WHERE `status` <> 'destroyed' AND `workflow` <> '') THEN 0 ELSE 1 END;
-
--- +goose Down
-DROP TABLE `workflow_revision_migration`;
--- reverse: create "workflow_revisions" table
-DROP TABLE `workflow_revisions`;
--- reverse: add column "workflow_revision" to table: "sessions"
-ALTER TABLE `sessions` DROP COLUMN `workflow_revision`;

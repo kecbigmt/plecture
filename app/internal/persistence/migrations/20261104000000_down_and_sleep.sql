@@ -32,9 +32,3 @@ SELECT 'migration-stop-' || s.id, s.id,
        'plect.session.stop', 'plect', 'internal', 'session fully stopped', '', '{"origin":"migration"}'
 FROM sessions s
 WHERE s.status = 'down' AND s.sleep_since IS NULL;
-
--- +goose Down
--- reverse: add column "sleep_since" to table: "sessions"
-DELETE FROM events WHERE id LIKE 'migration-stop-%' AND type = 'plect.session.stop'
-  AND json_extract(metadata_json, '$.origin') = 'migration';
-ALTER TABLE `sessions` DROP COLUMN `sleep_since`;

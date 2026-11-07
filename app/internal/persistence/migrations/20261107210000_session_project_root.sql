@@ -5,8 +5,3 @@
 -- context and an operator records the intended root by hand.
 ALTER TABLE sessions DROP COLUMN invocation_dir;
 ALTER TABLE sessions ADD COLUMN project_root TEXT NOT NULL DEFAULT '';
-
--- +goose Down
--- Restoring the column cannot recover the directories it held.
-ALTER TABLE sessions DROP COLUMN project_root;
-ALTER TABLE sessions ADD COLUMN invocation_dir TEXT;

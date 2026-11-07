@@ -11,17 +11,3 @@ CREATE UNIQUE INDEX `events_stream_id_sequence` ON `events` (`stream_id`, `seque
 CREATE INDEX `events_stream_id_id_idx` ON `events` (`stream_id`, `id`);
 -- create "event_cursors" table
 CREATE TABLE `event_cursors` (`stream_id` text NOT NULL, `kind` text NOT NULL, `next_sequence` integer NOT NULL, PRIMARY KEY (`stream_id`, `kind`), CONSTRAINT `0` FOREIGN KEY (`stream_id`) REFERENCES `event_streams` (`id`) ON UPDATE NO ACTION ON DELETE CASCADE, CHECK (kind IN ('delivery', 'tick', 'heartbeat')), CHECK (next_sequence >= 0));
-
--- +goose Down
--- reverse: create "event_cursors" table
-DROP TABLE `event_cursors`;
--- reverse: create index "events_stream_id_id_idx" to table: "events"
-DROP INDEX `events_stream_id_id_idx`;
--- reverse: create index "events_stream_id_sequence" to table: "events"
-DROP INDEX `events_stream_id_sequence`;
--- reverse: create "events" table
-DROP TABLE `events`;
--- reverse: create index "event_streams_session_name_created_at" to table: "event_streams"
-DROP INDEX `event_streams_session_name_created_at`;
--- reverse: create "event_streams" table
-DROP TABLE `event_streams`;
