@@ -153,6 +153,9 @@ jobs:
     name: comment-density
     if: github.event_name == 'pull_request'
     runs-on: ubuntu-latest
+    # An integration/* or release/* head is scored one commit at a time (#724).
+    env:
+      AGGREGATE_BRANCH: ${{ startsWith(github.head_ref, 'integration/') || startsWith(github.head_ref, 'release/') }}
     steps:
       - uses: actions/checkout@v4
         with:
@@ -163,7 +166,11 @@ jobs:
       - name: Prove the checker catches seeded density/block-length/duplication violations
         run: ./scripts/check-comment-density_selftest.sh
       - name: Check the PR diff's comment shape
+        if: env.AGGREGATE_BRANCH != 'true'
         run: ./scripts/check-comment-density.sh "${{ github.event.pull_request.base.sha }}" "${{ github.event.pull_request.head.sha }}"
+      - name: Check each commit's comment shape on an aggregate branch
+        if: env.AGGREGATE_BRANCH == 'true'
+        run: ./scripts/check-comment-density.sh --per-commit "${{ github.event.pull_request.base.sha }}" "${{ github.event.pull_request.head.sha }}"
 
   instruction-orphans:
     name: instruction-orphans
