@@ -68,8 +68,6 @@ type DB struct {
 
 	path string
 
-	// diagnostics receives operator-facing notices such as a pre-migration
-	// backup's location.
 	diagnostics io.Writer
 
 	releaseHandle func()
@@ -144,8 +142,7 @@ func Open(path string) (*DB, error) {
 		migrations:  migrationsSourceFS(),
 		path:        path,
 		diagnostics: os.Stderr,
-		// A second Close must not unlock a descriptor number the first
-		// Close freed and another file may since have been given.
+		// A second Close must not unlock a reused descriptor number.
 		releaseHandle: sync.OnceFunc(releaseHandle),
 	}, nil
 }
