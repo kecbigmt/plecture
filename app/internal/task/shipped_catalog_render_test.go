@@ -448,3 +448,42 @@ func TestShippedCatalog_TaskDocumentInstructionsRender(t *testing.T) {
 		}
 	}
 }
+
+func TestShippedGithubWorktree_BranchTagIsTheSessionTag(t *testing.T) {
+	tasks, mounted := loadShippedCatalogTasks(t)
+	var worktree *config.TaskDefinition
+	for address, def := range tasks {
+		if strings.HasSuffix(address, "github.worktree") {
+			def := def
+			worktree = &def
+		}
+	}
+	if worktree == nil {
+		t.Fatal("shipped github worktree effect not found")
+	}
+	ctx := RenderContext{
+		Inputs: map[string]any{},
+		Session: SessionVars{
+			Name:       "acme/widgets-42+draft+review",
+			Tag:        "review",
+			ResourceID: "https://github.com/acme/widgets/issues/42",
+			Plugins:    mounted,
+		},
+		SourcePath: worktree.SourcePath,
+	}
+	resolved, err := resolveEffect(worktree.Setup, setupRoots(ctx), ctx, worktree.Ownership(), nil)
+	if err != nil {
+		t.Fatalf("resolve setup: %v", err)
+	}
+	defer resolved.Close()
+	argv := resolved.Argv()
+	for i, arg := range argv {
+		if arg == "--tag" && i+1 < len(argv) {
+			if argv[i+1] != "review" {
+				t.Errorf("--tag = %q, want the recorded tag review", argv[i+1])
+			}
+			return
+		}
+	}
+	t.Errorf("setup argv %q passes no --tag", argv)
+}

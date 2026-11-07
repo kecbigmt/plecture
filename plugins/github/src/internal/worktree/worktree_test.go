@@ -91,20 +91,30 @@ func TestSelectGHClient_DefaultsToDirectWhenNeitherIsSet(t *testing.T) {
 	}
 }
 
-func TestSessionTag(t *testing.T) {
+func TestSetup_BranchTagIsTheSessionsRecordedTagNotParsedFromItsName(t *testing.T) {
 	tests := []struct {
 		name    string
 		session string
+		tag     string
 		want    string
 	}{
-		{"untagged", "acme/widgets-42", ""},
-		{"tagged", "acme/widgets-42+review", "review"},
-		{"last separator wins", "acme/widgets-42+a+b", "b"},
+		{"a resource name holding the separator is not a tag", "acme/widgets-42+draft", "", "issue/42"},
+		{"the recorded tag follows a separator inside the resource name", "acme/widgets-42+draft+review", "review", "issue/42+review"},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			if got := SessionTag(tt.session); got != tt.want {
-				t.Errorf("SessionTag(%q) = %q, want %q", tt.session, got, tt.want)
+			mgr := &fakeManager{addInfo: &workspace.WorkspaceInfo{WorktreePath: "/roots/wt/issue-42"}}
+			if _, err := Setup(context.Background(), SetupOptions{
+				ResourceID:  "https://github.com/acme/widgets/issues/42",
+				SessionName: tt.session,
+				Tag:         tt.tag,
+				Manager:     mgr,
+				GHClient:    &fakeGHClient{err: errors.New("no gh-api client configured for this test")},
+			}); err != nil {
+				t.Fatalf("Setup: %v", err)
+			}
+			if got := mgr.adds[0].Branch; got != tt.want {
+				t.Errorf("branch = %q, want %q", got, tt.want)
 			}
 		})
 	}
@@ -115,6 +125,7 @@ func TestSetup_IssueAcquiresTaggedWorktree(t *testing.T) {
 	outputs, err := Setup(context.Background(), SetupOptions{
 		ResourceID:  "https://github.com/acme/widgets/issues/42",
 		SessionName: "acme/widgets-42+review",
+		Tag:         "review",
 		Manager:     mgr,
 		GHClient:    &fakeGHClient{err: errors.New("no gh-api client configured for this test")},
 	})
@@ -626,6 +637,7 @@ func TestSetup_DeclaredBranchNamingParametersSteerTheAcquiredBranch(t *testing.T
 	_, err := Setup(context.Background(), SetupOptions{
 		ResourceID:          "https://github.com/acme/widgets/issues/42",
 		SessionName:         "acme/widgets-42+review",
+		Tag:                 "review",
 		IssueBranchTemplate: "work/{repo}-{number}",
 		TaggedBranchSuffix:  "/{tag}",
 		Manager:             mgr,
