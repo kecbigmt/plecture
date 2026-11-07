@@ -190,3 +190,85 @@ func TestUp_RejectsAnInitialTaskWithABareSessionName(t *testing.T) {
 		t.Errorf("tasks = %v, want none", tasks)
 	}
 }
+
+const escalatingCaseResourceDoc = `[case]
+kind  = "resource"
+match = '^case://(?P<n>[0-9]+)$'
+name  = { expr = "'case-' + match.n" }
+
+[case.observe]
+type   = "shell"
+script = "echo '{\"ticket_url\":\"ticket://7\"}'"
+
+[case.state_schema]
+type = "object"
+
+[case.state_schema.properties]
+ticket_url = { type = "string" }
+`
+
+const escalateTaskDoc = `[escalate]
+kind         = "task"
+description  = "Escalate a case to a ticket"
+resource     = "case"
+instructions = [{ text = "Escalate {{ resource.id }}." }]
+
+[[escalate.chains]]
+id       = "ticket"
+workflow = "ticket_flow"
+resource = { from = "resource.state.ticket_url" }
+task     = "ticket_work"
+
+[escalate.chains.when]
+all = [{ check = "resource.state.ticket_url", in = ["ticket://7"] }]
+`
+
+func TestTick_ChainSpawnStartsWithItsSelectedTaskBoundToTheSpawnedEntry(t *testing.T) {
+	store := testStore(t)
+	cfg := initialTaskFixture(t)
+	writeResourceDoc(t, cfg, "case", escalatingCaseResourceDoc)
+	addFixtureWorkflow(t, cfg, "ticket_flow", "ticket", "noop", "")
+	writeServiceTaskDoc(t, cfg, "escalate", escalateTaskDoc)
+
+	work, err := Up(cfg, store, UpParams{Identifier: identityCaseID, InitialTask: &InitialTask{TaskID: "escalate"}})
+	if err != nil {
+		t.Fatalf("up: %v", err)
+	}
+	res, err := TickSession(cfg, store, TickParams{SessionName: work.SessionName, SkipRefresh: true})
+	if err != nil {
+		t.Fatalf("tick: %v", err)
+	}
+	var spawn *ChainSpawn
+	for i := range res.Chains {
+		if res.Chains[i].ChainID == "ticket" {
+			spawn = &res.Chains[i]
+		}
+	}
+	if spawn == nil || !spawn.Spawned || spawn.InitialTask != "ticket_work" {
+		t.Fatalf("chain = %+v, want a spawn that starts with ticket_work", res.Chains)
+	}
+	spawned := store.Get(spawn.TargetSession)
+	if spawned == nil || spawned.ResourceID != "ticket://7" {
+		t.Fatalf("spawned = %+v, want a session for ticket://7", spawned)
+	}
+	initial := spawned.Tasks["initial"]
+	if initial == nil || initial.TaskID != "ticket_work" || initial.Resource != "ticket://7" {
+		t.Errorf("spawned initial = %+v, want ticket_work bound to ticket://7", initial)
+	}
+	if _, ok := spawned.Inputs["task"]; ok {
+		t.Errorf("spawned inputs = %v, want the selection kept out of them", spawned.Inputs)
+	}
+}
+
+func TestLoad_ChainTaskForAnotherResourceTypeIsRefused(t *testing.T) {
+	cfg := initialTaskFixture(t)
+	writeResourceDoc(t, cfg, "case", escalatingCaseResourceDoc)
+	addFixtureWorkflow(t, cfg, "ticket_flow", "ticket", "noop", "")
+	writeServiceTaskDoc(t, cfg, "escalate", strings.Replace(escalateTaskDoc, `task     = "ticket_work"`, `task     = "triage"`, 1))
+
+	store := testStore(t)
+	_, err := Up(cfg, store, UpParams{Identifier: identityCaseID, InitialTask: &InitialTask{TaskID: "escalate"}})
+	if err == nil || !strings.Contains(err.Error(), "PLECTURE-CFG-RESOURCE-OBSERVER-MISMATCH") {
+		t.Fatalf("err = %v, want the chain's task mismatch reported at load", err)
+	}
+}

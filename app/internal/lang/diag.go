@@ -114,7 +114,7 @@ var codeLayers = map[Code][]Layer{
 	CodeTaskInstructionControlFlow:    {LayerSemantic},
 	CodeFromRoot:                      {LayerStructural, LayerSemantic},
 	CodeFromPath:                      {LayerSemantic},
-	CodeResourceObserverMismatch:      {LayerInstantiation},
+	CodeResourceObserverMismatch:      {LayerSemantic, LayerInstantiation},
 	CodeFirstObserveFailed:            {LayerInstantiation},
 	CodeBinUnknown:                    {LayerSemantic},
 	CodeTerminalUnavailable:           {LayerSemantic},

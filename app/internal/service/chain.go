@@ -29,12 +29,15 @@ const (
 // not-already-active entry and fills Spawned/TargetSession in
 // with the result.
 type ChainSpawn struct {
-	ChainID       string `json:"chain_id"`
-	Task          string `json:"task,omitempty"`
-	Instance      string `json:"instance"`
-	Workflow      string `json:"workflow"`
-	Placement     string `json:"placement"`
-	Resource      string `json:"resource,omitempty"`
+	ChainID   string `json:"chain_id"`
+	Task      string `json:"task,omitempty"`
+	Instance  string `json:"instance"`
+	Workflow  string `json:"workflow"`
+	Placement string `json:"placement"`
+	Resource  string `json:"resource,omitempty"`
+	// InitialTask is the task the spawned session starts with, bound to
+	// Resource.
+	InitialTask   string `json:"initial_task,omitempty"`
 	Tag           string `json:"tag,omitempty"`
 	ParentSession string `json:"parent_session,omitempty"`
 	TargetSession string `json:"target_session,omitempty"`

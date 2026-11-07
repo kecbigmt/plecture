@@ -28,6 +28,7 @@ func evalDocumentChain(cfg *config.Config, store *state.Store, def config.Docume
 		Workflow:      def.Workflow,
 		Placement:     placement,
 		Resource:      resource,
+		InitialTask:   def.InitialTask,
 		Tag:           chainSpawnTag(def.ID, instance),
 		ParentSession: placementParent(placement, session, workName),
 	}

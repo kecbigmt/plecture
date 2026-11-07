@@ -327,6 +327,11 @@ func canonicalizeDocumentRefs(doc *TaskDocument, prefix string) error {
 			return fmt.Errorf("task %q chain %q: %w", doc.ID, doc.Chains[i].ID, err)
 		}
 		doc.Chains[i].Workflow = workflow
+		initialTask, err := referenceAddress(prefix, doc.Chains[i].InitialTask)
+		if err != nil {
+			return fmt.Errorf("task %q chain %q task: %w", doc.ID, doc.Chains[i].ID, err)
+		}
+		doc.Chains[i].InitialTask = initialTask
 	}
 	return nil
 }
