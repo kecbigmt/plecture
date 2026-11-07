@@ -222,14 +222,14 @@ func TestSetOutput_Task_MergesMutableKeys(t *testing.T) {
 			Scope:    contract.TaskScopeSession,
 			Status:   contract.TaskStatusProduced,
 			TaskID:   "review",
-			Resource: "pr-1",
+			Resource: testResource("pr-1"),
 			Outputs:  map[string]any{"pr_state": "open"},
 		},
 		"review#2": {
 			Scope:    contract.TaskScopeSession,
 			Status:   contract.TaskStatusProduced,
 			TaskID:   "review",
-			Resource: "pr-2",
+			Resource: testResource("pr-2"),
 			Outputs:  map[string]any{"checks_status": "FAILURE", "pr_state": "open"},
 		},
 	})

@@ -97,8 +97,16 @@ func ensureInitialTask(cfg *config.Config, store *state.Store, sessionName strin
 		return &Error{Code: ErrSessionNotFound, Message: fmt.Sprintf("session %q disappeared before its initial task was set up", sessionName)}
 	}
 	if existing := current.Tasks[initialInstance]; existing != nil {
-		if existing.TaskID != binding.TaskID || existing.Resource != binding.Resource {
-			return &Error{Code: ErrInvalidInput, Message: fmt.Sprintf("session %q already has initial task %q bound to %q; run `plect task cleanup initial --session %s` before selecting %q bound to %q", sessionName, existing.TaskID, existing.Resource, sessionName, binding.TaskID, binding.Resource)}
+		same := domain.Locator(existing.Resource) == binding.Resource
+		if !same {
+			bound, boundErr := boundResource(cfg, store, binding.Resource)
+			if boundErr != nil {
+				return boundErr
+			}
+			same = sameResource(existing.Resource, bound)
+		}
+		if existing.TaskID != binding.TaskID || !same {
+			return &Error{Code: ErrInvalidInput, Message: fmt.Sprintf("session %q already has initial task %q bound to %q; run `plect task cleanup initial --session %s` before selecting %q bound to %q", sessionName, existing.TaskID, domain.Locator(existing.Resource), sessionName, binding.TaskID, binding.Resource)}
 		}
 		if existing.Status == contract.TaskStatusProduced {
 			return nil
@@ -117,9 +125,13 @@ func ensureInitialTask(cfg *config.Config, store *state.Store, sessionName strin
 // keepInitialSelection records a failed initial instance when a forced
 // recreate fails before re-instantiating it, because that instance is the
 // only durable record of the selection and the next recreate captures it.
-func keepInitialSelection(store *state.Store, sessionName string, binding *initialTaskBinding, cause error) error {
+func keepInitialSelection(cfg *config.Config, store *state.Store, sessionName string, binding *initialTaskBinding, cause error) error {
 	if binding == nil {
 		return cause
+	}
+	bound, boundErr := boundResource(cfg, store, binding.Resource)
+	if boundErr != nil {
+		return &Error{Code: ErrExecutionFailed, Message: fmt.Sprintf("%v (and the initial task selection could not be kept: %v)", cause, boundErr)}
 	}
 	now := time.Now()
 	if err := store.Update(sessionName, func(s *domain.Session) error {
@@ -132,7 +144,7 @@ func keepInitialSelection(store *state.Store, sessionName string, binding *initi
 		s.Tasks[initialInstance] = &contract.TaskState{
 			Scope:    contract.TaskScopeSession,
 			TaskID:   binding.TaskID,
-			Resource: binding.Resource,
+			Resource: bound,
 			Name:     initialInstance,
 			Status:   contract.TaskStatusFailed,
 			Error:    fmt.Sprintf("not re-instantiated: %v", cause),

@@ -365,7 +365,7 @@ func ClassifyWorkflowRebase(old, next config.WorkflowRevision, session *domain.S
 	// would after the rebase rather than against the previous declaration.
 	publicOutputs := publicoutput.Declaration{Bindings: next.Workflow.Outputs, Schema: next.Workflow.OutputsSchema}
 	wfOutputs, _ := publicoutput.Evaluate(publicOutputs, retained, session.Inputs, publicoutput.ProducedOnly)
-	vars := task.SessionVars{Name: session.Name, ResourceID: session.ResourceID, ParentSession: session.ParentSession, Inputs: session.Inputs}
+	vars := task.SessionVars{Name: session.Name, ResourceID: domain.Locator(session.Resource), Tag: session.Tag, ParentSession: session.ParentSession, Inputs: session.Inputs}
 	for _, node := range nextPlan.UpOrder() {
 		if err := validateRebaseInputs(node.Inputs, outputs, wfOutputs, next.Workflow.Outputs, vars, deferred); err != nil {
 			result.raise(RebaseRecreate, fmt.Sprintf("node %q inputs cannot resolve from saved outputs: %v; add a default or destroy and recreate the session", node.NodeID, err))

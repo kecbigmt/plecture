@@ -21,7 +21,7 @@ func populationConfig(t *testing.T, queryMeans, timing, sessionInputs string) *c
 	dir := t.TempDir()
 	writeDefinition(t, dir, "observer", `[source]
 kind = "resource"
-match = "^urn:case:(?P<id>[A-Za-z0-9]+)$"
+match = "^urn:case:(?P<id>[A-Za-z0-9]+)(#[a-z]+)?$"
 name = { from = "match.id" }
 [source.observe]
 type = "exec"

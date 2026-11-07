@@ -508,7 +508,7 @@ func resolveSessionName(cfg *config.Config, store *state.Store, identifier strin
 	// Resource-type dispatch (pure/offline). cfg is nil in some unit tests.
 	if cfg != nil {
 		if disp, matched, err := dispatchResource(cfg, "", "", identifier); err == nil && matched {
-			name, _, err := reusableEntrySession(store, disp, "")
+			name, _, err := reusableEntrySession(store, &disp, "")
 			if err != nil {
 				return "", err
 			}

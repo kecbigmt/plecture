@@ -615,3 +615,149 @@ func TestMigrate_EntryResourceLeavesExistingSessionsUnrecorded(t *testing.T) {
 		t.Errorf("entry = (%v, %v) for a pre-existing session, want both NULL", resourceType, tag)
 	}
 }
+
+const preResourcesVersion = 20261107120000
+
+func TestMigrate_ResourcesRecordEveryExistingIdentifierOnceAndRepointEachReference(t *testing.T) {
+	db := openTestDB(t)
+	ctx := context.Background()
+	provider, err := goose.NewProvider(goose.DialectSQLite3, db.write, db.migrations)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := provider.UpTo(ctx, preResourcesVersion); err != nil {
+		t.Fatal(err)
+	}
+	now := formatTime(time.Now().UTC())
+	seed := []string{
+		`INSERT INTO sessions (id, name, status, resource_id, resource_type, tag, workflow, created_at, updated_at) VALUES ('s-live', 'case-1+review', 'up', 'case://1', 'case', 'review', 'wf', '` + now + `', '` + now + `')`,
+		`INSERT INTO sessions (id, name, status, destroyed_at, resource_id, workflow, created_at, updated_at) VALUES ('s-gone', 'case-1+wf', 'destroyed', '` + now + `', 'case://1', 'wf', '` + now + `', '` + now + `')`,
+		`INSERT INTO sessions (id, name, status, workflow, created_at, updated_at) VALUES ('s-bare', 'bare', 'down', 'wf', '` + now + `', '` + now + `')`,
+		`INSERT INTO task_instances (id, session_id, instance_name, task_id, scope, status, sequence, resource, named) VALUES ('ti-1', 's-live', 'initial', 'work', 'session', 'produced', 1, 'case://2', 1)`,
+		`INSERT INTO node_instances (session_id, node_id) VALUES ('s-live', 'n1')`,
+		`INSERT INTO node_executions (id, session_id, node_id, sequence, scope, status, resource) VALUES ('ne-1', 's-live', 'n1', 1, 'session', 'produced', 'case://3')`,
+		`INSERT INTO populations (workflow, name) VALUES ('wf', 'pop')`,
+		`INSERT INTO population_members (workflow, name, resource_id, generation) VALUES ('wf', 'pop', 'case://2', 1)`,
+		`INSERT INTO population_member_blockers (workflow, name, resource_id, position, reason) VALUES ('wf', 'pop', 'case://2', 0, 'busy')`,
+		`INSERT INTO subscription_retries (session_id, action, resource_id) VALUES ('s-live', 'subscribe', 'case://4')`,
+	}
+	for _, stmt := range seed {
+		if _, err := db.write.ExecContext(ctx, stmt); err != nil {
+			t.Fatalf("seed %q: %v", stmt, err)
+		}
+	}
+
+	if _, err := provider.Up(ctx); err != nil {
+		t.Fatalf("Up: %v", err)
+	}
+
+	byLocator := map[string]string{}
+	rows, err := db.write.QueryContext(ctx, `SELECT id, type, name, locator FROM resources`)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for rows.Next() {
+		var id, typ, name, locator string
+		if err := rows.Scan(&id, &typ, &name, &locator); err != nil {
+			t.Fatal(err)
+		}
+		if typ != "" || name != id {
+			t.Errorf("resource %s = (type %q, name %q), want no type and its id as its name", locator, typ, name)
+		}
+		if _, dup := byLocator[locator]; dup {
+			t.Errorf("identifier %q recorded twice", locator)
+		}
+		byLocator[locator] = id
+	}
+	if err := rows.Err(); err != nil {
+		t.Fatal(err)
+	}
+	if len(byLocator) != 4 {
+		t.Fatalf("resources = %v, want one row for each of case://1..4", byLocator)
+	}
+
+	references := []struct {
+		query   string
+		locator string
+	}{
+		{`SELECT resource_id FROM sessions WHERE id = 's-live'`, "case://1"},
+		{`SELECT resource_id FROM sessions WHERE id = 's-gone'`, "case://1"},
+		{`SELECT resource_id FROM task_instances WHERE id = 'ti-1'`, "case://2"},
+		{`SELECT resource_id FROM node_executions WHERE id = 'ne-1'`, "case://3"},
+		{`SELECT resource_id FROM population_members WHERE workflow = 'wf'`, "case://2"},
+		{`SELECT resource_id FROM population_member_blockers WHERE workflow = 'wf'`, "case://2"},
+		{`SELECT resource_id FROM subscription_retries WHERE session_id = 's-live'`, "case://4"},
+	}
+	for _, ref := range references {
+		var got string
+		if err := db.write.QueryRowContext(ctx, ref.query).Scan(&got); err != nil {
+			t.Fatalf("%s: %v", ref.query, err)
+		}
+		if got != byLocator[ref.locator] {
+			t.Errorf("%s = %q, want the row recorded for %s (%q)", ref.query, got, ref.locator, byLocator[ref.locator])
+		}
+	}
+	var bare sql.NullString
+	if err := db.write.QueryRowContext(ctx, `SELECT resource_id FROM sessions WHERE id = 's-bare'`).Scan(&bare); err != nil {
+		t.Fatal(err)
+	}
+	if bare.Valid {
+		t.Errorf("a session with no identifier references %q, want NULL", bare.String)
+	}
+	var tag string
+	if err := db.write.QueryRowContext(ctx, `SELECT tag FROM sessions WHERE id = 's-live'`).Scan(&tag); err != nil || tag != "review" {
+		t.Errorf("tag = %q, %v; want it kept", tag, err)
+	}
+	violations, err := db.write.QueryContext(ctx, `PRAGMA foreign_key_check`)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer violations.Close()
+	if violations.Next() {
+		t.Error("migrated database has a foreign key violation")
+	}
+}
+
+func TestMigrate_ResourcesDownRestoresTheIdentifierStrings(t *testing.T) {
+	db := openTestDB(t)
+	ctx := context.Background()
+	provider, err := goose.NewProvider(goose.DialectSQLite3, db.write, db.migrations)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := provider.UpTo(ctx, preResourcesVersion); err != nil {
+		t.Fatal(err)
+	}
+	now := formatTime(time.Now().UTC())
+	for _, stmt := range []string{
+		`INSERT INTO sessions (id, name, status, resource_id, workflow, created_at, updated_at) VALUES ('s-live', 's', 'up', 'case://1', 'wf', '` + now + `', '` + now + `')`,
+		`INSERT INTO task_instances (id, session_id, instance_name, task_id, scope, status, sequence, resource, named) VALUES ('ti-1', 's-live', 'initial', 'work', 'session', 'produced', 1, 'case://2', 1)`,
+		`INSERT INTO populations (workflow, name) VALUES ('wf', 'pop')`,
+		`INSERT INTO population_members (workflow, name, resource_id, generation) VALUES ('wf', 'pop', 'case://2', 1)`,
+		`INSERT INTO subscription_retries (session_id, action, resource_id) VALUES ('s-live', 'subscribe', 'case://4')`,
+	} {
+		if _, err := db.write.ExecContext(ctx, stmt); err != nil {
+			t.Fatalf("seed %q: %v", stmt, err)
+		}
+	}
+	if _, err := provider.Up(ctx); err != nil {
+		t.Fatalf("Up: %v", err)
+	}
+	if _, err := provider.DownTo(ctx, preResourcesVersion); err != nil {
+		t.Fatalf("DownTo: %v", err)
+	}
+	for query, want := range map[string]string{
+		`SELECT resource_id FROM sessions WHERE id = 's-live'`:                     "case://1",
+		`SELECT resource FROM task_instances WHERE id = 'ti-1'`:                    "case://2",
+		`SELECT resource_id FROM population_members WHERE workflow = 'wf'`:         "case://2",
+		`SELECT resource_id FROM subscription_retries WHERE session_id = 's-live'`: "case://4",
+	} {
+		var got string
+		if err := db.write.QueryRowContext(ctx, query).Scan(&got); err != nil {
+			t.Fatalf("%s: %v", query, err)
+		}
+		if got != want {
+			t.Errorf("%s = %q, want %q", query, got, want)
+		}
+	}
+}

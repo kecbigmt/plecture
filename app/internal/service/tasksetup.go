@@ -144,6 +144,10 @@ func TaskSetup(cfg *config.Config, store *state.Store, params TaskSetupParams) (
 	if extraErr != nil {
 		return nil, extraErr
 	}
+	bound, boundErr := boundResource(cfg, store, params.Resource)
+	if boundErr != nil {
+		return nil, boundErr
+	}
 
 	// The bound resource is the instance's own resource, exposed to its setup /
 	// done_when as .ResourceID (overriding the session's when present).
@@ -151,8 +155,8 @@ func TaskSetup(cfg *config.Config, store *state.Store, params TaskSetupParams) (
 	// one definition directly, not a workflow node) — a terminal binding is
 	// unavailable, same as taskcleanup.go's single-instance teardown.
 	vars := sessionVars(cfg, session, nil)
-	if params.Resource != "" {
-		vars.ResourceID = params.Resource
+	if bound != nil {
+		vars.ResourceID = bound.Locator
 	}
 	dir, dirErr := sessionWorkdir(cfg, session)
 	if dirErr != nil {
@@ -190,7 +194,7 @@ func TaskSetup(cfg *config.Config, store *state.Store, params TaskSetupParams) (
 			Status:        contract.TaskStatusProduced,
 			Directory:     dir,
 			Inputs:        inputs,
-			Resource:      params.Resource,
+			Resource:      bound,
 			Name:          params.Name,
 			ExtraDoneWhen: extraDoneWhen,
 			Seq:           task.NextSeq(s.Nodes, s.Tasks),
@@ -275,9 +279,9 @@ func TaskSetup(cfg *config.Config, store *state.Store, params TaskSetupParams) (
 	recordLifecycle(store, resolvedName, "task_setup", fmt.Sprintf("instantiated %s", key))
 	// Turn an `instruction` output into the plect.instruction event its workflow
 	// [[event.channel]] delivers.
-	appendInstruction(store, resolvedName, key, params.Resource, instructionOutput(resultOutputs))
+	appendInstruction(store, resolvedName, key, domain.Locator(bound), instructionOutput(resultOutputs))
 
-	subscribed, subscribeErrMsg := wireDeliveryOnSetup(cfg, store, resolvedName, params.Resource, false)
+	subscribed, subscribeErrMsg := wireDeliveryOnSetup(cfg, store, resolvedName, bound, false)
 
 	return &TaskSetupResult{
 		SessionName:    resolvedName,
@@ -285,7 +289,7 @@ func TaskSetup(cfg *config.Config, store *state.Store, params TaskSetupParams) (
 		TaskID:         params.TaskID,
 		Scope:          resolved.Scope,
 		Name:           params.Name,
-		Resource:       params.Resource,
+		Resource:       domain.Locator(bound),
 		Subscribed:     subscribed,
 		SubscribeError: subscribeErrMsg,
 		Outputs:        resultOutputs,

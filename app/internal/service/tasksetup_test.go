@@ -1,6 +1,7 @@
 package service
 
 import (
+	"github.com/kecbigmt/plecture/app/internal/domain"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -316,7 +317,7 @@ func TestTaskSetup_SessionScopedWhileDown(t *testing.T) {
 	if st == nil || st.Status != contract.TaskStatusProduced {
 		t.Fatalf("expected produced dynamic instance, got %+v", st)
 	}
-	if st.Resource != "pr-1" || st.TaskID != "review" {
+	if domain.Locator(st.Resource) != "pr-1" || st.TaskID != "review" {
 		t.Errorf("resource/task_id = %q/%q", st.Resource, st.TaskID)
 	}
 	if st.Name != "" {
@@ -718,7 +719,7 @@ func TestDestroy_StrictReverseSeqAcrossStaticDynamic(t *testing.T) {
 		"tmux":   {Scope: contract.TaskScopeRun, Status: contract.TaskStatusProduced, Seq: 2, Outputs: map[string]any{}},
 		"claude": {Scope: contract.TaskScopeRun, Status: contract.TaskStatusProduced, Seq: 4, Outputs: map[string]any{}},
 	}, map[string]*contract.TaskState{
-		"review#pr-1": {Scope: contract.TaskScopeSession, Status: contract.TaskStatusProduced, Seq: 3, TaskID: "review", Resource: "pr-1", Outputs: map[string]any{}},
+		"review#pr-1": {Scope: contract.TaskScopeSession, Status: contract.TaskStatusProduced, Seq: 3, TaskID: "review", Resource: testResource("pr-1"), Outputs: map[string]any{}},
 	})
 
 	obs := &orderObserver{}

@@ -218,3 +218,12 @@ func isAncestor(sessions map[string]*Session, ancestor, child string) bool {
 	}
 	return false
 }
+
+// Locator is the identifier resource actions receive for r, and empty for a
+// session or instance bound to no resource.
+func Locator(r *contract.Resource) string {
+	if r == nil {
+		return ""
+	}
+	return r.Locator
+}

@@ -44,7 +44,7 @@ func PopulationStatus(store *state.Store, workflow, population string) ([]Popula
 	for _, resource := range resources {
 		member := pop.Members[resource]
 		st := PopulationMemberStatus{
-			Resource: resource, Session: member.SessionName,
+			Resource: member.Resource.Locator, Session: member.SessionName,
 			PendingUp: member.PendingUp, Tombstoned: member.Tombstoned,
 			LastAdmitReason: member.LastAdmitReason, LastAdmitError: member.LastAdmitError,
 			ConsecutiveAdmitFailures: int(member.ConsecutiveAdmitFailures),
@@ -54,7 +54,7 @@ func PopulationStatus(store *state.Store, workflow, population string) ([]Popula
 			st.AdmitRetryAt = member.AdmitRetryAt.Format(time.RFC3339Nano)
 		}
 		if !member.Tombstoned && st.LastAdmitReason == "" && st.ConsecutiveAdmitFailures == 0 {
-			status := admitstatus.Member(log, member.SessionName, resource)
+			status := admitstatus.Member(log, member.SessionName, member.Resource.Locator)
 			st.LastAdmitReason, st.LastAdmitError, st.ConsecutiveAdmitFailures =
 				status.LastReason, status.LastError, status.Consecutive
 		}

@@ -25,10 +25,10 @@ func TestStore_PutAndGet(t *testing.T) {
 
 	now := time.Now()
 	session := &domain.Session{
-		Name:       "owner/repo-123",
-		ResourceID: "https://example.test/owner/repo/items/123",
-		CreatedAt:  now,
-		UpdatedAt:  now,
+		Name:      "owner/repo-123",
+		Resource:  testResource("https://example.test/owner/repo/items/123"),
+		CreatedAt: now,
+		UpdatedAt: now,
 	}
 
 	if err := store.Put(session); err != nil {
@@ -43,8 +43,8 @@ func TestStore_PutAndGet(t *testing.T) {
 	if got.Name != session.Name {
 		t.Errorf("Name = %q, want %q", got.Name, session.Name)
 	}
-	if got.ResourceID != session.ResourceID {
-		t.Errorf("ResourceID = %q, want %q", got.ResourceID, session.ResourceID)
+	if got.Resource == nil || got.Resource.Locator != session.Resource.Locator {
+		t.Errorf("Resource = %+v, want %+v", got.Resource, session.Resource)
 	}
 }
 
@@ -639,7 +639,7 @@ func TestFindByAlias(t *testing.T) {
 	store := NewStore(t.TempDir())
 	url := "https://github.com/org/repo/issues/9"
 	for _, name := range []string{"org/repo-9", "org/repo-9+review"} {
-		if err := store.Put(&domain.Session{Name: name, ResourceID: url, Alias: url}); err != nil {
+		if err := store.Put(&domain.Session{Name: name, Resource: testResource(url), Alias: url}); err != nil {
 			t.Fatal(err)
 		}
 	}

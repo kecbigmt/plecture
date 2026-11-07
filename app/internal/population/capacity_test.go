@@ -54,16 +54,16 @@ command = "true"
 			coordinator := newCapacityCoordinator(func() *config.Config { return cfg }, store, logStore, admitstatus.NewCache(logStore))
 			coordinator.setDefinitions(definitions)
 			if err := store.UpdatePopulation(populationKey(def), func(population *state.PopulationState) error {
-				population.Members["urn:case:new"] = &state.PopulationMember{ResourceID: "urn:case:new", PendingUp: true}
-				population.Members["urn:case:owned"] = &state.PopulationMember{
-					ResourceID: "urn:case:owned", SessionName: "owned+agent", PendingUp: true,
+				population.Members["new"] = &state.PopulationMember{Resource: sourceResource("urn:case:new"), PendingUp: true}
+				population.Members["owned"] = &state.PopulationMember{
+					Resource: sourceResource("urn:case:owned"), SessionName: "owned+agent", PendingUp: true,
 				}
 				return nil
 			}); err != nil {
 				t.Fatal(err)
 			}
 			if err := store.Put(&contract.Session{
-				Name: "owned+agent", ResourceID: "urn:case:owned",
+				Name: "owned+agent", Resource: sourceRef("urn:case:owned"),
 				Population: &contract.PopulationProvenance{Workflow: def.Workflow.Address, Name: def.Population.Name},
 			}); err != nil {
 				t.Fatal(err)
@@ -135,16 +135,16 @@ command = "true"
 	}
 
 	if err := store.UpdatePopulation(populationKey(def), func(population *state.PopulationState) error {
-		population.Members["urn:case:new"] = &state.PopulationMember{ResourceID: "urn:case:new", PendingUp: true}
-		population.Members["urn:case:broken"] = &state.PopulationMember{
-			ResourceID: "urn:case:broken", SessionName: "broken+agent", PendingUp: true,
+		population.Members["new"] = &state.PopulationMember{Resource: sourceResource("urn:case:new"), PendingUp: true}
+		population.Members["broken"] = &state.PopulationMember{
+			Resource: sourceResource("urn:case:broken"), SessionName: "broken+agent", PendingUp: true,
 		}
 		return nil
 	}); err != nil {
 		t.Fatal(err)
 	}
 	if err := store.Put(&contract.Session{
-		Name: "broken+agent", ResourceID: "urn:case:broken",
+		Name: "broken+agent", Resource: sourceRef("urn:case:broken"),
 		Workflow:   def.Workflow.Address,
 		Population: &contract.PopulationProvenance{Workflow: def.Workflow.Address, Name: def.Population.Name},
 		Nodes: map[string]*contract.TaskState{
@@ -178,9 +178,9 @@ command = "true"
 func TestCapacityPriorityRetainedAfterCapacityRefusal(t *testing.T) {
 	coordinator, def, store, logStore, base := capacityFixture(t)
 	if err := store.UpdatePopulation(populationKey(def), func(population *state.PopulationState) error {
-		population.Members["urn:case:new"] = &state.PopulationMember{ResourceID: "urn:case:new", PendingUp: true}
-		population.Members["urn:case:queued"] = &state.PopulationMember{
-			ResourceID: "urn:case:queued", SessionName: "queued+agent", PendingUp: true,
+		population.Members["new"] = &state.PopulationMember{Resource: sourceResource("urn:case:new"), PendingUp: true}
+		population.Members["queued"] = &state.PopulationMember{
+			Resource: sourceResource("urn:case:queued"), SessionName: "queued+agent", PendingUp: true,
 		}
 		return nil
 	}); err != nil {
@@ -210,9 +210,9 @@ func TestCapacityPriorityRetainedAfterCapacityRefusal(t *testing.T) {
 func TestCapacityPriorityExcludesProvenanceConflict(t *testing.T) {
 	coordinator, def, store, logStore, base := capacityFixture(t)
 	if err := store.UpdatePopulation(populationKey(def), func(population *state.PopulationState) error {
-		population.Members["urn:case:new"] = &state.PopulationMember{ResourceID: "urn:case:new", PendingUp: true}
-		population.Members["urn:case:conflicted"] = &state.PopulationMember{
-			ResourceID: "urn:case:conflicted", SessionName: "conflicted+agent", PendingUp: true,
+		population.Members["new"] = &state.PopulationMember{Resource: sourceResource("urn:case:new"), PendingUp: true}
+		population.Members["conflicted"] = &state.PopulationMember{
+			Resource: sourceResource("urn:case:conflicted"), SessionName: "conflicted+agent", PendingUp: true,
 		}
 		return nil
 	}); err != nil {
@@ -240,9 +240,9 @@ func TestCapacityPriorityExcludesProvenanceConflict(t *testing.T) {
 func TestCapacityPriorityRecoversAfterAdmitOK(t *testing.T) {
 	coordinator, def, store, logStore, base := capacityFixture(t)
 	if err := store.UpdatePopulation(populationKey(def), func(population *state.PopulationState) error {
-		population.Members["urn:case:new"] = &state.PopulationMember{ResourceID: "urn:case:new", PendingUp: true}
-		population.Members["urn:case:recovered"] = &state.PopulationMember{
-			ResourceID: "urn:case:recovered", SessionName: "recovered+agent", PendingUp: true,
+		population.Members["new"] = &state.PopulationMember{Resource: sourceResource("urn:case:new"), PendingUp: true}
+		population.Members["recovered"] = &state.PopulationMember{
+			Resource: sourceResource("urn:case:recovered"), SessionName: "recovered+agent", PendingUp: true,
 		}
 		return nil
 	}); err != nil {
@@ -357,7 +357,7 @@ type = "noop"
 	if err != nil {
 		t.Fatal(err)
 	}
-	member := population.Members[resource]
+	member := population.Members[memberName(resource)]
 	if member == nil || !member.PendingUp || member.AdmitSuspended || member.ConsecutiveAdmitFailures != 0 || member.AdmitRetryAt.IsZero() {
 		t.Fatalf("queued member = %+v, want pending retry without a failure", member)
 	}
@@ -390,7 +390,7 @@ type = "noop"
 	if err != nil {
 		t.Fatal(err)
 	}
-	if got := population.Members[resource]; got.PendingUp || got.AdmitSuspended {
+	if got := population.Members[memberName(resource)]; got.PendingUp || got.AdmitSuspended {
 		t.Fatalf("member after wake = %+v, want completed admission", got)
 	}
 	session := store.Get(member.SessionName)
@@ -463,7 +463,7 @@ type = "noop"
 	if err != nil {
 		t.Fatal(err)
 	}
-	member := population.Members[resource]
+	member := population.Members[memberName(resource)]
 	if member == nil || member.SessionName == "" || member.AdmitRetryAt.IsZero() {
 		t.Fatalf("pending member = %+v, want queued admission", member)
 	}
@@ -504,7 +504,7 @@ type = "noop"
 		if err != nil {
 			t.Fatal(err)
 		}
-		retryAt := population.Members[resource].AdmitRetryAt
+		retryAt := population.Members[memberName(resource)].AdmitRetryAt
 		delay := retryAt.Sub(previousAttemptAt)
 		if delay <= previousDelay || delay > admitRetryMax {
 			t.Fatalf("wake-suspended retry delay %d = %s, want growth from %s up to %s", attempt, delay, previousDelay, admitRetryMax)
@@ -520,10 +520,10 @@ type = "noop"
 	if err != nil {
 		t.Fatal(err)
 	}
-	if delay := population.Members[resource].AdmitRetryAt.Sub(previousAttemptAt); delay != admitRetryMax {
+	if delay := population.Members[memberName(resource)].AdmitRetryAt.Sub(previousAttemptAt); delay != admitRetryMax {
 		t.Fatalf("last wake-suspended retry delay = %s, want capped at %s", delay, admitRetryMax)
 	}
-	if got := population.Members[resource]; !got.PendingUp || got.AdmitSuspended || got.ConsecutiveAdmitFailures != 0 || got.AdmitRetryAt.IsZero() {
+	if got := population.Members[memberName(resource)]; !got.PendingUp || got.AdmitSuspended || got.ConsecutiveAdmitFailures != 0 || got.AdmitRetryAt.IsZero() {
 		t.Fatalf("member after suspended admission waits = %+v, want pending without failures", got)
 	}
 	sleepsAfter, _, _, err = logStore.List(member.SessionName, 0, event.Filter{Types: []string{event.TypeSessionSleep}})
@@ -542,7 +542,7 @@ type = "noop"
 	if err != nil {
 		t.Fatal(err)
 	}
-	if got := population.Members[resource].AdmitRetryAt; !got.IsZero() {
+	if got := population.Members[memberName(resource)].AdmitRetryAt; !got.IsZero() {
 		t.Fatalf("retry after inbound wake = %s, want reset for prompt admission", got)
 	}
 	engine.now = func() time.Time { return wakeAt }
@@ -553,7 +553,7 @@ type = "noop"
 	if err != nil {
 		t.Fatal(err)
 	}
-	if got := population.Members[resource].AdmitRetryAt; !got.Equal(wakeAt.Add(admitRetryBase)) {
+	if got := population.Members[memberName(resource)].AdmitRetryAt; !got.Equal(wakeAt.Add(admitRetryBase)) {
 		t.Fatalf("retry after renewed wake = %s, want base interval after %s", got, wakeAt)
 	}
 	if _, err := service.Down(cfg, store, service.DownParams{Identifier: earlier.SessionName}); err != nil {
@@ -572,7 +572,7 @@ type = "noop"
 	if err != nil {
 		t.Fatal(err)
 	}
-	retryAt := population.Members[resource].AdmitRetryAt
+	retryAt := population.Members[memberName(resource)].AdmitRetryAt
 	engine.now = func() time.Time { return retryAt }
 	if err := engine.Reconcile(context.Background()); err != nil {
 		t.Fatalf("admit after inbound wake: %v", err)
@@ -592,14 +592,14 @@ func addCapacityMember(t *testing.T, def Definition, store *state.Store, logStor
 	if err := store.UpdatePopulation(populationKey(def), func(population *state.PopulationState) error {
 		population.Workflow = def.Workflow.Address
 		population.Name = def.Population.Name
-		population.Members[resource] = &state.PopulationMember{ResourceID: resource, SessionName: name, Generation: 1}
+		population.Members[memberName(resource)] = &state.PopulationMember{Resource: sourceResource(resource), SessionName: name, Generation: 1}
 		return nil
 	}); err != nil {
 		t.Fatal(err)
 	}
 	if err := store.Put(&contract.Session{
 		Name:       name,
-		ResourceID: resource,
+		Resource:   sourceRef(resource),
 		Workflow:   def.Workflow.Address,
 		Population: &contract.PopulationProvenance{Workflow: def.Workflow.Address, Name: def.Population.Name},
 		Nodes: map[string]*contract.TaskState{
@@ -675,7 +675,7 @@ func TestCapacityCandidatesExcludeAutoDownFalse(t *testing.T) {
 func setMemberAppearance(t *testing.T, def Definition, store *state.Store, resource string, at time.Time) {
 	t.Helper()
 	if err := store.UpdatePopulation(populationKey(def), func(population *state.PopulationState) error {
-		population.Members[resource].LastAppearance = at
+		population.Members[memberName(resource)].LastAppearance = at
 		return nil
 	}); err != nil {
 		t.Fatal(err)

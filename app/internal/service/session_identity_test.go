@@ -1,6 +1,9 @@
 package service
 
 import (
+	contract "github.com/kecbigmt/plecture/contracts/state"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 	"time"
@@ -122,8 +125,12 @@ func TestUp_RecordsTheEntryResourceOnTheSession(t *testing.T) {
 	if got == nil {
 		t.Fatal("session not recorded")
 	}
-	if got.ResourceType != "case" || got.ResourceID != identityCaseID || got.Tag != "review" {
-		t.Errorf("entry = (type %q, id %q, tag %q), want (case, %s, review)", got.ResourceType, got.ResourceID, got.Tag, identityCaseID)
+	want := contract.Resource{Type: "case", Name: "case-1", Locator: identityCaseID}
+	if got.Resource == nil || got.Resource.ID == "" || got.Tag != "review" {
+		t.Fatalf("entry = (%+v, tag %q), want a recorded resource and tag review", got.Resource, got.Tag)
+	}
+	if recorded := *got.Resource; recorded.Type != want.Type || recorded.Name != want.Name || recorded.Locator != want.Locator {
+		t.Errorf("resource = %+v, want %+v", recorded, want)
 	}
 }
 
@@ -142,8 +149,8 @@ func TestStatus_ReportsTheRecordedTagRatherThanParsingTheName(t *testing.T) {
 	if status.Identity.Tag != "" {
 		t.Errorf("tag = %q, want none: the resource name itself contains the separator", status.Identity.Tag)
 	}
-	if status.Identity.ResourceType != "plain" {
-		t.Errorf("resource type = %q, want plain", status.Identity.ResourceType)
+	if status.Identity.Resource == nil || status.Identity.Resource.Type != "plain" || status.Identity.Resource.Name != "a+t" {
+		t.Errorf("resource = %+v, want plain resource a+t", status.Identity.Resource)
 	}
 }
 
@@ -154,24 +161,6 @@ func TestUp_SameSessionNameWithADifferentEntryIsACollision(t *testing.T) {
 		params UpParams
 		want   string
 	}{
-		{
-			name: "different resource type",
-			seed: func(t *testing.T, cfg *config.Config, store *state.Store) {
-				writeResourceDoc(t, cfg, "alt", `[alt]
-kind  = "resource"
-match = '^alt://'
-name  = { expr = "'case-1'" }
-
-[alt.observe]
-type   = "shell"
-script = "echo '{}'"
-`)
-				addFixtureWorkflow(t, cfg, "alt_wf", "alt", "noop", "")
-				mustUp(t, cfg, store, UpParams{Identifier: identityCaseID})
-			},
-			params: UpParams{Identifier: "alt://x"},
-			want:   `resource "case"`,
-		},
 		{
 			name: "different tag",
 			seed: func(t *testing.T, cfg *config.Config, store *state.Store) {
@@ -209,7 +198,7 @@ script = "echo '{}'"
 				t.Fatalf("sessions = %d after a collision, want %d", len(after), len(before))
 			}
 			for name, session := range before {
-				if after[name].ResourceID != session.ResourceID || after[name].Workflow != session.Workflow {
+				if domain.Locator(after[name].Resource) != domain.Locator(session.Resource) || after[name].Workflow != session.Workflow {
 					t.Errorf("collision changed session %q: %+v -> %+v", name, session, after[name])
 				}
 			}
@@ -228,7 +217,7 @@ func TestResolveSession_ResourceIdentifierDoesNotReachAnotherEntrysSession(t *te
 	store := testStore(t)
 	cfg := identityFixture(t)
 	now := time.Now()
-	if err := store.Put(&domain.Session{Name: "case-1", Workflow: "flow", ResourceType: "alt", CreatedAt: now, UpdatedAt: now}); err != nil {
+	if err := store.Put(&domain.Session{Name: "case-1", Workflow: "flow", Resource: testResource("alt://1"), CreatedAt: now, UpdatedAt: now}); err != nil {
 		t.Fatal(err)
 	}
 
@@ -241,12 +230,142 @@ func TestResolveSessionName_ResourceIdentifierDoesNotNameAnotherEntrysSession(t 
 	store := testStore(t)
 	cfg := identityFixture(t)
 	now := time.Now()
-	if err := store.Put(&domain.Session{Name: "case-1", Workflow: "flow", ResourceType: "alt", CreatedAt: now, UpdatedAt: now}); err != nil {
+	if err := store.Put(&domain.Session{Name: "case-1", Workflow: "flow", Resource: testResource("alt://1"), CreatedAt: now, UpdatedAt: now}); err != nil {
 		t.Fatal(err)
 	}
 
 	name, err := resolveSessionName(cfg, store, identityCaseID)
 	if err == nil || !strings.Contains(err.Error(), "collides") {
 		t.Fatalf("resolveSessionName = (%q, %v), want a collision instead of naming another entry's session", name, err)
+	}
+}
+
+func addSpellingResource(t *testing.T, cfg *config.Config) {
+	t.Helper()
+	writeResourceDoc(t, cfg, "spell", `[spell]
+kind  = "resource"
+match = '^spell://(?P<n>[0-9]+)(/reply)?$'
+name  = { expr = "'spell-' + match.n" }
+
+[spell.observe]
+type   = "shell"
+script = "echo '{}'"
+`)
+	addFixtureWorkflow(t, cfg, "spell_wf", "spell", "noop", "")
+}
+
+func TestUp_TwoSpellingsOfOneResourceReachOneSessionAndOneRecord(t *testing.T) {
+	store := testStore(t)
+	cfg := identityFixture(t)
+	addSpellingResource(t, cfg)
+
+	first, err := Up(cfg, store, UpParams{Identifier: "spell://1"})
+	if err != nil {
+		t.Fatalf("first up: %v", err)
+	}
+	second, err := Up(cfg, store, UpParams{Identifier: "spell://1/reply"})
+	if err != nil {
+		t.Fatalf("second up through another spelling: %v", err)
+	}
+	if first.SessionName != "spell-1" || second.SessionName != first.SessionName || len(store.All()) != 1 {
+		t.Fatalf("sessions = %q then %q (%d live), want the one session spell-1", first.SessionName, second.SessionName, len(store.All()))
+	}
+	recorded, err := store.ResourceByName("spell-1")
+	if err != nil || recorded == nil {
+		t.Fatalf("resource spell-1 = %v, %v", recorded, err)
+	}
+	if recorded.Locator != "spell://1" {
+		t.Errorf("locator = %q, want the first spelling", recorded.Locator)
+	}
+	if session := store.Get("spell-1"); session.Resource == nil || session.Resource.ID != recorded.ID {
+		t.Errorf("session references %+v, want the recorded row %s", session.Resource, recorded.ID)
+	}
+}
+
+func TestUp_ANameAnotherResourceTypeHoldsIsRefusedWhenResolved(t *testing.T) {
+	store := testStore(t)
+	cfg := identityFixture(t)
+	writeResourceDoc(t, cfg, "alt", `[alt]
+kind  = "resource"
+match = '^alt://'
+name  = { expr = "'case-1'" }
+
+[alt.observe]
+type   = "shell"
+script = "echo '{}'"
+`)
+	addFixtureWorkflow(t, cfg, "alt_wf", "alt", "noop", "")
+	mustUp(t, cfg, store, UpParams{Identifier: identityCaseID})
+
+	_, err := Up(cfg, store, UpParams{Identifier: "alt://x", Tag: "other"})
+	if err == nil || !strings.Contains(err.Error(), `already holds`) || !strings.Contains(err.Error(), `resource "case"`) {
+		t.Fatalf("err = %v, want the name refused because resource case holds it", err)
+	}
+	if len(store.All()) != 1 {
+		t.Errorf("sessions = %v, want only the case session", store.All())
+	}
+}
+
+func TestUp_ADerivedNameOutsideTheSessionNameRuleIsRefused(t *testing.T) {
+	store := testStore(t)
+	cfg := identityFixture(t)
+	writeResourceDoc(t, cfg, "dotted", `[dotted]
+kind  = "resource"
+match = '^dotted://(?P<n>[0-9]+)$'
+name  = { expr = "'dotted.' + match.n" }
+
+[dotted.observe]
+type   = "shell"
+script = "echo '{}'"
+`)
+	addFixtureWorkflow(t, cfg, "dotted_wf", "dotted", "noop", "")
+
+	_, err := Up(cfg, store, UpParams{Identifier: "dotted://1"})
+	if err == nil || !strings.Contains(err.Error(), `"dotted.1"`) || !strings.Contains(err.Error(), "not a valid resource name") {
+		t.Fatalf("err = %v, want the derived name dotted.1 refused", err)
+	}
+	if len(store.All()) != 0 {
+		t.Errorf("sessions = %v, want none", store.All())
+	}
+}
+
+func TestUp_SessionTagIsTheRecordedTagWhenTheResourceNameHoldsTheSeparator(t *testing.T) {
+	store := testStore(t)
+	cfg := identityFixture(t)
+	addPlainResource(t, cfg)
+	if err := os.WriteFile(filepath.Join(cfg.BaseDir, "tasks", "tagged.toml"), []byte(`[tagged]
+kind  = "effect"
+scope = "session"
+
+[tagged.setup]
+type   = "shell"
+script = '''printf '{"tag":"%s"}' "$tag"'''
+
+[tagged.setup.bind]
+tag = { from = "session.tag", default = "" }
+
+[tagged.health.alive]
+type = "noop"
+
+[tagged.outputs_schema]
+type = "object"
+
+[tagged.outputs_schema.properties.tag]
+type = "string"
+`), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	addFixtureWorkflow(t, cfg, "plain_wf", "plain", "tagged", "")
+
+	res, err := Up(cfg, store, UpParams{Identifier: "plain://a+b", Tag: "t"})
+	if err != nil {
+		t.Fatalf("up: %v", err)
+	}
+	if res.SessionName != "a+b+t" {
+		t.Fatalf("session = %q, want a+b+t", res.SessionName)
+	}
+	node := store.Get("a+b+t").Nodes["tagged"]
+	if node == nil || node.Outputs["tag"] != "t" {
+		t.Fatalf("tagged node = %+v, want session.tag to read the recorded tag t", node)
 	}
 }

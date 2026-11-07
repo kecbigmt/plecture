@@ -243,7 +243,11 @@ func TestRun_ImportsAFullLegacyDirectoryAndRoundTrips(t *testing.T) {
 	if err != nil || pop == nil {
 		t.Fatalf("Population(wf1/pop) = %v, %v", pop, err)
 	}
-	if pop.Members["res-1"] == nil {
+	var imported bool
+	for _, member := range pop.Members {
+		imported = imported || member.Resource.Locator == "res-1"
+	}
+	if !imported {
 		t.Errorf("pop.Members = %+v, want res-1 present", pop.Members)
 	}
 

@@ -325,7 +325,7 @@ func TestSummaryFromListEntry_MapsRequiredAndOptionalFields(t *testing.T) {
 		DisplayStatus: "up · healthy",
 		Run:           domain.RunUp,
 		Health:        domain.HealthHealthy,
-		ResourceID:    "https://github.com/owner/repo/issues/1",
+		Resource:      testResource("https://github.com/owner/repo/issues/1"),
 		LastActiveAt:  &now,
 		ParentSession: "team",
 		Tasks: []service.TaskInstanceView{
@@ -336,7 +336,7 @@ func TestSummaryFromListEntry_MapsRequiredAndOptionalFields(t *testing.T) {
 	got := summaryFromListEntry(entry)
 
 	if got.SessionName != entry.SessionName || got.DisplayStatus != entry.DisplayStatus ||
-		got.ResourceId != entry.ResourceID {
+		got.ResourceId != entry.Resource.Locator {
 		t.Fatalf("required fields not carried through: %+v", got)
 	}
 	if got.LastActiveAt == nil || !got.LastActiveAt.Equal(now) {

@@ -29,6 +29,22 @@ CREATE TABLE workflow_revision_migration (
     completed INTEGER NOT NULL CHECK (completed IN (0, 1))
 );
 
+-- name is the slug a declaration's `name` derived, unique across types because
+-- a session takes its name from it. locator is the identifier first resolved
+-- to the row; a later spelling never replaces it. id is opaque: migrated rows
+-- carry another id shape, and nothing reads it. An empty type marks an
+-- identifier no declaration resolved, migrated rows included; such a row is
+-- named by its own id so it never holds a derived name.
+CREATE TABLE resources (
+    id TEXT PRIMARY KEY,
+    type TEXT NOT NULL,
+    name TEXT NOT NULL,
+    locator TEXT NOT NULL,
+    created_at TEXT NOT NULL
+);
+
+CREATE UNIQUE INDEX resources_name ON resources(name);
+
 CREATE TABLE sessions (
     id TEXT PRIMARY KEY,
     name TEXT NOT NULL,
@@ -37,11 +53,9 @@ CREATE TABLE sessions (
     destroyed_at TEXT,
     parent_session_id TEXT REFERENCES sessions(id) ON DELETE NO ACTION,
     root_session_id TEXT REFERENCES sessions(id) ON DELETE NO ACTION,
-    resource_id TEXT,
-    -- The entry resource a session was created for. NULL resource_type means
-    -- the session predates the record, so no later resource-addressed up can
-    -- prove it names the same entry.
-    resource_type TEXT,
+    -- The entry resource a session was created for; NULL for a session no
+    -- resource created.
+    resource_id TEXT REFERENCES resources(id),
     tag TEXT,
     alias TEXT,
     workflow TEXT NOT NULL,
@@ -78,6 +92,7 @@ CREATE TABLE sessions (
 CREATE UNIQUE INDEX sessions_live_name ON sessions(name) WHERE status <> 'destroyed';
 CREATE INDEX sessions_alias_idx ON sessions(alias);
 CREATE INDEX sessions_parent_idx ON sessions(parent_session_id);
+CREATE INDEX sessions_resource_idx ON sessions(resource_id);
 
 -- A cap-refusal streak is scoped to a session incarnation, not its reusable
 -- name. An empty fingerprint is represented by no row.
@@ -93,9 +108,11 @@ CREATE TABLE chain_attempts (
 CREATE TABLE subscription_retries (
     session_id TEXT NOT NULL REFERENCES sessions(id) ON DELETE CASCADE,
     action TEXT NOT NULL CHECK (action IN ('subscribe', 'unsubscribe')),
-    resource_id TEXT NOT NULL,
+    resource_id TEXT NOT NULL REFERENCES resources(id),
     PRIMARY KEY (session_id, action, resource_id)
 );
+
+CREATE INDEX subscription_retries_resource_idx ON subscription_retries(resource_id);
 
 -- Static workflow-DAG nodes' identity only; see node_executions below.
 CREATE TABLE node_instances (
@@ -114,7 +131,7 @@ CREATE TABLE node_executions (
     name TEXT,
     scope TEXT NOT NULL CHECK (scope IN ('session', 'run')),
     status TEXT NOT NULL CHECK (status IN ('produced', 'failed', 'cleaned')),
-    resource TEXT,
+    resource_id TEXT REFERENCES resources(id),
     subscription TEXT,
     inputs_json TEXT CHECK (inputs_json IS NULL OR json_valid(inputs_json)),
     outputs_json TEXT CHECK (outputs_json IS NULL OR json_valid(outputs_json)),
@@ -135,6 +152,7 @@ CREATE TABLE node_executions (
 
 CREATE INDEX node_executions_session_node_idx ON node_executions(session_id, node_id, sequence);
 CREATE UNIQUE INDEX node_executions_one_unreleased_idx ON node_executions(session_id, node_id) WHERE status <> 'cleaned';
+CREATE INDEX node_executions_resource_idx ON node_executions(resource_id);
 
 -- One row per layer of one execution's nested effect chain.
 CREATE TABLE node_execution_layers (
@@ -174,7 +192,7 @@ CREATE TABLE task_instances (
     scope TEXT NOT NULL CHECK (scope IN ('session', 'run')),
     status TEXT NOT NULL CHECK (status IN ('produced', 'failed', 'cleaned')),
     sequence INTEGER NOT NULL,
-    resource TEXT,
+    resource_id TEXT REFERENCES resources(id),
     named boolean NOT NULL CHECK (named IN (0, 1)),
     inputs_json TEXT CHECK (inputs_json IS NULL OR json_valid(inputs_json)),
     outputs_json TEXT CHECK (outputs_json IS NULL OR json_valid(outputs_json)),
@@ -192,6 +210,7 @@ CREATE TABLE task_instances (
 );
 
 CREATE UNIQUE INDEX task_instances_session_id_instance_name ON task_instances(session_id, instance_name);
+CREATE INDEX task_instances_resource_idx ON task_instances(resource_id);
 
 -- See node_instance_layers; keyed by task_instances.id.
 CREATE TABLE task_instance_layers (
@@ -265,7 +284,7 @@ CREATE TABLE populations (
 CREATE TABLE population_members (
     workflow TEXT NOT NULL,
     name TEXT NOT NULL,
-    resource_id TEXT NOT NULL,
+    resource_id TEXT NOT NULL REFERENCES resources(id),
     session_name TEXT,
     generation INTEGER NOT NULL DEFAULT 0,
     accepted_at TEXT,
@@ -284,6 +303,8 @@ CREATE TABLE population_members (
     PRIMARY KEY (workflow, name, resource_id),
     FOREIGN KEY (workflow, name) REFERENCES populations(workflow, name) ON DELETE CASCADE
 );
+
+CREATE INDEX population_members_resource_idx ON population_members(resource_id);
 
 -- Ordered list; same replace-wholesale pattern as task_done_when_unsatisfied_items.
 CREATE TABLE population_member_blockers (

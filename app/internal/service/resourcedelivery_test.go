@@ -111,7 +111,7 @@ args = ["`+record+`"]
 	}
 	store := testStore(t)
 	seedSessionWithNodes(t, store, "s", "org/repo", 1, "work", nil)
-	if subscribed, msg := wireDeliveryOnSetup(cfg, store, "s", resource, false); subscribed || msg != "" {
+	if subscribed, msg := wireDeliveryOnSetup(cfg, store, "s", testResource(resource), false); subscribed || msg != "" {
 		t.Fatalf("automatic delivery subscribed=%v message=%q, want a quiet skip", subscribed, msg)
 	}
 	if got := subscriptionRetryCount(t, store, "s", retrySubscribe, resource, false); got != 0 {

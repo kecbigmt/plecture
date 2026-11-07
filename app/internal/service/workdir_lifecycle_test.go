@@ -151,13 +151,13 @@ func wdPutSession(t *testing.T, store *state.Store, name, workflow string) {
 	t.Helper()
 	now := time.Now()
 	if err := store.Put(&domain.Session{
-		Name:       name,
-		ResourceID: wdIssueURL,
-		Workflow:   workflow,
-		Nodes:      map[string]*contract.TaskState{},
-		Tasks:      map[string]*contract.TaskState{},
-		CreatedAt:  now,
-		UpdatedAt:  now,
+		Name:      name,
+		Resource:  testResource(wdIssueURL),
+		Workflow:  workflow,
+		Nodes:     map[string]*contract.TaskState{},
+		Tasks:     map[string]*contract.TaskState{},
+		CreatedAt: now,
+		UpdatedAt: now,
 	}); err != nil {
 		t.Fatal(err)
 	}

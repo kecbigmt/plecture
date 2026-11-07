@@ -142,7 +142,7 @@ func TestRunCleanup_DynamicInstanceReadsItsOwnOutputs(t *testing.T) {
 		},
 	}}
 	tasks := map[string]*contract.TaskState{
-		"review#1": {Scope: "session", Status: contract.TaskStatusProduced, Resource: "pr-99", Outputs: map[string]any{"resource": "pr-99"}},
+		"review#1": {Scope: "session", Status: contract.TaskStatusProduced, Resource: testResource("pr-99"), Outputs: map[string]any{"resource": "pr-99"}},
 	}
 	if err := RunCleanup(context.Background(), []Resolved{r}, SessionVars{ResourceID: "session-res"}, tasks, nil); err != nil {
 		t.Fatalf("RunCleanup: %v", err)

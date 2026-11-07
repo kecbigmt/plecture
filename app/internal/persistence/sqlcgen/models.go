@@ -43,7 +43,7 @@ type NodeExecution struct {
 	Name                    sql.NullString
 	Scope                   string
 	Status                  string
-	Resource                sql.NullString
+	ResourceID              sql.NullString
 	Subscription            sql.NullString
 	InputsJson              sql.NullString
 	OutputsJson             sql.NullString
@@ -122,6 +122,14 @@ type PopulationMemberBlocker struct {
 	Reason     string
 }
 
+type Resource struct {
+	ID        string
+	Type      string
+	Name      string
+	Locator   string
+	CreatedAt string
+}
+
 type Session struct {
 	ID                       string
 	Name                     string
@@ -131,7 +139,6 @@ type Session struct {
 	ParentSessionID          sql.NullString
 	RootSessionID            sql.NullString
 	ResourceID               sql.NullString
-	ResourceType             sql.NullString
 	Tag                      sql.NullString
 	Alias                    sql.NullString
 	Workflow                 string
@@ -210,7 +217,7 @@ type TaskInstance struct {
 	Scope                   string
 	Status                  string
 	Sequence                int64
-	Resource                sql.NullString
+	ResourceID              sql.NullString
 	Named                   bool
 	InputsJson              sql.NullString
 	OutputsJson             sql.NullString

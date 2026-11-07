@@ -78,19 +78,20 @@ func seedSessionSplit(t *testing.T, store interface {
 	if tasks == nil {
 		tasks = map[string]*contract.TaskState{}
 	}
+	url := fmt.Sprintf("https://github.com/%s/issues/%d", ownerRepo, number)
 	session := &domain.Session{
-		Name:       sessionName,
-		ResourceID: fmt.Sprintf("https://github.com/%s/issues/%d", ownerRepo, number),
-		Workflow:   workflow,
-		Nodes:      nodes,
-		Tasks:      tasks,
-		CreatedAt:  now,
-		UpdatedAt:  now,
+		Name:      sessionName,
+		Resource:  testResource(url),
+		Workflow:  workflow,
+		Nodes:     nodes,
+		Tasks:     tasks,
+		CreatedAt: now,
+		UpdatedAt: now,
 	}
 	// The seed records the entry a resource-addressed up of its issue would
 	// have recorded, so a later up of that issue finds the same entry.
 	if instance := fmt.Sprintf("%s-%d", ownerRepo, number); sessionName == instance || strings.HasPrefix(sessionName, instance+"+") {
-		session.ResourceType = "issue"
+		session.Resource = &contract.Resource{Type: "issue", Name: instance, Locator: url}
 		session.Tag = strings.TrimPrefix(strings.TrimPrefix(sessionName, instance), "+")
 	}
 	if workflow != "" {
@@ -900,7 +901,7 @@ func TestUp_ForceRecreateResetsRuntimeWithoutPrev(t *testing.T) {
 	if persisted.ParentSession != "org/repo-parent" || len(persisted.Children) != 1 || persisted.Children[0] != "org/repo-child" {
 		t.Fatalf("relations changed after force recreate: %+v", persisted)
 	}
-	if persisted.Alias != "resource-alias" || persisted.ResourceID != "https://github.com/org/repo/issues/12" {
+	if persisted.Alias != "resource-alias" || domain.Locator(persisted.Resource) != "https://github.com/org/repo/issues/12" {
 		t.Fatalf("identity fields changed after force recreate: %+v", persisted)
 	}
 	if got, err := Workdir(cfg, store, sessionName); err != nil || got != newWorkdirPath {
@@ -1034,8 +1035,8 @@ func TestUp_ForceRecreateCleanupFailurePreservesInspectableState(t *testing.T) {
 	if persisted.ParentSession != "org/repo-parent" || len(persisted.Children) != 1 || persisted.Children[0] != "org/repo-child" {
 		t.Fatalf("relations changed after failed force recreate: %+v", persisted)
 	}
-	if persisted.ResourceID != "https://github.com/org/repo/issues/15" {
-		t.Fatalf("ResourceID = %q, want preserved binding", persisted.ResourceID)
+	if domain.Locator(persisted.Resource) != "https://github.com/org/repo/issues/15" {
+		t.Fatalf("ResourceID = %q, want preserved binding", domain.Locator(persisted.Resource))
 	}
 	if persisted.Health == nil || persisted.LastTickAt.IsZero() || persisted.TickBackoff == nil {
 		t.Fatalf("runtime observation fields were reset after cleanup failure: %+v", persisted)
@@ -1146,8 +1147,8 @@ func TestUp_ForceRecreateWorkdirSetupFailurePersistsInspectableState(t *testing.
 	if persisted.ParentSession != "org/repo-parent" || len(persisted.Children) != 1 || persisted.Children[0] != "org/repo-child" {
 		t.Fatalf("relations changed after failed force recreate: %+v", persisted)
 	}
-	if persisted.ResourceID != "https://github.com/org/repo/issues/13" {
-		t.Fatalf("ResourceID = %q, want preserved binding", persisted.ResourceID)
+	if domain.Locator(persisted.Resource) != "https://github.com/org/repo/issues/13" {
+		t.Fatalf("ResourceID = %q, want preserved binding", domain.Locator(persisted.Resource))
 	}
 	workflow := persisted.Nodes[workdirEffectID]
 	if workflow == nil || workflow.Status != contract.TaskStatusFailed {
@@ -1393,8 +1394,8 @@ func TestUp_ForceRecreateFailureStagesPersistInspectableState(t *testing.T) {
 			if persisted.ParentSession != "org/repo-parent" || len(persisted.Children) != 1 || persisted.Children[0] != "org/repo-child" {
 				t.Fatalf("relations changed after failed force recreate: %+v", persisted)
 			}
-			if persisted.ResourceID != fmt.Sprintf("https://github.com/org/repo/issues/%d", tc.sessionNum) {
-				t.Fatalf("ResourceID = %q, want preserved binding", persisted.ResourceID)
+			if domain.Locator(persisted.Resource) != fmt.Sprintf("https://github.com/org/repo/issues/%d", tc.sessionNum) {
+				t.Fatalf("ResourceID = %q, want preserved binding", domain.Locator(persisted.Resource))
 			}
 			want := tc.want(oldWorkdirPath, newWorkdirPath)
 			if got := persisted.Nodes[workdirEffectID].Outputs["workspace_dir"]; got != want.workdirPath {

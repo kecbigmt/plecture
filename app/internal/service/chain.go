@@ -136,5 +136,5 @@ func resolveSpawnSessionName(cfg *config.Config, store *state.Store, resource, w
 	if !matched {
 		return "", nil, nil, &Error{Code: ErrInvalidInput, Message: fmt.Sprintf("no resource declaration recognizes %q", resource)}
 	}
-	return entrySession(store, disp, tag)
+	return entrySession(store, &disp, tag)
 }

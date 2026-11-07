@@ -439,14 +439,14 @@ all = [
 func TestTombstoneStatusResult_ReportsNodesAndTasksSeparately(t *testing.T) {
 	const migratedTombstoneJSON = `{
 		"session_name": "org/repo-1",
-		"resource_id": "https://github.com/org/repo/issues/1",
+		"resource": {"name": "org/repo-1", "locator": "https://github.com/org/repo/issues/1"},
 		"workflow": "default",
 		"nodes": {
 			"@workflow": {"scope": "session", "status": "cleaned", "outputs": {"branch": "issue/1"}},
 			"tmux": {"scope": "run", "status": "cleaned", "outputs": {}}
 		},
 		"tasks": {
-			"review#1": {"scope": "session", "status": "produced", "task_id": "review", "resource": "pr-1", "outputs": {"checks_status": "SUCCESS"}}
+			"review#1": {"scope": "session", "status": "produced", "task_id": "review", "resource": {"name": "pr-1", "locator": "pr-1"}, "outputs": {"checks_status": "SUCCESS"}}
 		},
 		"created_at": "2026-01-01T00:00:00Z",
 		"updated_at": "2026-01-02T00:00:00Z",
@@ -484,7 +484,7 @@ func TestTombstoneStatusResult_TasksOnlyShapeIsNotMistakenForLegacy(t *testing.T
 	const tasksOnlyTombstoneJSON = `{
 		"session_name": "org/repo-2",
 		"tasks": {
-			"review#1": {"scope": "session", "status": "produced", "task_id": "review", "resource": "pr-2", "outputs": {}}
+			"review#1": {"scope": "session", "status": "produced", "task_id": "review", "resource": {"name": "pr-2", "locator": "pr-2"}, "outputs": {}}
 		},
 		"created_at": "2026-01-01T00:00:00Z",
 		"updated_at": "2026-01-02T00:00:00Z",

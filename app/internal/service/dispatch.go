@@ -7,6 +7,7 @@ import (
 	"strings"
 
 	"github.com/kecbigmt/plecture/app/internal/config"
+	contract "github.com/kecbigmt/plecture/contracts/state"
 )
 
 // validSessionNameRE is plect's own conservative session id charset: ids
@@ -65,10 +66,11 @@ func SessionGuardForOwnSession(sessionName string) (string, error) {
 	return "^" + regexp.QuoteMeta(sessionName) + "($|/)", nil
 }
 
+// Resource is what the identifier derives, before it is reconciled with the
+// recorded row (see recordedResource).
 type dispatchResult struct {
-	Workflow    config.WorkflowFile
-	ResourceKey string
-	Name        string
+	Workflow config.WorkflowFile
+	Resource contract.Resource
 }
 
 // resolveResource treats two matching declarations as an ambiguity, since the
@@ -94,6 +96,9 @@ func resolveResource(resources map[string]config.ResourceDef, id string) (key, n
 	case 0:
 		return "", "", false, nil
 	case 1:
+		if err := validateResourceName(key, name); err != nil {
+			return "", "", false, err
+		}
 		return key, name, true, nil
 	}
 	return "", "", false, &Error{Code: ErrInvalidInput, Message: fmt.Sprintf("resource %q matches more than one resource declaration (%s)", id, strings.Join(hits, ", "))}
@@ -135,7 +140,7 @@ func dispatchResource(cfg *config.Config, invocationDir, flag, resource string) 
 		if wf.Resource != key {
 			return dispatchResult{}, false, &Error{Code: ErrInvalidInput, Message: fmt.Sprintf("workflow %q accepts resource %q, but %q resolves to resource %q", flag, wf.Resource, resource, key)}
 		}
-		return dispatchResult{Workflow: wf, ResourceKey: key, Name: name}, true, nil
+		return dispatchResult{Workflow: wf, Resource: contract.Resource{Type: key, Name: name, Locator: resource}}, true, nil
 	}
 
 	var candidates, explicitOnly []config.WorkflowFile
@@ -155,7 +160,7 @@ func dispatchResource(cfg *config.Config, invocationDir, flag, resource string) 
 	case 0:
 		return dispatchResult{}, false, noWorkflowError(key, resource, explicitOnly, workflows, addresses)
 	case 1:
-		return dispatchResult{Workflow: candidates[0], ResourceKey: key, Name: name}, true, nil
+		return dispatchResult{Workflow: candidates[0], Resource: contract.Resource{Type: key, Name: name, Locator: resource}}, true, nil
 	}
 	// Addresses, not ids: two plugins may declare one id, and a list that
 	// printed it twice would name nothing the reader could pass back.

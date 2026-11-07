@@ -195,7 +195,7 @@ script = "touch '`+log+`'"
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := mergeTasksWithSubscriptions(store, "one", session, wired); err != nil {
+	if err := mergeTasksWithSubscriptions(cfg, store, "one", session, wired); err != nil {
 		t.Fatal(err)
 	}
 	if got := subscriptionRetryCount(t, store, "one", retrySubscribe, "thread://one", false); got != 1 {
@@ -280,7 +280,7 @@ script = "touch '`+log+`'"
 	store := testStore(t)
 	seedSessionWithNodes(t, store, "one", "org/repo", 1, "work", nil)
 	if err := store.Update("one", func(s *domain.Session) error {
-		s.ResourceID = resource
+		s.Resource = testResource(resource)
 		return nil
 	}); err != nil {
 		t.Fatal(err)

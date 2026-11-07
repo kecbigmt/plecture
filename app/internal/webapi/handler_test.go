@@ -48,8 +48,8 @@ func (f *fakeReader) EventPage(name string, p service.EventPageParams) (service.
 func TestHandleList_ReturnsEveryEntryAsAnEnvelope(t *testing.T) {
 	now := time.Now()
 	svc := &fakeReader{entries: []service.ListEntry{
-		{SessionName: "team/workspace-a", DisplayStatus: "up", Run: domain.RunUp, ResourceID: "r1", LastActiveAt: &now},
-		{SessionName: "team/workspace-b", DisplayStatus: "down", Run: domain.RunDown, ResourceID: "r2"},
+		{SessionName: "team/workspace-a", DisplayStatus: "up", Run: domain.RunUp, Resource: testResource("r1"), LastActiveAt: &now},
+		{SessionName: "team/workspace-b", DisplayStatus: "down", Run: domain.RunDown, Resource: testResource("r2")},
 	}}
 
 	rec := doRequest(t, svc, http.MethodGet, "/sessions")
@@ -75,8 +75,8 @@ func TestHandleList_ReturnsEveryEntryAsAnEnvelope(t *testing.T) {
 // JSON preserves slice order regardless of what that order is.
 func TestHandleList_DoesNotReorderWhatServiceListReturns(t *testing.T) {
 	svc := &fakeReader{entries: []service.ListEntry{
-		{SessionName: "z/last", ResourceID: "r1"},
-		{SessionName: "a/first", ResourceID: "r2"},
+		{SessionName: "z/last", Resource: testResource("r1")},
+		{SessionName: "a/first", Resource: testResource("r2")},
 	}}
 
 	rec := doRequest(t, svc, http.MethodGet, "/sessions")

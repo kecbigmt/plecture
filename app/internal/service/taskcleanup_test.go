@@ -520,12 +520,12 @@ func TestShouldUnsubscribe(t *testing.T) {
 		want     bool
 	}{
 		{"nil session (destroyed mid-cleanup) has nothing left to need it", nil, "r", true},
-		{"present session still needs the resource as its primary", &domain.Session{ResourceID: "r"}, "r", false},
-		{"present session no longer needs the resource", &domain.Session{ResourceID: "other"}, "r", true},
+		{"present session still needs the resource as its primary", &domain.Session{Resource: testResource("r")}, "r", false},
+		{"present session no longer needs the resource", &domain.Session{Resource: testResource("other")}, "r", true},
 	}
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
-			if got := shouldUnsubscribe(tc.session, tc.resource); got != tc.want {
+			if got := shouldUnsubscribe(nil, tc.session, *testResource(tc.resource)); got != tc.want {
 				t.Errorf("shouldUnsubscribe(%+v, %q) = %v, want %v", tc.session, tc.resource, got, tc.want)
 			}
 		})

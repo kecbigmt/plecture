@@ -23,7 +23,7 @@ func TestFailedInitialTaskIsNotAcceptedAsSuccessfullyInstalled(t *testing.T) {
 		Name: "member",
 		Tasks: map[string]*contract.TaskState{
 			"initial": {
-				Name: "initial", TaskID: "work", Resource: "urn:case:a",
+				Name: "initial", TaskID: "work", Resource: sourceRef("urn:case:a"),
 				Scope: contract.TaskScopeSession, Status: contract.TaskStatusFailed,
 			},
 		},
@@ -67,7 +67,7 @@ command = "true"
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := store.Put(&contract.Session{Name: name, ResourceID: "urn:case:b", Workflow: definition.Workflow.Address, Population: provenance}); err != nil {
+	if err := store.Put(&contract.Session{Name: name, Resource: sourceRef("urn:case:b"), Workflow: definition.Workflow.Address, Population: provenance}); err != nil {
 		t.Fatal(err)
 	}
 
@@ -135,11 +135,14 @@ command = "true"
 	if err != nil {
 		t.Fatal(err)
 	}
-	for _, recorded := range []struct{ label, resourceType string }{{"another type", "other"}, {"no recorded entry", ""}} {
+	for _, recorded := range []struct {
+		label    string
+		resource *contract.Resource
+	}{{"another type", &contract.Resource{Type: "other", Name: "a", Locator: "other://a"}}, {"no recorded entry", nil}} {
 		t.Run(recorded.label, func(t *testing.T) {
 			store := state.NewStore(t.TempDir())
 			seedPopulationRow(t, store, definition)
-			if err := store.Put(&contract.Session{Name: name, ResourceID: "urn:case:a", ResourceType: recorded.resourceType, Workflow: definition.Workflow.Address, Population: provenance}); err != nil {
+			if err := store.Put(&contract.Session{Name: name, Resource: recorded.resource, Workflow: definition.Workflow.Address, Population: provenance}); err != nil {
 				t.Fatal(err)
 			}
 

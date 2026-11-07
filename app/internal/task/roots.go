@@ -71,6 +71,9 @@ func sessionRoots(ctx RenderContext) lang.Roots {
 	if ctx.Session.ParentSession != "" {
 		session["parent"] = ctx.Session.ParentSession
 	}
+	if ctx.Session.Tag != "" {
+		session["tag"] = ctx.Session.Tag
+	}
 	if inputs := normalizeOutputs(ctx.Session.Inputs); len(inputs) > 0 {
 		session["inputs"] = inputs
 	}

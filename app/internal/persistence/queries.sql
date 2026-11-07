@@ -3,14 +3,14 @@
 -- name: InsertSession :exec
 INSERT INTO sessions (
     id, name, status, sleep_since, destroyed_at, parent_session_id, root_session_id,
-    resource_id, resource_type, tag, alias, workflow, workflow_revision, invocation_dir,
+    resource_id, tag, alias, workflow, workflow_revision, invocation_dir,
     population_workflow, population_name, inputs_json,
     health_last_checked_at, health_last_activity_at, health_last_fingerprint,
     health_last_state, health_last_reason, health_last_notified_at, health_notify_count,
     health_unevaluable_cycles,
     tick_consecutive_unchanged, tick_last_fingerprint, last_tick_at,
     created_at, updated_at
-) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);
+) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);
 
 -- name: UpdateSessionByID :exec
 UPDATE sessions SET
@@ -21,7 +21,6 @@ UPDATE sessions SET
     parent_session_id = ?,
     root_session_id = ?,
     resource_id = ?,
-    resource_type = ?,
     tag = ?,
     alias = ?,
     workflow = ?,
@@ -46,7 +45,7 @@ WHERE id = ?;
 
 -- name: GetLiveSession :one
 SELECT id, name, status, sleep_since, destroyed_at, parent_session_id, root_session_id,
-       resource_id, resource_type, tag, alias, workflow, workflow_revision, invocation_dir,
+       resource_id, tag, alias, workflow, workflow_revision, invocation_dir,
        population_workflow, population_name, inputs_json,
        health_last_checked_at, health_last_activity_at, health_last_fingerprint,
        health_last_state, health_last_reason, health_last_notified_at, health_notify_count,
@@ -57,7 +56,7 @@ FROM sessions WHERE name = ? AND status <> 'destroyed';
 
 -- name: GetLatestDestroyedSession :one
 SELECT id, name, status, sleep_since, destroyed_at, parent_session_id, root_session_id,
-       resource_id, resource_type, tag, alias, workflow, workflow_revision, invocation_dir,
+       resource_id, tag, alias, workflow, workflow_revision, invocation_dir,
        population_workflow, population_name, inputs_json,
        health_last_checked_at, health_last_activity_at, health_last_fingerprint,
        health_last_state, health_last_reason, health_last_notified_at, health_notify_count,
@@ -71,7 +70,7 @@ LIMIT 1;
 
 -- name: ListLiveSessions :many
 SELECT id, name, status, sleep_since, destroyed_at, parent_session_id, root_session_id,
-       resource_id, resource_type, tag, alias, workflow, workflow_revision, invocation_dir,
+       resource_id, tag, alias, workflow, workflow_revision, invocation_dir,
        population_workflow, population_name, inputs_json,
        health_last_checked_at, health_last_activity_at, health_last_fingerprint,
        health_last_state, health_last_reason, health_last_notified_at, health_notify_count,
@@ -82,7 +81,7 @@ FROM sessions WHERE status <> 'destroyed' ORDER BY name;
 
 -- name: ListLiveSessionsByAlias :many
 SELECT id, name, status, sleep_since, destroyed_at, parent_session_id, root_session_id,
-       resource_id, resource_type, tag, alias, workflow, workflow_revision, invocation_dir,
+       resource_id, tag, alias, workflow, workflow_revision, invocation_dir,
        population_workflow, population_name, inputs_json,
        health_last_checked_at, health_last_activity_at, health_last_fingerprint,
        health_last_state, health_last_reason, health_last_notified_at, health_notify_count,
@@ -167,7 +166,7 @@ AND NOT EXISTS (
 );
 
 -- name: CurrentNodeExecution :one
-SELECT id, session_id, node_id, sequence, task_id, name, scope, status, resource, subscription,
+SELECT id, session_id, node_id, sequence, task_id, name, scope, status, resource_id, subscription,
        inputs_json, outputs_json, state_json,
        resource_observation_json, resource_observed_at, done_when_json,
        extra_done_when_json, error, setup_at,
@@ -175,7 +174,7 @@ SELECT id, session_id, node_id, sequence, task_id, name, scope, status, resource
 FROM node_executions WHERE session_id = ? AND node_id = ? AND status <> 'cleaned';
 
 -- name: NodeExecutionByID :one
-SELECT id, session_id, node_id, sequence, task_id, name, scope, status, resource, subscription,
+SELECT id, session_id, node_id, sequence, task_id, name, scope, status, resource_id, subscription,
        inputs_json, outputs_json, state_json,
        resource_observation_json, resource_observed_at, done_when_json,
        extra_done_when_json, error, setup_at,
@@ -184,7 +183,7 @@ FROM node_executions WHERE id = ?;
 
 -- name: InsertNodeExecution :one
 INSERT INTO node_executions (
-    id, session_id, node_id, sequence, task_id, name, scope, status, resource, subscription,
+    id, session_id, node_id, sequence, task_id, name, scope, status, resource_id, subscription,
     inputs_json, outputs_json, state_json,
     resource_observation_json, resource_observed_at, done_when_json,
     extra_done_when_json, error, setup_at,
@@ -194,7 +193,7 @@ RETURNING id;
 
 -- name: UpdateNodeExecution :exec
 UPDATE node_executions SET
-    sequence = ?, task_id = ?, name = ?, scope = ?, status = ?, resource = ?, subscription = ?,
+    sequence = ?, task_id = ?, name = ?, scope = ?, status = ?, resource_id = ?, subscription = ?,
     inputs_json = ?, outputs_json = ?, state_json = ?,
     resource_observation_json = ?, resource_observed_at = ?, done_when_json = ?,
     extra_done_when_json = ?, error = ?,
@@ -203,7 +202,7 @@ WHERE id = ?;
 
 -- name: ListCurrentNodeExecutions :many
 SELECT ne.id, ne.session_id, ne.node_id, ne.sequence, ne.task_id, ne.name,
-       ne.scope, ne.status, ne.resource, ne.subscription, ne.inputs_json,
+       ne.scope, ne.status, ne.resource_id, ne.subscription, ne.inputs_json,
        ne.outputs_json, ne.state_json, ne.resource_observation_json,
        ne.resource_observed_at, ne.done_when_json, ne.extra_done_when_json,
        ne.error, ne.setup_at, ne.failed_at,
@@ -219,7 +218,7 @@ ORDER BY ne.node_id;
 
 -- name: ListCurrentNodeExecutionsForSessions :many
 SELECT ne.id, ne.session_id, ne.node_id, ne.sequence, ne.task_id, ne.name,
-       ne.scope, ne.status, ne.resource, ne.subscription, ne.inputs_json,
+       ne.scope, ne.status, ne.resource_id, ne.subscription, ne.inputs_json,
        ne.outputs_json, ne.state_json, ne.resource_observation_json,
        ne.resource_observed_at, ne.done_when_json, ne.extra_done_when_json,
        ne.error, ne.setup_at, ne.failed_at,
@@ -289,14 +288,14 @@ WHERE dependent.session_id IN (sqlc.slice(session_ids));
 
 -- name: ListTaskInstances :many
 SELECT id, session_id, instance_name, task_id, scope, status, sequence,
-       resource, named, inputs_json, outputs_json, state_json,
+       resource_id, named, inputs_json, outputs_json, state_json,
        resource_observation_json, resource_observed_at, extra_done_when_json,
        error, setup_at, failed_at, cleaned_at, finalized_at, process_json, directory
 FROM task_instances WHERE session_id = ? ORDER BY instance_name;
 
 -- name: ListTaskInstancesForSessions :many
 SELECT id, session_id, instance_name, task_id, scope, status, sequence,
-       resource, named, inputs_json, outputs_json, state_json,
+       resource_id, named, inputs_json, outputs_json, state_json,
        resource_observation_json, resource_observed_at, extra_done_when_json,
        error, setup_at, failed_at, cleaned_at, finalized_at, process_json, directory
 FROM task_instances WHERE session_id IN (sqlc.slice(session_ids)) ORDER BY session_id, instance_name;
@@ -304,7 +303,7 @@ FROM task_instances WHERE session_id IN (sqlc.slice(session_ids)) ORDER BY sessi
 -- name: UpsertTaskInstance :one
 INSERT INTO task_instances (
     id, session_id, instance_name, task_id, scope, status, sequence,
-    resource, named, inputs_json, outputs_json, state_json,
+    resource_id, named, inputs_json, outputs_json, state_json,
     resource_observation_json, resource_observed_at, extra_done_when_json,
     error, setup_at, failed_at, cleaned_at, finalized_at, process_json, directory
 ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
@@ -313,7 +312,7 @@ ON CONFLICT(session_id, instance_name) DO UPDATE SET
     scope = excluded.scope,
     status = excluded.status,
     sequence = excluded.sequence,
-    resource = excluded.resource,
+    resource_id = excluded.resource_id,
     named = excluded.named,
     inputs_json = excluded.inputs_json,
     outputs_json = excluded.outputs_json,
@@ -451,16 +450,35 @@ SELECT workflow, name, resource_id, session_name, generation, accepted_at,
        admit_retry_at, admit_suspended, decision_kind, decision_reason, item_json
 FROM population_members WHERE workflow = ? AND name = ? ORDER BY resource_id;
 
--- name: DeletePopulationMembersForPopulation :exec
-DELETE FROM population_members WHERE workflow = ? AND name = ?;
+-- name: DeletePopulationMember :exec
+DELETE FROM population_members WHERE workflow = ? AND name = ? AND resource_id = ?;
 
--- name: InsertPopulationMember :exec
+-- name: UpsertPopulationMember :exec
 INSERT INTO population_members (
     workflow, name, resource_id, session_name, generation, accepted_at,
     last_appearance, last_inbound, tombstoned, pending_up,
     consecutive_admit_failures, last_admit_reason, last_admit_error,
     admit_retry_at, admit_suspended, decision_kind, decision_reason, item_json
-) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);
+) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+ON CONFLICT(workflow, name, resource_id) DO UPDATE SET
+    session_name = excluded.session_name,
+    generation = excluded.generation,
+    accepted_at = excluded.accepted_at,
+    last_appearance = excluded.last_appearance,
+    last_inbound = excluded.last_inbound,
+    tombstoned = excluded.tombstoned,
+    pending_up = excluded.pending_up,
+    consecutive_admit_failures = excluded.consecutive_admit_failures,
+    last_admit_reason = excluded.last_admit_reason,
+    last_admit_error = excluded.last_admit_error,
+    admit_retry_at = excluded.admit_retry_at,
+    admit_suspended = excluded.admit_suspended,
+    decision_kind = excluded.decision_kind,
+    decision_reason = excluded.decision_reason,
+    item_json = excluded.item_json;
+
+-- name: DeletePopulationMemberBlockers :exec
+DELETE FROM population_member_blockers WHERE workflow = ? AND name = ? AND resource_id = ?;
 
 -- name: InsertPopulationMemberBlocker :exec
 INSERT INTO population_member_blockers (workflow, name, resource_id, position, reason)
@@ -565,3 +583,32 @@ SELECT next_sequence FROM event_cursors WHERE session_id = ? AND kind = ?;
 -- name: UpsertEventCursor :exec
 INSERT INTO event_cursors (session_id, kind, next_sequence) VALUES (?, ?, ?)
 ON CONFLICT(session_id, kind) DO UPDATE SET next_sequence = excluded.next_sequence;
+
+-- name: GetResourceByName :one
+SELECT id, type, name, locator, created_at FROM resources WHERE name = ?;
+
+-- name: GetUntypedResourceByLocator :one
+SELECT id, type, name, locator, created_at FROM resources WHERE type = '' AND locator = ? ORDER BY created_at, id LIMIT 1;
+
+-- name: InsertResource :exec
+INSERT INTO resources (id, type, name, locator, created_at)
+VALUES (?, ?, ?, ?, ?);
+
+-- name: ListResourcesByIDs :many
+SELECT id, type, name, locator, created_at
+FROM resources WHERE id IN (sqlc.slice(ids));
+
+-- name: DeleteUnreferencedResource :exec
+DELETE FROM resources
+WHERE resources.id = ?1
+  AND NOT EXISTS (SELECT 1 FROM sessions WHERE sessions.resource_id = ?1)
+  AND NOT EXISTS (SELECT 1 FROM task_instances WHERE task_instances.resource_id = ?1)
+  AND NOT EXISTS (SELECT 1 FROM node_executions WHERE node_executions.resource_id = ?1)
+  AND NOT EXISTS (SELECT 1 FROM population_members WHERE population_members.resource_id = ?1)
+  AND NOT EXISTS (SELECT 1 FROM subscription_retries WHERE subscription_retries.resource_id = ?1);
+
+-- name: ListSessionResourceIDs :many
+SELECT resource_id FROM sessions WHERE sessions.id = sqlc.arg(session_id) AND resource_id IS NOT NULL
+UNION SELECT resource_id FROM task_instances WHERE task_instances.session_id = sqlc.arg(session_id) AND resource_id IS NOT NULL
+UNION SELECT resource_id FROM node_executions WHERE node_executions.session_id = sqlc.arg(session_id) AND resource_id IS NOT NULL
+UNION SELECT resource_id FROM subscription_retries WHERE subscription_retries.session_id = sqlc.arg(session_id);

@@ -84,7 +84,7 @@ func workdirSession(t *testing.T, cfg *config.Config, name, resourceID, dir stri
 	}
 	return &domain.Session{
 		Name:                 name,
-		ResourceID:           resourceID,
+		Resource:             testResource(resourceID),
 		Workflow:             workdirWorkflowID,
 		WorkflowRevision:     digest,
 		WorkflowRevisionBody: string(body),
@@ -109,10 +109,10 @@ func workdirSession(t *testing.T, cfg *config.Config, name, resourceID, dir stri
 func TestAcceptance_SessionAppearsInList(t *testing.T) {
 	store := state.NewStore(t.TempDir())
 	sess := &domain.Session{
-		Name:       "acceptance/web-1",
-		ResourceID: "https://github.com/acceptance/web/issues/1",
-		CreatedAt:  time.Now(),
-		UpdatedAt:  time.Now(),
+		Name:      "acceptance/web-1",
+		Resource:  testResource("https://github.com/acceptance/web/issues/1"),
+		CreatedAt: time.Now(),
+		UpdatedAt: time.Now(),
 	}
 	if err := store.Put(sess); err != nil {
 		t.Fatalf("seed session: %v", err)

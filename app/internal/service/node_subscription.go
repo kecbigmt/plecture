@@ -56,9 +56,14 @@ func releaseNodeSubscriptions(cfg *config.Config, store *state.Store, sessionNam
 			resources[st.Subscription] = true
 		}
 	}
-	for _, resource := range sortedResources(resources) {
+	for _, identifier := range sortedResources(resources) {
+		resource, err := boundResource(cfg, store, identifier)
+		if err != nil {
+			slog.Warn("node subscription teardown failed", "session", sessionName, "resource", identifier, "error", err.Message)
+			continue
+		}
 		if _, msg := unwireDeliveryOnTeardown(cfg, store, sessionName, resource, ""); msg != "" {
-			slog.Warn("node subscription teardown failed", "session", sessionName, "resource", resource, "error", msg)
+			slog.Warn("node subscription teardown failed", "session", sessionName, "resource", identifier, "error", msg)
 		}
 	}
 	return nil
@@ -69,13 +74,36 @@ func wireProducedNodeSubscriptions(cfg *config.Config, store *state.Store, sessi
 	for _, resource := range nodes {
 		resources[resource] = true
 	}
-	for _, resource := range sortedResources(resources) {
+	for _, identifier := range sortedResources(resources) {
+		resource, err := boundResource(cfg, store, identifier)
+		if err != nil {
+			slog.Warn("node subscription setup failed", "session", sessionName, "resource", identifier, "error", err.Message)
+			continue
+		}
 		if _, msg := wireDeliveryOnSetup(cfg, store, sessionName, resource, true); msg != "" {
-			slog.Warn("node subscription setup failed", "session", sessionName, "resource", resource, "error", msg)
-		} else if err := dequeuePendingSubscribe(store, sessionName, resource); err != nil {
-			slog.Warn("node subscription retry cleanup failed", "session", sessionName, "resource", resource, "error", err)
+			slog.Warn("node subscription setup failed", "session", sessionName, "resource", identifier, "error", msg)
+		} else if err := dequeuePendingSubscribe(store, sessionName, *resource); err != nil {
+			slog.Warn("node subscription retry cleanup failed", "session", sessionName, "resource", identifier, "error", err)
 		}
 	}
+}
+
+// nodeSubscriptionResources resolves the identifiers node bindings subscribed
+// to, so their retries can reference recorded resources.
+func nodeSubscriptionResources(cfg *config.Config, store *state.Store, subscriptions map[string]string) ([]contract.Resource, error) {
+	identifiers := make(map[string]bool, len(subscriptions))
+	for _, identifier := range subscriptions {
+		identifiers[identifier] = true
+	}
+	resources := make([]contract.Resource, 0, len(identifiers))
+	for _, identifier := range sortedResources(identifiers) {
+		resource, err := boundResource(cfg, store, identifier)
+		if err != nil {
+			return nil, err
+		}
+		resources = append(resources, *resource)
+	}
+	return resources, nil
 }
 
 func sortedResources(resources map[string]bool) []string {

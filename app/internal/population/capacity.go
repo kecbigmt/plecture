@@ -133,7 +133,7 @@ type blockingMember struct {
 
 func (c *capacityCoordinator) pendingExistingAhead(current Definition, resource string) (blockingMember, bool) {
 	currentState, _ := c.state.Population(populationKey(current))
-	if currentState == nil || currentState.Members[resource] == nil || currentState.Members[resource].SessionName != "" {
+	if _, member := findMember(currentState, resource); member == nil || member.SessionName != "" {
 		return blockingMember{}, false
 	}
 	for _, key := range c.definitionKeys() {
@@ -141,15 +141,15 @@ func (c *capacityCoordinator) pendingExistingAhead(current Definition, resource 
 		if err != nil || population == nil {
 			continue
 		}
-		for resourceID, member := range population.Members {
+		for _, member := range population.Members {
 			if member == nil || !member.PendingUp || member.SessionName == "" || member.Tombstoned {
 				continue
 			}
-			reason := c.cache.Get(member.SessionName, member.ResourceID).LastReason
+			reason := c.cache.Get(member.SessionName, member.Resource.Locator).LastReason
 			if reason != "" && reason != "capacity" {
 				continue
 			}
-			return blockingMember{key: key, resource: resourceID, session: member.SessionName}, true
+			return blockingMember{key: key, resource: member.Resource.Locator, session: member.SessionName}, true
 		}
 	}
 	return blockingMember{}, false
@@ -187,7 +187,10 @@ func (c *capacityCoordinator) idleCandidates() ([]idleCandidate, error) {
 		if population == nil {
 			continue
 		}
-		member := population.Members[session.ResourceID]
+		if session.Resource == nil {
+			continue
+		}
+		member := population.Members[session.Resource.Name]
 		if member == nil || member.SessionName != sessionName || member.Tombstoned {
 			continue
 		}
@@ -215,7 +218,7 @@ func (c *capacityCoordinator) idleCandidates() ([]idleCandidate, error) {
 		if status.Time.After(last) {
 			last = status.Time
 		}
-		candidates = append(candidates, idleCandidate{session: sessionName, resource: session.ResourceID, key: key, last: last})
+		candidates = append(candidates, idleCandidate{session: sessionName, resource: session.Resource.Locator, key: key, last: last})
 	}
 	sort.Slice(candidates, func(i, j int) bool {
 		if !candidates[i].last.Equal(candidates[j].last) {

@@ -166,13 +166,21 @@ func setupTaskDocument(cfg *config.Config, store *state.Store, resolvedName stri
 	if err != nil {
 		return nil, &Error{Code: ErrExecutionFailed, Message: fmt.Sprintf("load resources: %v", err)}
 	}
-	resourceID := params.Resource
-	if resourceID == "" {
-		resourceID = session.ResourceID
+	bound := session.Resource
+	resourceID := domain.Locator(bound)
+	if params.Resource != "" {
+		bound, resourceID = nil, params.Resource
 	}
 	observer, bindErr := checkTaskBinding(doc, observers, resourceID)
 	if bindErr != nil {
 		return nil, bindErr
+	}
+	if bound == nil {
+		resolved, _, resolveErr := ResolveResource(store, doc.Resource, observer, resourceID)
+		if resolveErr != nil {
+			return nil, asServiceError(resolveErr)
+		}
+		bound, resourceID = &resolved, resolved.Locator
 	}
 
 	inputs, bindErr := bindDocumentInputs(doc, params.Inputs, session)
@@ -217,7 +225,7 @@ func setupTaskDocument(cfg *config.Config, store *state.Store, resolvedName stri
 			TaskID:   params.TaskID,
 			Status:   contract.TaskStatusProduced,
 			Inputs:   inputs,
-			Resource: params.Resource,
+			Resource: bound,
 			Name:     params.Name,
 			Observed: observation,
 			Seq:      task.NextSeq(s.Nodes, s.Tasks),
@@ -235,7 +243,7 @@ func setupTaskDocument(cfg *config.Config, store *state.Store, resolvedName stri
 	recordLifecycle(store, resolvedName, "task_setup", fmt.Sprintf("instantiated %s", key))
 	appendInstruction(store, resolvedName, key, params.Resource, instruction)
 
-	subscribed, subscribeErrMsg := wireDeliveryOnSetup(cfg, store, resolvedName, params.Resource, false)
+	subscribed, subscribeErrMsg := wireDeliveryOnSetup(cfg, store, resolvedName, bound, false)
 
 	return &TaskSetupResult{
 		SessionName: resolvedName,
@@ -328,10 +336,7 @@ func renderInstruction(cfg *config.Config, session *domain.Session, doc config.T
 		"resource": map[string]any{"id": resourceID, "state": observed},
 		"self":     map[string]any{"state": map[string]any{}},
 		"inputs":   inputs,
-		"session": map[string]any{
-			"name":   session.Name,
-			"inputs": session.Inputs,
-		},
+		"session":  instructionSessionRoot(session),
 		"workflow": map[string]any{"outputs": workflowOutputs},
 	}
 	rendered, err := lang.RenderInstruction(doc.Instruction, env)
@@ -446,4 +451,12 @@ func (d taskDeclarations) declares(taskID string) bool {
 	}
 	_, ok := d.effects[taskID]
 	return ok
+}
+
+func instructionSessionRoot(session *domain.Session) map[string]any {
+	root := map[string]any{"name": session.Name, "inputs": session.Inputs}
+	if session.Tag != "" {
+		root["tag"] = session.Tag
+	}
+	return root
 }

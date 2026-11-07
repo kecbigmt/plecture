@@ -44,7 +44,7 @@ func (q *Queries) CountLiveSessionsNamed(ctx context.Context, name string) (int6
 }
 
 const currentNodeExecution = `-- name: CurrentNodeExecution :one
-SELECT id, session_id, node_id, sequence, task_id, name, scope, status, resource, subscription,
+SELECT id, session_id, node_id, sequence, task_id, name, scope, status, resource_id, subscription,
        inputs_json, outputs_json, state_json,
        resource_observation_json, resource_observed_at, done_when_json,
        extra_done_when_json, error, setup_at,
@@ -69,7 +69,7 @@ func (q *Queries) CurrentNodeExecution(ctx context.Context, arg CurrentNodeExecu
 		&i.Name,
 		&i.Scope,
 		&i.Status,
-		&i.Resource,
+		&i.ResourceID,
 		&i.Subscription,
 		&i.InputsJson,
 		&i.OutputsJson,
@@ -125,17 +125,33 @@ func (q *Queries) DeleteNodeInstancesForSession(ctx context.Context, sessionID s
 	return err
 }
 
-const deletePopulationMembersForPopulation = `-- name: DeletePopulationMembersForPopulation :exec
-DELETE FROM population_members WHERE workflow = ? AND name = ?
+const deletePopulationMember = `-- name: DeletePopulationMember :exec
+DELETE FROM population_members WHERE workflow = ? AND name = ? AND resource_id = ?
 `
 
-type DeletePopulationMembersForPopulationParams struct {
-	Workflow string
-	Name     string
+type DeletePopulationMemberParams struct {
+	Workflow   string
+	Name       string
+	ResourceID string
 }
 
-func (q *Queries) DeletePopulationMembersForPopulation(ctx context.Context, arg DeletePopulationMembersForPopulationParams) error {
-	_, err := q.db.ExecContext(ctx, deletePopulationMembersForPopulation, arg.Workflow, arg.Name)
+func (q *Queries) DeletePopulationMember(ctx context.Context, arg DeletePopulationMemberParams) error {
+	_, err := q.db.ExecContext(ctx, deletePopulationMember, arg.Workflow, arg.Name, arg.ResourceID)
+	return err
+}
+
+const deletePopulationMemberBlockers = `-- name: DeletePopulationMemberBlockers :exec
+DELETE FROM population_member_blockers WHERE workflow = ? AND name = ? AND resource_id = ?
+`
+
+type DeletePopulationMemberBlockersParams struct {
+	Workflow   string
+	Name       string
+	ResourceID string
+}
+
+func (q *Queries) DeletePopulationMemberBlockers(ctx context.Context, arg DeletePopulationMemberBlockersParams) error {
+	_, err := q.db.ExecContext(ctx, deletePopulationMemberBlockers, arg.Workflow, arg.Name, arg.ResourceID)
 	return err
 }
 
@@ -239,6 +255,21 @@ func (q *Queries) DeleteTaskInstanceLayersByInstanceID(ctx context.Context, task
 	return err
 }
 
+const deleteUnreferencedResource = `-- name: DeleteUnreferencedResource :exec
+DELETE FROM resources
+WHERE resources.id = ?1
+  AND NOT EXISTS (SELECT 1 FROM sessions WHERE sessions.resource_id = ?1)
+  AND NOT EXISTS (SELECT 1 FROM task_instances WHERE task_instances.resource_id = ?1)
+  AND NOT EXISTS (SELECT 1 FROM node_executions WHERE node_executions.resource_id = ?1)
+  AND NOT EXISTS (SELECT 1 FROM population_members WHERE population_members.resource_id = ?1)
+  AND NOT EXISTS (SELECT 1 FROM subscription_retries WHERE subscription_retries.resource_id = ?1)
+`
+
+func (q *Queries) DeleteUnreferencedResource(ctx context.Context, id string) error {
+	_, err := q.db.ExecContext(ctx, deleteUnreferencedResource, id)
+	return err
+}
+
 const deleteUpReservation = `-- name: DeleteUpReservation :exec
 DELETE FROM up_reservations WHERE child_session_name = ?
 `
@@ -284,7 +315,7 @@ func (q *Queries) GetEventCursor(ctx context.Context, arg GetEventCursorParams) 
 
 const getLatestDestroyedSession = `-- name: GetLatestDestroyedSession :one
 SELECT id, name, status, sleep_since, destroyed_at, parent_session_id, root_session_id,
-       resource_id, resource_type, tag, alias, workflow, workflow_revision, invocation_dir,
+       resource_id, tag, alias, workflow, workflow_revision, invocation_dir,
        population_workflow, population_name, inputs_json,
        health_last_checked_at, health_last_activity_at, health_last_fingerprint,
        health_last_state, health_last_reason, health_last_notified_at, health_notify_count,
@@ -309,7 +340,6 @@ func (q *Queries) GetLatestDestroyedSession(ctx context.Context, name string) (S
 		&i.ParentSessionID,
 		&i.RootSessionID,
 		&i.ResourceID,
-		&i.ResourceType,
 		&i.Tag,
 		&i.Alias,
 		&i.Workflow,
@@ -337,7 +367,7 @@ func (q *Queries) GetLatestDestroyedSession(ctx context.Context, name string) (S
 
 const getLiveSession = `-- name: GetLiveSession :one
 SELECT id, name, status, sleep_since, destroyed_at, parent_session_id, root_session_id,
-       resource_id, resource_type, tag, alias, workflow, workflow_revision, invocation_dir,
+       resource_id, tag, alias, workflow, workflow_revision, invocation_dir,
        population_workflow, population_name, inputs_json,
        health_last_checked_at, health_last_activity_at, health_last_fingerprint,
        health_last_state, health_last_reason, health_last_notified_at, health_notify_count,
@@ -359,7 +389,6 @@ func (q *Queries) GetLiveSession(ctx context.Context, name string) (Session, err
 		&i.ParentSessionID,
 		&i.RootSessionID,
 		&i.ResourceID,
-		&i.ResourceType,
 		&i.Tag,
 		&i.Alias,
 		&i.Workflow,
@@ -400,6 +429,40 @@ func (q *Queries) GetPopulation(ctx context.Context, arg GetPopulationParams) (P
 	row := q.db.QueryRowContext(ctx, getPopulation, arg.Workflow, arg.Name)
 	var i Population
 	err := row.Scan(&i.Workflow, &i.Name)
+	return i, err
+}
+
+const getResourceByName = `-- name: GetResourceByName :one
+SELECT id, type, name, locator, created_at FROM resources WHERE name = ?
+`
+
+func (q *Queries) GetResourceByName(ctx context.Context, name string) (Resource, error) {
+	row := q.db.QueryRowContext(ctx, getResourceByName, name)
+	var i Resource
+	err := row.Scan(
+		&i.ID,
+		&i.Type,
+		&i.Name,
+		&i.Locator,
+		&i.CreatedAt,
+	)
+	return i, err
+}
+
+const getUntypedResourceByLocator = `-- name: GetUntypedResourceByLocator :one
+SELECT id, type, name, locator, created_at FROM resources WHERE type = '' AND locator = ? ORDER BY created_at, id LIMIT 1
+`
+
+func (q *Queries) GetUntypedResourceByLocator(ctx context.Context, locator string) (Resource, error) {
+	row := q.db.QueryRowContext(ctx, getUntypedResourceByLocator, locator)
+	var i Resource
+	err := row.Scan(
+		&i.ID,
+		&i.Type,
+		&i.Name,
+		&i.Locator,
+		&i.CreatedAt,
+	)
 	return i, err
 }
 
@@ -455,7 +518,7 @@ func (q *Queries) InsertEvent(ctx context.Context, arg InsertEventParams) error 
 
 const insertNodeExecution = `-- name: InsertNodeExecution :one
 INSERT INTO node_executions (
-    id, session_id, node_id, sequence, task_id, name, scope, status, resource, subscription,
+    id, session_id, node_id, sequence, task_id, name, scope, status, resource_id, subscription,
     inputs_json, outputs_json, state_json,
     resource_observation_json, resource_observed_at, done_when_json,
     extra_done_when_json, error, setup_at,
@@ -473,7 +536,7 @@ type InsertNodeExecutionParams struct {
 	Name                    sql.NullString
 	Scope                   string
 	Status                  string
-	Resource                sql.NullString
+	ResourceID              sql.NullString
 	Subscription            sql.NullString
 	InputsJson              sql.NullString
 	OutputsJson             sql.NullString
@@ -501,7 +564,7 @@ func (q *Queries) InsertNodeExecution(ctx context.Context, arg InsertNodeExecuti
 		arg.Name,
 		arg.Scope,
 		arg.Status,
-		arg.Resource,
+		arg.ResourceID,
 		arg.Subscription,
 		arg.InputsJson,
 		arg.OutputsJson,
@@ -584,60 +647,6 @@ func (q *Queries) InsertNodeExecutionLayer(ctx context.Context, arg InsertNodeEx
 	return err
 }
 
-const insertPopulationMember = `-- name: InsertPopulationMember :exec
-INSERT INTO population_members (
-    workflow, name, resource_id, session_name, generation, accepted_at,
-    last_appearance, last_inbound, tombstoned, pending_up,
-    consecutive_admit_failures, last_admit_reason, last_admit_error,
-    admit_retry_at, admit_suspended, decision_kind, decision_reason, item_json
-) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-`
-
-type InsertPopulationMemberParams struct {
-	Workflow                 string
-	Name                     string
-	ResourceID               string
-	SessionName              sql.NullString
-	Generation               int64
-	AcceptedAt               sql.NullString
-	LastAppearance           sql.NullString
-	LastInbound              sql.NullString
-	Tombstoned               bool
-	PendingUp                bool
-	ConsecutiveAdmitFailures int64
-	LastAdmitReason          sql.NullString
-	LastAdmitError           sql.NullString
-	AdmitRetryAt             sql.NullString
-	AdmitSuspended           bool
-	DecisionKind             sql.NullString
-	DecisionReason           sql.NullString
-	ItemJson                 string
-}
-
-func (q *Queries) InsertPopulationMember(ctx context.Context, arg InsertPopulationMemberParams) error {
-	_, err := q.db.ExecContext(ctx, insertPopulationMember,
-		arg.Workflow,
-		arg.Name,
-		arg.ResourceID,
-		arg.SessionName,
-		arg.Generation,
-		arg.AcceptedAt,
-		arg.LastAppearance,
-		arg.LastInbound,
-		arg.Tombstoned,
-		arg.PendingUp,
-		arg.ConsecutiveAdmitFailures,
-		arg.LastAdmitReason,
-		arg.LastAdmitError,
-		arg.AdmitRetryAt,
-		arg.AdmitSuspended,
-		arg.DecisionKind,
-		arg.DecisionReason,
-		arg.ItemJson,
-	)
-	return err
-}
-
 const insertPopulationMemberBlocker = `-- name: InsertPopulationMemberBlocker :exec
 INSERT INTO population_member_blockers (workflow, name, resource_id, position, reason)
 VALUES (?, ?, ?, ?, ?)
@@ -662,18 +671,42 @@ func (q *Queries) InsertPopulationMemberBlocker(ctx context.Context, arg InsertP
 	return err
 }
 
+const insertResource = `-- name: InsertResource :exec
+INSERT INTO resources (id, type, name, locator, created_at)
+VALUES (?, ?, ?, ?, ?)
+`
+
+type InsertResourceParams struct {
+	ID        string
+	Type      string
+	Name      string
+	Locator   string
+	CreatedAt string
+}
+
+func (q *Queries) InsertResource(ctx context.Context, arg InsertResourceParams) error {
+	_, err := q.db.ExecContext(ctx, insertResource,
+		arg.ID,
+		arg.Type,
+		arg.Name,
+		arg.Locator,
+		arg.CreatedAt,
+	)
+	return err
+}
+
 const insertSession = `-- name: InsertSession :exec
 
 INSERT INTO sessions (
     id, name, status, sleep_since, destroyed_at, parent_session_id, root_session_id,
-    resource_id, resource_type, tag, alias, workflow, workflow_revision, invocation_dir,
+    resource_id, tag, alias, workflow, workflow_revision, invocation_dir,
     population_workflow, population_name, inputs_json,
     health_last_checked_at, health_last_activity_at, health_last_fingerprint,
     health_last_state, health_last_reason, health_last_notified_at, health_notify_count,
     health_unevaluable_cycles,
     tick_consecutive_unchanged, tick_last_fingerprint, last_tick_at,
     created_at, updated_at
-) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 `
 
 type InsertSessionParams struct {
@@ -685,7 +718,6 @@ type InsertSessionParams struct {
 	ParentSessionID          sql.NullString
 	RootSessionID            sql.NullString
 	ResourceID               sql.NullString
-	ResourceType             sql.NullString
 	Tag                      sql.NullString
 	Alias                    sql.NullString
 	Workflow                 string
@@ -720,7 +752,6 @@ func (q *Queries) InsertSession(ctx context.Context, arg InsertSessionParams) er
 		arg.ParentSessionID,
 		arg.RootSessionID,
 		arg.ResourceID,
-		arg.ResourceType,
 		arg.Tag,
 		arg.Alias,
 		arg.Workflow,
@@ -968,7 +999,7 @@ func (q *Queries) LatestRepairStateChange(ctx context.Context, arg LatestRepairS
 
 const listCurrentNodeExecutions = `-- name: ListCurrentNodeExecutions :many
 SELECT ne.id, ne.session_id, ne.node_id, ne.sequence, ne.task_id, ne.name,
-       ne.scope, ne.status, ne.resource, ne.subscription, ne.inputs_json,
+       ne.scope, ne.status, ne.resource_id, ne.subscription, ne.inputs_json,
        ne.outputs_json, ne.state_json, ne.resource_observation_json,
        ne.resource_observed_at, ne.done_when_json, ne.extra_done_when_json,
        ne.error, ne.setup_at, ne.failed_at,
@@ -1001,7 +1032,7 @@ func (q *Queries) ListCurrentNodeExecutions(ctx context.Context, sessionID strin
 			&i.Name,
 			&i.Scope,
 			&i.Status,
-			&i.Resource,
+			&i.ResourceID,
 			&i.Subscription,
 			&i.InputsJson,
 			&i.OutputsJson,
@@ -1033,7 +1064,7 @@ func (q *Queries) ListCurrentNodeExecutions(ctx context.Context, sessionID strin
 
 const listCurrentNodeExecutionsForSessions = `-- name: ListCurrentNodeExecutionsForSessions :many
 SELECT ne.id, ne.session_id, ne.node_id, ne.sequence, ne.task_id, ne.name,
-       ne.scope, ne.status, ne.resource, ne.subscription, ne.inputs_json,
+       ne.scope, ne.status, ne.resource_id, ne.subscription, ne.inputs_json,
        ne.outputs_json, ne.state_json, ne.resource_observation_json,
        ne.resource_observed_at, ne.done_when_json, ne.extra_done_when_json,
        ne.error, ne.setup_at, ne.failed_at,
@@ -1076,7 +1107,7 @@ func (q *Queries) ListCurrentNodeExecutionsForSessions(ctx context.Context, sess
 			&i.Name,
 			&i.Scope,
 			&i.Status,
-			&i.Resource,
+			&i.ResourceID,
 			&i.Subscription,
 			&i.InputsJson,
 			&i.OutputsJson,
@@ -1265,7 +1296,7 @@ func (q *Queries) ListLiveChildSessionNamesForSessions(ctx context.Context, pare
 
 const listLiveSessions = `-- name: ListLiveSessions :many
 SELECT id, name, status, sleep_since, destroyed_at, parent_session_id, root_session_id,
-       resource_id, resource_type, tag, alias, workflow, workflow_revision, invocation_dir,
+       resource_id, tag, alias, workflow, workflow_revision, invocation_dir,
        population_workflow, population_name, inputs_json,
        health_last_checked_at, health_last_activity_at, health_last_fingerprint,
        health_last_state, health_last_reason, health_last_notified_at, health_notify_count,
@@ -1293,7 +1324,6 @@ func (q *Queries) ListLiveSessions(ctx context.Context) ([]Session, error) {
 			&i.ParentSessionID,
 			&i.RootSessionID,
 			&i.ResourceID,
-			&i.ResourceType,
 			&i.Tag,
 			&i.Alias,
 			&i.Workflow,
@@ -1331,7 +1361,7 @@ func (q *Queries) ListLiveSessions(ctx context.Context) ([]Session, error) {
 
 const listLiveSessionsByAlias = `-- name: ListLiveSessionsByAlias :many
 SELECT id, name, status, sleep_since, destroyed_at, parent_session_id, root_session_id,
-       resource_id, resource_type, tag, alias, workflow, workflow_revision, invocation_dir,
+       resource_id, tag, alias, workflow, workflow_revision, invocation_dir,
        population_workflow, population_name, inputs_json,
        health_last_checked_at, health_last_activity_at, health_last_fingerprint,
        health_last_state, health_last_reason, health_last_notified_at, health_notify_count,
@@ -1359,7 +1389,6 @@ func (q *Queries) ListLiveSessionsByAlias(ctx context.Context, alias sql.NullStr
 			&i.ParentSessionID,
 			&i.RootSessionID,
 			&i.ResourceID,
-			&i.ResourceType,
 			&i.Tag,
 			&i.Alias,
 			&i.Workflow,
@@ -1683,6 +1712,50 @@ func (q *Queries) ListPopulationMembers(ctx context.Context, arg ListPopulationM
 	return items, nil
 }
 
+const listResourcesByIDs = `-- name: ListResourcesByIDs :many
+SELECT id, type, name, locator, created_at
+FROM resources WHERE id IN (/*SLICE:ids*/?)
+`
+
+func (q *Queries) ListResourcesByIDs(ctx context.Context, ids []string) ([]Resource, error) {
+	query := listResourcesByIDs
+	var queryParams []interface{}
+	if len(ids) > 0 {
+		for _, v := range ids {
+			queryParams = append(queryParams, v)
+		}
+		query = strings.Replace(query, "/*SLICE:ids*/?", strings.Repeat(",?", len(ids))[1:], 1)
+	} else {
+		query = strings.Replace(query, "/*SLICE:ids*/?", "NULL", 1)
+	}
+	rows, err := q.db.QueryContext(ctx, query, queryParams...)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []Resource
+	for rows.Next() {
+		var i Resource
+		if err := rows.Scan(
+			&i.ID,
+			&i.Type,
+			&i.Name,
+			&i.Locator,
+			&i.CreatedAt,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const listSessionChannelHealth = `-- name: ListSessionChannelHealth :many
 SELECT session_id, kind, consecutive_failures, first_failure_at,
        last_failure_at, last_channel, last_error, escalated_at
@@ -1794,6 +1867,36 @@ func (q *Queries) ListSessionIDsByName(ctx context.Context, name string) ([]stri
 			return nil, err
 		}
 		items = append(items, id)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const listSessionResourceIDs = `-- name: ListSessionResourceIDs :many
+SELECT resource_id FROM sessions WHERE sessions.id = ?1 AND resource_id IS NOT NULL
+UNION SELECT resource_id FROM task_instances WHERE task_instances.session_id = ?1 AND resource_id IS NOT NULL
+UNION SELECT resource_id FROM node_executions WHERE node_executions.session_id = ?1 AND resource_id IS NOT NULL
+UNION SELECT resource_id FROM subscription_retries WHERE subscription_retries.session_id = ?1
+`
+
+func (q *Queries) ListSessionResourceIDs(ctx context.Context, sessionID string) ([]sql.NullString, error) {
+	rows, err := q.db.QueryContext(ctx, listSessionResourceIDs, sessionID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []sql.NullString
+	for rows.Next() {
+		var resource_id sql.NullString
+		if err := rows.Scan(&resource_id); err != nil {
+			return nil, err
+		}
+		items = append(items, resource_id)
 	}
 	if err := rows.Close(); err != nil {
 		return nil, err
@@ -2171,7 +2274,7 @@ func (q *Queries) ListTaskInstanceLayersForSessions(ctx context.Context, session
 const listTaskInstances = `-- name: ListTaskInstances :many
 
 SELECT id, session_id, instance_name, task_id, scope, status, sequence,
-       resource, named, inputs_json, outputs_json, state_json,
+       resource_id, named, inputs_json, outputs_json, state_json,
        resource_observation_json, resource_observed_at, extra_done_when_json,
        error, setup_at, failed_at, cleaned_at, finalized_at, process_json, directory
 FROM task_instances WHERE session_id = ? ORDER BY instance_name
@@ -2195,7 +2298,7 @@ func (q *Queries) ListTaskInstances(ctx context.Context, sessionID string) ([]Ta
 			&i.Scope,
 			&i.Status,
 			&i.Sequence,
-			&i.Resource,
+			&i.ResourceID,
 			&i.Named,
 			&i.InputsJson,
 			&i.OutputsJson,
@@ -2226,7 +2329,7 @@ func (q *Queries) ListTaskInstances(ctx context.Context, sessionID string) ([]Ta
 
 const listTaskInstancesForSessions = `-- name: ListTaskInstancesForSessions :many
 SELECT id, session_id, instance_name, task_id, scope, status, sequence,
-       resource, named, inputs_json, outputs_json, state_json,
+       resource_id, named, inputs_json, outputs_json, state_json,
        resource_observation_json, resource_observed_at, extra_done_when_json,
        error, setup_at, failed_at, cleaned_at, finalized_at, process_json, directory
 FROM task_instances WHERE session_id IN (/*SLICE:session_ids*/?) ORDER BY session_id, instance_name
@@ -2259,7 +2362,7 @@ func (q *Queries) ListTaskInstancesForSessions(ctx context.Context, sessionIds [
 			&i.Scope,
 			&i.Status,
 			&i.Sequence,
-			&i.Resource,
+			&i.ResourceID,
 			&i.Named,
 			&i.InputsJson,
 			&i.OutputsJson,
@@ -2349,7 +2452,7 @@ func (q *Queries) NextEventSequence(ctx context.Context, sessionID string) (int6
 }
 
 const nodeExecutionByID = `-- name: NodeExecutionByID :one
-SELECT id, session_id, node_id, sequence, task_id, name, scope, status, resource, subscription,
+SELECT id, session_id, node_id, sequence, task_id, name, scope, status, resource_id, subscription,
        inputs_json, outputs_json, state_json,
        resource_observation_json, resource_observed_at, done_when_json,
        extra_done_when_json, error, setup_at,
@@ -2369,7 +2472,7 @@ func (q *Queries) NodeExecutionByID(ctx context.Context, id string) (NodeExecuti
 		&i.Name,
 		&i.Scope,
 		&i.Status,
-		&i.Resource,
+		&i.ResourceID,
 		&i.Subscription,
 		&i.InputsJson,
 		&i.OutputsJson,
@@ -2470,7 +2573,7 @@ func (q *Queries) SessionNamesByIDs(ctx context.Context, ids []string) ([]Sessio
 
 const updateNodeExecution = `-- name: UpdateNodeExecution :exec
 UPDATE node_executions SET
-    sequence = ?, task_id = ?, name = ?, scope = ?, status = ?, resource = ?, subscription = ?,
+    sequence = ?, task_id = ?, name = ?, scope = ?, status = ?, resource_id = ?, subscription = ?,
     inputs_json = ?, outputs_json = ?, state_json = ?,
     resource_observation_json = ?, resource_observed_at = ?, done_when_json = ?,
     extra_done_when_json = ?, error = ?,
@@ -2484,7 +2587,7 @@ type UpdateNodeExecutionParams struct {
 	Name                    sql.NullString
 	Scope                   string
 	Status                  string
-	Resource                sql.NullString
+	ResourceID              sql.NullString
 	Subscription            sql.NullString
 	InputsJson              sql.NullString
 	OutputsJson             sql.NullString
@@ -2510,7 +2613,7 @@ func (q *Queries) UpdateNodeExecution(ctx context.Context, arg UpdateNodeExecuti
 		arg.Name,
 		arg.Scope,
 		arg.Status,
-		arg.Resource,
+		arg.ResourceID,
 		arg.Subscription,
 		arg.InputsJson,
 		arg.OutputsJson,
@@ -2540,7 +2643,6 @@ UPDATE sessions SET
     parent_session_id = ?,
     root_session_id = ?,
     resource_id = ?,
-    resource_type = ?,
     tag = ?,
     alias = ?,
     workflow = ?,
@@ -2572,7 +2674,6 @@ type UpdateSessionByIDParams struct {
 	ParentSessionID          sql.NullString
 	RootSessionID            sql.NullString
 	ResourceID               sql.NullString
-	ResourceType             sql.NullString
 	Tag                      sql.NullString
 	Alias                    sql.NullString
 	Workflow                 string
@@ -2605,7 +2706,6 @@ func (q *Queries) UpdateSessionByID(ctx context.Context, arg UpdateSessionByIDPa
 		arg.ParentSessionID,
 		arg.RootSessionID,
 		arg.ResourceID,
-		arg.ResourceType,
 		arg.Tag,
 		arg.Alias,
 		arg.Workflow,
@@ -2662,6 +2762,76 @@ func (q *Queries) UpsertPopulation(ctx context.Context, arg UpsertPopulationPara
 	return err
 }
 
+const upsertPopulationMember = `-- name: UpsertPopulationMember :exec
+INSERT INTO population_members (
+    workflow, name, resource_id, session_name, generation, accepted_at,
+    last_appearance, last_inbound, tombstoned, pending_up,
+    consecutive_admit_failures, last_admit_reason, last_admit_error,
+    admit_retry_at, admit_suspended, decision_kind, decision_reason, item_json
+) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+ON CONFLICT(workflow, name, resource_id) DO UPDATE SET
+    session_name = excluded.session_name,
+    generation = excluded.generation,
+    accepted_at = excluded.accepted_at,
+    last_appearance = excluded.last_appearance,
+    last_inbound = excluded.last_inbound,
+    tombstoned = excluded.tombstoned,
+    pending_up = excluded.pending_up,
+    consecutive_admit_failures = excluded.consecutive_admit_failures,
+    last_admit_reason = excluded.last_admit_reason,
+    last_admit_error = excluded.last_admit_error,
+    admit_retry_at = excluded.admit_retry_at,
+    admit_suspended = excluded.admit_suspended,
+    decision_kind = excluded.decision_kind,
+    decision_reason = excluded.decision_reason,
+    item_json = excluded.item_json
+`
+
+type UpsertPopulationMemberParams struct {
+	Workflow                 string
+	Name                     string
+	ResourceID               string
+	SessionName              sql.NullString
+	Generation               int64
+	AcceptedAt               sql.NullString
+	LastAppearance           sql.NullString
+	LastInbound              sql.NullString
+	Tombstoned               bool
+	PendingUp                bool
+	ConsecutiveAdmitFailures int64
+	LastAdmitReason          sql.NullString
+	LastAdmitError           sql.NullString
+	AdmitRetryAt             sql.NullString
+	AdmitSuspended           bool
+	DecisionKind             sql.NullString
+	DecisionReason           sql.NullString
+	ItemJson                 string
+}
+
+func (q *Queries) UpsertPopulationMember(ctx context.Context, arg UpsertPopulationMemberParams) error {
+	_, err := q.db.ExecContext(ctx, upsertPopulationMember,
+		arg.Workflow,
+		arg.Name,
+		arg.ResourceID,
+		arg.SessionName,
+		arg.Generation,
+		arg.AcceptedAt,
+		arg.LastAppearance,
+		arg.LastInbound,
+		arg.Tombstoned,
+		arg.PendingUp,
+		arg.ConsecutiveAdmitFailures,
+		arg.LastAdmitReason,
+		arg.LastAdmitError,
+		arg.AdmitRetryAt,
+		arg.AdmitSuspended,
+		arg.DecisionKind,
+		arg.DecisionReason,
+		arg.ItemJson,
+	)
+	return err
+}
+
 const upsertSessionChannelHealth = `-- name: UpsertSessionChannelHealth :exec
 INSERT INTO session_channel_health (
     session_id, kind, consecutive_failures, first_failure_at,
@@ -2704,7 +2874,7 @@ func (q *Queries) UpsertSessionChannelHealth(ctx context.Context, arg UpsertSess
 const upsertTaskInstance = `-- name: UpsertTaskInstance :one
 INSERT INTO task_instances (
     id, session_id, instance_name, task_id, scope, status, sequence,
-    resource, named, inputs_json, outputs_json, state_json,
+    resource_id, named, inputs_json, outputs_json, state_json,
     resource_observation_json, resource_observed_at, extra_done_when_json,
     error, setup_at, failed_at, cleaned_at, finalized_at, process_json, directory
 ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
@@ -2713,7 +2883,7 @@ ON CONFLICT(session_id, instance_name) DO UPDATE SET
     scope = excluded.scope,
     status = excluded.status,
     sequence = excluded.sequence,
-    resource = excluded.resource,
+    resource_id = excluded.resource_id,
     named = excluded.named,
     inputs_json = excluded.inputs_json,
     outputs_json = excluded.outputs_json,
@@ -2739,7 +2909,7 @@ type UpsertTaskInstanceParams struct {
 	Scope                   string
 	Status                  string
 	Sequence                int64
-	Resource                sql.NullString
+	ResourceID              sql.NullString
 	Named                   bool
 	InputsJson              sql.NullString
 	OutputsJson             sql.NullString
@@ -2765,7 +2935,7 @@ func (q *Queries) UpsertTaskInstance(ctx context.Context, arg UpsertTaskInstance
 		arg.Scope,
 		arg.Status,
 		arg.Sequence,
-		arg.Resource,
+		arg.ResourceID,
 		arg.Named,
 		arg.InputsJson,
 		arg.OutputsJson,
