@@ -14,6 +14,11 @@ env:
   PYTHON_VERSION: "3.12"
   NODE_VERSION: "22.23.4"
 
+# Every setup-go step sets cache: false, and the jobs whose main cost is
+# compilation cache Go through actions/cache with the job in the key.
+# setup-go's own cache has one key shared by every job, and only the first
+# job to finish saves it: a job that builds nothing wins that race, so every
+# later job restores an empty entry as a hit and never saves its own.
 jobs:
   # Core never imports plugins and plugins never import core, and both
   # sides depend only on contracts/* (scripts/check-provider-boundary.sh
@@ -81,9 +86,7 @@ jobs:
       - uses: actions/setup-go@v5
         with:
           go-version: ${{ env.GO_VERSION }}
-          cache-dependency-path: |
-            go.work.sum
-            **/go.sum
+          cache: false
       - name: Check gofmt
         run: |
           unformatted=$(gofmt -l $(find . -name '*.go' -not -path './app/internal/webui/*'))
@@ -111,9 +114,14 @@ jobs:
       - uses: actions/setup-go@v5
         with:
           go-version: ${{ env.GO_VERSION }}
-          cache-dependency-path: |
-            go.work.sum
-            **/go.sum
+          cache: false
+      - uses: actions/cache@v4
+        with:
+          path: |
+            ~/go/pkg/mod
+            ~/.cache/go-build
+          key: go-${{ runner.os }}-${{ github.job }}-${{ matrix.module }}-${{ hashFiles('go.work.sum', '**/go.sum') }}
+          restore-keys: go-${{ runner.os }}-${{ github.job }}-${{ matrix.module }}-
       - name: go build ./app/... from a fresh checkout, no Node installed
         run: go build ./...
         working-directory: app
@@ -135,9 +143,7 @@ jobs:
       - uses: actions/setup-go@v5
         with:
           go-version: ${{ env.GO_VERSION }}
-          cache-dependency-path: |
-            go.work.sum
-            **/go.sum
+          cache: false
       - name: Prove the SQLite driver boundary checker catches a seeded requirement
         run: ./scripts/check-sqlite-driver-boundary_selftest.sh
       - name: Check the SQLite driver stays out of contracts/ and plugins/ build lists
@@ -182,9 +188,7 @@ jobs:
       - uses: actions/setup-go@v5
         with:
           go-version: ${{ env.GO_VERSION }}
-          cache-dependency-path: |
-            go.work.sum
-            **/go.sum
+          cache: false
       - name: Prove the checker catches a seeded orphaned sidecar
         run: ./scripts/check-instruction-orphans_selftest.sh
       - name: Check every task instruction sidecar is referenced
@@ -209,9 +213,14 @@ jobs:
       - uses: actions/setup-go@v5
         with:
           go-version: ${{ env.GO_VERSION }}
-          cache-dependency-path: |
-            go.work.sum
-            **/go.sum
+          cache: false
+      - uses: actions/cache@v4
+        with:
+          path: |
+            ~/go/pkg/mod
+            ~/.cache/go-build
+          key: go-${{ runner.os }}-${{ github.job }}-${{ matrix.module }}-${{ hashFiles('go.work.sum', '**/go.sum') }}
+          restore-keys: go-${{ runner.os }}-${{ github.job }}-${{ matrix.module }}-
       - uses: actions/setup-python@v5
         with:
           python-version: ${{ env.PYTHON_VERSION }}
@@ -287,9 +296,14 @@ jobs:
       - uses: actions/setup-go@v5
         with:
           go-version: ${{ env.GO_VERSION }}
-          cache-dependency-path: |
-            go.work.sum
-            **/go.sum
+          cache: false
+      - uses: actions/cache@v4
+        with:
+          path: |
+            ~/go/pkg/mod
+            ~/.cache/go-build
+          key: go-${{ runner.os }}-${{ github.job }}-${{ matrix.module }}-${{ hashFiles('go.work.sum', '**/go.sum') }}
+          restore-keys: go-${{ runner.os }}-${{ github.job }}-${{ matrix.module }}-
       - name: Regenerate Go types and check for drift
         run: |
           go tool oapi-codegen -config oapi-codegen.yaml ../../../web/api/generated/openapi.yaml
@@ -342,10 +356,10 @@ jobs:
   # obscure a real build or unit-test failure in the same job log. Gated on
   # WEB_CI for the same reason web-app-build is.
   #
-  # No caching action for the browser download: this repo does not use
-  # actions/cache anywhere yet, and adding one is a bigger commitment than
-  # this single job's download time justifies; the download cost is
-  # accepted per run.
+  # No caching action for the browser download: actions/cache here holds
+  # only the Go module and build caches of compilation-heavy jobs, and a
+  # browser cache entry is a bigger commitment than this single job's
+  # download time justifies; the download cost is accepted per run.
   #
   # Adjustment rule (this job is part of ci-ok, so it must earn its keep):
   # if it produces a false failure on main more than once in its first ten
@@ -372,9 +386,7 @@ jobs:
       - uses: actions/setup-go@v5
         with:
           go-version: ${{ env.GO_VERSION }}
-          cache-dependency-path: |
-            go.work.sum
-            **/go.sum
+          cache: false
       - name: Install the pinned Playwright driver + Chromium
         run: go run github.com/mxschmitt/playwright-go/cmd/playwright@v0.6201.1 install --with-deps chromium
         working-directory: app
@@ -417,9 +429,14 @@ jobs:
       - uses: actions/setup-go@v5
         with:
           go-version: ${{ env.GO_VERSION }}
-          cache-dependency-path: |
-            go.work.sum
-            **/go.sum
+          cache: false
+      - uses: actions/cache@v4
+        with:
+          path: |
+            ~/go/pkg/mod
+            ~/.cache/go-build
+          key: go-${{ runner.os }}-${{ github.job }}-${{ matrix.module }}-${{ hashFiles('go.work.sum', '**/go.sum') }}
+          restore-keys: go-${{ runner.os }}-${{ github.job }}-${{ matrix.module }}-
       - name: manifest
         run: go test -count=1 ./db -run '^TestMigrationsMatchTheirManifest$|^TestManifest_'
         working-directory: app
@@ -451,9 +468,14 @@ jobs:
       - uses: actions/setup-go@v5
         with:
           go-version: ${{ env.GO_VERSION }}
-          cache-dependency-path: |
-            go.work.sum
-            **/go.sum
+          cache: false
+      - uses: actions/cache@v4
+        with:
+          path: |
+            ~/go/pkg/mod
+            ~/Library/Caches/go-build
+          key: go-${{ runner.os }}-${{ github.job }}-${{ matrix.module }}-${{ hashFiles('go.work.sum', '**/go.sum') }}
+          restore-keys: go-${{ runner.os }}-${{ github.job }}-${{ matrix.module }}-
       # release.yml's darwin-arm64 build job runs this same `go test ./...`
       # against the app module before packaging.
       - name: go test
@@ -479,9 +501,14 @@ jobs:
       - uses: actions/setup-go@v5
         with:
           go-version: ${{ env.GO_VERSION }}
-          cache-dependency-path: |
-            go.work.sum
-            **/go.sum
+          cache: false
+      - uses: actions/cache@v4
+        with:
+          path: |
+            ~/go/pkg/mod
+            ~/.cache/go-build
+          key: go-${{ runner.os }}-${{ github.job }}-${{ matrix.module }}-${{ hashFiles('go.work.sum', '**/go.sum') }}
+          restore-keys: go-${{ runner.os }}-${{ github.job }}-${{ matrix.module }}-
       - name: go build
         run: go build ./...
         working-directory: ${{ matrix.module }}
@@ -502,9 +529,14 @@ jobs:
       - uses: actions/setup-go@v5
         with:
           go-version: ${{ env.GO_VERSION }}
-          cache-dependency-path: |
-            go.work.sum
-            **/go.sum
+          cache: false
+      - uses: actions/cache@v4
+        with:
+          path: |
+            ~/go/pkg/mod
+            ~/.cache/go-build
+          key: go-${{ runner.os }}-${{ github.job }}-${{ matrix.module }}-${{ hashFiles('go.work.sum', '**/go.sum') }}
+          restore-keys: go-${{ runner.os }}-${{ github.job }}-${{ matrix.module }}-
       # The integration-tagged tests (app/internal/service, app/internal/webui)
       # spin up real git repos and worktrees and, for the shipped
       # worktree-effect cases, build the plect/github-worktree/
@@ -544,9 +576,14 @@ jobs:
       - uses: actions/setup-go@v5
         with:
           go-version: ${{ env.GO_VERSION }}
-          cache-dependency-path: |
-            go.work.sum
-            **/go.sum
+          cache: false
+      - uses: actions/cache@v4
+        with:
+          path: |
+            ~/go/pkg/mod
+            ~/.cache/go-build
+          key: go-${{ runner.os }}-${{ github.job }}-${{ matrix.module }}-${{ hashFiles('go.work.sum', '**/go.sum') }}
+          restore-keys: go-${{ runner.os }}-${{ github.job }}-${{ matrix.module }}-
       - name: Run README build commands
         run: |
           go build ./app/...
