@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"io"
 	"io/fs"
+	"net/url"
 	"os"
 	"path/filepath"
 	"sort"
@@ -26,6 +27,8 @@ import (
 const BackupRetainEnvVar = "PLECT_STORAGE_BACKUP_RETAIN"
 
 const defaultBackupRetain = 3
+
+var clock = time.Now
 
 const (
 	backupsDirName   = "backups"
@@ -66,7 +69,7 @@ func (db *DB) backupBeforeMigrate(ctx context.Context, from, to int64) (string, 
 	if err := os.MkdirAll(backupsDir, 0o700); err != nil {
 		return "", fmt.Errorf("create %s: %w", backupsDir, err)
 	}
-	name, err := freeName(backupsDir, fmt.Sprintf("%s-v%d", time.Now().UTC().Format(stampLayout), from))
+	name, err := freeName(backupsDir, fmt.Sprintf("%s-v%d", clock().UTC().Format(stampLayout), from))
 	if err != nil {
 		return "", err
 	}
@@ -87,7 +90,7 @@ func (db *DB) backupBeforeMigrate(ctx context.Context, from, to int64) (string, 
 
 	// A prune failure leaves an extra backup behind, not a store at risk,
 	// so it warns instead of refusing the migration the new backup protects.
-	if err := pruneBackups(backupsDir, retain); err != nil {
+	if err := pruneBackups(backupsDir, retain, name); err != nil {
 		fmt.Fprintf(db.diagnostics, "plect: storage: warning: pruning old backups in %s: %v\n", backupsDir, err)
 	}
 	return final, nil
@@ -116,7 +119,7 @@ func (db *DB) writeBackup(ctx context.Context, dataDir, dest string) error {
 // -wal/-shm to carry along and no checkpoint that another process's open
 // read snapshot could block.
 func (db *DB) onlineBackup(ctx context.Context, dest string) error {
-	destDB, err := sql.Open("sqlite3", dest)
+	destDB, err := sql.Open("sqlite3", fileURI(dest, ""))
 	if err != nil {
 		return fmt.Errorf("open backup database: %w", err)
 	}
@@ -161,10 +164,11 @@ func (db *DB) onlineBackup(ctx context.Context, dest string) error {
 	})
 }
 
-// pruneBackups also deletes leftover temporary directories: the caller
-// holds migration exclusion, so none of them belongs to a backup still
-// being written.
-func pruneBackups(backupsDir string, retain int) error {
+// pruneBackups never deletes keep, the backup just taken: a same-second name
+// reused after an earlier prune can sort below an older sibling. Leftover
+// temporary directories go too, because the caller holds migration
+// exclusion and so none of them is a backup still being written.
+func pruneBackups(backupsDir string, retain int, keep string) error {
 	entries, err := os.ReadDir(backupsDir)
 	if err != nil {
 		return err
@@ -179,28 +183,26 @@ func pruneBackups(backupsDir string, retain int) error {
 			errs = append(errs, os.RemoveAll(filepath.Join(backupsDir, e.Name())))
 			continue
 		}
-		if !strings.HasPrefix(e.Name(), ".") {
+		if !strings.HasPrefix(e.Name(), ".") && e.Name() != keep {
 			complete = append(complete, e.Name())
 		}
 	}
 	sort.Sort(sort.Reverse(sort.StringSlice(complete)))
-	for i := retain; i < len(complete); i++ {
+	for i := retain - 1; i < len(complete); i++ {
 		errs = append(errs, os.RemoveAll(filepath.Join(backupsDir, complete[i])))
 	}
 	return errors.Join(errs...)
 }
 
-// Backup is one completed pre-migration backup. Version comes from the
-// backup's own goose ledger, never from its name.
+// Backup's Version comes from the backup's own goose ledger, never from its
+// name, which is only a label for people.
 type Backup struct {
 	Name    string
 	Version int64
 	Size    int64
-	// Err is why the backup's ledger could not be read; Version is then 0.
-	Err error
+	Err     error
 }
 
-// ListBackups returns the completed backups beside dbPath, newest first.
 func ListBackups(ctx context.Context, dbPath string) ([]Backup, error) {
 	backupsDir := filepath.Join(filepath.Dir(dbPath), backupsDirName)
 	entries, err := os.ReadDir(backupsDir)
@@ -228,13 +230,25 @@ func ListBackups(ctx context.Context, dbPath string) ([]Backup, error) {
 	return backups, nil
 }
 
-// backupLedger reads a backup's ledger without writing to it: immutable=1
-// takes no lock and creates no journal beside the file.
+// readOnlyURI escapes the path because SQLite reads '#', '?', and '%' in a
+// URI as delimiters. immutable=1 takes no lock and creates no journal
+// beside the file, so reading a backup never writes to it.
+func readOnlyURI(path string) string {
+	return fileURI(path, "mode=ro&immutable=1")
+}
+
+func fileURI(path, query string) string {
+	if abs, err := filepath.Abs(path); err == nil {
+		path = abs
+	}
+	return (&url.URL{Scheme: "file", Path: path, RawQuery: query}).String()
+}
+
 func backupLedger(ctx context.Context, path string, migrations fs.FS) (current, target int64, err error) {
 	if _, err := os.Stat(path); err != nil {
 		return 0, 0, err
 	}
-	raw, err := sql.Open("sqlite3", "file:"+path+"?mode=ro&immutable=1")
+	raw, err := sql.Open("sqlite3", readOnlyURI(path))
 	if err != nil {
 		return 0, 0, err
 	}
@@ -263,10 +277,9 @@ func backupLedger(ctx context.Context, path string, migrations fs.FS) (current, 
 	return current, target, nil
 }
 
-// Restore replaces the store at dbPath with the backup named name. It
-// refuses while any process holds the store open, because files replaced
-// under an open handle would take that process's later writes with them.
-// It returns the directory the replaced files were moved into.
+// Restore refuses while any process holds the store open, because files
+// replaced under an open handle would take that process's later writes with
+// them. It returns the directory the replaced files were moved into.
 func Restore(ctx context.Context, dbPath, name string) (string, error) {
 	return restore(ctx, dbPath, name, migrationsSourceFS())
 }
@@ -275,6 +288,14 @@ func restore(ctx context.Context, dbPath, name string, migrations fs.FS) (string
 	if name == "" || name != filepath.Base(name) || strings.HasPrefix(name, ".") {
 		return "", fmt.Errorf("persistence: %q is not a backup name; `plect storage backups` lists them", name)
 	}
+	// Locked before the backup is read: a migration's prune, which runs under
+	// the coordination lock, could otherwise delete it after validation.
+	unlock, err := lockForRestore(newAccessGate(dbPath))
+	if err != nil {
+		return "", err
+	}
+	defer unlock()
+
 	dataDir := filepath.Dir(dbPath)
 	src := filepath.Join(dataDir, backupsDirName, name)
 	if info, err := os.Stat(src); err != nil || !info.IsDir() {
@@ -288,13 +309,7 @@ func restore(ctx context.Context, dbPath, name string, migrations fs.FS) (string
 		return "", fmt.Errorf("persistence: backup %s is at schema %d, newer than this binary supports (max %d); restore it with a newer plect binary", name, version, target)
 	}
 
-	unlock, err := lockForRestore(newAccessGate(dbPath))
-	if err != nil {
-		return "", err
-	}
-	defer unlock()
-
-	stamp := time.Now().UTC().Format(stampLayout)
+	stamp := clock().UTC().Format(stampLayout)
 	staging := filepath.Join(dataDir, ".restore-"+stamp)
 	if err := stageBackup(src, staging); err != nil {
 		os.RemoveAll(staging)
@@ -374,7 +389,10 @@ func stageBackup(src, staging string) error {
 	if err := os.Mkdir(staging, 0o700); err != nil {
 		return fmt.Errorf("persistence: create restore staging directory: %w", err)
 	}
-	for _, name := range append([]string{fileName}, retiredSidecarNames...) {
+	if err := copyFile(PathIn(src), PathIn(staging), 0o600); err != nil {
+		return fmt.Errorf("persistence: stage backup: %w", err)
+	}
+	for _, name := range retiredSidecarNames {
 		if err := copyTree(filepath.Join(src, name), filepath.Join(staging, name)); err != nil {
 			return fmt.Errorf("persistence: stage backup: %w", err)
 		}
@@ -405,7 +423,6 @@ func moveIfExists(src, dst string) error {
 	return os.Rename(src, dst)
 }
 
-// copyTree copies a file or a directory tree; a missing src copies nothing.
 func copyTree(src, dst string) error {
 	if _, err := os.Lstat(src); errors.Is(err, os.ErrNotExist) {
 		return nil

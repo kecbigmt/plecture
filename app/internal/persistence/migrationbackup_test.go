@@ -4,11 +4,13 @@ import (
 	"bytes"
 	"context"
 	"database/sql"
+	"io"
 	"os"
 	"path/filepath"
 	"strings"
 	"syscall"
 	"testing"
+	"time"
 )
 
 const migrationC = `-- +goose Up
@@ -54,7 +56,7 @@ func migrateFixture(t *testing.T, path string, files map[string]string) (string,
 
 func ledgerVersionOf(t *testing.T, path string) int64 {
 	t.Helper()
-	raw, err := sql.Open("sqlite3", "file:"+path+"?mode=ro&immutable=1")
+	raw, err := sql.Open("sqlite3", readOnlyURI(path))
 	if err != nil {
 		t.Fatalf("open %s: %v", path, err)
 	}
@@ -68,7 +70,7 @@ func ledgerVersionOf(t *testing.T, path string) int64 {
 
 func rowCountOf(t *testing.T, path string) int {
 	t.Helper()
-	raw, err := sql.Open("sqlite3", "file:"+path+"?mode=ro&immutable=1")
+	raw, err := sql.Open("sqlite3", readOnlyURI(path))
 	if err != nil {
 		t.Fatalf("open %s: %v", path, err)
 	}
@@ -465,5 +467,80 @@ func TestRestore_RefusesNamesThatAreNotACompletedBackup(t *testing.T) {
 	}
 	if got := ledgerVersionOf(t, path); got != 1 {
 		t.Errorf("ledger version = %d, want 1 (untouched)", got)
+	}
+}
+
+func TestBackupBeforeMigrate_RetentionNeverDeletesTheBackupItJustTook(t *testing.T) {
+	t.Setenv(BackupRetainEnvVar, "1")
+	fixed := time.Date(2026, 11, 8, 1, 30, 0, 0, time.UTC)
+	t.Cleanup(func(fn func() time.Time) func() { return func() { clock = fn } }(clock))
+	clock = func() time.Time { return fixed }
+	dir := t.TempDir()
+	path := PathIn(dir)
+	seedFixtureStore(t, path, fixtureV1)
+	db, err := Open(path)
+	if err != nil {
+		t.Fatalf("Open: %v", err)
+	}
+	defer db.Close()
+	db.migrations = migrationFixture(fixtureV2)
+	db.diagnostics = io.Discard
+
+	for i := 1; i <= 3; i++ {
+		backup, err := db.backupBeforeMigrate(context.Background(), 1, 2)
+		if err != nil {
+			t.Fatalf("backup %d: %v", i, err)
+		}
+		names := backupNames(t, dir)
+		if len(names) != 1 || filepath.Join(dir, "backups", names[0]) != backup {
+			t.Fatalf("after backup %d: backups = %v, want only the one just taken (%s)", i, names, backup)
+		}
+	}
+}
+
+func TestRestore_ChecksForLiveUsersBeforeReadingTheBackup(t *testing.T) {
+	dir := t.TempDir()
+	path := PathIn(dir)
+	seedFixtureStore(t, path, fixtureV1)
+	unlock, err := flockPath(newAccessGate(path).coordinationLockPath, syscall.LOCK_EX)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer unlock()
+
+	_, err = restore(context.Background(), path, "20200101T000000Z-v1", migrationFixture(fixtureV1))
+	if err == nil || !strings.Contains(err.Error(), "migrating") {
+		t.Errorf("error = %v, want the live-user refusal: a migration holding the lock may be pruning the backup", err)
+	}
+}
+
+func TestStageBackup_RefusesABackupWithoutAStore(t *testing.T) {
+	dir := t.TempDir()
+	src := filepath.Join(dir, "backup")
+	writeFile(t, filepath.Join(src, "pending_delivery.json"), `{}`)
+
+	if err := stageBackup(src, filepath.Join(dir, "staging")); err == nil {
+		t.Fatal("stageBackup staged a backup that has no storage.db")
+	}
+}
+
+func TestRestore_WorksInADataHomeWhosePathNeedsURIEscaping(t *testing.T) {
+	ctx := context.Background()
+	dir := filepath.Join(t.TempDir(), "data #1 %20home")
+	path := PathIn(dir)
+	seedFixtureStore(t, path, fixtureV1)
+	if _, err := migrateFixture(t, path, fixtureV2); err != nil {
+		t.Fatalf("Migrate: %v", err)
+	}
+
+	backups, err := ListBackups(ctx, path)
+	if err != nil || len(backups) != 1 || backups[0].Err != nil || backups[0].Version != 1 {
+		t.Fatalf("ListBackups = %+v, %v; want one readable schema-1 backup", backups, err)
+	}
+	if _, err := restore(ctx, path, backups[0].Name, migrationFixture(fixtureV2)); err != nil {
+		t.Fatalf("restore: %v", err)
+	}
+	if got := ledgerVersionOf(t, path); got != 1 {
+		t.Errorf("restored ledger version = %d, want 1", got)
 	}
 }
