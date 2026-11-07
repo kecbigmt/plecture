@@ -230,10 +230,9 @@ schema_version = 3
 
 It contains no definitions or other fields and declares only the selected
 project layer's dialect. Add the root's canonical path to
-`trusted_project_roots` in the machine configuration, or run `plect workflow
-list` from below the root at a terminal and confirm the trust prompt, which
-records the same entry. Do not preserve ancestor fragments or copy
-configuration from a generated checkout.
+`trusted_project_roots` in the machine configuration; step 6 describes an
+interactive alternative that needs the new release. Do not preserve ancestor
+fragments or copy configuration from a generated checkout.
 
 A project definition replaces a global or plugin definition with the same id
 as a whole; it no longer merges into it. Write each project workflow as a
@@ -269,7 +268,9 @@ sessions you need with `plect up <resource>`, adding `--tag` where two
 sessions for one resource run side by side. Run it from below the trusted
 project root whose workflow the session uses: the upgrade records no project
 root for an existing session, and a new session records the root its
-invocation selected.
+invocation selected. A root you did not list in step 4 can be trusted now:
+run `plect workflow list` from below it at a terminal and confirm the trust
+prompt, which records the same `trusted_project_roots` entry.
 
 ## Verify and recover
 
