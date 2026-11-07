@@ -82,6 +82,13 @@ func checkInitialTask(cfg *config.Config, invocationDir, entry string, sel *Init
 	return &initialTaskBinding{TaskID: sel.TaskID, Resource: resource, ResourceInputs: sel.ResourceInputs}, nil
 }
 
+// EnsureInitialTask converges a session's initial instance on a selection a
+// caller already checked: a population checks its task against its entry
+// resource when it loads.
+func EnsureInitialTask(cfg *config.Config, store *state.Store, sessionName string, sel InitialTask) error {
+	return ensureInitialTask(cfg, store, sessionName, &initialTaskBinding{TaskID: sel.TaskID, Resource: sel.Resource, ResourceInputs: sel.ResourceInputs})
+}
+
 // ensureInitialTask converges the session's initial instance on the
 // binding: an instance already produced for the same task and resource is
 // kept, and any other existing instance must be cleaned by the caller,

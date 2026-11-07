@@ -17,6 +17,7 @@ import (
 	"github.com/kecbigmt/plecture/app/internal/lang"
 	"github.com/kecbigmt/plecture/app/internal/service"
 	"github.com/kecbigmt/plecture/app/internal/state"
+	"github.com/kecbigmt/plecture/app/internal/task"
 	"github.com/kecbigmt/plecture/contracts/event"
 	contract "github.com/kecbigmt/plecture/contracts/state"
 )
@@ -279,6 +280,12 @@ func (e *Engine) admit(ctx context.Context, member *state.PopulationMember) erro
 	if err != nil {
 		return e.failAdmit(member, member.SessionName, "input", err)
 	}
+	// A population supplies the empty action input object for the entry
+	// binding, so an entry resource requiring inputs can never be admitted;
+	// that is the definition's input fault, not a lifecycle failure.
+	if err := task.ValidateResourceInputs(e.definition.Entry, nil); err != nil {
+		return e.failAdmit(member, member.SessionName, "input", err)
+	}
 	if e.hooks.Up == nil {
 		return e.failAdmit(member, member.SessionName, "up", fmt.Errorf("population admission has no lifecycle hook"))
 	}
@@ -449,10 +456,6 @@ func isPermanentAdmitFailure(reason string, failure error) bool {
 	}
 	var conflict *populationConflictError
 	if errors.As(failure, &conflict) {
-		return true
-	}
-	var initial *initialTaskCleanupRequiredError
-	if errors.As(failure, &initial) {
 		return true
 	}
 	var serviceErr *service.Error
