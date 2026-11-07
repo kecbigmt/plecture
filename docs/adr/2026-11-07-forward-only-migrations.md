@@ -59,7 +59,8 @@ longer used for anything.
 
 Migrations are forward-only. No migration has a `-- +goose Down` section,
 and the existing sections are deleted. A migration that has shipped never
-changes.
+changes. The Down sections deleted by this decision are the one exception;
+no Up section changes.
 
 ### Verification
 
@@ -112,9 +113,9 @@ other rollback path. Development resets use a scratch `PLECT_DATA_HOME`.
   `migrations/`, and `atlas.sum` to `app/db/**`.
 - Without a diff generator, a migration's author writes the SQL that reaches
   `schema.sql`; the drift test tells them when it does not.
-- Removal condition: if within two releases the drift test has not caught at
-  least one difference that Atlas would have caught, revisit it, and either
-  simplify the tests or restore Atlas.
+- Removal condition: revisit this decision if a schema difference the drift
+  test missed reaches a release, or if writing migrations by hand without a
+  diff generator causes a released mistake.
 
 ## Alternatives considered
 
