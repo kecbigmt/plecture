@@ -161,7 +161,7 @@ type WorkflowHealthConfig struct {
 	ResumeInstruction  string
 }
 
-const DefaultResumeInstruction = "The runtime was restarted; your previous turn may have been interrupted. Check the worktree (git status) and the state of related PRs and threads before continuing, and do not repeat operations that are already complete."
+const DefaultResumeInstruction = "The runtime was restarted; your previous turn may have been interrupted. Check the state of your work and of the resources you were acting on before continuing, and do not repeat operations that are already complete."
 
 // DefaultHealthcheckConfig returns the workflow healthcheck defaults.
 func DefaultHealthcheckConfig() HealthcheckConfig {
