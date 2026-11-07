@@ -441,7 +441,7 @@ jobs:
   build-test-darwin:
     name: build-test-darwin
     if: github.event_name == 'push' && github.ref == 'refs/heads/main'
-    runs-on: macos-14
+    runs-on: macos-15
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-go@v5
