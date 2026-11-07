@@ -238,7 +238,7 @@ func writeWorkflowFixture(t *testing.T, wfID string, defs []taskFixture, nodes [
 // is actually about, so these helpers derive it: one binding per distinct
 // projection, named after the key it reads.
 var legacyProjection = regexp.MustCompile(
-	`\{\{\s*(?:get\s+)?\.(Self|Prev|Inputs|Locals|SessionInputs|CleanupInputs)\s+"([A-Za-z0-9_]+)"(?:\s+"[^"]*")?\s*\}\}` +
+	`\{\{\s*(?:get\s+)?\.(Self|Prev|Inputs|Locals|SessionInputs)\s+"([A-Za-z0-9_]+)"(?:\s+"[^"]*")?\s*\}\}` +
 		`|\{\{\s*\.(Self|Prev|Inputs|Locals|SessionInputs)\.([A-Za-z0-9_]+)\s*\}\}` +
 		`|\{\{\s*\.Nodes\.([A-Za-z0-9_]+)\.outputs\.([A-Za-z0-9_]+)\s*\}\}` +
 		`|\{\{\s*\.Workflow\.outputs\.([A-Za-z0-9_]+)\s*\}\}` +
@@ -253,7 +253,6 @@ var legacyRootPaths = map[string]string{
 	"Inputs":        "inputs.",
 	"Locals":        "locals.",
 	"SessionInputs": "session.inputs.",
-	"CleanupInputs": "cleanup.inputs.",
 }
 
 var legacyScalarPaths = map[string]struct{ name, path string }{

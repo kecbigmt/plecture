@@ -140,6 +140,7 @@ func TestSetup_IssueAcquiresTaggedWorktree(t *testing.T) {
 		"owner":         "acme",
 		"repo":          "widgets",
 		"number":        42,
+		"delete_branch": false,
 	}
 	if !reflect.DeepEqual(outputs, want) {
 		t.Errorf("outputs = %v, want %v", outputs, want)
@@ -519,7 +520,7 @@ func TestCleanup_DeleteBranchOptIn(t *testing.T) {
 	if err := Cleanup(context.Background(), CleanupOptions{
 		WorkspaceDir: "/roots/wt/issue-42-review",
 		Branch:       "issue/42+review",
-		DeleteBranch: "true",
+		DeleteBranch: true,
 		Manager:      mgr,
 	}); err != nil {
 		t.Fatalf("Cleanup: %v", err)
@@ -593,42 +594,30 @@ func TestLayoutRoot_DeclaredParameterWinsOverTheWorkspaceDirsRoot(t *testing.T) 
 	}
 }
 
-func TestResolveDeleteBranch(t *testing.T) {
+func TestSetup_RecordsTheCreationTimeDeleteBranchPolicyAsAnOutput(t *testing.T) {
 	tests := []struct {
-		name      string
-		requested string
-		declared  string
-		want      bool
+		name         string
+		deleteBranch bool
 	}{
-		{name: "no intent and no default is off"},
-		{name: "declared default on", declared: "true", want: true},
-		{name: "caller opts in", requested: "true", want: true},
-		{name: "caller opts out over a default that is on", requested: "false", declared: "true"},
-		{name: "caller opts in over a default that is off", requested: "true", declared: "false", want: true},
-		{name: "a misspelled default never turns deletion on", declared: "yes"},
-		{name: "a misspelled request never turns deletion on", requested: "yes", declared: "true"},
+		{name: "unset keeps the branch"},
+		{name: "opted in at creation", deleteBranch: true},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			if got := ResolveDeleteBranch(tt.requested, tt.declared); got != tt.want {
-				t.Errorf("ResolveDeleteBranch(%q, %q) = %v, want %v", tt.requested, tt.declared, got, tt.want)
+			outputs, err := Setup(context.Background(), SetupOptions{
+				ResourceID:   "https://github.com/acme/widgets/issues/42",
+				SessionName:  "acme/widgets-42",
+				DeleteBranch: tt.deleteBranch,
+				Manager:      &fakeManager{},
+				GHClient:     &fakeGHClient{err: errors.New("no gh-api client configured for this test")},
+			})
+			if err != nil {
+				t.Fatalf("Setup: %v", err)
+			}
+			if got, ok := outputs["delete_branch"].(bool); !ok || got != tt.deleteBranch {
+				t.Errorf("outputs[delete_branch] = %#v, want %v", outputs["delete_branch"], tt.deleteBranch)
 			}
 		})
-	}
-}
-
-func TestCleanup_DeleteBranchDefaultAppliesWhenTheCallerExpressedNoIntent(t *testing.T) {
-	mgr := &fakeManager{}
-	if err := Cleanup(context.Background(), CleanupOptions{
-		WorkspaceDir:        "/roots/wt/issue-42",
-		Branch:              "issue/42",
-		DeleteBranchDefault: "true",
-		Manager:             mgr,
-	}); err != nil {
-		t.Fatalf("Cleanup: %v", err)
-	}
-	if !mgr.removes[0].deleteBranch {
-		t.Error("cleanup must reclaim the branch when the workflow declares delete_branch_default = true")
 	}
 }
 
