@@ -109,7 +109,7 @@ func TestShippedGithubOkf_BinReferencesResolveUnderArbitraryAlias(t *testing.T) 
 		ctx := RenderContext{
 			// gh_guard/gh_app_guard's health.alive reads back the directory
 			// their own setup produced, the same way cleanup does.
-			Self:       map[string]any{"dir": "/tmp/plect-gh-guard.x", "workspace_dir": "/tmp/wd", "branch": "b"},
+			Self:       map[string]any{"dir": "/tmp/plect-gh-guard.x", "workspace_dir": "/tmp/wd", "branch": "b", "delete_branch": false},
 			Prev:       map[string]any{},
 			Inputs:     inputs,
 			Session:    session,

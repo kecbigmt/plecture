@@ -320,6 +320,89 @@ func TestDestroy_HandsTheForceIntentToEffectCleanup(t *testing.T) {
 	}
 }
 
+// A release policy fixed at creation can be changed for one session only by
+// rewriting the mutable output its cleanup reads.
+func TestDestroy_CleanupReadsAMutableOutputRewrittenBySetOutput(t *testing.T) {
+	tests := []struct {
+		name    string
+		rewrite map[string]any
+		want    string
+	}{
+		{name: "the policy recorded at creation", want: "true"},
+		{name: "the policy rewritten before destroy", rewrite: map[string]any{"release_more": false}, want: "false"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			f := newWDFixture(t, `
+[review]
+kind     = "workflow"
+resource = "issue"
+
+[[review.nodes]]
+uses   = "policy"
+inputs = { release_more = true }
+`)
+			wdWrite(t, filepath.Join(f.base, "tasks", "policy.toml"), `
+[policy]
+kind  = "effect"
+scope = "session"
+
+[policy.setup]
+type   = "shell"
+script = '''
+printf '{"release_more":%s}' "$release_more"
+'''
+
+[policy.setup.bind]
+release_more = { from = "inputs.release_more" }
+
+[policy.cleanup]
+type   = "shell"
+script = 'echo "$release_more" > "$HOME/cleanup-policy"'
+
+[policy.cleanup.bind]
+release_more = { from = "self.outputs.release_more" }
+
+[policy.health.alive]
+type = "noop"
+
+[policy.inputs_schema]
+type = "object"
+
+[policy.inputs_schema.properties]
+release_more = { type = "boolean" }
+
+[policy.outputs_schema]
+type     = "object"
+required = ["release_more"]
+
+[policy.outputs_schema.properties.release_more]
+type    = "boolean"
+mutable = true
+`)
+			if _, err := Up(f.cfg, f.store, UpParams{Identifier: wdIssueURL}); err != nil {
+				t.Fatalf("Up: %v", err)
+			}
+			name, _ := wdSession(t, f)
+			if tt.rewrite != nil {
+				if _, err := SetOutput(f.cfg, f.store, SetOutputParams{Identifier: name, Node: "policy", Outputs: tt.rewrite}); err != nil {
+					t.Fatalf("SetOutput: %v", err)
+				}
+			}
+			if _, err := Destroy(f.cfg, f.store, DestroyParams{Identifier: name}); err != nil {
+				t.Fatalf("Destroy: %v", err)
+			}
+			raw, err := os.ReadFile(filepath.Join(f.home, "cleanup-policy"))
+			if err != nil {
+				t.Fatal(err)
+			}
+			if got := strings.TrimSpace(string(raw)); got != tt.want {
+				t.Errorf("cleanup saw release_more = %q, want %q", got, tt.want)
+			}
+		})
+	}
+}
+
 // An agent reading only the error must not take the --force hint as license
 // to retry on its own.
 func TestDestroy_ForceRetryHintAsksForHumanConfirmationFirst(t *testing.T) {

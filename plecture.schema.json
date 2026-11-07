@@ -348,10 +348,6 @@
         "stdin": {
           "$ref": "#/$defs/bindingValue",
           "description": "A value written to the process's standard input instead of its argv, for data that must not be visible in the process table."
-        },
-        "inputs_schema": {
-          "$ref": "#/$defs/schemaDocument",
-          "description": "Only an effect's cleanup declares this: the plugin-owned destruction inputs it reads as cleanup.inputs.<key>."
         }
       },
       "oneOf": [
@@ -399,10 +395,6 @@
         },
         "bind": {
           "$ref": "#/$defs/bindTable"
-        },
-        "inputs_schema": {
-          "$ref": "#/$defs/schemaDocument",
-          "description": "Only an effect's cleanup declares this: the plugin-owned destruction inputs it reads as cleanup.inputs.<key>."
         }
       }
     },

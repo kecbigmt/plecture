@@ -33,14 +33,19 @@ alive
 == gh_guard / cleanup
 cleaned
 
-== worktree / setup
-call[0]: "github-worktree" "setup" "--resource" "example://acme/widget/1" "--session" "acme/widget-1" "--workspace-dirs-root" "/spy/workspace_dirs" "--workspace-layout-root" "/spy/layout" "--issue-branch-template" "work/{number}" "--tagged-branch-suffix" "-{tag}" "--watcher-bin" "<plugin>/bin/github-watcher" "--app-token-bin" "<plugin>/bin/gh-app-token" "--app-id" "" "--installation-id" "" "--owner" "" "--repo" "" "--private-key-path" ""
-outputs: {"branch":"spy-branch","workspace_dir":"<state>/worktree"}
+== worktree:policy-set-at-creation / setup
+call[0]: "github-worktree" "setup" "--resource" "example://acme/widget/1" "--session" "acme/widget-1" "--workspace-dirs-root" "/spy/workspace_dirs" "--workspace-layout-root" "/spy/layout" "--issue-branch-template" "work/{number}" "--tagged-branch-suffix" "-{tag}" "--delete-branch" "true" "--watcher-bin" "<plugin>/bin/github-watcher" "--app-token-bin" "<plugin>/bin/gh-app-token" "--app-id" "" "--installation-id" "" "--owner" "" "--repo" "" "--private-key-path" ""
+outputs: {"branch":"spy-branch","delete_branch":true,"workspace_dir":"<state>/worktree"}
 
-== worktree / health.alive
+== worktree:policy-set-at-creation / health.alive
 alive
 
-== worktree / cleanup
-call[0]: "github-worktree" "cleanup" "--workspace-dir" "<state>/worktree" "--branch" "spy-branch" "--workspace-dirs-root" "/spy/workspace_dirs" "--workspace-layout-root" "/spy/layout" "--force=false" "--delete-branch=" "--delete-branch-default=true"
+== worktree:policy-set-at-creation / cleanup
+call[0]: "github-worktree" "cleanup" "--workspace-dir" "<state>/worktree" "--branch" "spy-branch" "--workspace-dirs-root" "/spy/workspace_dirs" "--workspace-layout-root" "/spy/layout" "--force=false" "--delete-branch=true"
+call[1]: "github-watcher" "unsubscribe" "--session" "acme/widget-1"
+cleaned
+
+== worktree:policy-rewritten-before-destroy / cleanup
+call[0]: "github-worktree" "cleanup" "--workspace-dir" "/spy/layout/issue-1" "--branch" "spy-branch" "--workspace-dirs-root" "" "--workspace-layout-root" "" "--force=false" "--delete-branch=false"
 call[1]: "github-watcher" "unsubscribe" "--session" "acme/widget-1"
 cleaned

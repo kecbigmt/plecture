@@ -283,11 +283,10 @@ type EventChannel struct {
 // The id is the definition table's name. Effects intentionally have no
 // `depends_on`: wiring is the workflow's job.
 type TaskDefinition struct {
-	ID                  string
-	Scope               string
-	Setup               *lang.Action
-	Cleanup             *lang.Action
-	CleanupInputsSchema map[string]any
+	ID      string
+	Scope   string
+	Setup   *lang.Action
+	Cleanup *lang.Action
 	// Inner names the next effect inward, making this declaration the outer
 	// layer of a nesting chain: either a plain id (resolved in the merged
 	// namespace, or in the declaring plugin's own namespace when the

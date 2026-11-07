@@ -553,7 +553,7 @@ func (h *effectHarness) runScenario(t *testing.T, b *strings.Builder, def config
 	}
 }
 
-func (h *effectHarness) runOneHook(t *testing.T, b *strings.Builder, def config.TaskDefinition, hook, suffix string, resolved Resolved, id, label string, session SessionVars, tasks map[string]*contract.TaskState, self map[string]any, inputs map[string]string, artifacts []effectScenarioArtifact) map[string]any {
+func (h *effectHarness) runOneHook(t *testing.T, b *strings.Builder, def config.TaskDefinition, hook, suffix string, resolved Resolved, id, label string, session SessionVars, tasks map[string]*contract.TaskState, self map[string]any, inputs map[string]any, artifacts []effectScenarioArtifact) map[string]any {
 	t.Helper()
 	// A node input is a literal here rather than a projection of another
 	// node's outputs: this record is one effect's own contract, so the
@@ -719,10 +719,13 @@ func (h *effectHarness) terminalBinding() *TerminalBinding {
 // effect runs in.
 const harnessWorkdirNode = "harness_workdir"
 
-func (h *effectHarness) runHook(t *testing.T, hook string, def config.TaskDefinition, r Resolved, session SessionVars, tasks map[string]*contract.TaskState, self map[string]any, scenarioInputs map[string]string) string {
+func (h *effectHarness) runHook(t *testing.T, hook string, def config.TaskDefinition, r Resolved, session SessionVars, tasks map[string]*contract.TaskState, self map[string]any, scenarioInputs map[string]any) string {
 	t.Helper()
 	ctx := context.Background()
-	inputs := asAnyMap(scenarioInputs)
+	inputs := scenarioInputs
+	if inputs == nil {
+		inputs = map[string]any{}
+	}
 	// Every shipped effect under test models a non-preparation node of a
 	// workflow whose workdir is the sandbox workspace, so its actions run there.
 	tasks[harnessWorkdirNode] = &contract.TaskState{Status: contract.TaskStatusProduced, Outputs: map[string]any{"workspace_dir": h.workspace}}
@@ -829,7 +832,7 @@ func jsonLine(t *testing.T, v any) string {
 // literalValues states a scenario's inputs as the node wiring they stand for:
 // one literal per key, which is what a record of a single effect's own
 // contract needs.
-func literalValues(in map[string]string) map[string]*lang.Value {
+func literalValues(in map[string]any) map[string]*lang.Value {
 	if len(in) == 0 {
 		return nil
 	}

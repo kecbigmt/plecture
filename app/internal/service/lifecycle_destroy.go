@@ -17,13 +17,13 @@ import (
 type DestroyParams struct {
 	Identifier string
 	Force      bool
-	// CleanupInputs are plugin-owned destruction intents. Core interprets
-	// none of them: each is validated against the cleanup input schemas of
-	// the effects being released and handed only to the effects that
-	// declared it.
-	CleanupInputs map[string]string
-	Observer      task.Observer
+	Observer   task.Observer
 }
+
+// forceRequiresConfirmation follows every suggestion to re-run with --force,
+// because an agent that reads only the error would otherwise take the
+// suggestion as license to discard what destroy was protecting.
+const forceRequiresConfirmation = "--force discards what destroy protects: uncommitted changes, child sessions, and the record of a release nobody verified. Report this failure to a human and get their confirmation before re-running with --force."
 
 // DestroyResult holds the outcome of Destroy.
 type DestroyResult struct {
@@ -98,8 +98,8 @@ func destroyUnlocked(cfg *config.Config, store *state.Store, params DestroyParam
 			return nil, &Error{
 				Code: ErrHasChildren,
 				Message: fmt.Sprintf(
-					"session %s has %d child session(s) that would be orphaned: %s\nUse `plect down %s` + `plect up %s` to reset without orphaning them, or re-run with `plect destroy %s --force` to destroy and orphan them.",
-					sessionName, len(children), strings.Join(children, ", "), sessionName, sessionName, sessionName,
+					"session %s has %d child session(s) that would be orphaned: %s\nUse `plect down %s` + `plect up %s` to reset without orphaning them, or re-run with `plect destroy %s --force` to destroy and orphan them.\n%s",
+					sessionName, len(children), strings.Join(children, ", "), sessionName, sessionName, sessionName, forceRequiresConfirmation,
 				),
 			}
 		}
@@ -107,7 +107,7 @@ func destroyUnlocked(cfg *config.Config, store *state.Store, params DestroyParam
 	}
 	if session.Workflow != "" && session.WorkflowRevision == "" {
 		if !params.Force {
-			return nil, &Error{Code: ErrExecutionFailed, Message: fmt.Sprintf("session %q has no stored workflow revision; re-run with `plect destroy %s --force` to remove it without cleanup", sessionName, sessionName)}
+			return nil, &Error{Code: ErrExecutionFailed, Message: fmt.Sprintf("session %q has no stored workflow revision; re-run with `plect destroy %s --force` to remove it without cleanup.\n%s", sessionName, sessionName, forceRequiresConfirmation)}
 		}
 		result.CleanupWarnings = append(result.CleanupWarnings, "no stored workflow revision; cleanup skipped")
 		recordLifecycle(store, sessionName, "destroyed", "session destroyed")
@@ -144,18 +144,13 @@ func destroyUnlocked(cfg *config.Config, store *state.Store, params DestroyParam
 	vars := sessionVars(cfg, session, plan)
 	vars.Force = params.Force
 	vars.ReleaseAfterFailure = params.Force
-	cleanupInputs, inputsErr := task.ResolveCleanupInputs(teardown, params.CleanupInputs)
-	if inputsErr != nil {
-		return nil, &Error{Code: ErrInvalidInput, Message: inputsErr.Error()}
-	}
-	vars.CleanupInputs = cleanupInputs
 	if cleanupErr := runTaskCleanup(context.Background(), cfg, store, teardown, vars, session, params.Observer); cleanupErr != nil {
 		session.UpdatedAt = time.Now()
 		putBestEffort(store, session, "run cleanup failure")
 		if !params.Force {
 			return nil, &Error{
 				Code:    ErrExecutionFailed,
-				Message: fmt.Sprintf("%v (session %s)\nRe-run with `plect destroy %s --force` to delete the state entry anyway.", cleanupErr, sessionName, sessionName),
+				Message: fmt.Sprintf("%v (session %s)\nRe-run with `plect destroy %s --force` to delete the state entry anyway.\n%s", cleanupErr, sessionName, sessionName, forceRequiresConfirmation),
 			}
 		}
 		result.CleanupWarnings = append(result.CleanupWarnings, fmt.Sprintf("cleanup: %v", cleanupErr))

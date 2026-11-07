@@ -25,7 +25,6 @@ through `PATH` is intercepted this way.
 |---|---|
 | `scope` | `run` or `session`, defaulting to `run`. |
 | `setup`, `cleanup` | The lifecycle actions. See [`actions.md`](actions.md). A cleanup may bind `self.process.identity` and verify it before each signal; see [`actions.md`](actions.md#process). |
-| `[cleanup.inputs_schema]` | Optional JSON Schema for plugin-owned destruction inputs. |
 | `inputs_schema`, `outputs_schema` | The effect's contracts. |
 | `[health]` | The `alive` and `activity` probes. |
 | `[terminal]` | The interactive endpoint, if this effect owns one. |
@@ -80,21 +79,34 @@ uses = "pane"
 
 A nested effect that declares no `scope` takes the innermost layer's scope.
 
-## Cleanup inputs
+## Cleanup and `force`
 
-Cleanup receives destruction-time intent separately from setup inputs.
-`plect down` and `plect destroy` supply the core boolean `force` and an
-invocation cleanup-input object. An effect declaring `[cleanup.inputs_schema]`
-receives its validated plugin-owned keys as `cleanup.inputs.*`; an effect with
-no cleanup input schema receives no such keys. An invocation key that no
-cleanup effect declares is an error, and a key supplied to more than one effect
-must have the same schema. Creation-time `inputs.*` never substitutes for this
-object.
+Cleanup reads what setup recorded (`self.outputs.*`), the effect's
+creation-time `inputs.*`, and one destruction-time value: the core boolean
+`force`. A destroy carries no other per-call input, so what a cleanup releases
+is decided when the session is created, by the same declaration the session's
+workflow revision fixes.
 
+An effect whose release policy one session may need to change records that
+policy as a `mutable` output. `plect state set-output <session> --node <id>`
+rewrites it before destroy, and the change is part of that session's own
+record rather than an argument the next caller has to remember.
+
+<!-- fixture: effects/cleanup-policy-output.toml -->
 ```toml
 [checkout_effect]
 kind  = "effect"
 scope = "session"
+
+[checkout_effect.setup]
+type   = "shell"
+script = '''
+checkout-tool create >&2
+printf '{"delete_branch":%s}\n' "$delete_branch"
+'''
+
+[checkout_effect.setup.bind]
+delete_branch = { from = "inputs.delete_branch", default = false }
 
 [checkout_effect.cleanup]
 type   = "shell"
@@ -102,20 +114,33 @@ script = 'checkout-tool remove --force="$force" --delete-branch="$delete_branch"
 
 [checkout_effect.cleanup.bind]
 force         = { from = "force" }
-delete_branch = { from = "cleanup.inputs.delete_branch", default = false }
+delete_branch = { from = "self.outputs.delete_branch" }
 
-[checkout_effect.cleanup.inputs_schema]
+[checkout_effect.health.alive]
+type = "noop"
+
+[checkout_effect.inputs_schema]
 type = "object"
 
-[checkout_effect.cleanup.inputs_schema.properties]
+[checkout_effect.inputs_schema.properties]
 delete_branch = { type = "boolean" }
+
+[checkout_effect.outputs_schema]
+type     = "object"
+required = ["delete_branch"]
+
+[checkout_effect.outputs_schema.properties.delete_branch]
+type    = "boolean"
+mutable = true
 ```
 
-Population-driven destruction supplies its declared force policy and no
-plugin-owned cleanup input unless the population explicitly supplies that
-effect's cleanup-input object. A caller may use the same surface for an
-explicit `down` or `destroy`; cleanup intent is not inferred from resource or
-workflow creation.
+`force` is `true` under `plect destroy --force`, and when `plect up
+--force-recreate` releases a node it is about to rebuild; it is `false`
+otherwise. It tells cleanup that it may override the effect's own safeguards to
+complete the release — for example, removing a checkout that carries
+uncommitted changes. Whatever such a safeguard protected is lost. An effect with
+no safeguard to override ignores `force`. Core's side of `destroy --force` is
+described in [workflows](workflows.md#cleanup-and-reconstruction).
 
 When a workflow declares `workdir`, graph-derived preparation nodes execute
 setup in the current user's home directory, whichever way the session was

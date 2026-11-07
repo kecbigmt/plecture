@@ -41,9 +41,6 @@ func cleanupRoots(ctx RenderContext) lang.Roots {
 	env["nodes"] = nodeRoots(ctx.Tasks)
 	env["workflow"] = map[string]any{"outputs": orEmpty(normalizeOutputs(ctx.Workflow))}
 	env["force"] = ctx.Session.Force
-	if len(ctx.CleanupInputs) > 0 {
-		env["cleanup"] = map[string]any{"inputs": normalizeOutputs(ctx.CleanupInputs)}
-	}
 	return env
 }
 
@@ -209,7 +206,6 @@ func chainHost(base RenderContext, observer Observer, scope, nodeID string) effe
 			ctx.Self = self
 			ctx.Inputs = inputs
 			ctx.SourcePath = layer.SourcePath
-			ctx.CleanupInputs = FilterCleanupInputs(layer.CleanupInputsSchema, base.Session.CleanupInputs)
 			if !layer.DeclaresProcess() {
 				ctx.Process = nil
 			}

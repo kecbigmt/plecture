@@ -432,7 +432,7 @@ which has nothing to say about a node it no longer declares. It resolves each
 cleanup layer from the current trusted configuration tree by the execution's
 retained declaration and layer position. A changed lifecycle-configuration
 baseline warns but does not prevent current trusted cleanup from running. A
-missing definition, trust, cwd, or required cleanup input is a precondition
+missing definition, trust, or cwd is a precondition
 failure that leaves the obligation outstanding; it never falls back or infers
 release.
 

@@ -57,6 +57,10 @@ type SetupOptions struct {
 	// branch-naming parameters; empty means the shipped convention.
 	IssueBranchTemplate string
 	TaggedBranchSuffix  string
+	// DeleteBranch is the effect's `delete_branch` input, echoed as an output
+	// so cleanup reads the policy the session was created with, or the one
+	// `plect state set-output` later rewrote it to.
+	DeleteBranch bool
 	// AppID and PrivateKeyPath opt setup's raw git operations and its
 	// pull-request/issue metadata fetch into GitHub App installation-token
 	// auth, replacing GHClient outright rather than supplementing it.
@@ -145,6 +149,7 @@ func Setup(ctx context.Context, opts SetupOptions) (map[string]any, error) {
 		"owner":         parsed.Owner,
 		"repo":          parsed.Repo,
 		"number":        parsed.Number,
+		"delete_branch": opts.DeleteBranch,
 	}
 	if title != "" {
 		outputs["title"] = title
@@ -273,18 +278,9 @@ type CleanupOptions struct {
 	// Force removes the worktree even when it carries uncommitted changes,
 	// mirroring the caller's `plect destroy --force` intent.
 	Force bool
-	// DeleteBranch mirrors the caller's `plect destroy --input
-	// delete_branch=<v>` intent (tasks/worktree.toml's cleanup action): the
-	// empty string means the caller expressed none, so the workflow's
-	// `delete_branch_default` parameter decides.
-	DeleteBranch string
-	// DeleteBranchDefault is the author-declared `delete_branch_default`
-	// parameter, used when the caller expressed no intent. Empty means off: a
-	// branch left behind after worktree removal is the safer default, since
-	// deleting one is not always what a review-only or shared-branch session
-	// wants.
-	DeleteBranchDefault string
-	WorkspaceDirsRoot   string
+	// DeleteBranch is setup's recorded `delete_branch` output.
+	DeleteBranch      bool
+	WorkspaceDirsRoot string
 	// WorkspaceLayoutRoot is setup's parameter of the same name; cleanup
 	// needs it only to build a Manager, since the workspace directory it
 	// releases is read back from setup's own outputs.
@@ -310,7 +306,7 @@ func Cleanup(ctx context.Context, opts CleanupOptions) error {
 	if err != nil {
 		return fmt.Errorf("release worktree: %w", err)
 	}
-	if err := mgr.RemoveByPath(ctx, opts.WorkspaceDir, gitDir, opts.Branch, opts.Force, ResolveDeleteBranch(opts.DeleteBranch, opts.DeleteBranchDefault)); err != nil {
+	if err := mgr.RemoveByPath(ctx, opts.WorkspaceDir, gitDir, opts.Branch, opts.Force, opts.DeleteBranch); err != nil {
 		return fmt.Errorf("release worktree: %w", err)
 	}
 	return nil
@@ -323,17 +319,6 @@ func SessionTag(sessionName string) string {
 		return sessionName[idx+1:]
 	}
 	return ""
-}
-
-// ResolveDeleteBranch decides whether cleanup reclaims the branch. A caller's
-// explicit intent wins over the workflow's declared default; anything other
-// than "true" is off, so a misspelled value never turns branch deletion on by
-// accident.
-func ResolveDeleteBranch(requested, declaredDefault string) bool {
-	if requested != "" {
-		return requested == "true"
-	}
-	return declaredDefault == "true"
 }
 
 // layoutRoot picks the root this effect lays worktree containers out under:

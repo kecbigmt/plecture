@@ -157,6 +157,7 @@ func TestShippedCatalog_EffectActionsResolve(t *testing.T) {
 		"permalink":      "https://example.slack.com/archives/C123/p1234567890123456",
 		"workspace_dir":  "/tmp/wd",
 		"branch":         "issue/1",
+		"delete_branch":  false,
 	}
 	inputs := map[string]any{
 		"terminal_ready":   "test-session",

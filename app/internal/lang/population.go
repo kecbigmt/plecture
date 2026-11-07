@@ -434,6 +434,10 @@ func (v Validation) validatePopulationSession(entry map[string]any, pos Position
 		if err != nil {
 			return err
 		}
+		if _, ok := destroy["inputs"]; ok {
+			return newDiag(CodeFieldUnknown, LayerStructural, childPos(destroyAt, "inputs"),
+				fmt.Sprintf("cleanup inputs are retired: an automatic destroy passes only force; see %s", WorkspaceProviderMigrationGuide))
+		}
 		if err := rejectUnknownFields(destroy, destroyAt, "force"); err != nil {
 			return err
 		}
