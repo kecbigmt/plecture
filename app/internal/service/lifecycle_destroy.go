@@ -110,7 +110,7 @@ func destroyUnlocked(cfg *config.Config, store *state.Store, params DestroyParam
 	}
 	if retired := config.RetiredRevisionSpellings(session); len(retired) > 0 {
 		if !params.Force {
-			return nil, retiredRevisionRefusal(session, "destroy")
+			return nil, retiredRevisionRefusal(session, "`destroy`")
 		}
 		result.CleanupWarnings = append(result.CleanupWarnings, fmt.Sprintf("workflow revision uses retired declaration spellings (%s); cleanup skipped, release not verified", strings.Join(retired, ", ")))
 		recordLifecycle(store, sessionName, "destroyed", "session destroyed")

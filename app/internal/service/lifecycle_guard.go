@@ -52,7 +52,7 @@ func retiredRevisionRefusal(session *domain.Session, op string) *Error {
 	return &Error{
 		Code: ErrExecutionFailed,
 		Message: fmt.Sprintf(
-			"session %q is pinned to a workflow revision written with retired declaration spellings (%s), so this release cannot %s it.\n"+
+			"session %q is pinned to a workflow revision written with retired declaration spellings (%s), so this release refuses %s for it.\n"+
 				"With the previous release, save the session's uncommitted work and run `plect destroy %s`; then upgrade and recreate the session. See %s.\n"+
 				"`plect destroy %s --force` on this release removes the record without running cleanup, so nothing verifies that the session's allocations were released.\n%s",
 			name, strings.Join(spellings, ", "), op, name, lang.WorkspaceProviderMigrationGuide, name, forceRequiresConfirmation,

@@ -131,7 +131,7 @@ func upUnlocked(cfg *config.Config, store *state.Store, params UpParams) (*UpRes
 		if entryErr != nil {
 			return nil, entryErr
 		}
-		if refusal := retiredRevisionRefusal(existing, "bring up"); refusal != nil {
+		if refusal := retiredRevisionRefusal(existing, "`up`"); refusal != nil {
 			return nil, refusal
 		}
 		if existing != nil {
@@ -223,7 +223,7 @@ func upUnlocked(cfg *config.Config, store *state.Store, params UpParams) (*UpRes
 	if err := requireSessionRoot(cfg, session); err != nil {
 		return nil, err
 	}
-	if refusal := retiredRevisionRefusal(session, "bring up"); refusal != nil {
+	if refusal := retiredRevisionRefusal(session, "`up`"); refusal != nil {
 		return nil, refusal
 	}
 	wasSleeping := !session.SleepSince.IsZero()

@@ -49,7 +49,7 @@ func RepairSession(cfg *config.Config, store *state.Store, name string, report *
 	if trigger, _ := repairCandidate(before, limit, run, report); trigger == "" {
 		return false, nil
 	}
-	if refusal := retiredRevisionRefusal(before, "repair"); refusal != nil {
+	if refusal := retiredRevisionRefusal(before, "automatic repair"); refusal != nil {
 		return false, refusal
 	}
 	if !gate.acquire() {

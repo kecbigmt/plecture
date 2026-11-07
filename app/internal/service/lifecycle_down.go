@@ -58,7 +58,7 @@ func downUnlocked(cfg *config.Config, store *state.Store, params DownParams) (*D
 	if guardErr := checkLifecycleRelationGuard(store, sessionName, "down"); guardErr != nil {
 		return nil, guardErr
 	}
-	if refusal := retiredRevisionRefusal(session, "take down"); refusal != nil {
+	if refusal := retiredRevisionRefusal(session, "`down`"); refusal != nil {
 		return nil, refusal
 	}
 	if session.Nodes == nil {
