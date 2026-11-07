@@ -16,9 +16,39 @@ set -euo pipefail
 root="${COMMENT_DENSITY_CHECK_ROOT:-$(pwd)}"
 script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
-if [ "$#" -ne 2 ]; then
-  echo "usage: check-comment-density.sh <base-ref> <head-ref>" >&2
+usage() {
+  echo "usage: check-comment-density.sh [--per-commit] <base-ref> <head-ref>" >&2
   exit 2
+}
+
+per_commit=0
+if [ "${1:-}" = "--per-commit" ]; then
+  per_commit=1
+  shift
+fi
+[ "$#" -eq 2 ] || usage
+
+if [ "$per_commit" -eq 0 ]; then
+  exec python3 "$script_dir/comment_density.py" "$root" "$1" "$2"
 fi
 
-python3 "$script_dir/comment_density.py" "$root" "$1" "$2"
+# A branch built from squash-merged sub-PRs fails the aggregate diff by
+# construction even when every sub-PR passed, yet skipping it would leave a
+# direct commit on the branch (a conflict fix, a merge) unchecked; scoring
+# each commit against its first parent checks exactly the reviewed units.
+mapfile -t commits < <(git -C "$root" rev-list --reverse "$1..$2")
+failed=()
+for c in "${commits[@]}"; do
+  label="$(git -C "$root" log -1 --format='%h %s' "$c")"
+  echo "==> $label"
+  if ! python3 "$script_dir/comment_density.py" "$root" "$c^1" "$c"; then
+    failed+=("$label")
+  fi
+done
+
+echo "scored ${#commits[@]} commit(s) individually"
+if [ "${#failed[@]}" -gt 0 ]; then
+  echo "comment-density failed on ${#failed[@]} commit(s):" >&2
+  printf '  %s\n' "${failed[@]}" >&2
+  exit 1
+fi

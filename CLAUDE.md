@@ -261,6 +261,10 @@ runs `gofmt`, `go vet`, `go test`, and every `scripts/check-*.sh` CI runs,
 in the same order and with the same arguments CI uses. A push that fails a
 check CI would fail costs a full review round.
 
+Branches named `integration/*` or `release/*` are aggregate branches merged
+to `main`; CI's `comment-density` job scores a PR whose head is one commit
+by commit (`check-comment-density.sh --per-commit`), not as one diff.
+
 ### Definition of done
 
 A PR is done when:
