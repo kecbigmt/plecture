@@ -4,11 +4,13 @@ import (
 	"context"
 	"database/sql"
 	"fmt"
+	"io/fs"
 	"os"
 	"sort"
 	"strconv"
 	"strings"
 	"testing"
+	"testing/fstest"
 	"unicode"
 
 	"github.com/pressly/goose/v3"
@@ -26,16 +28,63 @@ import (
 // CHECK constraints do not, so those are extracted from sqlite_master's
 // own CREATE TABLE text instead of being skipped.
 func TestSchemaSQL_MatchesMigrationHistory(t *testing.T) {
-	ctx := context.Background()
-
-	declared := schemaFromSQLFile(t, ctx, "schema.sql")
-	migrated := schemaFromMigrationHistory(t, ctx)
-
-	delete(migrated, goose.DefaultTablename)
-
-	if diff := diffTableSets(declared, migrated); diff != "" {
+	schemaSQL, err := os.ReadFile("schema.sql")
+	if err != nil {
+		t.Fatalf("read schema.sql: %v", err)
+	}
+	if diff := schemaDrift(t, string(schemaSQL), migrationsSourceFS()); diff != "" {
 		t.Fatalf("schema.sql and the migration history disagree:\n%s", diff)
 	}
+}
+
+func TestSchemaDrift_CatchesAColumnNoMigrationAdds(t *testing.T) {
+	const schemaSQL = "CREATE TABLE notes (id INTEGER PRIMARY KEY, body TEXT NOT NULL);"
+	history := fstest.MapFS{
+		"1_notes.sql": {Data: []byte("-- +goose Up\nCREATE TABLE notes (id INTEGER PRIMARY KEY);\n")},
+	}
+
+	if diff := schemaDrift(t, schemaSQL, history); diff == "" {
+		t.Fatal("schemaDrift reported no difference for a column only schema.sql declares")
+	}
+
+	history["2_notes_body.sql"] = &fstest.MapFile{Data: []byte("-- +goose Up\nALTER TABLE notes ADD COLUMN body TEXT NOT NULL DEFAULT '';\n")}
+	if diff := schemaDrift(t, schemaSQL, history); diff == "" {
+		t.Fatal("schemaDrift accepted a migration whose column default schema.sql does not declare")
+	}
+
+	history["2_notes_body.sql"] = &fstest.MapFile{Data: []byte("-- +goose Up\nALTER TABLE notes ADD COLUMN body TEXT NOT NULL;\n")}
+	if diff := schemaDrift(t, schemaSQL, history); diff != "" {
+		t.Fatalf("schemaDrift reported a difference after the migration adds the column:\n%s", diff)
+	}
+}
+
+// schemaDrift excludes goose_db_version, the table goose owns for its own
+// bookkeeping. It compares SQLite's own introspection rather than raw
+// CREATE TABLE text, because ALTER TABLE rewrites a table's stored text in
+// a different column order and layout from schema.sql's declaration of the
+// same structure. Columns, indexes (including a partial index's
+// predicate), and foreign keys have a dedicated PRAGMA; CHECK constraints
+// do not, so those are extracted from sqlite_master's own CREATE TABLE
+// text instead of being skipped.
+func schemaDrift(t *testing.T, schemaSQL string, migrations fs.FS) string {
+	t.Helper()
+	ctx := context.Background()
+
+	declaredDB := openTestDB(t)
+	if _, err := declaredDB.write.ExecContext(ctx, schemaSQL); err != nil {
+		t.Fatalf("apply schema.sql: %v", err)
+	}
+
+	migratedDB := openTestDB(t)
+	migratedDB.migrations = migrations
+	if err := migratedDB.Migrate(ctx); err != nil {
+		t.Fatalf("Migrate: %v", err)
+	}
+
+	declared := introspect(t, ctx, declaredDB.write)
+	migrated := introspect(t, ctx, migratedDB.write)
+	delete(migrated, goose.DefaultTablename)
+	return diffTableSets(declared, migrated)
 }
 
 type tableSchema struct {
@@ -87,28 +136,6 @@ type foreignKeyInfo struct {
 type fkColumnPair struct {
 	fromColumn string
 	toColumn   string
-}
-
-func schemaFromSQLFile(t *testing.T, ctx context.Context, path string) map[string]tableSchema {
-	t.Helper()
-	stmt, err := os.ReadFile(path)
-	if err != nil {
-		t.Fatalf("read %s: %v", path, err)
-	}
-	db := openTestDB(t)
-	if _, err := db.write.ExecContext(ctx, string(stmt)); err != nil {
-		t.Fatalf("apply %s: %v", path, err)
-	}
-	return introspect(t, ctx, db.write)
-}
-
-func schemaFromMigrationHistory(t *testing.T, ctx context.Context) map[string]tableSchema {
-	t.Helper()
-	db := openTestDB(t)
-	if err := db.Migrate(ctx); err != nil {
-		t.Fatalf("Migrate: %v", err)
-	}
-	return introspect(t, ctx, db.write)
 }
 
 func introspect(t *testing.T, ctx context.Context, handle *sql.DB) map[string]tableSchema {
