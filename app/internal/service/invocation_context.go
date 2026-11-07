@@ -12,15 +12,14 @@ import (
 	"github.com/kecbigmt/plecture/app/internal/state"
 )
 
-// SessionProjectRoot is consulted before any upward search from dir, because
-// a session's generated checkout usually carries its repository's committed
-// marker: searching from inside one would offer the checkout itself as a root,
-// written by whoever authored the checked-out branch. found reports that a
-// live session claimed the invocation, in which case its recorded root is the
-// only candidate and a root that lost its trust or marker is an error rather
-// than a reason to search elsewhere.
-func SessionProjectRoot(cfg *config.Config, store *state.Store, dir string) (root string, found bool, err error) {
-	session, err := invokingSession(cfg, store, dir)
+// SessionProjectRoot precedes any upward search from the cwd: a session's
+// generated checkout carries its repository's committed marker, so a search
+// would offer the checkout, written by whoever authored its branch, as a root.
+// Once a live session claims the invocation (found), a root that lost its
+// trust or marker is an error, not a reason to search elsewhere. getwd runs
+// only when no session is named, since a named session's checkout may be gone.
+func SessionProjectRoot(cfg *config.Config, store *state.Store, getwd func() (string, error)) (root string, found bool, err error) {
+	session, err := invokingSession(cfg, store, getwd)
 	if err != nil {
 		return "", true, err
 	}
@@ -36,7 +35,7 @@ func SessionProjectRoot(cfg *config.Config, store *state.Store, dir string) (roo
 // invokingSession prefers the ambient session over the cwd. A name that
 // matches no live session is not an error: the variable can outlive its
 // session in a shell that stays open.
-func invokingSession(cfg *config.Config, store *state.Store, dir string) (*domain.Session, error) {
+func invokingSession(cfg *config.Config, store *state.Store, getwd func() (string, error)) (*domain.Session, error) {
 	if name := os.Getenv("PLECT_SESSION_NAME"); name != "" {
 		s, err := store.GetE(name)
 		if err != nil {
@@ -45,6 +44,10 @@ func invokingSession(cfg *config.Config, store *state.Store, dir string) (*domai
 		if s != nil {
 			return s, nil
 		}
+	}
+	dir, err := getwd()
+	if err != nil {
+		return nil, fmt.Errorf("getwd: %w", err)
 	}
 	return sessionOwningDir(cfg, store, dir)
 }

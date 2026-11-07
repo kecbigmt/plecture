@@ -179,10 +179,8 @@ func TestUp_BySessionNameIgnoresTheCallersUntrustedRoot(t *testing.T) {
 	}
 }
 
-// sessionWithACheckout creates a session in a trusted root whose marked
-// .plect/ declares the project-only workflow "local", and moves into a
-// checkout of that root: a separate directory carrying the same committed
-// marker and definitions, listed nowhere in trusted_project_roots.
+// The checkout carries its root's committed marker but is not trusted, so a
+// search from the cwd selects the checkout rather than the session's root.
 func sessionWithACheckout(t *testing.T) (session, configPath, root, checkout string) {
 	t.Helper()
 	configPath, _ = projectInvocationFixture(t)
@@ -322,8 +320,6 @@ func TestWorkflowList_ASessionVariableNamingNoSessionSelectsFromTheCwd(t *testin
 	}
 }
 
-// checkoutEffect declares an effect that creates dir and reports it as the
-// workdir a workflow can name.
 func checkoutEffect(id, dir string) string {
 	return fmt.Sprintf(`[%[1]s]
 kind  = "effect"
@@ -351,10 +347,6 @@ func workdirWorkflow(id, uses string) string {
 	return fmt.Sprintf("[%[1]s]\nkind = \"workflow\"\nresource = \"issue\"\nworkdir = { from = \"nodes.%[2]s.outputs.workspace_dir\" }\n[[%[1]s.nodes]]\nuses = %[2]q\n", id, uses)
 }
 
-// sessionOwningACheckout creates a session, in a trusted root, whose workflow
-// generates a checkout of that root as its workdir, and moves below that
-// checkout with no session variable set. The checkout carries the root's
-// committed marker and is listed nowhere in trusted_project_roots.
 func sessionOwningACheckout(t *testing.T) (session, configPath, root, checkout string) {
 	t.Helper()
 	t.Setenv("PLECT_SESSION_NAME", "")
@@ -473,5 +465,17 @@ func TestWorkflowList_SessionsSharingTheDeepestWorkdirWithDifferentRootsStop(t *
 	}
 	if !strings.Contains(err.Error(), session) || !strings.Contains(err.Error(), other.SessionName) {
 		t.Errorf("error %q must name both sessions", err)
+	}
+}
+
+func TestWorkflowList_TheSessionVariableNeedsNoReadableCwd(t *testing.T) {
+	_, _, _, checkout := sessionWithACheckout(t)
+	if err := os.RemoveAll(checkout); err != nil {
+		t.Fatal(err)
+	}
+
+	out, err := runWorkflowList(t, false, "")
+	if err != nil || !strings.Contains(out, "local") {
+		t.Fatalf("workflow list = %v, output %q; want the session root's workflow", err, out)
 	}
 }

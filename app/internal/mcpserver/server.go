@@ -178,12 +178,12 @@ func handleWorkflowRebase(ctx context.Context, request mcp.CallToolRequest) (*mc
 // callerProjectRoot reports an untrusted root as an error rather than a
 // prompt, because the server has no one to ask.
 func callerProjectRoot(cfg *config.Config) (string, error) {
+	if root, found, err := service.SessionProjectRoot(cfg, state.NewStore(""), os.Getwd); found || err != nil {
+		return root, err
+	}
 	dir, err := os.Getwd()
 	if err != nil {
 		return "", err
-	}
-	if root, found, err := service.SessionProjectRoot(cfg, state.NewStore(""), dir); found || err != nil {
-		return root, err
 	}
 	return cfg.SelectProjectRoot(dir)
 }

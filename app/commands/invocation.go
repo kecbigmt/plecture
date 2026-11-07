@@ -20,12 +20,12 @@ import (
 // working directory, not to one a session recorded. The prompt goes to stderr
 // so a confirmed run's stdout stays the command's own output.
 func selectProjectRoot(cmd *cobra.Command, cfg *config.Config) (string, error) {
+	if root, found, err := service.SessionProjectRoot(cfg, state.NewStore(""), os.Getwd); found || err != nil {
+		return root, err
+	}
 	dir, err := os.Getwd()
 	if err != nil {
 		return "", fmt.Errorf("getwd: %w", err)
-	}
-	if root, found, err := service.SessionProjectRoot(cfg, state.NewStore(""), dir); found || err != nil {
-		return root, err
 	}
 	root, err := cfg.SelectProjectRoot(dir)
 	var untrusted *config.UntrustedProjectError

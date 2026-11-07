@@ -185,6 +185,14 @@ func TestHandleUp_BySessionNameIgnoresTheServersUntrustedRoot(t *testing.T) {
 }
 
 func TestHandleWorkflowList_InACheckoutUsesTheSessionVariablesRoot(t *testing.T) {
+	for _, removed := range []bool{false, true} {
+		t.Run(fmt.Sprintf("checkout removed=%v", removed), func(t *testing.T) {
+			checkWorkflowListInACheckout(t, removed)
+		})
+	}
+}
+
+func checkWorkflowListInACheckout(t *testing.T, removeCheckout bool) {
 	setUpConfigHome(t)
 	projects, err := filepath.EvalSymlinks(t.TempDir())
 	if err != nil {
@@ -218,6 +226,11 @@ func TestHandleWorkflowList_InACheckoutUsesTheSessionVariablesRoot(t *testing.T)
 	}
 	t.Setenv("PLECT_SESSION_NAME", created.SessionName)
 	t.Chdir(checkout)
+	if removeCheckout {
+		if err := os.RemoveAll(checkout); err != nil {
+			t.Fatal(err)
+		}
+	}
 
 	result, err := handleWorkflowList(context.Background(), reqWith(map[string]any{}))
 	if err != nil {
