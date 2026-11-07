@@ -200,6 +200,7 @@ func (a *Adapter) handleMessage(ev *slackevents.MessageEvent) {
 
 	if a.isAppMentionMessage(ev.Text) {
 		if a.botUserID == "" {
+			a.logger.Info("message mention skipped", "reason", "bot_identity_unknown", "thread_ts", ev.ThreadTimeStamp, "ts", ev.TimeStamp, "channel_id", ev.Channel)
 			return
 		}
 		if ev.TimeStamp == "" {

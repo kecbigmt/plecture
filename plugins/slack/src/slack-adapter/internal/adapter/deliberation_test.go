@@ -11,8 +11,8 @@ import (
 )
 
 type fakeThreadFetcher struct {
-	messages []slack.Message
-	names    map[string]string
+	messages  []slack.Message
+	names     map[string]string
 	err       error
 	calls     int
 	nameCalls int
