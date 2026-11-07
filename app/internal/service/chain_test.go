@@ -7,9 +7,11 @@ import (
 	"testing"
 	"time"
 
+	"github.com/kecbigmt/plecture/app/internal/chain"
 	"github.com/kecbigmt/plecture/app/internal/config"
 	"github.com/kecbigmt/plecture/app/internal/domain"
 	"github.com/kecbigmt/plecture/app/internal/eventlog"
+	"github.com/kecbigmt/plecture/app/internal/persistence"
 	"github.com/kecbigmt/plecture/app/internal/state"
 	"github.com/kecbigmt/plecture/contracts/event"
 	contract "github.com/kecbigmt/plecture/contracts/state"
@@ -433,6 +435,25 @@ all = [ { judge_pending = "ac-met" } ]
 	sp, _ := findSpawn(res.Chains, "review")
 	if sp.AlreadyActive || sp.KickDelivered || sp.Spawned || len(sp.Warnings) != 1 || !strings.Contains(sp.Warnings[0], "collides") {
 		t.Fatalf("chain spawn = %+v, want a collision warning with no kick and no spawn", sp)
+	}
+}
+
+func TestEvalDocumentChain_UnreadableStoreCountsTheTargetAsAlreadyActive(t *testing.T) {
+	cfg := writeWorkflowFixture(t, "wf",
+		[]taskFixture{{id: "noop", scope: "session", setup: "echo '{}'"}},
+		[]nodeFixture{{id: "noop"}})
+	writeWorkflowFile(t, cfg, "codex", "")
+	dir := t.TempDir()
+	if err := os.WriteFile(persistence.PathIn(dir), []byte("not a database file, only bytes that cannot be opened"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	def := config.DocumentChain{ID: "review", Workflow: "codex", When: config.ChainWhen{All: []config.ChainWhenFact{{JudgePending: "ac-met"}}}}
+	facts := chain.Facts{Judges: map[string]chain.JudgeFact{"ac-met": {Pending: true}}}
+	session := &domain.Session{Name: "owner/repo-1", Workflow: "wf"}
+
+	sp := evalDocumentChain(cfg, state.NewStore(dir), def, "owner/repo-1", session, "work", "https://github.com/owner/repo/issues/1", facts)
+	if !sp.Fired || !sp.AlreadyActive || sp.TargetSession != "owner/repo-1+review-work" || len(sp.Warnings) != 1 || !strings.Contains(sp.Warnings[0], "could not check") {
+		t.Fatalf("chain spawn = %+v, want the target counted as already active with a could-not-check warning", sp)
 	}
 }
 

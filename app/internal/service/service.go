@@ -79,7 +79,7 @@ func entrySession(store *state.Store, d dispatchResult, tag string) (name string
 	}
 	existing, err := store.GetE(name)
 	if err != nil {
-		return "", nil, nil, fmt.Errorf("read session %q state: %w", name, err)
+		return name, nil, nil, fmt.Errorf("read session %q state: %w", name, err)
 	}
 	if existing == nil {
 		return name, nil, nil, nil
