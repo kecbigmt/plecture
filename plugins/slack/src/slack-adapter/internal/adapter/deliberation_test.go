@@ -13,8 +13,9 @@ import (
 type fakeThreadFetcher struct {
 	messages []slack.Message
 	names    map[string]string
-	err      error
-	calls    int
+	err       error
+	calls     int
+	nameCalls int
 }
 
 func (f *fakeThreadFetcher) fetchThreadReplies(channelID, threadTS string) ([]slack.Message, error) {
@@ -26,6 +27,7 @@ func (f *fakeThreadFetcher) fetchThreadReplies(channelID, threadTS string) ([]sl
 }
 
 func (f *fakeThreadFetcher) userDisplayName(userID string) string {
+	f.nameCalls++
 	if name := f.names[userID]; name != "" {
 		return name
 	}
