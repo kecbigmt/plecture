@@ -109,7 +109,7 @@ func TestHandleUp_ExistingSessionByName(t *testing.T) {
 // The tool schemas must expose workflow/task/task_resource so a client can discover the
 // arguments without reading the handler source.
 func TestUpTool_ExposesWorkflowAndTask(t *testing.T) {
-	for _, name := range []string{"workflow", "task", "task_resource", "resource_inputs", "task_resource_inputs"} {
+	for _, name := range []string{"workflow", "task", "task_resource"} {
 		if _, ok := upTool.InputSchema.Properties[name]; !ok {
 			t.Errorf("%s: missing %q in InputSchema.Properties", upTool.Name, name)
 		}
@@ -134,11 +134,5 @@ func TestHandleUp_TaskSelectsAnInitialTaskCoreChecks(t *testing.T) {
 	}
 	if text := extractErrorText(result); !strings.Contains(text, "review") || !strings.Contains(text, "not found") {
 		t.Errorf("error = %q, want it to report the task selection", text)
-	}
-}
-
-func TestTaskSetupTool_ExposesResourceInputs(t *testing.T) {
-	if _, ok := taskSetupTool.InputSchema.Properties["resource_inputs"]; !ok {
-		t.Errorf("%s: missing resource_inputs in InputSchema.Properties", taskSetupTool.Name)
 	}
 }

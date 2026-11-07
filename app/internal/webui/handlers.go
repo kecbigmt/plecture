@@ -236,7 +236,7 @@ func (s *Server) handleSessionCreate(w http.ResponseWriter, r *http.Request) {
 		Tag:            strings.TrimSpace(r.FormValue("tag")),
 		Workflow:       strings.TrimSpace(r.FormValue("workflow")),
 		Inputs:         inputs,
-		InitialTask:    service.InitialTaskSelection(strings.TrimSpace(r.FormValue("task")), "", nil),
+		InitialTask:    service.InitialTaskSelection(strings.TrimSpace(r.FormValue("task")), ""),
 		HumanInitiated: true,
 	})
 	if err != nil {

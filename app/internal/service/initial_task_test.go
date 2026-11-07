@@ -1,6 +1,7 @@
 package service
 
 import (
+	"errors"
 	"os"
 	"path/filepath"
 	"strings"
@@ -62,6 +63,14 @@ func instructionEvents(t *testing.T, store *state.Store, session string) []event
 		t.Fatalf("list instructions: %v", err)
 	}
 	return evs
+}
+
+func errorCode(err error) string {
+	var svcErr *Error
+	if errors.As(err, &svcErr) {
+		return svcErr.Code
+	}
+	return ""
 }
 
 func requireErrorCode(t *testing.T, err error, code string) {

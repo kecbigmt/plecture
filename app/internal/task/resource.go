@@ -55,50 +55,13 @@ func MatchResourceDef(defs map[string]config.ResourceDef, resourceID string) (st
 // result against the observer's state schema. Ok=false with a nil error
 // means no observer recognizes this id — the Resource contract is
 // optional, most instance-local resources have no declared kind.
-func ResourceStatus(defs map[string]config.ResourceDef, resourceID string, inputs map[string]any, mountedPlugins []plugins.Mounted) (map[string]any, config.ResourceDef, bool, error) {
+func ResourceStatus(defs map[string]config.ResourceDef, resourceID string, mountedPlugins []plugins.Mounted) (map[string]any, config.ResourceDef, bool, error) {
 	_, def, ok, err := MatchResourceDef(defs, resourceID)
 	if err != nil || !ok {
 		return nil, def, ok, err
 	}
-	state, err := ObserveResource(def, resourceID, inputs, mountedPlugins)
+	state, err := ObserveResource(def, resourceID, mountedPlugins)
 	return state, def, true, err
-}
-
-// InputsError lets a caller tell refused inputs, its own mistake, from an
-// action that ran and failed.
-type InputsError struct{ Err error }
-
-func (e *InputsError) Error() string { return e.Err.Error() }
-func (e *InputsError) Unwrap() error { return e.Err }
-
-// ValidateResourceInputs accepts only the empty object for a resource that
-// declares no schema, because no action of it can have declared a use for
-// inputs.
-func ValidateResourceInputs(def config.ResourceDef, inputs map[string]any) error {
-	if inputs == nil {
-		inputs = map[string]any{}
-	}
-	if def.InputsSchema == nil {
-		if len(inputs) > 0 {
-			return &InputsError{fmt.Errorf("resource %q declares no inputs_schema, so it accepts no inputs", def.ID)}
-		}
-		return nil
-	}
-	schema, err := lang.CompileSchema(def.InputsSchema, "", "plect:resource:"+def.ID+":inputs")
-	if err != nil {
-		return fmt.Errorf("resource %q inputs_schema: %w", def.ID, err)
-	}
-	if err := schema.Validate(inputs); err != nil {
-		return &InputsError{fmt.Errorf("resource %q inputs: %s", def.ID, DescribeValidationError(schema, err))}
-	}
-	return nil
-}
-
-func resourceRoot(id string, inputs map[string]any) map[string]any {
-	if inputs == nil {
-		inputs = map[string]any{}
-	}
-	return map[string]any{"id": id, "inputs": inputs}
 }
 
 // ObserveResource runs one named observer's `observe` action against a
@@ -106,11 +69,8 @@ func resourceRoot(id string, inputs map[string]any) map[string]any {
 // path a declaration takes when it states which observer it is written for,
 // so nothing is matched by pattern: the declaration already said which
 // observer reports this resource.
-func ObserveResource(def config.ResourceDef, resourceID string, inputs map[string]any, mountedPlugins []plugins.Mounted) (map[string]any, error) {
-	if err := ValidateResourceInputs(def, inputs); err != nil {
-		return nil, err
-	}
-	env := lang.Roots{"resource": resourceRoot(resourceID, inputs)}
+func ObserveResource(def config.ResourceDef, resourceID string, mountedPlugins []plugins.Mounted) (map[string]any, error) {
+	env := lang.Roots{"resource": map[string]any{"id": resourceID}}
 	stdout, stderr, runErr := runResourceAction(def, def.Observe, env, mountedPlugins)
 	if runErr != nil {
 		if msg := strings.TrimSpace(string(stderr)); msg != "" {
@@ -154,8 +114,6 @@ type FinalizeResourceParams struct {
 	SessionName string
 	Revision    string
 	Judges      []FinalizeJudgeEvidence
-	// Inputs is the action input object of the binding being finalized.
-	Inputs map[string]any
 	// Plugins are the mounted plugins a `bin` reference resolves against
 	// inside finalize (config.Config.Plugins) — mirrors Observe's
 	// mountedPlugins parameter above.
@@ -180,13 +138,8 @@ func FinalizeResource(defs map[string]config.ResourceDef, params FinalizeResourc
 	for _, judge := range params.Judges {
 		judges = append(judges, judge)
 	}
-	if err := ValidateResourceInputs(def, params.Inputs); err != nil {
-		return false, def, err
-	}
-	resource := resourceRoot(params.ResourceID, params.Inputs)
-	resource["revision"] = params.Revision
 	env := lang.Roots{
-		"resource": resource,
+		"resource": map[string]any{"id": params.ResourceID, "revision": params.Revision},
 		"judges":   judges,
 	}
 	if session := presentKeys(map[string]string{"name": params.SessionName}); session != nil {

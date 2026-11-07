@@ -174,9 +174,6 @@ func setupTaskDocument(cfg *config.Config, store *state.Store, resolvedName stri
 	if bindErr != nil {
 		return nil, bindErr
 	}
-	if err := task.ValidateResourceInputs(observer, params.ResourceInputs); err != nil {
-		return nil, &Error{Code: ErrInvalidInput, Message: fmt.Sprintf("task %s resource inputs: %v", doc.ID, err)}
-	}
 
 	inputs, bindErr := bindDocumentInputs(doc, params.Inputs, session)
 	if bindErr != nil {
@@ -184,7 +181,7 @@ func setupTaskDocument(cfg *config.Config, store *state.Store, resolvedName stri
 	}
 	// Instantiation observes once, and a failed first observation rejects it:
 	// an instance whose predicate has nothing to read is worse than none.
-	observed, oerr := task.ObserveResource(observer, resourceID, params.ResourceInputs, cfg.Plugins)
+	observed, oerr := task.ObserveResource(observer, resourceID, cfg.Plugins)
 	if oerr != nil {
 		return nil, &Error{Code: ErrExecutionFailed, Message: fmt.Sprintf("task %s: observing %s failed, so no instance was created: %v", doc.ID, resourceID, oerr)}
 	}
@@ -217,15 +214,14 @@ func setupTaskDocument(cfg *config.Config, store *state.Store, resolvedName stri
 			// is what lets a later lookup find this document again when two
 			// plugins declare the id. The instance key stays the bare id, the
 			// same way a workflow node's defaulted id does.
-			TaskID:         params.TaskID,
-			Status:         contract.TaskStatusProduced,
-			Inputs:         inputs,
-			ResourceInputs: params.ResourceInputs,
-			Resource:       resourceID,
-			Name:           params.Name,
-			Observed:       observation,
-			Seq:            task.NextSeq(s.Nodes, s.Tasks),
-			SetupAt:        now,
+			TaskID:   params.TaskID,
+			Status:   contract.TaskStatusProduced,
+			Inputs:   inputs,
+			Resource: params.Resource,
+			Name:     params.Name,
+			Observed: observation,
+			Seq:      task.NextSeq(s.Nodes, s.Tasks),
+			SetupAt:  now,
 		}
 		s.UpdatedAt = now
 		return nil
@@ -237,9 +233,9 @@ func setupTaskDocument(cfg *config.Config, store *state.Store, resolvedName stri
 		return nil, &Error{Code: ErrInvalidInput, Message: fmt.Sprintf("instance %q already exists in session %s; run `plect task cleanup %s` first to recreate it", key, resolvedName, key)}
 	}
 	recordLifecycle(store, resolvedName, "task_setup", fmt.Sprintf("instantiated %s", key))
-	appendInstruction(store, resolvedName, key, resourceID, instruction)
+	appendInstruction(store, resolvedName, key, params.Resource, instruction)
 
-	subscribed, subscribeErrMsg := wireDeliveryOnSetup(cfg, store, resolvedName, resourceID, params.ResourceInputs, false)
+	subscribed, subscribeErrMsg := wireDeliveryOnSetup(cfg, store, resolvedName, params.Resource, false)
 
 	return &TaskSetupResult{
 		SessionName: resolvedName,
@@ -249,7 +245,7 @@ func setupTaskDocument(cfg *config.Config, store *state.Store, resolvedName stri
 		TaskID:         params.TaskID,
 		Scope:          contract.TaskScopeSession,
 		Name:           params.Name,
-		Resource:       resourceID,
+		Resource:       params.Resource,
 		Subscribed:     subscribed,
 		SubscribeError: subscribeErrMsg,
 		Instruction:    instruction,

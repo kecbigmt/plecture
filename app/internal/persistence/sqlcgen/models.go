@@ -140,7 +140,6 @@ type Session struct {
 	PopulationWorkflow       sql.NullString
 	PopulationName           sql.NullString
 	InputsJson               sql.NullString
-	ResourceInputsJson       sql.NullString
 	HealthLastCheckedAt      sql.NullString
 	HealthLastActivityAt     sql.NullString
 	HealthLastFingerprint    sql.NullString
@@ -171,7 +170,6 @@ type SubscriptionRetry struct {
 	SessionID  string
 	Action     string
 	ResourceID string
-	InputsJson sql.NullString
 }
 
 type TaskDoneWhenJudge struct {
@@ -227,7 +225,6 @@ type TaskInstance struct {
 	FinalizedAt             sql.NullString
 	ProcessJson             sql.NullString
 	Directory               sql.NullString
-	ResourceInputsJson      sql.NullString
 }
 
 type TaskInstanceLayer struct {

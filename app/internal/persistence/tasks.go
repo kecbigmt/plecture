@@ -721,10 +721,6 @@ func upsertTaskInstanceTx(ctx context.Context, q *sqlcgen.Queries, sessionID, in
 	if err != nil {
 		return fmt.Errorf("marshal task %q/%q inputs: %w", sessionID, instanceName, err)
 	}
-	resourceInputsJSON, err := marshalJSONMap(ts.ResourceInputs)
-	if err != nil {
-		return fmt.Errorf("marshal task %q/%q resource inputs: %w", sessionID, instanceName, err)
-	}
 	outputsJSON, err := marshalJSONMap(ts.Outputs)
 	if err != nil {
 		return fmt.Errorf("marshal task %q/%q outputs: %w", sessionID, instanceName, err)
@@ -753,7 +749,6 @@ func upsertTaskInstanceTx(ctx context.Context, q *sqlcgen.Queries, sessionID, in
 		Resource:                nullString(ts.Resource),
 		Named:                   named,
 		InputsJson:              inputsJSON,
-		ResourceInputsJson:      resourceInputsJSON,
 		OutputsJson:             outputsJSON,
 		StateJson:               stateJSON,
 		ResourceObservationJson: observationJSON,
@@ -813,10 +808,6 @@ func taskInstanceFromRow(row sqlcgen.TaskInstance) (*contract.TaskState, error) 
 	if err != nil {
 		return nil, fmt.Errorf("inputs: %w", err)
 	}
-	resourceInputs, err := unmarshalJSONMap(row.ResourceInputsJson)
-	if err != nil {
-		return nil, fmt.Errorf("resource inputs: %w", err)
-	}
 	outputs, err := unmarshalJSONMap(row.OutputsJson)
 	if err != nil {
 		return nil, fmt.Errorf("outputs: %w", err)
@@ -850,24 +841,23 @@ func taskInstanceFromRow(row sqlcgen.TaskInstance) (*contract.TaskState, error) 
 		return nil, fmt.Errorf("process: %w", err)
 	}
 	ts := &contract.TaskState{
-		TaskID:         row.TaskID,
-		Directory:      row.Directory.String,
-		Scope:          row.Scope,
-		Status:         row.Status,
-		Seq:            int(row.Sequence),
-		Resource:       row.Resource.String,
-		Inputs:         inputs,
-		ResourceInputs: resourceInputs,
-		Outputs:        outputs,
-		Process:        process,
-		State:          state,
-		Observed:       observed,
-		ExtraDoneWhen:  rawJSONFromColumn(row.ExtraDoneWhenJson),
-		Error:          row.Error.String,
-		SetupAt:        setupAt,
-		FailedAt:       failedAt,
-		CleanedAt:      cleanedAt,
-		FinalizedAt:    finalizedAt,
+		TaskID:        row.TaskID,
+		Directory:     row.Directory.String,
+		Scope:         row.Scope,
+		Status:        row.Status,
+		Seq:           int(row.Sequence),
+		Resource:      row.Resource.String,
+		Inputs:        inputs,
+		Outputs:       outputs,
+		Process:       process,
+		State:         state,
+		Observed:      observed,
+		ExtraDoneWhen: rawJSONFromColumn(row.ExtraDoneWhenJson),
+		Error:         row.Error.String,
+		SetupAt:       setupAt,
+		FailedAt:      failedAt,
+		CleanedAt:     cleanedAt,
+		FinalizedAt:   finalizedAt,
 	}
 	if row.Named {
 		ts.Name = row.InstanceName

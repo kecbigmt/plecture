@@ -106,23 +106,3 @@ func TestResolveInputsFlags_EmptyObjectIsPreservedNotNil(t *testing.T) {
 		t.Errorf("inputs = %#v, want empty", got)
 	}
 }
-
-func TestResolveObjectFlags_NamesTheFlagPairItReads(t *testing.T) {
-	_, err := resolveObjectFlags("resource-inputs", `{"a":1}`, "somefile.json")
-	if err == nil || err.Error() != "--resource-inputs and --resource-inputs-file are mutually exclusive" {
-		t.Errorf("err = %v, want the mutual-exclusivity message naming the resource-inputs pair", err)
-	}
-}
-
-func TestUpCommand_DeclaresTheBindingInputFlags(t *testing.T) {
-	for _, name := range []string{"resource-inputs", "resource-inputs-file", "task-resource-inputs", "task-resource-inputs-file"} {
-		if upCmd.Flags().Lookup(name) == nil {
-			t.Errorf("plect up declares no --%s flag", name)
-		}
-	}
-	for _, name := range []string{"resource-inputs", "resource-inputs-file"} {
-		if taskSetupCmd.Flags().Lookup(name) == nil {
-			t.Errorf("plect task setup declares no --%s flag", name)
-		}
-	}
-}

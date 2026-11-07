@@ -134,11 +134,6 @@ binds the spawned session's entry resource, so the document must be written
 for the resource type the target workflow accepts; a mismatch is a load error,
 not a fire that fails every tick. Omitting it spawns a session with no task.
 
-A fire supplies the empty resource action input object for both the entry
-binding and the task binding. A resource whose `inputs_schema` refuses it
-cannot be reached by a chain: the spawn fails and is reported on the chain,
-and the next tick retries it.
-
 A session input named `task` has no meaning of its own: the selection is the
 field, never an input.
 

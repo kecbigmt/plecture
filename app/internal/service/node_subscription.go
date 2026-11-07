@@ -57,7 +57,7 @@ func releaseNodeSubscriptions(cfg *config.Config, store *state.Store, sessionNam
 		}
 	}
 	for _, resource := range sortedResources(resources) {
-		if _, msg := unwireDeliveryOnTeardown(cfg, store, sessionName, resource, nil, ""); msg != "" {
+		if _, msg := unwireDeliveryOnTeardown(cfg, store, sessionName, resource, ""); msg != "" {
 			slog.Warn("node subscription teardown failed", "session", sessionName, "resource", resource, "error", msg)
 		}
 	}
@@ -70,7 +70,7 @@ func wireProducedNodeSubscriptions(cfg *config.Config, store *state.Store, sessi
 		resources[resource] = true
 	}
 	for _, resource := range sortedResources(resources) {
-		if _, msg := wireDeliveryOnSetup(cfg, store, sessionName, resource, nil, true); msg != "" {
+		if _, msg := wireDeliveryOnSetup(cfg, store, sessionName, resource, true); msg != "" {
 			slog.Warn("node subscription setup failed", "session", sessionName, "resource", resource, "error", msg)
 		} else if err := dequeuePendingSubscribe(store, sessionName, resource); err != nil {
 			slog.Warn("node subscription retry cleanup failed", "session", sessionName, "resource", resource, "error", err)

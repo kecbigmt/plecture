@@ -1,7 +1,6 @@
 package service
 
 import (
-	"errors"
 	"strings"
 
 	"github.com/kecbigmt/plecture/app/internal/config"
@@ -12,7 +11,6 @@ import (
 // status`).
 type ResourceStatusParams struct {
 	ResourceID string
-	Inputs     map[string]any
 }
 
 // ResourceStatusResult reports one resource observation.
@@ -38,20 +36,12 @@ func ResourceStatus(cfg *config.Config, params ResourceStatusParams) (*ResourceS
 	if err != nil {
 		return nil, &Error{Code: ErrExecutionFailed, Message: err.Error()}
 	}
-	state, def, ok, serr := task.ResourceStatus(defs, resourceID, params.Inputs, cfg.Plugins)
+	state, def, ok, serr := task.ResourceStatus(defs, resourceID, cfg.Plugins)
 	if serr != nil {
-		return nil, resourceActionError(serr)
+		return nil, &Error{Code: ErrExecutionFailed, Message: serr.Error()}
 	}
 	if !ok {
 		return nil, &Error{Code: ErrInvalidInput, Message: "no resource definition recognizes " + resourceID}
 	}
 	return &ResourceStatusResult{ResourceID: resourceID, Definition: def.ID, State: state}, nil
-}
-
-func resourceActionError(err error) *Error {
-	var inputsErr *task.InputsError
-	if errors.As(err, &inputsErr) {
-		return &Error{Code: ErrInvalidInput, Message: err.Error()}
-	}
-	return &Error{Code: ErrExecutionFailed, Message: err.Error()}
 }

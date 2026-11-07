@@ -933,27 +933,3 @@ func TestUpSurvivesAnInitialTaskFailureAndItsRetry(t *testing.T) {
 		t.Fatalf("up events = %d, want exactly one across the failure and its retry", got)
 	}
 }
-
-func TestAdmitReportsAnEntryResourceRefusingTheEmptyInputsAsAnInputFailure(t *testing.T) {
-	engine, _, _ := engineFixture(t, false)
-	engine.definition.Entry.InputsSchema = map[string]any{
-		"type":       "object",
-		"required":   []any{"token"},
-		"properties": map[string]any{"token": map[string]any{"type": "string"}},
-	}
-	engine.hooks.Up = func(context.Context, string, map[string]any) (UpOutcome, error) {
-		t.Fatal("hooks.Up called for an entry binding its resource refuses")
-		return UpOutcome{}, nil
-	}
-	if err := engine.ApplyAppearance(context.Background(), map[string]any{"resource": "urn:case:a"}); err == nil {
-		t.Fatal("expected an input failure")
-	}
-	population, err := engine.state.Population(engine.key)
-	if err != nil {
-		t.Fatal(err)
-	}
-	member := population.Members["urn:case:a"]
-	if member == nil || member.LastAdmitReason != "input" || !member.AdmitSuspended {
-		t.Fatalf("member = %+v, want a suspended admission tagged \"input\"", member)
-	}
-}

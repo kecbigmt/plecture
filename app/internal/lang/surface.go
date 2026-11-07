@@ -112,9 +112,9 @@ var (
 	surfaceResourceName = newSurface("resource.name", LayerSemantic,
 		"match.<capture>")
 	surfaceResourceObserve = newSurface("resource.observe", LayerSemantic,
-		"resource.id", "resource.inputs.<key>")
+		"resource.id")
 	surfaceResourceFinalize = newSurface("resource.finalize", LayerSemantic,
-		"resource.id", "session.name", "resource.revision", "judges", "resource.inputs.<key>")
+		"resource.id", "session.name", "resource.revision", "judges")
 	surfaceResourceSubscribe = newSurface("resource.subscribe", LayerSemantic,
 		"resource.id", "resource.inputs.<key>", "session.name")
 	surfaceResourceUnsubscribe = newSurface("resource.unsubscribe", LayerSemantic,

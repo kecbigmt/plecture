@@ -115,7 +115,6 @@ func FinalizeTask(cfg *config.Config, store *state.Store, params FinalizeTaskPar
 			SessionName: resolvedName,
 			Revision:    instanceRevision(st),
 			Judges:      judgeEvidenceFromLeaves(eval.Leaves),
-			Inputs:      st.ResourceInputs,
 			Plugins:     cfg.Plugins,
 		})
 		if ferr != nil {

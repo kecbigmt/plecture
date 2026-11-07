@@ -97,7 +97,7 @@ workflow's `workdir` and never stored.
    a session created before this release has no record and expands from the
    plugin and global layers alone.
 7. Move a workflow's initial task selection to each invocation, chain, or
-   population, as described in "Initial tasks and resource inputs" below.
+   population, as described in "Initial tasks" below.
 8. Delete `resource_observer` from every `[[<workflow>.populations]]` entry.
    A population queries its workflow's entry `resource` and validates `query`
    against that resource's query `inputs_schema`; the loader refuses the
@@ -127,7 +127,7 @@ collision.
 3. A workflow whose sessions others locate by name (`plect status`,
    `plect event publish`) needs the same rewrite in those callers.
 
-## Initial tasks and resource inputs
+## Initial tasks
 
 Core selects a session's initial task. `plect up --task <task>` no longer
 writes `{"task": <task>}` into the session inputs for a workflow node to act
@@ -155,19 +155,9 @@ the session's `initial` instance after the workflow's session nodes run.
 5. Where the initial task works a resource other than the entry, pass it as
    `--task-resource <resource-id>`. A task bound to the entry resource needs
    no flag.
-6. A resource that declares an `inputs_schema` its actions read through
-   `resource.inputs.*` receives its action input object from each binding:
-   `plect up --resource-inputs` for the entry, `plect up
-   --task-resource-inputs` for the initial task, `plect task setup
-   --resource-inputs` for a task added later, and `plect resource status
-   --inputs` for a standalone observe. A task bound to the entry resource
-   does not inherit the entry's object. A chain or population supplies the
-   empty object, so it cannot reach a resource whose schema requires inputs.
-
-The storage migration adds the recorded binding inputs with no manual step. A
-session created before this release has empty entry and task binding inputs,
-which is what every binding received until now, and keeps the `initial`
-instance its node created.
+A session created before this release keeps the `initial` instance its node
+created, and `plect up --force-recreate` re-creates that instance from its
+recorded task and resource.
 
 ## Establish project contexts
 

@@ -285,7 +285,7 @@ func (q *Queries) GetEventCursor(ctx context.Context, arg GetEventCursorParams) 
 const getLatestDestroyedSession = `-- name: GetLatestDestroyedSession :one
 SELECT id, name, status, sleep_since, destroyed_at, parent_session_id, root_session_id,
        resource_id, resource_type, tag, alias, workflow, workflow_revision, invocation_dir,
-       population_workflow, population_name, inputs_json, resource_inputs_json,
+       population_workflow, population_name, inputs_json,
        health_last_checked_at, health_last_activity_at, health_last_fingerprint,
        health_last_state, health_last_reason, health_last_notified_at, health_notify_count,
        health_unevaluable_cycles,
@@ -318,7 +318,6 @@ func (q *Queries) GetLatestDestroyedSession(ctx context.Context, name string) (S
 		&i.PopulationWorkflow,
 		&i.PopulationName,
 		&i.InputsJson,
-		&i.ResourceInputsJson,
 		&i.HealthLastCheckedAt,
 		&i.HealthLastActivityAt,
 		&i.HealthLastFingerprint,
@@ -339,7 +338,7 @@ func (q *Queries) GetLatestDestroyedSession(ctx context.Context, name string) (S
 const getLiveSession = `-- name: GetLiveSession :one
 SELECT id, name, status, sleep_since, destroyed_at, parent_session_id, root_session_id,
        resource_id, resource_type, tag, alias, workflow, workflow_revision, invocation_dir,
-       population_workflow, population_name, inputs_json, resource_inputs_json,
+       population_workflow, population_name, inputs_json,
        health_last_checked_at, health_last_activity_at, health_last_fingerprint,
        health_last_state, health_last_reason, health_last_notified_at, health_notify_count,
        health_unevaluable_cycles,
@@ -369,7 +368,6 @@ func (q *Queries) GetLiveSession(ctx context.Context, name string) (Session, err
 		&i.PopulationWorkflow,
 		&i.PopulationName,
 		&i.InputsJson,
-		&i.ResourceInputsJson,
 		&i.HealthLastCheckedAt,
 		&i.HealthLastActivityAt,
 		&i.HealthLastFingerprint,
@@ -669,13 +667,13 @@ const insertSession = `-- name: InsertSession :exec
 INSERT INTO sessions (
     id, name, status, sleep_since, destroyed_at, parent_session_id, root_session_id,
     resource_id, resource_type, tag, alias, workflow, workflow_revision, invocation_dir,
-    population_workflow, population_name, inputs_json, resource_inputs_json,
+    population_workflow, population_name, inputs_json,
     health_last_checked_at, health_last_activity_at, health_last_fingerprint,
     health_last_state, health_last_reason, health_last_notified_at, health_notify_count,
     health_unevaluable_cycles,
     tick_consecutive_unchanged, tick_last_fingerprint, last_tick_at,
     created_at, updated_at
-) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 `
 
 type InsertSessionParams struct {
@@ -696,7 +694,6 @@ type InsertSessionParams struct {
 	PopulationWorkflow       sql.NullString
 	PopulationName           sql.NullString
 	InputsJson               sql.NullString
-	ResourceInputsJson       sql.NullString
 	HealthLastCheckedAt      sql.NullString
 	HealthLastActivityAt     sql.NullString
 	HealthLastFingerprint    sql.NullString
@@ -732,7 +729,6 @@ func (q *Queries) InsertSession(ctx context.Context, arg InsertSessionParams) er
 		arg.PopulationWorkflow,
 		arg.PopulationName,
 		arg.InputsJson,
-		arg.ResourceInputsJson,
 		arg.HealthLastCheckedAt,
 		arg.HealthLastActivityAt,
 		arg.HealthLastFingerprint,
@@ -1270,7 +1266,7 @@ func (q *Queries) ListLiveChildSessionNamesForSessions(ctx context.Context, pare
 const listLiveSessions = `-- name: ListLiveSessions :many
 SELECT id, name, status, sleep_since, destroyed_at, parent_session_id, root_session_id,
        resource_id, resource_type, tag, alias, workflow, workflow_revision, invocation_dir,
-       population_workflow, population_name, inputs_json, resource_inputs_json,
+       population_workflow, population_name, inputs_json,
        health_last_checked_at, health_last_activity_at, health_last_fingerprint,
        health_last_state, health_last_reason, health_last_notified_at, health_notify_count,
        health_unevaluable_cycles,
@@ -1306,7 +1302,6 @@ func (q *Queries) ListLiveSessions(ctx context.Context) ([]Session, error) {
 			&i.PopulationWorkflow,
 			&i.PopulationName,
 			&i.InputsJson,
-			&i.ResourceInputsJson,
 			&i.HealthLastCheckedAt,
 			&i.HealthLastActivityAt,
 			&i.HealthLastFingerprint,
@@ -1337,7 +1332,7 @@ func (q *Queries) ListLiveSessions(ctx context.Context) ([]Session, error) {
 const listLiveSessionsByAlias = `-- name: ListLiveSessionsByAlias :many
 SELECT id, name, status, sleep_since, destroyed_at, parent_session_id, root_session_id,
        resource_id, resource_type, tag, alias, workflow, workflow_revision, invocation_dir,
-       population_workflow, population_name, inputs_json, resource_inputs_json,
+       population_workflow, population_name, inputs_json,
        health_last_checked_at, health_last_activity_at, health_last_fingerprint,
        health_last_state, health_last_reason, health_last_notified_at, health_notify_count,
        health_unevaluable_cycles,
@@ -1373,7 +1368,6 @@ func (q *Queries) ListLiveSessionsByAlias(ctx context.Context, alias sql.NullStr
 			&i.PopulationWorkflow,
 			&i.PopulationName,
 			&i.InputsJson,
-			&i.ResourceInputsJson,
 			&i.HealthLastCheckedAt,
 			&i.HealthLastActivityAt,
 			&i.HealthLastFingerprint,
@@ -2179,7 +2173,7 @@ const listTaskInstances = `-- name: ListTaskInstances :many
 SELECT id, session_id, instance_name, task_id, scope, status, sequence,
        resource, named, inputs_json, outputs_json, state_json,
        resource_observation_json, resource_observed_at, extra_done_when_json,
-       error, setup_at, failed_at, cleaned_at, finalized_at, process_json, directory, resource_inputs_json
+       error, setup_at, failed_at, cleaned_at, finalized_at, process_json, directory
 FROM task_instances WHERE session_id = ? ORDER BY instance_name
 `
 
@@ -2216,7 +2210,6 @@ func (q *Queries) ListTaskInstances(ctx context.Context, sessionID string) ([]Ta
 			&i.FinalizedAt,
 			&i.ProcessJson,
 			&i.Directory,
-			&i.ResourceInputsJson,
 		); err != nil {
 			return nil, err
 		}
@@ -2235,7 +2228,7 @@ const listTaskInstancesForSessions = `-- name: ListTaskInstancesForSessions :man
 SELECT id, session_id, instance_name, task_id, scope, status, sequence,
        resource, named, inputs_json, outputs_json, state_json,
        resource_observation_json, resource_observed_at, extra_done_when_json,
-       error, setup_at, failed_at, cleaned_at, finalized_at, process_json, directory, resource_inputs_json
+       error, setup_at, failed_at, cleaned_at, finalized_at, process_json, directory
 FROM task_instances WHERE session_id IN (/*SLICE:session_ids*/?) ORDER BY session_id, instance_name
 `
 
@@ -2281,7 +2274,6 @@ func (q *Queries) ListTaskInstancesForSessions(ctx context.Context, sessionIds [
 			&i.FinalizedAt,
 			&i.ProcessJson,
 			&i.Directory,
-			&i.ResourceInputsJson,
 		); err != nil {
 			return nil, err
 		}
@@ -2557,7 +2549,6 @@ UPDATE sessions SET
     population_workflow = ?,
     population_name = ?,
     inputs_json = ?,
-    resource_inputs_json = ?,
     health_last_checked_at = ?,
     health_last_activity_at = ?,
     health_last_fingerprint = ?,
@@ -2590,7 +2581,6 @@ type UpdateSessionByIDParams struct {
 	PopulationWorkflow       sql.NullString
 	PopulationName           sql.NullString
 	InputsJson               sql.NullString
-	ResourceInputsJson       sql.NullString
 	HealthLastCheckedAt      sql.NullString
 	HealthLastActivityAt     sql.NullString
 	HealthLastFingerprint    sql.NullString
@@ -2624,7 +2614,6 @@ func (q *Queries) UpdateSessionByID(ctx context.Context, arg UpdateSessionByIDPa
 		arg.PopulationWorkflow,
 		arg.PopulationName,
 		arg.InputsJson,
-		arg.ResourceInputsJson,
 		arg.HealthLastCheckedAt,
 		arg.HealthLastActivityAt,
 		arg.HealthLastFingerprint,
@@ -2717,8 +2706,8 @@ INSERT INTO task_instances (
     id, session_id, instance_name, task_id, scope, status, sequence,
     resource, named, inputs_json, outputs_json, state_json,
     resource_observation_json, resource_observed_at, extra_done_when_json,
-    error, setup_at, failed_at, cleaned_at, finalized_at, process_json, directory, resource_inputs_json
-) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    error, setup_at, failed_at, cleaned_at, finalized_at, process_json, directory
+) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 ON CONFLICT(session_id, instance_name) DO UPDATE SET
     task_id = excluded.task_id,
     scope = excluded.scope,
@@ -2738,8 +2727,7 @@ ON CONFLICT(session_id, instance_name) DO UPDATE SET
     cleaned_at = excluded.cleaned_at,
     finalized_at = excluded.finalized_at,
     process_json = excluded.process_json,
-    directory = excluded.directory,
-    resource_inputs_json = excluded.resource_inputs_json
+    directory = excluded.directory
 RETURNING id
 `
 
@@ -2766,7 +2754,6 @@ type UpsertTaskInstanceParams struct {
 	FinalizedAt             sql.NullString
 	ProcessJson             sql.NullString
 	Directory               sql.NullString
-	ResourceInputsJson      sql.NullString
 }
 
 func (q *Queries) UpsertTaskInstance(ctx context.Context, arg UpsertTaskInstanceParams) (string, error) {
@@ -2793,7 +2780,6 @@ func (q *Queries) UpsertTaskInstance(ctx context.Context, arg UpsertTaskInstance
 		arg.FinalizedAt,
 		arg.ProcessJson,
 		arg.Directory,
-		arg.ResourceInputsJson,
 	)
 	var id string
 	err := row.Scan(&id)

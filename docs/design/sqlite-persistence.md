@@ -161,7 +161,6 @@ classifies every `_json` column by its owning declaration:
 | Column | Owning declaration |
 | --- | --- |
 | `sessions.inputs_json` | the session's `inputs_schema` (config language) |
-| `sessions.resource_inputs_json`, `task_instances.resource_inputs_json`, `subscription_retries.inputs_json` | the bound resource's `inputs_schema` (resource action inputs) |
 | `node_executions`/`task_instances`.`inputs_json`, `.outputs_json` | the task/effect's `inputs_schema`/`outputs_schema` |
 | `node_executions`/`task_instances`.`state_json` | consumer-defined keys a reviewer or another session records; no declared schema |
 | `node_executions`/`task_instances`.`resource_observation_json` | the resource observer's `state_schema` |
@@ -174,12 +173,12 @@ classifies every `_json` column by its owning declaration:
 
 | Table | Key and relational columns | JSON or scalar payload | Source |
 | --- | --- | --- | --- |
-| `sessions` | `id` (ULID) primary key; `name` (unique only among live rows — see "Session identity and lifecycle"); `status`, nullable `destroyed_at`; nullable `parent_session_id` and `root_session_id`, each referencing `sessions(id)`; nullable `resource_id`, `resource_type`, `tag`, `alias`, `population_workflow`, `population_name` (the pair also references `populations(workflow, name)`); nullable lifecycle-configuration digest baseline; `workflow`, `created_at`, `updated_at` | inputs, entry resource action inputs, health, tick backoff | `state.json` `sessions` entries |
+| `sessions` | `id` (ULID) primary key; `name` (unique only among live rows — see "Session identity and lifecycle"); `status`, nullable `destroyed_at`; nullable `parent_session_id` and `root_session_id`, each referencing `sessions(id)`; nullable `resource_id`, `resource_type`, `tag`, `alias`, `population_workflow`, `population_name` (the pair also references `populations(workflow, name)`); nullable lifecycle-configuration digest baseline; `workflow`, `created_at`, `updated_at` | inputs, health, tick backoff | `state.json` `sessions` entries |
 | `node_instances` | `(session_id, node_id)` primary key; session foreign key; no other columns | none — purely the logical node's identity | `state.json` `sessions.*.tasks` entries with `dynamic` unset (keys only) |
 | `node_executions` | `id` (ULID, minted per setup attempt) primary key; `(session_id, node_id)` foreign key to `node_instances`; `sequence`; nullable `task_id`, `name`, `resource`; `scope`, `status`, nullable `finalized_at`; release outcome and unavailable reason; at most one unreleased row per `(session_id, node_id)` — see "Node execution identity" | inputs, outputs, state, observed value, `done_when` (rare, not relationally queried), setup-time cleanup facts, nullable `directory` (the directory the setup ran in; `NULL` when setup ran with no explicit directory), error, lifecycle timestamps | `state.json` `sessions.*.tasks` entries with `dynamic` unset (per-attempt facts) |
 | `node_execution_layers` | `(execution_id, position)` primary key; execution foreign key (`ON DELETE CASCADE`) | inputs, locals, outputs, env, heartbeat counters, lifecycle timestamps, error | `TaskState.Layers` (static node instances) |
 | `node_execution_dependencies` | `(execution_id, depends_on_execution_id)` primary key; both reference `node_executions(id)` (`ON DELETE CASCADE`) | none — the edge itself is the payload | snapshotted from `task.Resolved.DependsOn` at the dependent's own setup time — see "Node execution identity" |
-| `task_instances` | `id` (ULID, stable across every write that still names the same `(session_id, instance_name)`; re-minted only when a cleanup removes the row before a later setup recreates it) primary key; `(session_id, instance_name)` unique; session foreign key; `task_id`, `scope`, `status`, `sequence`, nullable `resource`, `named`, nullable `finalized_at` | inputs, resource action inputs, outputs, state, observed value, extra completion data, nullable `directory` (the directory the setup ran in; `NULL` when setup ran with no explicit directory), error, lifecycle timestamps | `state.json` `sessions.*.tasks` entries with `dynamic: true` |
+| `task_instances` | `id` (ULID, stable across every write that still names the same `(session_id, instance_name)`; re-minted only when a cleanup removes the row before a later setup recreates it) primary key; `(session_id, instance_name)` unique; session foreign key; `task_id`, `scope`, `status`, `sequence`, nullable `resource`, `named`, nullable `finalized_at` | inputs, outputs, state, observed value, extra completion data, nullable `directory` (the directory the setup ran in; `NULL` when setup ran with no explicit directory), error, lifecycle timestamps | `state.json` `sessions.*.tasks` entries with `dynamic: true` |
 | `task_instance_layers` | `(task_instance_id, position)` primary key; task-instance foreign key | inputs, locals, outputs, env, heartbeat counters, lifecycle timestamps, error | `TaskState.Layers` (dynamic instances) |
 | `task_done_when_states` | `task_instance_id` primary key and foreign key | counters, fingerprints, reason/body, escalation data | `TaskState.DoneWhen` (dynamic instances only) |
 | `task_done_when_unsatisfied_items` | `(task_instance_id, position)` primary key; task-instance foreign key | one unsatisfied-leaf id per row | `DoneWhenState.LastUnsatisfied` |
@@ -211,9 +210,7 @@ second tombstone marker exists. `chain_attempts` stores one non-empty cap
 refusal fingerprint per `(session_id, instance, chain_id)`, so
 compare-and-set and conditional revert run in an immediate transaction.
 `subscription_retries` stores deduplicated failed `subscribe` and
-`unsubscribe` intents by `(session_id, action, resource_id)`, each with the
-resource action inputs of the binding that queued it; a later intent for the
-same key replaces them. A teardown retry
+`unsubscribe` intents by `(session_id, action, resource_id)`. A teardown retry
 uses the destroyed incarnation id, and a sweep drops its stale subscribe
 intent or retries its unsubscribe intent without involving a same-name live
 replacement.

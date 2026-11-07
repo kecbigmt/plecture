@@ -110,8 +110,8 @@ receiving everything and relying on a later check to reject the rest.
 | Surface | Roots |
 |---|---|
 | Resource `name` | `match.<capture>` |
-| Resource `observe` | `resource.id`, `resource.inputs.<key>` |
-| Resource `finalize` | `resource.id`, `session.name`, `resource.revision`, `judges`, `resource.inputs.<key>` |
+| Resource `observe` | `resource.id` |
+| Resource `finalize` | `resource.id`, `session.name`, `resource.revision`, `judges` |
 | Resource `subscribe` | `session.name`, `resource.id`, `resource.inputs.<key>` |
 | Resource `unsubscribe` | `session.name`, `resource.id`, `resource.inputs.<key>` |
 | Resource query means | `inputs.<key>` |

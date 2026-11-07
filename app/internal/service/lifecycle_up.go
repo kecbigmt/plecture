@@ -36,9 +36,6 @@ type UpParams struct {
 	HumanInitiated bool
 	// InvocationDir is forwarded to auto-create; see CreateParams.
 	InvocationDir string
-	// ResourceInputs is the entry binding's resource action input object,
-	// recorded only when the session is created.
-	ResourceInputs map[string]any
 	// InitialTask is the caller's task selection, instantiated as the
 	// session's initial instance. Only valid with a resource identifier.
 	InitialTask *InitialTask
@@ -145,9 +142,6 @@ func upUnlocked(cfg *config.Config, store *state.Store, params UpParams) (*UpRes
 		if params.Inputs != nil && existing != nil {
 			return nil, &Error{Code: ErrInvalidInput, Message: inputsOnExistingSessionMessage()}
 		}
-		if params.ResourceInputs != nil && existing != nil {
-			return nil, &Error{Code: ErrInvalidInput, Message: resourceInputsOnExistingSessionMessage()}
-		}
 		if params.Workflow != "" && existing != nil && params.Workflow != existing.Workflow {
 			return nil, &Error{Code: ErrInvalidInput, Message: fmt.Sprintf("--workflow %q does not match the session's frozen workflow %q", params.Workflow, existing.Workflow)}
 		}
@@ -183,21 +177,18 @@ func upUnlocked(cfg *config.Config, store *state.Store, params UpParams) (*UpRes
 		}
 		if existing == nil || hasIncompleteSessionTask(cfg, existing) {
 			if _, err := Create(cfg, store, CreateParams{
-				URL:            params.Identifier,
-				Tag:            tag,
-				Workflow:       params.Workflow,
-				Inputs:         params.Inputs,
-				ResourceInputs: params.ResourceInputs,
-				ParentSession:  params.ParentSession,
-				Observer:       params.Observer,
-				Population:     params.Population,
-				InvocationDir:  params.InvocationDir,
+				URL:           params.Identifier,
+				Tag:           tag,
+				Workflow:      params.Workflow,
+				Inputs:        params.Inputs,
+				ParentSession: params.ParentSession,
+				Observer:      params.Observer,
+				Population:    params.Population,
+				InvocationDir: params.InvocationDir,
 			}); err != nil {
 				return nil, err
 			}
 		}
-		// A forced recreate discards the instance after this point, so it is
-		// ensured once the runtime is rebuilt instead.
 		if !(params.ForceRecreate && existing != nil) {
 			if err := ensureInitialTask(cfg, store, sessionName, initialTask); err != nil {
 				return nil, err
@@ -217,9 +208,7 @@ func upUnlocked(cfg *config.Config, store *state.Store, params UpParams) (*UpRes
 		if params.InitialTask != nil {
 			return nil, &Error{Code: ErrInvalidInput, Message: "--task is only valid with a resource identifier; to add a task to an existing session, run `plect task setup`"}
 		}
-		if params.ResourceInputs != nil {
-			return nil, &Error{Code: ErrInvalidInput, Message: resourceInputsOnExistingSessionMessage()}
-		}
+
 	}
 
 	sessionName, session, err := resolveSession(cfg, store, identifier)

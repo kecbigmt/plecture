@@ -148,7 +148,7 @@ func (db *DB) UpdateSessionWithSubscriptionRetries(ctx context.Context, name str
 			return err
 		}
 		for _, resource := range resources {
-			if err := queueSubscriptionRetryTx(ctx, tx, s.ID, subscriptionRetrySubscribe, resource, nil); err != nil {
+			if err := queueSubscriptionRetryTx(ctx, tx, s.ID, subscriptionRetrySubscribe, resource); err != nil {
 				return err
 			}
 		}
@@ -355,10 +355,6 @@ func (db *DB) writeSessionTx(ctx context.Context, tx *sql.Tx, s *domain.Session)
 	if err != nil {
 		return fmt.Errorf("marshal session %q inputs: %w", s.Name, err)
 	}
-	resourceInputsJSON, err := marshalJSONMap(s.ResourceInputs)
-	if err != nil {
-		return fmt.Errorf("marshal session %q resource inputs: %w", s.Name, err)
-	}
 
 	if existingID == "" {
 		params, err := insertSessionParams(candidateID, status, parentCol, rootCol, populationWorkflow, populationName, inputsJSON, health, tickConsecutiveUnchanged, tickLastFingerprint, s)
@@ -386,7 +382,6 @@ func (db *DB) writeSessionTx(ctx context.Context, tx *sql.Tx, s *domain.Session)
 		PopulationWorkflow:       populationWorkflow,
 		PopulationName:           populationName,
 		InputsJson:               inputsJSON,
-		ResourceInputsJson:       resourceInputsJSON,
 		HealthLastCheckedAt:      health.lastCheckedAt,
 		HealthLastActivityAt:     health.lastActivityAt,
 		HealthLastFingerprint:    health.lastFingerprint,
@@ -413,10 +408,6 @@ func (db *DB) writeSessionTx(ctx context.Context, tx *sql.Tx, s *domain.Session)
 // column values, shared by writeSessionTx's insert branch and ImportSession
 // so the two never disagree about which Go field feeds which column.
 func insertSessionParams(id, status string, parentCol, rootCol, populationWorkflow, populationName, inputsJSON sql.NullString, health healthColumns, tickConsecutiveUnchanged sql.NullInt64, tickLastFingerprint sql.NullString, s *domain.Session) (sqlcgen.InsertSessionParams, error) {
-	resourceInputsJSON, err := marshalJSONMap(s.ResourceInputs)
-	if err != nil {
-		return sqlcgen.InsertSessionParams{}, fmt.Errorf("marshal session %q resource inputs: %w", s.Name, err)
-	}
 	return sqlcgen.InsertSessionParams{
 		ID:                       id,
 		Name:                     s.Name,
@@ -435,7 +426,6 @@ func insertSessionParams(id, status string, parentCol, rootCol, populationWorkfl
 		PopulationWorkflow:       populationWorkflow,
 		PopulationName:           populationName,
 		InputsJson:               inputsJSON,
-		ResourceInputsJson:       resourceInputsJSON,
 		HealthLastCheckedAt:      health.lastCheckedAt,
 		HealthLastActivityAt:     health.lastActivityAt,
 		HealthLastFingerprint:    health.lastFingerprint,
@@ -655,11 +645,6 @@ func sessionFromRow(row sqlcgen.Session) (*domain.Session, error) {
 		return nil, fmt.Errorf("parse session %q inputs_json: %w", row.Name, err)
 	}
 	s.Inputs = inputs
-	resourceInputs, err := unmarshalJSONMap(row.ResourceInputsJson)
-	if err != nil {
-		return nil, fmt.Errorf("parse session %q resource_inputs_json: %w", row.Name, err)
-	}
-	s.ResourceInputs = resourceInputs
 
 	destroyedAt, err := parseTimeNull(row.DestroyedAt)
 	if err != nil {

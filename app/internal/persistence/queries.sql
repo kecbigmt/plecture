@@ -4,13 +4,13 @@
 INSERT INTO sessions (
     id, name, status, sleep_since, destroyed_at, parent_session_id, root_session_id,
     resource_id, resource_type, tag, alias, workflow, workflow_revision, invocation_dir,
-    population_workflow, population_name, inputs_json, resource_inputs_json,
+    population_workflow, population_name, inputs_json,
     health_last_checked_at, health_last_activity_at, health_last_fingerprint,
     health_last_state, health_last_reason, health_last_notified_at, health_notify_count,
     health_unevaluable_cycles,
     tick_consecutive_unchanged, tick_last_fingerprint, last_tick_at,
     created_at, updated_at
-) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);
+) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);
 
 -- name: UpdateSessionByID :exec
 UPDATE sessions SET
@@ -30,7 +30,6 @@ UPDATE sessions SET
     population_workflow = ?,
     population_name = ?,
     inputs_json = ?,
-    resource_inputs_json = ?,
     health_last_checked_at = ?,
     health_last_activity_at = ?,
     health_last_fingerprint = ?,
@@ -48,7 +47,7 @@ WHERE id = ?;
 -- name: GetLiveSession :one
 SELECT id, name, status, sleep_since, destroyed_at, parent_session_id, root_session_id,
        resource_id, resource_type, tag, alias, workflow, workflow_revision, invocation_dir,
-       population_workflow, population_name, inputs_json, resource_inputs_json,
+       population_workflow, population_name, inputs_json,
        health_last_checked_at, health_last_activity_at, health_last_fingerprint,
        health_last_state, health_last_reason, health_last_notified_at, health_notify_count,
        health_unevaluable_cycles,
@@ -59,7 +58,7 @@ FROM sessions WHERE name = ? AND status <> 'destroyed';
 -- name: GetLatestDestroyedSession :one
 SELECT id, name, status, sleep_since, destroyed_at, parent_session_id, root_session_id,
        resource_id, resource_type, tag, alias, workflow, workflow_revision, invocation_dir,
-       population_workflow, population_name, inputs_json, resource_inputs_json,
+       population_workflow, population_name, inputs_json,
        health_last_checked_at, health_last_activity_at, health_last_fingerprint,
        health_last_state, health_last_reason, health_last_notified_at, health_notify_count,
        health_unevaluable_cycles,
@@ -73,7 +72,7 @@ LIMIT 1;
 -- name: ListLiveSessions :many
 SELECT id, name, status, sleep_since, destroyed_at, parent_session_id, root_session_id,
        resource_id, resource_type, tag, alias, workflow, workflow_revision, invocation_dir,
-       population_workflow, population_name, inputs_json, resource_inputs_json,
+       population_workflow, population_name, inputs_json,
        health_last_checked_at, health_last_activity_at, health_last_fingerprint,
        health_last_state, health_last_reason, health_last_notified_at, health_notify_count,
        health_unevaluable_cycles,
@@ -84,7 +83,7 @@ FROM sessions WHERE status <> 'destroyed' ORDER BY name;
 -- name: ListLiveSessionsByAlias :many
 SELECT id, name, status, sleep_since, destroyed_at, parent_session_id, root_session_id,
        resource_id, resource_type, tag, alias, workflow, workflow_revision, invocation_dir,
-       population_workflow, population_name, inputs_json, resource_inputs_json,
+       population_workflow, population_name, inputs_json,
        health_last_checked_at, health_last_activity_at, health_last_fingerprint,
        health_last_state, health_last_reason, health_last_notified_at, health_notify_count,
        health_unevaluable_cycles,
@@ -292,14 +291,14 @@ WHERE dependent.session_id IN (sqlc.slice(session_ids));
 SELECT id, session_id, instance_name, task_id, scope, status, sequence,
        resource, named, inputs_json, outputs_json, state_json,
        resource_observation_json, resource_observed_at, extra_done_when_json,
-       error, setup_at, failed_at, cleaned_at, finalized_at, process_json, directory, resource_inputs_json
+       error, setup_at, failed_at, cleaned_at, finalized_at, process_json, directory
 FROM task_instances WHERE session_id = ? ORDER BY instance_name;
 
 -- name: ListTaskInstancesForSessions :many
 SELECT id, session_id, instance_name, task_id, scope, status, sequence,
        resource, named, inputs_json, outputs_json, state_json,
        resource_observation_json, resource_observed_at, extra_done_when_json,
-       error, setup_at, failed_at, cleaned_at, finalized_at, process_json, directory, resource_inputs_json
+       error, setup_at, failed_at, cleaned_at, finalized_at, process_json, directory
 FROM task_instances WHERE session_id IN (sqlc.slice(session_ids)) ORDER BY session_id, instance_name;
 
 -- name: UpsertTaskInstance :one
@@ -307,8 +306,8 @@ INSERT INTO task_instances (
     id, session_id, instance_name, task_id, scope, status, sequence,
     resource, named, inputs_json, outputs_json, state_json,
     resource_observation_json, resource_observed_at, extra_done_when_json,
-    error, setup_at, failed_at, cleaned_at, finalized_at, process_json, directory, resource_inputs_json
-) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    error, setup_at, failed_at, cleaned_at, finalized_at, process_json, directory
+) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 ON CONFLICT(session_id, instance_name) DO UPDATE SET
     task_id = excluded.task_id,
     scope = excluded.scope,
@@ -328,8 +327,7 @@ ON CONFLICT(session_id, instance_name) DO UPDATE SET
     cleaned_at = excluded.cleaned_at,
     finalized_at = excluded.finalized_at,
     process_json = excluded.process_json,
-    directory = excluded.directory,
-    resource_inputs_json = excluded.resource_inputs_json
+    directory = excluded.directory
 RETURNING id;
 
 -- name: DeleteTaskInstanceByName :exec

@@ -19,8 +19,6 @@ var (
 	taskSetupSession      string
 	taskSetupName         string
 	taskSetupResource     string
-	taskSetupResInputs    string
-	taskSetupResInFile    string
 	taskSetupInputs       []string
 	taskSetupDoneWhenJSON string
 
@@ -71,12 +69,6 @@ nothing else in the session still needs it. Inputs the task declares are bound
 from --input first, then the workflow/provider outputs, then the session inputs.
 --done-when-json appends additional done_when leaves to this instance only.
 
---resource-inputs / --resource-inputs-file supply this binding's resource
-action input object, checked against the bound resource's inputs_schema and
-recorded on the instance. Its observe, subscribe, unsubscribe and finalize
-actions read it as resource.inputs.*. It is never inherited from the
-session's entry binding, even when the instance binds the same resource.
-
 Examples:
   plect task setup work --input instruction="fix the flaky test"
   plect task setup review --name initial --resource <resource-id>
@@ -84,10 +76,6 @@ Examples:
 	Args: cobra.ExactArgs(1),
 	RunE: func(cmd *cobra.Command, args []string) error {
 		inputs, err := parseKeyValues(taskSetupInputs)
-		if err != nil {
-			return err
-		}
-		resourceInputs, err := resolveObjectFlags("resource-inputs", taskSetupResInputs, taskSetupResInFile)
 		if err != nil {
 			return err
 		}
@@ -101,7 +89,6 @@ Examples:
 			SessionName:       taskSetupSession,
 			Name:              taskSetupName,
 			Resource:          taskSetupResource,
-			ResourceInputs:    resourceInputs,
 			Inputs:            inputs,
 			ExtraDoneWhenJSON: taskSetupDoneWhenJSON,
 			Observer:          newTaskObserver(cfg),
@@ -325,8 +312,6 @@ func init() {
 	taskSetupCmd.Flags().StringVar(&taskSetupSession, "session", "", "Target session (defaults to $PLECT_SESSION_NAME)")
 	taskSetupCmd.Flags().StringVar(&taskSetupName, "name", "", "Instance identity: the key becomes the name (session-global singleton); collides on re-setup")
 	taskSetupCmd.Flags().StringVar(&taskSetupResource, "resource", "", "External resource bound to the instance (exposed as .ResourceID; not part of the key)")
-	taskSetupCmd.Flags().StringVar(&taskSetupResInputs, "resource-inputs", "", "This binding's resource action inputs as a JSON object string")
-	taskSetupCmd.Flags().StringVar(&taskSetupResInFile, "resource-inputs-file", "", "Path to a JSON file containing this binding's resource action inputs object")
 	taskSetupCmd.Flags().StringArrayVar(&taskSetupInputs, "input", nil, "Input binding key=value (repeatable)")
 	taskSetupCmd.Flags().StringVar(&taskSetupDoneWhenJSON, "done-when-json", "", "Additional done_when JSON appended to this dynamic instance")
 	taskCleanupCmd.Flags().StringVar(&taskCleanupSession, "session", "", "Target session (defaults to $PLECT_SESSION_NAME)")
