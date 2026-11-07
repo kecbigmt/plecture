@@ -615,8 +615,6 @@ func TestMigrate_PopulationIdentityGainsTheProjectRootWithoutLosingRows(t *testi
 	}
 }
 
-// seedWorkflowNodeAt migrates a fresh database to version and seeds one
-// session holding a retired @workflow node in that schema's own shape.
 func seedWorkflowNodeAt(t *testing.T, version int64, sessionStatus, workflowNodeStatus string) *DB {
 	t.Helper()
 	db := openTestDB(t)
