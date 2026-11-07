@@ -45,6 +45,15 @@ call[0]: "github-worktree" "cleanup" "--workspace-dir" "<state>/worktree" "--bra
 call[1]: "github-watcher" "unsubscribe" "--session" "acme/widget-1"
 cleaned
 
+== worktree:policy-defaults-to-keep / setup
+call[0]: "github-worktree" "setup" "--resource" "example://acme/widget/1" "--session" "acme/widget-1" "--workspace-dirs-root" "" "--workspace-layout-root" "" "--issue-branch-template" "" "--tagged-branch-suffix" "" "--delete-branch" "false" "--watcher-bin" "<plugin>/bin/github-watcher" "--app-token-bin" "<plugin>/bin/gh-app-token" "--app-id" "" "--installation-id" "" "--owner" "" "--repo" "" "--private-key-path" ""
+outputs: {"branch":"spy-branch","delete_branch":false,"workspace_dir":"<state>/worktree"}
+
+== worktree:policy-defaults-to-keep / cleanup
+call[0]: "github-worktree" "cleanup" "--workspace-dir" "<state>/worktree" "--branch" "spy-branch" "--workspace-dirs-root" "" "--workspace-layout-root" "" "--force=false" "--delete-branch=false"
+call[1]: "github-watcher" "unsubscribe" "--session" "acme/widget-1"
+cleaned
+
 == worktree:policy-rewritten-before-destroy / cleanup
 call[0]: "github-worktree" "cleanup" "--workspace-dir" "/spy/layout/issue-1" "--branch" "spy-branch" "--workspace-dirs-root" "" "--workspace-layout-root" "" "--force=false" "--delete-branch=false"
 call[1]: "github-watcher" "unsubscribe" "--session" "acme/widget-1"
