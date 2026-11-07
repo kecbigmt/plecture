@@ -52,7 +52,7 @@ func Subscribe(cfg *config.Config, store *state.Store, params SubscribeParams) e
 		return &Error{Code: ErrSessionNotFound, Message: fmt.Sprintf("session %q does not exist", sessionName)}
 	}
 
-	def, err := resourceDefForSubscription(cfg, params.ResourceID)
+	def, err := resourceDefForSubscription(cfg, session.ProjectRoot, params.ResourceID)
 	if err != nil {
 		return err
 	}
@@ -94,8 +94,8 @@ func validateSubscriptionInputs(def config.ResourceDef, inputs map[string]any) e
 
 // matchResourceDefs keeps all matches, including declarations without hooks,
 // so a missing hook cannot hide an ambiguous resource type.
-func matchResourceDefs(cfg *config.Config, resource string) ([]config.ResourceDef, error) {
-	defs, err := cfg.LoadResourceDefs()
+func matchResourceDefs(cfg *config.Config, projectRoot, resource string) ([]config.ResourceDef, error) {
+	defs, err := cfg.LoadResourceDefs(projectRoot)
 	if err != nil {
 		return nil, &Error{Code: ErrExecutionFailed, Message: fmt.Sprintf("load resources: %v", err)}
 	}
@@ -121,8 +121,8 @@ func matchResourceDefs(cfg *config.Config, resource string) ([]config.ResourceDe
 
 // resourceDefForSubscription requires exactly one matching declaration with
 // a subscribe hook.
-func resourceDefForSubscription(cfg *config.Config, resource string) (config.ResourceDef, error) {
-	matched, err := matchResourceDefs(cfg, resource)
+func resourceDefForSubscription(cfg *config.Config, projectRoot, resource string) (config.ResourceDef, error) {
+	matched, err := matchResourceDefs(cfg, projectRoot, resource)
 	if err != nil {
 		return config.ResourceDef{}, err
 	}

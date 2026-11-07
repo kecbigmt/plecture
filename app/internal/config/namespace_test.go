@@ -39,7 +39,7 @@ command = "true"
 	}
 	cfg := twoAddressablePlugins(t, filepath.Join("resources", "github.toml"), observer("^a"), observer("^b"))
 
-	got, err := cfg.LoadResourceDefs()
+	got, err := cfg.LoadResourceDefs("")
 	if err != nil {
 		t.Fatalf("LoadResourceDefs: %v", err)
 	}
@@ -60,7 +60,7 @@ func TestLoadChannels_TwoAddressablePluginsShareAnID(t *testing.T) {
 	}
 	cfg := twoAddressablePlugins(t, filepath.Join("channels", "delivery.toml"), channel("a"), channel("b"))
 
-	got, err := cfg.LoadChannels()
+	got, err := cfg.LoadChannels("")
 	if err != nil {
 		t.Fatalf("LoadChannels: %v", err)
 	}
@@ -140,7 +140,7 @@ match = '^x'
 type    = "exec"
 command = "true"
 `)
-	got, err := (&Config{BaseDir: base}).LoadResourceDefs()
+	got, err := (&Config{BaseDir: base}).LoadResourceDefs("")
 	if err != nil {
 		t.Fatalf("LoadResourceDefs: %v", err)
 	}

@@ -135,7 +135,7 @@ func TaskShow(cfg *config.Config, projectRoot, id string) (*TaskDetail, error) {
 		// layer run here rather than waiting for an instantiation. Extends
 		// composition already ran inside LoadTaskDeclarations, so doc's
 		// Instruction, Chains, and DoneWhen are already the composed ones.
-		observers, oerr := cfg.LoadResourceDefs()
+		observers, oerr := cfg.LoadResourceDefs(projectRoot)
 		if oerr != nil {
 			return nil, fmt.Errorf("load resources: %w", oerr)
 		}

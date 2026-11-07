@@ -7,6 +7,7 @@ import (
 	"strings"
 
 	"github.com/kecbigmt/plecture/app/internal/config"
+	"github.com/kecbigmt/plecture/app/internal/state"
 	contract "github.com/kecbigmt/plecture/contracts/state"
 )
 
@@ -108,17 +109,17 @@ func workflowAutoSelect(wf config.WorkflowFile) bool {
 	return wf.AutoSelect == nil || *wf.AutoSelect
 }
 
-// RecognizesResource reports whether identifier is a resource identifier
-// rather than a session name, which is what decides whether a caller needs a
-// configuration context at all: a session runs from its recorded root. A
-// caller may ignore its error, which Up reports again when it dispatches.
-func RecognizesResource(cfg *config.Config, identifier string) (bool, error) {
-	resources, err := cfg.LoadResourceDefs()
-	if err != nil {
+// NeedsProjectContext is decided by the store rather than by matching resource
+// declarations, because which resources exist depends on the context being
+// selected: a session runs from its recorded root, and anything else may be a
+// resource only that context declares.
+func NeedsProjectContext(store *state.Store, identifier string) (bool, error) {
+	session, err := store.GetE(identifier)
+	if err != nil || session != nil {
 		return false, err
 	}
-	_, _, recognized, err := resolveResource(resources, identifier)
-	return recognized, err
+	hits, err := store.FindByAliasE(identifier)
+	return len(hits) == 0, err
 }
 
 // dispatchResource selects the workflow for a resource identifier by its entry
@@ -130,7 +131,7 @@ func dispatchResource(cfg *config.Config, projectRoot, flag, resource string) (r
 	if err != nil {
 		return dispatchResult{}, false, &Error{Code: ErrExecutionFailed, Message: fmt.Sprintf("load workflows: %v", err)}
 	}
-	resources, err := cfg.LoadResourceDefs()
+	resources, err := cfg.LoadResourceDefs(projectRoot)
 	if err != nil {
 		return dispatchResult{}, false, &Error{Code: ErrExecutionFailed, Message: fmt.Sprintf("load resources: %v", err)}
 	}

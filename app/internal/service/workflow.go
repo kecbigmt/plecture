@@ -149,7 +149,7 @@ func WorkflowShow(cfg *config.Config, projectRoot, id string) (*WorkflowDetail, 
 		detail.Workdir = "nodes." + wf.Workdir.Node + ".outputs." + wf.Workdir.Key
 	}
 	if len(wf.Event.Channel) > 0 {
-		channels, err := cfg.LoadChannels()
+		channels, err := cfg.LoadChannels(projectRoot)
 		if err != nil {
 			return nil, fmt.Errorf("load channels: %w", err)
 		}

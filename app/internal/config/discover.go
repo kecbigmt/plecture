@@ -20,14 +20,6 @@ type discoveredLayer struct {
 	defs  []*lang.Definition
 }
 
-// A resource or channel in a project root is refused rather than skipped: a
-// declaration that silently does nothing reads as one that took effect.
-var projectKinds = map[lang.Kind]bool{
-	lang.KindEffect:   true,
-	lang.KindTask:     true,
-	lang.KindWorkflow: true,
-}
-
 // discoverLayers reads every cascade layer's definition root once, in
 // shallowest-first order. An empty projectRoot reads the base layers alone.
 func (c *Config) discoverLayers(projectRoot string) ([]discoveredLayer, error) {
@@ -66,13 +58,6 @@ func discoverLayer(layer layerDir) ([]*lang.Definition, error) {
 	defs, err := lang.DiscoverRoot(layer.dir, reserved)
 	if err != nil {
 		return nil, err
-	}
-	if layer.project {
-		for _, def := range defs {
-			if !projectKinds[def.Kind] {
-				return nil, fmt.Errorf("%s: %s %q cannot be declared in a project root; declare it in the global config", def.File, def.Kind, def.ID)
-			}
-		}
 	}
 	sort.SliceStable(defs, func(i, j int) bool { return defs[i].ID < defs[j].ID })
 	return defs, nil

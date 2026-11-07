@@ -106,7 +106,7 @@ func FinalizeTask(cfg *config.Config, store *state.Store, params FinalizeTaskPar
 	result := &FinalizeTaskResult{SessionName: resolvedName, Instance: params.Instance, ResourceID: resourceID}
 
 	if resourceID != "" {
-		resDefs, rerr := cfg.LoadResourceDefs()
+		resDefs, rerr := cfg.LoadResourceDefs(session.ProjectRoot)
 		if rerr != nil {
 			return nil, &Error{Code: ErrExecutionFailed, Message: rerr.Error()}
 		}

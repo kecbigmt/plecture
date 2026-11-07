@@ -35,7 +35,7 @@ func Load(cfg *config.Config, projectRoot string) ([]Definition, error) {
 	if err != nil {
 		return nil, err
 	}
-	observers, err := cfg.LoadResourceDefs()
+	observers, err := cfg.LoadResourceDefs(projectRoot)
 	if err != nil {
 		return nil, err
 	}

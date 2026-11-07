@@ -111,7 +111,7 @@ func TestValidateWorkflowChannels_QualifiedUsesResolves(t *testing.T) {
 	if err != nil {
 		t.Fatalf("LoadWorkflows: %v", err)
 	}
-	channels, err := cfg.LoadChannels()
+	channels, err := cfg.LoadChannels("")
 	if err != nil {
 		t.Fatalf("LoadChannels: %v", err)
 	}
@@ -127,7 +127,7 @@ func TestLoadResourceDefs_QualifiedWorkflowResourceResolves(t *testing.T) {
 	if err != nil {
 		t.Fatalf("LoadWorkflows: %v", err)
 	}
-	resources, err := cfg.LoadResourceDefs()
+	resources, err := cfg.LoadResourceDefs("")
 	if err != nil {
 		t.Fatalf("LoadResourceDefs: %v", err)
 	}

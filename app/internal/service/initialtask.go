@@ -48,6 +48,7 @@ func checkInitialTask(cfg *config.Config, projectRoot, entry string, existing *d
 	var effects map[string]config.TaskDefinition
 	var err error
 	if existing != nil {
+		projectRoot = existing.ProjectRoot
 		docs, effects, err = cfg.TaskDeclarationsForSession(existing)
 	} else {
 		docs, effects, err = cfg.LoadTaskDeclarations(projectRoot)
@@ -67,7 +68,7 @@ func checkInitialTask(cfg *config.Config, projectRoot, entry string, existing *d
 	if resource == "" {
 		resource = entry
 	}
-	observers, err := cfg.LoadResourceDefs()
+	observers, err := cfg.LoadResourceDefs(projectRoot)
 	if err != nil {
 		return nil, &Error{Code: ErrExecutionFailed, Message: fmt.Sprintf("load resources: %v", err)}
 	}
@@ -99,7 +100,7 @@ func ensureInitialTask(cfg *config.Config, store *state.Store, sessionName strin
 	if existing := current.Tasks[initialInstance]; existing != nil {
 		same := domain.Locator(existing.Resource) == binding.Resource
 		if !same {
-			bound, boundErr := boundResource(cfg, store, binding.Resource)
+			bound, boundErr := boundResource(cfg, store, current.ProjectRoot, binding.Resource)
 			if boundErr != nil {
 				return boundErr
 			}
@@ -125,11 +126,11 @@ func ensureInitialTask(cfg *config.Config, store *state.Store, sessionName strin
 // keepInitialSelection records a failed initial instance when a forced
 // recreate fails before re-instantiating it, because that instance is the
 // only durable record of the selection and the next recreate captures it.
-func keepInitialSelection(cfg *config.Config, store *state.Store, sessionName string, binding *initialTaskBinding, cause error) error {
+func keepInitialSelection(cfg *config.Config, store *state.Store, sessionName, projectRoot string, binding *initialTaskBinding, cause error) error {
 	if binding == nil {
 		return cause
 	}
-	bound, boundErr := boundResource(cfg, store, binding.Resource)
+	bound, boundErr := boundResource(cfg, store, projectRoot, binding.Resource)
 	if boundErr != nil {
 		return &Error{Code: ErrExecutionFailed, Message: fmt.Sprintf("%v (and the initial task selection could not be kept: %v)", cause, boundErr)}
 	}

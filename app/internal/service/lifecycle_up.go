@@ -286,10 +286,10 @@ func upUnlocked(cfg *config.Config, store *state.Store, params UpParams) (*UpRes
 		}
 		plan, recreateErr = recreateSessionRuntime(cfg, store, sessionName, session, wf, plan, params.Observer)
 		if recreateErr != nil {
-			return nil, keepInitialSelection(cfg, store, sessionName, initialTask, recreateErr)
+			return nil, keepInitialSelection(cfg, store, sessionName, session.ProjectRoot, initialTask, recreateErr)
 		}
 		if err := ensureInitialTask(cfg, store, sessionName, initialTask); err != nil {
-			return nil, keepInitialSelection(cfg, store, sessionName, initialTask, err)
+			return nil, keepInitialSelection(cfg, store, sessionName, session.ProjectRoot, initialTask, err)
 		}
 	} else if cleanupErr := cleanupStaleWorkflowNodes(cfg, store, sessionName, session, plan, params.Observer); cleanupErr != nil {
 		return nil, cleanupErr
@@ -313,7 +313,7 @@ func upUnlocked(cfg *config.Config, store *state.Store, params UpParams) (*UpRes
 	if err := mergeTasksWithSubscriptions(cfg, store, sessionName, session, wiredNodes); err != nil {
 		return nil, &Error{Code: ErrExecutionFailed, Message: fmt.Sprintf("failed to save session state: %v", err)}
 	}
-	wireProducedNodeSubscriptions(cfg, store, sessionName, wiredNodes)
+	wireProducedNodeSubscriptions(cfg, store, sessionName, session.ProjectRoot, wiredNodes)
 	if setupErr != nil {
 		return nil, &Error{Code: ErrExecutionFailed, Message: setupErr.Error()}
 	}
@@ -555,7 +555,7 @@ func recreateSessionRuntime(cfg *config.Config, store *state.Store, sessionName 
 	if err := mergeTasksWithSubscriptions(cfg, store, sessionName, session, wiredNodes); err != nil {
 		return nil, &Error{Code: ErrExecutionFailed, Message: fmt.Sprintf("failed to save session state: %v", err)}
 	}
-	wireProducedNodeSubscriptions(cfg, store, sessionName, wiredNodes)
+	wireProducedNodeSubscriptions(cfg, store, sessionName, session.ProjectRoot, wiredNodes)
 	if setupErr != nil {
 		return nil, &Error{Code: ErrExecutionFailed, Message: setupErr.Error()}
 	}

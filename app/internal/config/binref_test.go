@@ -288,7 +288,7 @@ plugins = ["github"]
 		t.Fatalf("Load: unexpected error: %v", err)
 	}
 
-	_, err = cfg.LoadResourceDefs()
+	_, err = cfg.LoadResourceDefs("")
 	if err == nil {
 		t.Fatal("LoadResourceDefs: want an error for a bin reference to an unmounted plugin, got nil")
 	}

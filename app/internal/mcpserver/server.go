@@ -243,7 +243,11 @@ func handleUp(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallToolRe
 	}
 
 	root := ""
-	if recognized, _ := service.RecognizesResource(cfg, identifier); recognized {
+	needsContext, err := service.NeedsProjectContext(store, identifier)
+	if err != nil {
+		return errorResult(err), nil
+	}
+	if needsContext {
 		if root, err = callerProjectRoot(cfg); err != nil {
 			return errorResult(err), nil
 		}

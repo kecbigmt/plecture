@@ -29,7 +29,7 @@ func channelDef(t *testing.T, body string) config.ChannelDefinition {
 	if err := os.WriteFile(path, []byte(body), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	defs, err := (&config.Config{BaseDir: dir}).LoadChannels()
+	defs, err := (&config.Config{BaseDir: dir}).LoadChannels("")
 	if err != nil {
 		t.Fatalf("load channel: %v", err)
 	}
