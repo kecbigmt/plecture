@@ -14,8 +14,8 @@ import (
 // diagnostic names the layer that wrote the offending value; the merged
 // definition's own topology is checked when it is decoded.
 func (c *Config) checkWorkflowDefinition(def *lang.Definition, layer layerDir) error {
-	if _, declares := def.Body["populations"]; declares && !layer.global {
-		return fmt.Errorf("workflow %s: populations must be declared in the workspace-independent user configuration layer", def.File)
+	if _, declares := def.Body["populations"]; declares && !layer.global && !layer.project {
+		return fmt.Errorf("workflow %s: populations are deployment policy and must be declared in the global configuration or a project root", def.File)
 	}
 	validation := lang.Validation{
 		From:        lang.Ownership{IsPlugin: layer.plugin},
@@ -52,9 +52,6 @@ func workflowFrom(def *lang.Definition, sourcePath string) (WorkflowFile, error)
 			}
 			*field.field = value
 		}
-	}
-	if w.Resource == "" {
-		return w, fmt.Errorf("`resource` is required: a workflow declares the one entry resource type it accepts")
 	}
 	if raw, ok := def.Body["auto_select"]; ok {
 		value, ok := raw.(bool)

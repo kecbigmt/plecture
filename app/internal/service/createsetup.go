@@ -53,6 +53,9 @@ func createWithWorkflowSetup(cfg *config.Config, store *state.Store, params Crea
 		if existing.Workflow != "" && existing.Workflow != wf.Address {
 			return nil, &Error{Code: ErrInvalidInput, Message: fmt.Sprintf("resource dispatches to workflow %q but session %q is frozen to %q; destroy and recreate to switch", wf.Address, sessionName, existing.Workflow)}
 		}
+		if err := requireSessionRoot(cfg, existing); err != nil {
+			return nil, err
+		}
 		session = existing
 		if session.Nodes == nil {
 			session.Nodes = make(map[string]*contract.TaskState)
@@ -65,7 +68,7 @@ func createWithWorkflowSetup(cfg *config.Config, store *state.Store, params Crea
 		if parentErr != nil {
 			return nil, parentErr
 		}
-		input, validateErr := resolveSessionInputs(cfg, params.InvocationDir, wf.Address, params.Inputs)
+		input, validateErr := resolveSessionInputs(cfg, params.ProjectRoot, wf.Address, params.Inputs)
 		if validateErr != nil {
 			return nil, validateErr
 		}
@@ -89,14 +92,14 @@ func createWithWorkflowSetup(cfg *config.Config, store *state.Store, params Crea
 	session.Alias = alias
 	session.UpdatedAt = now
 	if session.WorkflowRevision == "" {
-		revision, err := cfg.CaptureWorkflowRevision(params.InvocationDir, session.Workflow)
+		revision, err := cfg.CaptureWorkflowRevision(params.ProjectRoot, session.Workflow)
 		if err != nil {
 			return nil, &Error{Code: ErrExecutionFailed, Message: fmt.Sprintf("capture workflow revision: %v", err)}
 		}
 		if err := setSessionRevision(session, revision, true); err != nil {
 			return nil, &Error{Code: ErrExecutionFailed, Message: fmt.Sprintf("capture workflow revision: %v", err)}
 		}
-		session.InvocationDir = params.InvocationDir
+		session.ProjectRoot = params.ProjectRoot
 	}
 
 	existingBeforePut := existing != nil

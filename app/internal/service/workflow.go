@@ -73,11 +73,10 @@ type WorkflowNode struct {
 	Inputs    map[string]string `json:"inputs,omitempty"`
 }
 
-// WorkflowList returns all discoverable workflows merged from the cascade
-// of ancestor overlays above invocationDir, sorted by id for stable output. An empty
-// invocationDir still surfaces the global layer.
-func WorkflowList(cfg *config.Config, invocationDir string) ([]WorkflowSummary, error) {
-	workflows, err := cfg.LoadWorkflows(invocationDir)
+// WorkflowList returns the workflows of projectRoot's context, sorted by id
+// for stable output.
+func WorkflowList(cfg *config.Config, projectRoot string) ([]WorkflowSummary, error) {
+	workflows, err := cfg.LoadWorkflows(projectRoot)
 	if err != nil {
 		return nil, fmt.Errorf("load workflows: %w", err)
 	}
@@ -96,13 +95,12 @@ func WorkflowList(cfg *config.Config, invocationDir string) ([]WorkflowSummary, 
 
 // WorkflowShow resolves a single workflow and compiles it so the returned
 // DAG matches what `plect up` would actually execute. Returns an ErrInvalidInput
-// service error when the id isn't present in the cascade (mirrors the
-// "workflow not found" path in tasks.go's buildWorkflowPlan), or when a
+// service error when the id isn't present in the context, or when a
 // node's input wiring has drifted from its task's inputs_schema — the same
 // mismatch RunSetup would otherwise only catch once dispatch reaches that
 // node, by which point earlier nodes may already have run.
-func WorkflowShow(cfg *config.Config, invocationDir, id string) (*WorkflowDetail, error) {
-	workflows, err := cfg.LoadWorkflows(invocationDir)
+func WorkflowShow(cfg *config.Config, projectRoot, id string) (*WorkflowDetail, error) {
+	workflows, err := cfg.LoadWorkflows(projectRoot)
 	if err != nil {
 		return nil, fmt.Errorf("load workflows: %w", err)
 	}
@@ -110,7 +108,7 @@ func WorkflowShow(cfg *config.Config, invocationDir, id string) (*WorkflowDetail
 	if !ok {
 		return nil, &Error{Code: ErrInvalidInput, Message: fmt.Sprintf("workflow %q not found", id)}
 	}
-	defs, err := cfg.LoadTaskDefinitions(invocationDir)
+	defs, err := cfg.LoadTaskDefinitions(projectRoot)
 	if err != nil {
 		return nil, fmt.Errorf("load task definitions: %w", err)
 	}

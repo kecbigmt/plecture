@@ -781,6 +781,7 @@ func TestDispatcher_TerminalHelperResolvesThroughSessionPlan(t *testing.T) {
 				},
 			}},
 		},
+		currentConfig: func() *config.Config { return &config.Config{} },
 	}
 	log.Append(event.Event{SessionName: "o/r-1", Type: event.TypeInstruction, Direction: event.Internal})
 	drainOnce(d, s)

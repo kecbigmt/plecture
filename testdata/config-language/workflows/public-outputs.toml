@@ -3,6 +3,7 @@
 
 [pull_review]
 kind = "workflow"
+resource = "issue_pr"
 
 [pull_review.outputs]
 owner_endpoint = { from = "nodes.orchestrator.outputs.endpoint" }

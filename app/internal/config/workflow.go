@@ -13,7 +13,7 @@ import (
 )
 
 // WorkflowFile is one `kind = "workflow"` declaration, loaded from a
-// definition document under a `workflows/` directory in any cascade layer.
+// definition document under a `workflows/` directory in any layer.
 //
 // A workflow is a named bundle of nodes plus the event channels, display
 // values and clocks for the sessions it produces. Each node selects an effect
@@ -25,7 +25,7 @@ import (
 // `plect workflow list/show` and the MCP discovery tools present.
 type WorkflowFile struct {
 	ID string
-	// Address is the name this workflow answers to across the cascade — its id
+	// Address is the name this workflow answers to across the layers — its id
 	// alone when the user owns it, its catalog address when a plugin declares
 	// it. A session freezes this rather than the id, because the id is what
 	// names the session and cannot say which declaration produced it.
@@ -52,16 +52,11 @@ type WorkflowFile struct {
 	Populations   []WorkflowPopulation
 	Event         WorkflowEvent
 	// Tick declares the machine-driven conditions that tick the sessions this
-	// workflow produces. Unlike the other WorkflowFile fields, a deeper
-	// cascade layer's `[tick]` replaces a shallower layer's wholesale — the
-	// deeper-wins policy the ratified language states for runtime tuning
-	// tables, not the additive/no-redeclare policy the rest of this struct
-	// uses. Nil means no declaration: the session advances only via manual
-	// `plect tick` and the judge builtin.
+	// workflow produces. Nil means no declaration: the session advances only
+	// via manual `plect tick` and the judge builtin.
 	Tick *TickConfig
 	// Healthcheck declares the dedicated health sampling clock for sessions
-	// produced by this workflow. Like `[tick]`, it is a deeper-wins
-	// whole-table runtime tuning declaration. It names the sampling cycle,
+	// produced by this workflow. It names the sampling cycle,
 	// not what health means: what each probe observes is an effect-level
 	// `[health]` declaration.
 	Healthcheck      *HealthcheckConfig
@@ -205,8 +200,7 @@ func NormalizeHealthcheckConfig(in *HealthcheckConfig) HealthcheckConfig {
 //
 // Blocks declares reverse dependency edges: each listed node id becomes a
 // dependent of this one, equivalent to writing the inverse dependency in the
-// listed node. It exists for a cascade overlay that must insert itself ahead
-// of base nodes it cannot modify.
+// listed node.
 type WorkflowNode struct {
 	ID           string
 	Uses         string
@@ -506,10 +500,10 @@ func resolveSchemaPath(file, baseDir string) string {
 	return filepath.Join(baseDir, file)
 }
 
-// layerDir pairs a cascade search directory with its trust classification.
+// layerDir pairs a layer's definition root with its classification.
 //
 // plugin marks a layer sourced from c.PluginDirs specifically (as opposed to
-// the global config dir or an ancestor overlay), which is what decides the
+// the global config dir or the project layer), which is what decides the
 // address its declarations answer to: a mounted plugin's carry its catalog
 // address, and everything else is addressed by id alone.
 type layerDir struct {
@@ -523,22 +517,15 @@ type layerDir struct {
 	// was mounted from, empty for a hand-authored plugin_dirs entry (which
 	// carries no catalog identity) and for the non-plugin layers.
 	pluginID string
+	// project marks the selected project root's tree, whose only reserved
+	// file is its marker.
+	project bool
 }
 
-// LoadWorkflows loads every workflow declaration the cascade layers hold:
-// plugins (base), the global config, then each trusted overlay down to the
-// invocation directory. A deeper layer merges into a same-id shallower
-// workflow by the cascade rules — it may set a field the shallower layer left
-// unset, its nodes append, and its `[tick]` / `[healthcheck]` replace the
-// shallower table wholesale — so a project extends a shared workflow instead
-// of forking it.
-//
-// Two plugins declaring one id land on separate addresses and both load; a
-// user-owned workflow sharing an id with a plugin's does not extend it either,
-// for the same reason. Only a deeper user-owned layer merges into a shallower
-// one, which is what lets a project extend a workflow it owns.
-func (c *Config) LoadWorkflows(invocationDir string) (map[string]WorkflowFile, error) {
-	layers, err := c.discoverLayers(invocationDir)
+// LoadWorkflows loads every workflow declaration the layers hold: plugins
+// (base), the global config, then projectRoot's tree when it is not empty.
+func (c *Config) LoadWorkflows(projectRoot string) (map[string]WorkflowFile, error) {
+	layers, err := c.discoverLayers(projectRoot)
 	if err != nil {
 		return nil, err
 	}
@@ -575,7 +562,7 @@ func (c *Config) LoadWorkflows(invocationDir string) (map[string]WorkflowFile, e
 	if err != nil {
 		return nil, err
 	}
-	docs, err := c.LoadTaskDocuments(invocationDir)
+	docs, err := c.LoadTaskDocuments(projectRoot)
 	if err != nil {
 		return nil, err
 	}
@@ -602,15 +589,13 @@ func workflowsHavePopulations(workflows map[string]WorkflowFile) bool {
 	return false
 }
 
-// LoadTaskDefinitions merges plugin + global + ancestor `.plect/tasks/`
-// layers. Same-id deeper (user-owned) layer wins because setup/cleanup is
-// atomic — appending two shell scripts doesn't have a sensible meaning the
-// way appending nodes does. Two plugins declaring one id land on separate
+// LoadTaskDefinitions loads every effect the layers hold, as LoadWorkflows
+// does for workflows. Two plugins declaring one id land on separate
 // addresses and both load; only a layer with no catalog identity to name it by
 // still collides, since there declaration order would be deciding between two
 // plugins' shell.
-func (c *Config) LoadTaskDefinitions(invocationDir string) (map[string]TaskDefinition, error) {
-	layers, err := c.discoverLayers(invocationDir)
+func (c *Config) LoadTaskDefinitions(projectRoot string) (map[string]TaskDefinition, error) {
+	layers, err := c.discoverLayers(projectRoot)
 	if err != nil {
 		return nil, err
 	}
@@ -637,9 +622,9 @@ func (c *Config) LoadTaskDefinitions(invocationDir string) (map[string]TaskDefin
 	return out, nil
 }
 
-// definitionRoots orders the cascade: plugins (base) → global → ancestor
-// overlays above invocationDir.
-func (c *Config) definitionRoots(invocationDir string) []layerDir {
+// definitionRoots orders the layers: plugins (base), global, then the
+// selected project root's tree when there is one.
+func (c *Config) definitionRoots(projectRoot string) ([]layerDir, error) {
 	pluginIDs := make(map[string]string, len(c.Plugins))
 	for _, m := range c.Plugins {
 		pluginIDs[m.Dir] = m.ID
@@ -651,59 +636,14 @@ func (c *Config) definitionRoots(invocationDir string) []layerDir {
 	if c.BaseDir != "" {
 		dirs = append(dirs, layerDir{dir: c.BaseDir, global: true})
 	}
-	for _, anc := range cascadeCandidates(invocationDir) {
-		if c.trustsProjectRoot(anc) {
-			dirs = append(dirs, layerDir{dir: filepath.Join(anc, ".plect")})
+	if projectRoot != "" {
+		project, err := c.projectLayer(projectRoot)
+		if err != nil {
+			return nil, err
 		}
+		dirs = append(dirs, project)
 	}
-	return dirs
-}
-
-// trustsProjectRoot counts only listed roots, since an unlisted checkout's `.plect/` can run shell.
-func (c *Config) trustsProjectRoot(dir string) bool {
-	canonical := func(path string) string {
-		if real, err := filepath.EvalSymlinks(path); err == nil {
-			return real
-		}
-		return filepath.Clean(path)
-	}
-	want := canonical(dir)
-	for _, root := range c.TrustedProjectRoots {
-		if canonical(root) == want {
-			return true
-		}
-	}
-	return false
-}
-
-// cascadeCandidates walks up from invocationDir, including it, ordered outermost-first.
-// $HOME is the exclusive upper bound because the user's global config lives
-// at `~/.config/plect/` and `$HOME/.plect/` would collide with that.
-func cascadeCandidates(invocationDir string) []string {
-	if invocationDir == "" {
-		return nil
-	}
-	var cleanHome string
-	if home, err := os.UserHomeDir(); err == nil && home != "" {
-		cleanHome = filepath.Clean(home)
-	}
-	var chain []string
-	cur := filepath.Clean(invocationDir)
-	for {
-		if cur == cleanHome || cur == string(filepath.Separator) {
-			break
-		}
-		chain = append(chain, cur)
-		parent := filepath.Dir(cur)
-		if parent == cur {
-			break
-		}
-		cur = parent
-	}
-	for i, j := 0, len(chain)-1; i < j; i, j = i+1, j-1 {
-		chain[i], chain[j] = chain[j], chain[i]
-	}
-	return chain
+	return dirs, nil
 }
 
 // listTOMLFiles returns sorted *.toml entries in dir. A missing dir returns an

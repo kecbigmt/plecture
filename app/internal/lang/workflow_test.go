@@ -172,8 +172,7 @@ uses = "reaper"
 	assertDiagnostic(t, err, CodeWorkflowCycle, LayerSemantic)
 }
 
-// A cascade layer may add a node whose inputs read a base layer's node, so an
-// edge to an id this definition does not declare is the merged load's
+// An edge to an id this definition does not declare is the compiled plan's
 // question, not this pass's.
 func TestValidateWorkflow_EdgeToUndeclaredNodeIsNotACycle(t *testing.T) {
 	def := workflowDef(t, `

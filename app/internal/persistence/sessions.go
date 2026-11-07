@@ -357,10 +357,9 @@ func (db *DB) writeSessionTx(ctx context.Context, tx *sql.Tx, s *domain.Session)
 		}
 	}
 
-	var populationWorkflow, populationName sql.NullString
-	if s.Population != nil {
-		populationWorkflow = sql.NullString{String: s.Population.Workflow, Valid: true}
-		populationName = sql.NullString{String: s.Population.Name, Valid: true}
+	populationWorkflow, populationName, err := populationColumns(s)
+	if err != nil {
+		return err
 	}
 
 	status := s.Status
@@ -397,7 +396,7 @@ func (db *DB) writeSessionTx(ctx context.Context, tx *sql.Tx, s *domain.Session)
 		Alias:                    nullString(s.Alias),
 		Workflow:                 s.Workflow,
 		WorkflowRevision:         nullString(s.WorkflowRevision),
-		InvocationDir:            nullString(s.InvocationDir),
+		ProjectRoot:              s.ProjectRoot,
 		PopulationWorkflow:       populationWorkflow,
 		PopulationName:           populationName,
 		InputsJson:               inputsJSON,
@@ -443,7 +442,7 @@ func insertSessionParams(id, status string, parentCol, rootCol, populationWorkfl
 		Alias:                    nullString(s.Alias),
 		Workflow:                 s.Workflow,
 		WorkflowRevision:         nullString(s.WorkflowRevision),
-		InvocationDir:            nullString(s.InvocationDir),
+		ProjectRoot:              s.ProjectRoot,
 		PopulationWorkflow:       populationWorkflow,
 		PopulationName:           populationName,
 		InputsJson:               inputsJSON,
@@ -473,10 +472,9 @@ func (db *DB) ImportSession(ctx context.Context, id string, s *domain.Session) e
 	return db.WithImmediateTx(ctx, func(tx *sql.Tx) error {
 		q := sqlcgen.New(tx)
 
-		var populationWorkflow, populationName sql.NullString
-		if s.Population != nil {
-			populationWorkflow = sql.NullString{String: s.Population.Workflow, Valid: true}
-			populationName = sql.NullString{String: s.Population.Name, Valid: true}
+		populationWorkflow, populationName, err := populationColumns(s)
+		if err != nil {
+			return err
 		}
 		status := s.Status
 		if status == "" {
@@ -657,10 +655,10 @@ func sessionFromRow(row sqlcgen.Session) (*domain.Session, error) {
 		Alias:            row.Alias.String,
 		Workflow:         row.Workflow,
 		WorkflowRevision: row.WorkflowRevision.String,
-		InvocationDir:    row.InvocationDir.String,
+		ProjectRoot:      row.ProjectRoot,
 	}
 	if row.PopulationWorkflow.Valid && row.PopulationName.Valid {
-		s.Population = &contract.PopulationProvenance{Workflow: row.PopulationWorkflow.String, Name: row.PopulationName.String}
+		s.Population = &contract.PopulationProvenance{ProjectRoot: row.ProjectRoot, Workflow: row.PopulationWorkflow.String, Name: row.PopulationName.String}
 	}
 
 	inputs, err := unmarshalJSONMap(row.InputsJson)
@@ -890,4 +888,17 @@ func listLiveChildSessionNamesBatch(ctx context.Context, q *sqlcgen.Queries, ids
 		out[r.ParentSessionID.String] = append(out[r.ParentSessionID.String], r.Name)
 	}
 	return out, nil
+}
+
+// populationColumns stores a session's population by workflow and name alone:
+// the row's project_root is the population's context too, so a provenance
+// naming another context is refused rather than silently re-homed.
+func populationColumns(s *domain.Session) (workflow, name sql.NullString, err error) {
+	if s.Population == nil {
+		return workflow, name, nil
+	}
+	if s.Population.ProjectRoot != s.ProjectRoot {
+		return workflow, name, fmt.Errorf("session %q: population %q/%q belongs to project root %q, not the session's %q", s.Name, s.Population.Workflow, s.Population.Name, s.Population.ProjectRoot, s.ProjectRoot)
+	}
+	return sql.NullString{String: s.Population.Workflow, Valid: true}, sql.NullString{String: s.Population.Name, Valid: true}, nil
 }

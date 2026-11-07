@@ -174,7 +174,7 @@ classifies every `_json` column by its owning declaration:
 | Table | Key and relational columns | JSON or scalar payload | Source |
 | --- | --- | --- | --- |
 | `resources` | `id` primary key (opaque; see "Resources"); `type`; `name` unique across types; `locator`; `created_at` | none | each distinct resource a session, task, node, population member or delivery retry refers to |
-| `sessions` | `id` (ULID) primary key; `name` (unique only among live rows — see "Session identity and lifecycle"); `status`, nullable `destroyed_at`; nullable `parent_session_id` and `root_session_id`, each referencing `sessions(id)`; nullable `resource_id` referencing `resources(id)`; nullable `tag`, `alias`, `population_workflow`, `population_name` (the pair also references `populations(workflow, name)`); nullable lifecycle-configuration digest baseline; `workflow`, `created_at`, `updated_at` | inputs, health, tick backoff | `state.json` `sessions` entries |
+| `sessions` | `id` (ULID) primary key; `name` (unique only among live rows — see "Session identity and lifecycle"); `status`, nullable `destroyed_at`; nullable `parent_session_id` and `root_session_id`, each referencing `sessions(id)`; `project_root` (the configuration context, `''` for global only); nullable `resource_id` referencing `resources(id)`; nullable `tag`, `alias`, `population_workflow`, `population_name` (with `project_root` they reference `populations(project_root, workflow, name)`); nullable lifecycle-configuration digest baseline; `workflow`, `created_at`, `updated_at` | inputs, health, tick backoff | `state.json` `sessions` entries |
 | `node_instances` | `(session_id, node_id)` primary key; session foreign key; no other columns | none — purely the logical node's identity | `state.json` `sessions.*.tasks` entries with `dynamic` unset (keys only) |
 | `node_executions` | `id` (ULID, minted per setup attempt) primary key; `(session_id, node_id)` foreign key to `node_instances`; `sequence`; nullable `task_id`, `name`, `resource_id` and `subscription_id` (each referencing `resources(id)`; `subscription_id` is the resource the node's subscription output bound); `scope`, `status`, nullable `finalized_at`; release outcome and unavailable reason; at most one unreleased row per `(session_id, node_id)` — see "Node execution identity" | inputs, outputs, state, observed value, `done_when` (rare, not relationally queried), setup-time cleanup facts, nullable `directory` (the directory the setup ran in; `NULL` when setup ran with no explicit directory), error, lifecycle timestamps | `state.json` `sessions.*.tasks` entries with `dynamic` unset (per-attempt facts) |
 | `node_execution_layers` | `(execution_id, position)` primary key; execution foreign key (`ON DELETE CASCADE`) | inputs, locals, outputs, env, heartbeat counters, lifecycle timestamps, error | `TaskState.Layers` (static node instances) |
@@ -184,9 +184,9 @@ classifies every `_json` column by its owning declaration:
 | `task_done_when_states` | `task_instance_id` primary key and foreign key | counters, fingerprints, reason/body, escalation data | `TaskState.DoneWhen` (dynamic instances only) |
 | `task_done_when_unsatisfied_items` | `(task_instance_id, position)` primary key; task-instance foreign key | one unsatisfied-leaf id per row | `DoneWhenState.LastUnsatisfied` |
 | `task_done_when_judges` | `(task_instance_id, leaf_id)` primary key and task-instance foreign key; `judge_session`/nullable `judge_workflow` remain stored facts | action, reason, revision, relation, and creation time | `DoneWhenState.Judges` (dynamic instances only) |
-| `populations` | `(workflow, name)` primary key | none | `state.json` `populations` map key and value |
-| `population_members` | `(workflow, name, resource_id)` primary key, `populations(workflow, name)` foreign key, and `resource_id` referencing `resources(id)`; nullable `session_name` | item, generation, timestamps, flags, `decision_kind`/`decision_reason` | `PopulationState.Members` |
-| `population_member_blockers` | `(workflow, name, resource_id, position)` primary key; foreign key to `population_members` | one blocker reason per row | `PopulationMember.LastBlockers` |
+| `populations` | `(project_root, workflow, name)` primary key | none | `state.json` `populations` map key and value |
+| `population_members` | `(project_root, workflow, name, resource_id)` primary key, `populations(project_root, workflow, name)` foreign key, and `resource_id` referencing `resources(id)`; nullable `session_name` | item, generation, timestamps, flags, `decision_kind`/`decision_reason` | `PopulationState.Members` |
+| `population_member_blockers` | `(project_root, workflow, name, resource_id, position)` primary key; foreign key to `population_members` | one blocker reason per row | `PopulationMember.LastBlockers` |
 | `session_channel_health` | `(session_id, kind)` primary key; session foreign key; `kind` CHECK IN `validation`/`delivery` | consecutive failures, first/last failure time, last channel/error, escalation time | `Session.ChannelValidationHealth`/`ChannelDeliveryHealth` |
 | `up_reservations` | `child_session_name` primary key; nullable `parent_session_name`, `virtual_root`, `pid`, `reserved_at` | none | `state.json` `up_reservations` |
 | `events` | `id` primary key; `(session_id, sequence)` unique and references `sessions(id)`; `direction` CHECK IN `inbound`/`outbound`/`internal`; `metadata_json` CHECK `json_valid` | type, source, direction, summary, body, metadata, and recorded time | each `log.jsonl` record |
@@ -244,9 +244,12 @@ path that sets it (`population/engine.go`'s admission, via
 population's own hook *before* it records the member row, so a read between
 those two steps would see a session with no population yet if the field were
 derived by join instead of stored on the session itself.
-`sessions.population_workflow`/`population_name` are that stored reference,
-with a composite foreign key to `populations(workflow, name)` and `ON DELETE
-SET NULL`. The foreign key is satisfiable at every write: `admit` only runs
+`sessions.population_workflow`/`population_name`, with the session's own
+`project_root`, are that stored reference, with a composite foreign key to
+`populations(project_root, workflow, name)` and `ON DELETE NO ACTION`: a
+population-owned session shares its population's configuration context, so
+one column answers both, and no code path deletes a population row. The
+foreign key is satisfiable at every write: `admit` only runs
 from `Reconcile`, which only runs once `e.state.Population` already found a
 row, and that row is upserted by `ApplyPoll`/`ApplyAppearance` before
 `Reconcile` is ever called — so a population always exists before any session
@@ -256,12 +259,11 @@ session that has not yet been destroyed or updated); the promoted columns are
 the authority for what a session was created under, which does not change for
 that session's lifetime once admission succeeds.
 
-`(workflow, name)` is a population's own domain identity — a workflow's
-declared population, its config address plus population name — not the
-`"workflow/name"` string built for JSON map keys and in-memory lookups
-elsewhere in `internal/population`; the persistence boundary parses that
-concatenation back into its two parts on every population read or write
-rather than storing it as an identity.
+`(project_root, workflow, name)` is a population's own domain identity — the
+configuration context that declares it, its workflow's config address, and
+its population name — so one name declared in two project roots is two
+populations. Callers address a population by `PopulationProvenance`, the same
+three fields, rather than by a joined string.
 
 `task_instances.named` replaces what would otherwise be a duplicated
 instance-identity string: a `--name` a caller gave the instance is always
@@ -632,6 +634,7 @@ CREATE TABLE sessions (
     tag TEXT,
     alias TEXT,
     workflow TEXT NOT NULL,
+    project_root TEXT NOT NULL DEFAULT '',
     population_workflow TEXT,
     population_name TEXT,
     created_at TEXT NOT NULL,
@@ -640,7 +643,7 @@ CREATE TABLE sessions (
     CHECK (NOT (parent_session_id IS NOT NULL AND root_session_id IS NOT NULL)),
     CHECK (root_session_id IS NULL OR root_session_id <> id),
     CHECK ((population_workflow IS NULL) = (population_name IS NULL)),
-    FOREIGN KEY (population_workflow, population_name) REFERENCES populations(workflow, name) ON DELETE SET NULL
+    FOREIGN KEY (project_root, population_workflow, population_name) REFERENCES populations(project_root, workflow, name) ON DELETE NO ACTION
 );
 
 CREATE UNIQUE INDEX sessions_live_name ON sessions(name) WHERE status <> 'destroyed';

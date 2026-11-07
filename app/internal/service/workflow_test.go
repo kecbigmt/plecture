@@ -38,7 +38,7 @@ func TestWorkflowPopulationViewsExposeResolvedPolicy(t *testing.T) {
 	}
 }
 
-func setupWorkflowFixture(t *testing.T) (*config.Config, string) {
+func setupWorkflowFixture(t *testing.T) *config.Config {
 	t.Helper()
 	tmpHome := t.TempDir()
 	t.Setenv("HOME", tmpHome)
@@ -84,20 +84,16 @@ resource = "issue"
 [[bare.nodes]]
 uses = "tmux"
 `)
-	workdirDir := filepath.Join(tmpHome, "workdirs", "session")
-	if err := os.MkdirAll(workdirDir, 0o755); err != nil {
-		t.Fatal(err)
-	}
 	cfg, err := config.Load()
 	if err != nil {
 		t.Fatal(err)
 	}
-	return cfg, workdirDir
+	return cfg
 }
 
 func TestWorkflowList_ReturnsSortedSummaries(t *testing.T) {
-	cfg, workdirDir := setupWorkflowFixture(t)
-	got, err := WorkflowList(cfg, workdirDir)
+	cfg := setupWorkflowFixture(t)
+	got, err := WorkflowList(cfg, "")
 	if err != nil {
 		t.Fatalf("WorkflowList: %v", err)
 	}
@@ -116,8 +112,8 @@ func TestWorkflowList_ReturnsSortedSummaries(t *testing.T) {
 }
 
 func TestWorkflowShow_ReturnsCompiledDAG(t *testing.T) {
-	cfg, workdirDir := setupWorkflowFixture(t)
-	got, err := WorkflowShow(cfg, workdirDir, "coding")
+	cfg := setupWorkflowFixture(t)
+	got, err := WorkflowShow(cfg, "", "coding")
 	if err != nil {
 		t.Fatalf("WorkflowShow: %v", err)
 	}
@@ -181,7 +177,7 @@ include     = ["plect.instruction", "github.*"]
 	if err != nil {
 		t.Fatal(err)
 	}
-	got, err := WorkflowShow(cfg, filepath.Join(tmpHome, "workdirs", "session"), "withchan")
+	got, err := WorkflowShow(cfg, "", "withchan")
 	if err != nil {
 		t.Fatalf("WorkflowShow: %v", err)
 	}
@@ -239,7 +235,7 @@ include     = ["github.*"]
 	if err != nil {
 		t.Fatal(err)
 	}
-	_, err = WorkflowShow(cfg, filepath.Join(tmpHome, "workdirs", "session"), "withchan")
+	_, err = WorkflowShow(cfg, "", "withchan")
 	if err == nil {
 		t.Fatal("expected error when a channel definition fails to load")
 	}
@@ -289,7 +285,7 @@ include = ["github.*"]
 	if err != nil {
 		t.Fatal(err)
 	}
-	_, err = WorkflowShow(cfg, filepath.Join(tmpHome, "workdirs", "session"), "withchan")
+	_, err = WorkflowShow(cfg, "", "withchan")
 	if err == nil {
 		t.Fatal("expected error for unknown channel definition")
 	}
@@ -303,8 +299,8 @@ include = ["github.*"]
 }
 
 func TestWorkflowShow_UnknownIDReturnsInvalidInput(t *testing.T) {
-	cfg, workdirDir := setupWorkflowFixture(t)
-	_, err := WorkflowShow(cfg, workdirDir, "missing")
+	cfg := setupWorkflowFixture(t)
+	_, err := WorkflowShow(cfg, "", "missing")
 	if err == nil {
 		t.Fatal("expected error for unknown workflow id")
 	}
@@ -321,7 +317,7 @@ func TestWorkflowShow_UnknownIDReturnsInvalidInput(t *testing.T) {
 // declares `tmux_session` (additionalProperties = false), and a workflow
 // whose node still wires it: a task/workflow drift that previously
 // surfaced only once `plect up` dispatched to that node.
-func setupDriftedInputFixture(t *testing.T, nodeInputs string) (*config.Config, string) {
+func setupDriftedInputFixture(t *testing.T, nodeInputs string) *config.Config {
 	t.Helper()
 	tmpHome := t.TempDir()
 	t.Setenv("HOME", tmpHome)
@@ -363,12 +359,12 @@ uses = "tmux"
 	if err != nil {
 		t.Fatal(err)
 	}
-	return cfg, filepath.Join(tmpHome, "workdirs", "session")
+	return cfg
 }
 
 func TestWorkflowShow_NodeInputNotInSchemaReturnsInvalidInput(t *testing.T) {
-	cfg, workdirDir := setupDriftedInputFixture(t, `inputs.tmux_session = "main"`)
-	_, err := WorkflowShow(cfg, workdirDir, "coding")
+	cfg := setupDriftedInputFixture(t, `inputs.tmux_session = "main"`)
+	_, err := WorkflowShow(cfg, "", "coding")
 	if err == nil {
 		t.Fatal("expected error for a node input the task's inputs_schema no longer accepts")
 	}
@@ -387,8 +383,8 @@ func TestWorkflowShow_NodeInputNotInSchemaReturnsInvalidInput(t *testing.T) {
 }
 
 func TestWorkflowShow_CorrectedNodeInputsPass(t *testing.T) {
-	cfg, workdirDir := setupDriftedInputFixture(t, `inputs.template = "main"`)
-	got, err := WorkflowShow(cfg, workdirDir, "coding")
+	cfg := setupDriftedInputFixture(t, `inputs.template = "main"`)
+	got, err := WorkflowShow(cfg, "", "coding")
 	if err != nil {
 		t.Fatalf("WorkflowShow: %v", err)
 	}

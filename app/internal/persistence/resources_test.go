@@ -197,7 +197,7 @@ func TestUpdatePopulation_RecordsMembersAgainstTheirResource(t *testing.T) {
 		p.Members["case-1"].Item = map[string]any{"resource": "case://1?reply=2"}
 	})
 
-	got, err := db.Population(ctx, "wf/pop")
+	got, err := db.Population(ctx, contract.PopulationProvenance{Workflow: "wf", Name: "pop"})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -229,7 +229,7 @@ func mustUpdate(t *testing.T, db *DB, name string, fn func(*domain.Session)) {
 
 func mustUpdatePopulation(t *testing.T, db *DB, fn func(*domain.PopulationState)) {
 	t.Helper()
-	if err := db.UpdatePopulation(context.Background(), "wf/pop", func(p *domain.PopulationState) error { fn(p); return nil }); err != nil {
+	if err := db.UpdatePopulation(context.Background(), contract.PopulationProvenance{Workflow: "wf", Name: "pop"}, func(p *domain.PopulationState) error { fn(p); return nil }); err != nil {
 		t.Fatalf("update population: %v", err)
 	}
 }

@@ -7,9 +7,9 @@ import (
 	"github.com/kecbigmt/plecture/app/internal/domain"
 )
 
-func sessionWithCapturedRevision(t *testing.T, cfg *Config, workspace string) *domain.Session {
+func sessionWithCapturedRevision(t *testing.T, cfg *Config) *domain.Session {
 	t.Helper()
-	revision, err := cfg.CaptureWorkflowRevision(filepath.Join(workspace, "cwd"), "default")
+	revision, err := cfg.CaptureWorkflowRevision("", "default")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -23,7 +23,7 @@ func sessionWithCapturedRevision(t *testing.T, cfg *Config, workspace string) *d
 func TestCurrentPlanRunScopedNodeSet_CachesPerConfigLifetime(t *testing.T) {
 	base := writeRunScopedWorkflow(t)
 	cfg := &Config{BaseDir: base}
-	s := sessionWithCapturedRevision(t, cfg, "")
+	s := sessionWithCapturedRevision(t, cfg)
 
 	first, ok := cfg.CurrentPlanRunScopedNodeSet(s)
 	if !ok || len(first) != 2 {
@@ -57,7 +57,7 @@ uses = "agent"
 func TestCurrentPlanRunScopedNodeSet_NewConfigSeesEdit(t *testing.T) {
 	base := writeRunScopedWorkflow(t)
 	initial := &Config{BaseDir: base}
-	s := sessionWithCapturedRevision(t, initial, "")
+	s := sessionWithCapturedRevision(t, initial)
 	if _, ok := initial.CurrentPlanRunScopedNodeSet(s); !ok {
 		t.Fatal("priming call: ok = false")
 	}
@@ -81,7 +81,7 @@ uses = "agent"
 `)
 
 	freshConfig := &Config{BaseDir: base}
-	newSession := sessionWithCapturedRevision(t, freshConfig, "")
+	newSession := sessionWithCapturedRevision(t, freshConfig)
 	fresh, ok := freshConfig.CurrentPlanRunScopedNodeSet(newSession)
 	if !ok || len(fresh) != 3 {
 		t.Errorf("call on a fresh *Config = %+v, ok=%v, want the edited three-node set", fresh, ok)

@@ -31,15 +31,15 @@ type capacityCoordinator struct {
 	// acquiring mu, so that read can never block every other population's
 	// concurrent admission attempt on one member's history scan.
 	defMu       sync.RWMutex
-	definitions map[string]Definition
+	definitions map[contract.PopulationProvenance]Definition
 }
 
 func newCapacityCoordinator(cfg func() *config.Config, stateStore *state.Store, logStore *eventlog.Store, cache *admitstatus.Cache) *capacityCoordinator {
-	return &capacityCoordinator{cfg: cfg, state: stateStore, log: logStore, cache: cache, definitions: make(map[string]Definition)}
+	return &capacityCoordinator{cfg: cfg, state: stateStore, log: logStore, cache: cache, definitions: make(map[contract.PopulationProvenance]Definition)}
 }
 
 func (c *capacityCoordinator) setDefinitions(definitions []Definition) {
-	next := make(map[string]Definition, len(definitions))
+	next := make(map[contract.PopulationProvenance]Definition, len(definitions))
 	for _, definition := range definitions {
 		next[populationKey(definition)] = definition
 	}
@@ -48,17 +48,17 @@ func (c *capacityCoordinator) setDefinitions(definitions []Definition) {
 	c.defMu.Unlock()
 }
 
-func (c *capacityCoordinator) definition(key string) (Definition, bool) {
+func (c *capacityCoordinator) definition(key contract.PopulationProvenance) (Definition, bool) {
 	c.defMu.RLock()
 	defer c.defMu.RUnlock()
 	def, ok := c.definitions[key]
 	return def, ok
 }
 
-func (c *capacityCoordinator) definitionKeys() []string {
+func (c *capacityCoordinator) definitionKeys() []contract.PopulationProvenance {
 	c.defMu.RLock()
 	defer c.defMu.RUnlock()
-	keys := make([]string, 0, len(c.definitions))
+	keys := make([]contract.PopulationProvenance, 0, len(c.definitions))
 	for key := range c.definitions {
 		keys = append(keys, key)
 	}
@@ -66,8 +66,8 @@ func (c *capacityCoordinator) definitionKeys() []string {
 }
 
 func (c *capacityCoordinator) up(_ context.Context, def Definition, resource string, inputs map[string]any) (UpOutcome, error) {
-	provenance := &contract.PopulationProvenance{Workflow: def.Workflow.Address, Name: def.Population.Name}
-	outcome, err := upPopulation(c.cfg, c.state, def, provenance, resource, inputs)
+	provenance := populationKey(def)
+	outcome, err := upPopulation(c.cfg, c.state, def, &provenance, resource, inputs)
 	if err != nil || !outcome.Sleeping {
 		return outcome, err
 	}
@@ -88,12 +88,12 @@ func (c *capacityCoordinator) up(_ context.Context, def Definition, resource str
 			continue
 		}
 		c.record(candidate, event.TypeWorkflowPopulationDown, "capacity", "population member brought down for virtual-root capacity")
-		outcome, err = upPopulation(c.cfg, c.state, def, provenance, resource, inputs)
+		outcome, err = upPopulation(c.cfg, c.state, def, &provenance, resource, inputs)
 		if err != nil || !outcome.Sleeping {
 			return outcome, err
 		}
 	}
-	if target, resolveErr := service.ResolvePopulationSessionName(c.cfg(), def.Workflow.Address, resource); resolveErr == nil {
+	if target, resolveErr := service.ResolvePopulationSessionName(c.cfg(), def.ProjectRoot, def.Workflow.Address, resource); resolveErr == nil {
 		c.record(idleCandidate{session: target, resource: resource, key: populationKey(def)}, event.TypeWorkflowPopulationDown,
 			"capacity", "virtual-root capacity remains full with no eligible population member to bring down")
 	}
@@ -106,7 +106,7 @@ func isCapError(err error) bool {
 }
 
 type pendingPriorityError struct {
-	population string
+	population contract.PopulationProvenance
 	resource   string
 	session    string
 }
@@ -114,7 +114,7 @@ type pendingPriorityError struct {
 func (e *pendingPriorityError) Error() string {
 	return fmt.Sprintf(
 		"existing population member %q (population %s, resource %q) has a pending up request and takes priority",
-		e.session, e.population, e.resource,
+		e.session, populationLabel(e.population), e.resource,
 	)
 }
 
@@ -126,7 +126,7 @@ func isCapacityRefusal(err error) bool {
 }
 
 type blockingMember struct {
-	key      string
+	key      contract.PopulationProvenance
 	resource string
 	session  string
 }
@@ -158,7 +158,7 @@ func (c *capacityCoordinator) pendingExistingAhead(current Definition, resource 
 type idleCandidate struct {
 	session  string
 	resource string
-	key      string
+	key      contract.PopulationProvenance
 	last     time.Time
 }
 
@@ -172,7 +172,7 @@ func (c *capacityCoordinator) idleCandidates() ([]idleCandidate, error) {
 		if session == nil || session.Population == nil || !logicalVirtualRootChild(session) || !c.cfg().RunScopeUp(session) {
 			continue
 		}
-		key := session.Population.Workflow + "/" + session.Population.Name
+		key := *session.Population
 		definition, ok := c.definition(key)
 		if !ok || !definition.Population.AutoDown {
 			continue

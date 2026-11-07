@@ -39,6 +39,8 @@ all = [{ judge_pending = "ac-met" }]
 
 [claude_reviewer]
 kind = "workflow"
+resource = "issue_pr"
 
 [codex_reviewer]
 kind = "workflow"
+resource = "issue_pr"

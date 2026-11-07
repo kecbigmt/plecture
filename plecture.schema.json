@@ -906,7 +906,8 @@
       "type": "object",
       "additionalProperties": false,
       "required": [
-        "kind"
+        "kind",
+        "resource"
       ],
       "properties": {
         "kind": {
@@ -920,8 +921,7 @@
         },
         "resource": {
           "$ref": "#/$defs/staticReference",
-          "description": "The one entry resource type this workflow accepts.",
-          "$comment": "Required on the merged workflow, not on each document: an overlay layer may extend a workflow it does not own without repeating its resource."
+          "description": "The one entry resource type this workflow accepts."
         },
         "workdir": {
           "type": "object",

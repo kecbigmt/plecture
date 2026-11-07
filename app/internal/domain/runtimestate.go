@@ -31,9 +31,10 @@ const VirtualRootReservationParent = "@virtual-root"
 // Members are keyed by their resource's name, the resource's identity, so a
 // query naming one resource in two spellings yields one member.
 type PopulationState struct {
-	Workflow string                       `json:"workflow"`
-	Name     string                       `json:"name"`
-	Members  map[string]*PopulationMember `json:"members,omitempty"`
+	ProjectRoot string                       `json:"project_root,omitempty"`
+	Workflow    string                       `json:"workflow"`
+	Name        string                       `json:"name"`
+	Members     map[string]*PopulationMember `json:"members,omitempty"`
 }
 
 type PopulationMember struct {

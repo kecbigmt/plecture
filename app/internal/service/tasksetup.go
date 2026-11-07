@@ -101,6 +101,9 @@ func TaskSetup(cfg *config.Config, store *state.Store, params TaskSetupParams) (
 	if err != nil {
 		return nil, err
 	}
+	if err := requireSessionRoot(cfg, session); err != nil {
+		return nil, err
+	}
 	flushPendingDeliveryLogged(cfg, store, resolvedName)
 	if session.Nodes == nil {
 		session.Nodes = make(map[string]*contract.TaskState)

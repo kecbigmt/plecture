@@ -70,7 +70,7 @@ func evalDocumentChain(cfg *config.Config, store *state.Store, def config.Docume
 		return sp
 	}
 	if len(inputs) > 0 {
-		resolved, vErr := resolveSessionInputs(cfg, "", def.Workflow, inputs)
+		resolved, vErr := resolveSessionInputs(cfg, session.ProjectRoot, def.Workflow, inputs)
 		if vErr != nil {
 			sp.BlockedReason = chainBlockedInvalidBindings
 			sp.Warnings = append(sp.Warnings, fmt.Sprintf("resolved inputs violate workflow %q inputs contract: %s", def.Workflow, vErr.Message))
@@ -79,7 +79,7 @@ func evalDocumentChain(cfg *config.Config, store *state.Store, def config.Docume
 		sp.Inputs = resolved
 	}
 	sp.Fired = true
-	if name, existing, collision, getErr := resolveSpawnSessionName(cfg, store, resource, def.Workflow, sp.Tag); name != "" {
+	if name, existing, collision, getErr := resolveSpawnSessionName(cfg, store, session.ProjectRoot, resource, def.Workflow, sp.Tag); name != "" {
 		sp.TargetSession = name
 		switch {
 		case collision != nil:

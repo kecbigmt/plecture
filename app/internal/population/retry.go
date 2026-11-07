@@ -10,18 +10,18 @@ import (
 )
 
 // RetryPopulationMember clears an operator-approved admission suspension.
-func RetryPopulationMember(store *state.Store, log *eventlog.Store, workflow, name, resource string, initialTaskID func() (string, error)) error {
-	key := workflow + "/" + name
+func RetryPopulationMember(store *state.Store, log *eventlog.Store, key contract.PopulationProvenance, resource string, initialTaskID func() (string, error)) error {
+	label := populationLabel(key)
 	population, err := store.Population(key)
 	if err != nil {
-		return fmt.Errorf("read population %q: %w", key, err)
+		return fmt.Errorf("read population %q: %w", label, err)
 	}
 	memberKey, member := findMember(population, resource)
 	if member == nil {
-		return fmt.Errorf("population member %q not found in %q", resource, key)
+		return fmt.Errorf("population member %q not found in %q", resource, label)
 	}
 	if member.Tombstoned {
-		return fmt.Errorf("population member %q in %q is tombstoned", resource, key)
+		return fmt.Errorf("population member %q in %q is tombstoned", resource, label)
 	}
 	if member.SessionName != "" {
 		session, err := store.GetE(member.SessionName)
@@ -45,10 +45,10 @@ func RetryPopulationMember(store *state.Store, log *eventlog.Store, workflow, na
 	if err := store.UpdatePopulation(key, func(population *state.PopulationState) error {
 		current := population.Members[memberKey]
 		if current == nil {
-			return fmt.Errorf("population member %q not found in %q", resource, key)
+			return fmt.Errorf("population member %q not found in %q", resource, label)
 		}
 		if current.Tombstoned {
-			return fmt.Errorf("population member %q in %q is tombstoned", resource, key)
+			return fmt.Errorf("population member %q in %q is tombstoned", resource, label)
 		}
 		clearAdmitRetry(current)
 		return nil
@@ -65,8 +65,8 @@ func RetryPopulationMember(store *state.Store, log *eventlog.Store, workflow, na
 		Direction:   event.Internal,
 		Summary:     "population member retry requested",
 		Metadata: map[string]string{
-			"workflow":   workflow,
-			"population": name,
+			"workflow":   key.Workflow,
+			"population": key.Name,
 			"resource":   member.Resource.Locator,
 			"reason":     "operator_retry",
 		},

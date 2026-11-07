@@ -825,7 +825,7 @@ func TestPutSessionAndGetSession_RoundTripsPopulationThroughColumns(t *testing.T
 	ctx := context.Background()
 	now := time.Now().UTC()
 
-	if err := db.UpdatePopulation(ctx, "wf1/pop1", func(p *domain.PopulationState) error {
+	if err := db.UpdatePopulation(ctx, contract.PopulationProvenance{Workflow: "wf1", Name: "pop1"}, func(p *domain.PopulationState) error {
 		p.Workflow = "wf1"
 		p.Name = "pop1"
 		return nil
@@ -1261,19 +1261,19 @@ func TestPurgeSessionByName_MissingNameIsANoOp(t *testing.T) {
 	}
 }
 
-func TestPutSession_RoundTripsTheInvocationDirAcrossLaterWrites(t *testing.T) {
+func TestPutSession_RoundTripsTheProjectRootAcrossLaterWrites(t *testing.T) {
 	db := migratedTestDB(t)
 	ctx := context.Background()
 	now := time.Now().UTC().Truncate(time.Second)
-	if err := db.PutSession(ctx, &domain.Session{Name: "review-1", Workflow: "review", InvocationDir: "/projects/widgets/src", CreatedAt: now, UpdatedAt: now}); err != nil {
+	if err := db.PutSession(ctx, &domain.Session{Name: "review-1", Workflow: "review", ProjectRoot: "/projects/widgets", CreatedAt: now, UpdatedAt: now}); err != nil {
 		t.Fatalf("PutSession: %v", err)
 	}
 	got, err := db.GetSession(ctx, "review-1")
 	if err != nil || got == nil {
 		t.Fatalf("GetSession: %v, %v", got, err)
 	}
-	if got.InvocationDir != "/projects/widgets/src" {
-		t.Fatalf("InvocationDir = %q after create, want the recorded directory", got.InvocationDir)
+	if got.ProjectRoot != "/projects/widgets" {
+		t.Fatalf("ProjectRoot = %q after create, want the recorded root", got.ProjectRoot)
 	}
 
 	got.Status = contract.SessionStatusUp
@@ -1284,8 +1284,8 @@ func TestPutSession_RoundTripsTheInvocationDirAcrossLaterWrites(t *testing.T) {
 	if err != nil || again == nil {
 		t.Fatalf("GetSession: %v, %v", again, err)
 	}
-	if again.InvocationDir != "/projects/widgets/src" {
-		t.Errorf("InvocationDir = %q after an update, want it kept", again.InvocationDir)
+	if again.ProjectRoot != "/projects/widgets" {
+		t.Errorf("ProjectRoot = %q after an update, want it kept", again.ProjectRoot)
 	}
 }
 
@@ -1310,5 +1310,26 @@ func TestPutSession_RoundTripsTheEntryResourceAcrossLaterWrites(t *testing.T) {
 	}
 	if again.Resource == nil || again.Resource.Type != "case" || again.Resource.Name != "case-1" || again.Tag != "review" {
 		t.Errorf("entry = (%+v, %q) after an update, want (case case-1, review)", again.Resource, again.Tag)
+	}
+}
+
+func TestPutSession_PopulationProvenanceCarriesTheSessionsProjectRoot(t *testing.T) {
+	db := migratedTestDB(t)
+	ctx := context.Background()
+	now := time.Now().UTC().Truncate(time.Second)
+	owner := contract.PopulationProvenance{ProjectRoot: "/projects/widgets", Workflow: "review", Name: "standing"}
+	if err := db.UpdatePopulation(ctx, owner, func(*domain.PopulationState) error { return nil }); err != nil {
+		t.Fatal(err)
+	}
+
+	if err := db.PutSession(ctx, &domain.Session{Name: "issue-1", Workflow: "review", ProjectRoot: "/projects/gadgets", Population: &owner, CreatedAt: now, UpdatedAt: now}); err == nil {
+		t.Error("PutSession recorded a population of a context other than the session's own")
+	}
+	if err := db.PutSession(ctx, &domain.Session{Name: "issue-2", Workflow: "review", ProjectRoot: owner.ProjectRoot, Population: &owner, CreatedAt: now, UpdatedAt: now}); err != nil {
+		t.Fatalf("PutSession: %v", err)
+	}
+	got, err := db.GetSession(ctx, "issue-2")
+	if err != nil || got == nil || got.Population == nil || *got.Population != owner {
+		t.Fatalf("GetSession = %+v, %v; want the provenance %+v", got, err, owner)
 	}
 }

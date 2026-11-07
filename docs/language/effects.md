@@ -72,6 +72,7 @@ session_name = { type = "string" }
 
 [pane_session]
 kind = "workflow"
+resource = "issue_pr"
 
 [[pane_session.nodes]]
 uses = "pane"
@@ -321,6 +322,7 @@ session_name = { type = "string" }
 
 [pane_session]
 kind = "workflow"
+resource = "issue_pr"
 
 [[pane_session.nodes]]
 uses = "pane"

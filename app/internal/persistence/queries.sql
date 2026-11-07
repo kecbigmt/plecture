@@ -3,7 +3,7 @@
 -- name: InsertSession :exec
 INSERT INTO sessions (
     id, name, status, sleep_since, destroyed_at, parent_session_id, root_session_id,
-    resource_id, tag, alias, workflow, workflow_revision, invocation_dir,
+    resource_id, tag, alias, workflow, workflow_revision, project_root,
     population_workflow, population_name, inputs_json,
     health_last_checked_at, health_last_activity_at, health_last_fingerprint,
     health_last_state, health_last_reason, health_last_notified_at, health_notify_count,
@@ -25,7 +25,7 @@ UPDATE sessions SET
     alias = ?,
     workflow = ?,
     workflow_revision = ?,
-    invocation_dir = ?,
+    project_root = ?,
     population_workflow = ?,
     population_name = ?,
     inputs_json = ?,
@@ -45,7 +45,7 @@ WHERE id = ?;
 
 -- name: GetLiveSession :one
 SELECT id, name, status, sleep_since, destroyed_at, parent_session_id, root_session_id,
-       resource_id, tag, alias, workflow, workflow_revision, invocation_dir,
+       resource_id, tag, alias, workflow, workflow_revision, project_root,
        population_workflow, population_name, inputs_json,
        health_last_checked_at, health_last_activity_at, health_last_fingerprint,
        health_last_state, health_last_reason, health_last_notified_at, health_notify_count,
@@ -56,7 +56,7 @@ FROM sessions WHERE name = ? AND status <> 'destroyed';
 
 -- name: GetLatestDestroyedSession :one
 SELECT id, name, status, sleep_since, destroyed_at, parent_session_id, root_session_id,
-       resource_id, tag, alias, workflow, workflow_revision, invocation_dir,
+       resource_id, tag, alias, workflow, workflow_revision, project_root,
        population_workflow, population_name, inputs_json,
        health_last_checked_at, health_last_activity_at, health_last_fingerprint,
        health_last_state, health_last_reason, health_last_notified_at, health_notify_count,
@@ -70,7 +70,7 @@ LIMIT 1;
 
 -- name: ListLiveSessions :many
 SELECT id, name, status, sleep_since, destroyed_at, parent_session_id, root_session_id,
-       resource_id, tag, alias, workflow, workflow_revision, invocation_dir,
+       resource_id, tag, alias, workflow, workflow_revision, project_root,
        population_workflow, population_name, inputs_json,
        health_last_checked_at, health_last_activity_at, health_last_fingerprint,
        health_last_state, health_last_reason, health_last_notified_at, health_notify_count,
@@ -81,7 +81,7 @@ FROM sessions WHERE status <> 'destroyed' ORDER BY name;
 
 -- name: ListLiveSessionsByAlias :many
 SELECT id, name, status, sleep_since, destroyed_at, parent_session_id, root_session_id,
-       resource_id, tag, alias, workflow, workflow_revision, invocation_dir,
+       resource_id, tag, alias, workflow, workflow_revision, project_root,
        population_workflow, population_name, inputs_json,
        health_last_checked_at, health_last_activity_at, health_last_fingerprint,
        health_last_state, health_last_reason, health_last_notified_at, health_notify_count,
@@ -437,30 +437,30 @@ WHERE t.session_id IN (sqlc.slice(session_ids));
 -- Populations
 
 -- name: GetPopulation :one
-SELECT workflow, name FROM populations WHERE workflow = ? AND name = ?;
+SELECT project_root, workflow, name FROM populations WHERE project_root = ? AND workflow = ? AND name = ?;
 
 -- name: UpsertPopulation :exec
-INSERT INTO populations (workflow, name) VALUES (?, ?)
-ON CONFLICT(workflow, name) DO NOTHING;
+INSERT INTO populations (project_root, workflow, name) VALUES (?, ?, ?)
+ON CONFLICT(project_root, workflow, name) DO NOTHING;
 
 -- name: ListPopulationMembers :many
-SELECT workflow, name, resource_id, session_name, generation, accepted_at,
+SELECT project_root, workflow, name, resource_id, session_name, generation, accepted_at,
        last_appearance, last_inbound, tombstoned, pending_up,
        consecutive_admit_failures, last_admit_reason, last_admit_error,
        admit_retry_at, admit_suspended, decision_kind, decision_reason, item_json
-FROM population_members WHERE workflow = ? AND name = ? ORDER BY resource_id;
+FROM population_members WHERE project_root = ? AND workflow = ? AND name = ? ORDER BY resource_id;
 
 -- name: DeletePopulationMember :exec
-DELETE FROM population_members WHERE workflow = ? AND name = ? AND resource_id = ?;
+DELETE FROM population_members WHERE project_root = ? AND workflow = ? AND name = ? AND resource_id = ?;
 
 -- name: UpsertPopulationMember :exec
 INSERT INTO population_members (
-    workflow, name, resource_id, session_name, generation, accepted_at,
+    project_root, workflow, name, resource_id, session_name, generation, accepted_at,
     last_appearance, last_inbound, tombstoned, pending_up,
     consecutive_admit_failures, last_admit_reason, last_admit_error,
     admit_retry_at, admit_suspended, decision_kind, decision_reason, item_json
-) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-ON CONFLICT(workflow, name, resource_id) DO UPDATE SET
+) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+ON CONFLICT(project_root, workflow, name, resource_id) DO UPDATE SET
     session_name = excluded.session_name,
     generation = excluded.generation,
     accepted_at = excluded.accepted_at,
@@ -478,16 +478,16 @@ ON CONFLICT(workflow, name, resource_id) DO UPDATE SET
     item_json = excluded.item_json;
 
 -- name: DeletePopulationMemberBlockers :exec
-DELETE FROM population_member_blockers WHERE workflow = ? AND name = ? AND resource_id = ?;
+DELETE FROM population_member_blockers WHERE project_root = ? AND workflow = ? AND name = ? AND resource_id = ?;
 
 -- name: InsertPopulationMemberBlocker :exec
-INSERT INTO population_member_blockers (workflow, name, resource_id, position, reason)
-VALUES (?, ?, ?, ?, ?);
+INSERT INTO population_member_blockers (project_root, workflow, name, resource_id, position, reason)
+VALUES (?, ?, ?, ?, ?, ?);
 
 -- name: ListPopulationMemberBlockersForPopulation :many
-SELECT b.workflow, b.name, b.resource_id, b.position, b.reason
+SELECT b.project_root, b.workflow, b.name, b.resource_id, b.position, b.reason
 FROM population_member_blockers b
-WHERE b.workflow = ? AND b.name = ?
+WHERE b.project_root = ? AND b.workflow = ? AND b.name = ?
 ORDER BY b.resource_id, b.position;
 
 -- name: UpsertSessionChannelHealth :exec

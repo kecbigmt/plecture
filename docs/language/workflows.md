@@ -310,6 +310,7 @@ default text. For example:
 
 [review_workflow]
 kind = "workflow"
+resource = "issue_pr"
 
 [review_workflow.health]
 auto_repair_attempts = 2

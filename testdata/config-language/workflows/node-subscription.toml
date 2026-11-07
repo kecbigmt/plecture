@@ -3,6 +3,7 @@
 
 [review]
 kind = "workflow"
+resource = "issue_pr"
 
 [[review.nodes]]
 id = "thread"

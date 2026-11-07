@@ -43,7 +43,7 @@ func fixtureConfig(t *testing.T) *config.Config {
 
 func pinSessionRevision(t *testing.T, cfg *config.Config, session *domain.Session) {
 	t.Helper()
-	revision, err := cfg.CaptureWorkflowRevision("", session.Workflow)
+	revision, err := cfg.CaptureWorkflowRevision(session.ProjectRoot, session.Workflow)
 	if err != nil {
 		t.Fatal(err)
 	}

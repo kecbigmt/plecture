@@ -85,8 +85,8 @@ type Config struct {
 	// PluginDirs lists plugin roots (each containing a config/ subdirectory
 	// with workspaces/, resources/, channels/, tasks/, and workflows/
 	// subdirectories — see docs/design/plugin-packaging.md's
-	// Package format section). Plugins form the base cascade layer: the
-	// global layer and ancestor overlays stack on top of them. Entries are
+	// Package format section). Plugins form the base layer: the global
+	// layer and the selected project layer stack on top of them. Entries are
 	// trusted — only the user or the system's config-management tooling writes config.toml.
 	PluginDirs []string `toml:"plugin_dirs"`
 	// TrustedProjectRoots lists the directories whose `.plect/` may layer over

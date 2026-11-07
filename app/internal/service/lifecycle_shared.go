@@ -288,10 +288,10 @@ func inputsOnExistingSessionMessage() string {
 // for the legacy inline-tasks path. nil is normalized to `{}` only when a
 // schema is declared, so required-field configs fail fast instead of silently
 // accepting `{}`.
-func resolveSessionInputs(cfg *config.Config, invocationDir, workflowName string, raw map[string]any) (map[string]any, *Error) {
+func resolveSessionInputs(cfg *config.Config, projectRoot, workflowName string, raw map[string]any) (map[string]any, *Error) {
 	inline, file, sourceID := cfg.InputsSchema, cfg.ResolvedInputsSchemaPath(), "plect:config:inputs"
 	if workflowName != "" {
-		workflows, err := cfg.LoadWorkflows(invocationDir)
+		workflows, err := cfg.LoadWorkflows(projectRoot)
 		if err != nil {
 			return nil, &Error{Code: ErrExecutionFailed, Message: fmt.Sprintf("load workflows: %v", err)}
 		}

@@ -14,6 +14,7 @@ type = "noop"
 
 [goal_review_duplicate]
 kind = "workflow"
+resource = "issue_pr"
 
 [[goal_review_duplicate.nodes]]
 uses = "goal_review"

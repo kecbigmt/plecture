@@ -211,8 +211,8 @@ func TestUp_PreparationNodesRunInHomeAndOtherNodesInTheWorkdir_OnEveryRoute(t *t
 		name   string
 		mutate func(*UpParams)
 	}{
-		{"direct invocation", func(p *UpParams) { p.InvocationDir = callerDir }},
-		{"chain or population, which have no caller directory", func(p *UpParams) {}},
+		{"direct invocation in a project root", func(p *UpParams) { p.ProjectRoot = callerDir }},
+		{"global-only context", func(p *UpParams) {}},
 		{"population-owned session", func(p *UpParams) {
 			p.Population = &contract.PopulationProvenance{Workflow: "review", Name: "standing"}
 		}},
@@ -220,11 +220,13 @@ func TestUp_PreparationNodesRunInHomeAndOtherNodesInTheWorkdir_OnEveryRoute(t *t
 	for _, route := range routes {
 		t.Run(route.name, func(t *testing.T) {
 			f := newWDFixture(t, wdWorkdirWorkflow)
+			wdWrite(t, filepath.Join(callerDir, ".plect", "project.toml"), "schema_version = 2\n")
+			f.cfg.TrustedProjectRoots = []string{callerDir}
 			t.Chdir(callerDir)
 			params := UpParams{Identifier: wdIssueURL, ParentSession: ""}
 			route.mutate(&params)
 			if params.Population != nil {
-				if err := f.store.UpdatePopulation("review/standing", func(*state.PopulationState) error { return nil }); err != nil {
+				if err := f.store.UpdatePopulation(contract.PopulationProvenance{Workflow: "review", Name: "standing"}, func(*state.PopulationState) error { return nil }); err != nil {
 					t.Fatal(err)
 				}
 			}
@@ -587,10 +589,11 @@ func TestUp_OutstandingReleaseBlocksReconstruction(t *testing.T) {
 	}
 }
 
-func TestUp_DirectInvocationSeesWorkflowsOfAncestorOverlays(t *testing.T) {
+func TestUp_ProjectRootContextSeesItsOwnWorkflows(t *testing.T) {
 	f := newWDFixture(t, wdWorkdirWorkflow)
 	overlay := filepath.Join(f.home, "projects")
 	f.cfg.TrustedProjectRoots = []string{overlay}
+	wdWrite(t, filepath.Join(overlay, ".plect", "project.toml"), "schema_version = 2\n")
 	wdWrite(t, filepath.Join(overlay, ".plect", "workflows", "local.toml"), `
 [local]
 kind     = "workflow"
@@ -599,22 +602,19 @@ resource = "issue"
 [[local.nodes]]
 uses = "agent"
 `)
-	invocation := filepath.Join(overlay, "checkout-a")
-	if err := os.MkdirAll(invocation, 0o755); err != nil {
-		t.Fatal(err)
-	}
 	if _, err := Up(f.cfg, f.store, UpParams{Identifier: wdIssueURL, Workflow: "local"}); err == nil {
-		t.Fatal("a caller with no directory resolved a workflow only an ancestor overlay declares")
+		t.Fatal("the global-only context resolved a workflow only a project declares")
 	}
-	if _, err := Up(f.cfg, f.store, UpParams{Identifier: wdIssueURL, Workflow: "local", InvocationDir: invocation}); err != nil {
-		t.Fatalf("a direct invocation below the overlay could not use its workflow: %v", err)
+	if _, err := Up(f.cfg, f.store, UpParams{Identifier: wdIssueURL, Workflow: "local", ProjectRoot: overlay}); err != nil {
+		t.Fatalf("the project root context could not use its workflow: %v", err)
 	}
 }
 
-func TestUp_AncestorOverlayWorkflowInputsAreValidatedAgainstThatWorkflow(t *testing.T) {
+func TestUp_ProjectWorkflowInputsAreValidatedAgainstThatWorkflow(t *testing.T) {
 	f := newWDFixture(t, wdWorkdirWorkflow)
 	overlay := filepath.Join(f.home, "projects")
 	f.cfg.TrustedProjectRoots = []string{overlay}
+	wdWrite(t, filepath.Join(overlay, ".plect", "project.toml"), "schema_version = 2\n")
 	wdWrite(t, filepath.Join(overlay, ".plect", "workflows", "local.toml"), `
 [local]
 kind     = "workflow"
@@ -630,16 +630,12 @@ token = { type = "string" }
 [[local.nodes]]
 uses = "agent"
 `)
-	invocation := filepath.Join(overlay, "checkout-a")
-	if err := os.MkdirAll(invocation, 0o755); err != nil {
-		t.Fatal(err)
-	}
-	_, err := Up(f.cfg, f.store, UpParams{Identifier: wdIssueURL, Workflow: "local", InvocationDir: invocation})
+	_, err := Up(f.cfg, f.store, UpParams{Identifier: wdIssueURL, Workflow: "local", ProjectRoot: overlay})
 	var svcErr *Error
 	if !errors.As(err, &svcErr) || svcErr.Code != ErrInvalidInput {
 		t.Fatalf("Up error = %v, want the workflow's required token input refused", err)
 	}
-	if _, err := Up(f.cfg, f.store, UpParams{Identifier: wdIssueURL, Workflow: "local", InvocationDir: invocation, Inputs: map[string]any{"token": "t"}}); err != nil {
+	if _, err := Up(f.cfg, f.store, UpParams{Identifier: wdIssueURL, Workflow: "local", ProjectRoot: overlay, Inputs: map[string]any{"token": "t"}}); err != nil {
 		t.Fatalf("Up with the required input: %v", err)
 	}
 }

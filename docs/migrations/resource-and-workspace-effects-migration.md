@@ -88,14 +88,10 @@ workflow's `workdir` and never stored.
    worktree '{"delete_branch":true}'` followed by `plect destroy <session>`.
    `force` remains a cleanup root of every effect; an agent that uses
    `plect_destroy` asks a human before setting it.
-6. A direct invocation reads the `.plect/` overlay of its own directory or of
-   an ancestor directory only when that directory is listed in `trusted_project_roots` in the
-   machine configuration; nothing is trusted implicitly, because an overlay can
-   declare effects that run shell. List each project directory whose overlay you
-   rely on, as an absolute path. A session records the directory it was created
-   in and later operations such as `workflow rebase` expand from that record, so
-   a session created before this release has no record and expands from the
-   plugin and global layers alone.
+6. A direct invocation reads one project definition tree: the `.plect/` of
+   the nearest directory at or above it whose `.plect/project.toml` exists,
+   and only when that directory is listed in `trusted_project_roots`. See
+   [Establish project contexts](#establish-project-contexts).
 7. Move a workflow's initial task selection to each invocation, chain, or
    population, as described in "Initial tasks" below.
 8. Delete `resource_observer` from every `[[<workflow>.populations]]` entry.
@@ -209,8 +205,44 @@ schema_version = 3
 
 It contains no definitions or other fields and declares only the selected
 project layer's dialect. Add the root's canonical path to
-`trusted_project_roots` in the machine configuration. Do not preserve ancestor
-fragments or copy configuration from a generated checkout.
+`trusted_project_roots` in the machine configuration, or run `plect workflow
+list` from below the root at a terminal and confirm the trust prompt, which
+records the same entry. Do not preserve ancestor fragments or copy
+configuration from a generated checkout.
+
+A project definition replaces a global or plugin definition with the same id
+as a whole; it no longer merges into it. Write each project workflow as a
+complete declaration, including its `resource` and every node. A project tree
+declares only effects, task documents, and workflows: a resource or channel
+there is a load error, so move it to the global configuration.
+
+The upgrade replaces each session's recorded invocation directory with a
+recorded project root and starts every existing session in the global-only
+context, because a directory does not say which root it would have selected.
+For a session whose workflow came from a project tree, back up the state
+database and record its root by hand while no `plect` process is running:
+
+```bash
+DATA_DIR="${XDG_DATA_HOME:-$HOME/.local/share}/plect"
+cp "$DATA_DIR/storage.db" "$DATA_DIR/storage.db.pre-project-root"
+sqlite3 "$DATA_DIR/storage.db" \
+  "UPDATE sessions SET project_root = '/projects/widgets' WHERE name = 'widgets-42'"
+```
+
+The root must be the canonical path listed in `trusted_project_roots`. Until it
+is recorded, `plect workflow rebase` on that session reads the global
+configuration alone and reports the project's workflow as missing.
+
+A population is identified by the configuration context that declares it as
+well as by its workflow and name, and every existing population belongs to the
+global-only context. A population-owned session keeps its population's
+context, so the update above is refused for one. To move a population into a
+project root, destroy its sessions with the pre-upgrade population
+configuration in place, then declare it in the project tree: the resident
+evaluator started from that root admits its members afresh. `plect serve`
+selects the context of the directory it starts in and stops when that root is
+not trusted; start it from the project root, or from a directory with no
+project marker for the global-only context.
 
 Before upgrading, release every unreleased allocation with the pre-upgrade
 binary where that is possible. Do not copy cleanup code or plugin files into

@@ -82,6 +82,12 @@ queue position. --json reports result and queue_position for scripts.`,
 		if err != nil {
 			return err
 		}
+		root := ""
+		if recognized, _ := service.RecognizesResource(cfg, args[0]); recognized {
+			if root, err = selectProjectRoot(cmd, cfg); err != nil {
+				return err
+			}
+		}
 		store := state.NewStore("")
 		result, err := service.Up(cfg, store, service.UpParams{
 			Identifier:     args[0],
@@ -93,7 +99,7 @@ queue position. --json reports result and queue_position for scripts.`,
 			Observer:       newTaskObserver(cfg),
 			ForceRecreate:  upRecreate,
 			HumanInitiated: true,
-			InvocationDir:  invocationDir(),
+			ProjectRoot:    root,
 		})
 		if err != nil {
 			return err

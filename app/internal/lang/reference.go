@@ -36,7 +36,7 @@ type Registry struct {
 }
 
 // NewRegistry builds a Registry from the enabled plugin layers and the
-// merged user-owned namespace (the output of repeated MergeLayer calls).
+// user-owned namespace after its layers have replaced same-id declarations.
 func NewRegistry(plugins []PluginLayer, user []*Definition) *Registry {
 	r := &Registry{
 		plugins: make(map[string]map[string]*Definition, len(plugins)),

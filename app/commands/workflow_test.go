@@ -3,6 +3,7 @@ package commands
 import (
 	"bytes"
 	"encoding/json"
+	contract "github.com/kecbigmt/plecture/contracts/state"
 	"os"
 	"path/filepath"
 	"strings"
@@ -180,8 +181,9 @@ func TestWritePopulationMembers_ShowsLastErrorAndStreak(t *testing.T) {
 func TestWorkflowPopulationsRetryClearsSuspension(t *testing.T) {
 	dataDir := t.TempDir()
 	t.Setenv(datahome.EnvVar, dataDir)
+	t.Setenv("PLECT_CONFIG_HOME", t.TempDir())
 	store := state.NewStore(dataDir)
-	if err := store.UpdatePopulation("agent/dispatch", func(population *state.PopulationState) error {
+	if err := store.UpdatePopulation(contract.PopulationProvenance{Workflow: "agent", Name: "dispatch"}, func(population *state.PopulationState) error {
 		population.Members[testResource("urn:case:a").Name] = &state.PopulationMember{
 			Resource:                 *testResource("urn:case:a"),
 			PendingUp:                true,
@@ -198,7 +200,7 @@ func TestWorkflowPopulationsRetryClearsSuspension(t *testing.T) {
 	if err != nil {
 		t.Fatalf("workflow populations retry: %v; output:\n%s", err, out)
 	}
-	population, err := store.Population("agent/dispatch")
+	population, err := store.Population(contract.PopulationProvenance{Workflow: "agent", Name: "dispatch"})
 	if err != nil {
 		t.Fatal(err)
 	}

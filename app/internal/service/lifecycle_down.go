@@ -46,6 +46,9 @@ func downUnlocked(cfg *config.Config, store *state.Store, params DownParams) (*D
 	if err != nil {
 		return nil, err
 	}
+	if err := requireSessionRoot(cfg, session); err != nil {
+		return nil, err
+	}
 	params.Observer = withNodeResultRecording(store, sessionName, params.Observer)
 	// Running cleanup against an existing session mutates it; clamp it to the
 	// active guard like the other write paths.

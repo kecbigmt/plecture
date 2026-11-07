@@ -229,8 +229,8 @@ The standard `config/` subdirectories with plugin-layer loader behavior are:
 |---|---|
 | `config/resources/` | Mounted as `resources/`. Trusted base layer only. Same-id conflicts between plugin layers are load errors; global user definitions replace plugin definitions. |
 | `config/channels/` | Mounted as `channels/`. Trusted base layer only. Same-id conflicts between plugin layers are load errors; global user definitions replace plugin definitions. |
-| `config/tasks/` | Mounted as `tasks/`. Trusted layer plus trusted ancestor overlay. Same-id conflicts between plugin layers are load errors; user-owned layers replace whole definitions. |
-| `config/workflows/` | Mounted as `workflows/`. Trusted layer plus ancestor overlay. Same-id plugin-layer conflicts are load errors; a user-owned layer adds nodes, and every other field a shallower layer set is guarded against redeclaration. |
+| `config/tasks/` | Mounted as `tasks/`. Trusted layer plus the selected trusted project layer. Same-id conflicts between plugin layers are load errors; user-owned layers replace whole definitions. |
+| `config/workflows/` | Mounted as `workflows/`. Trusted layer plus the selected trusted project layer. Same-id plugin-layer conflicts are load errors; user-owned layers replace whole definitions. |
 
 Install-time materialization is rejected because it copies plugin content into
 user config, and those copies drift away from the plugin revision recorded in
@@ -322,7 +322,7 @@ args = ["stop", "--id", { from = "self.outputs.runtime_id" }]
 
 This bare-name reading is available only inside plugin-mounted config: a
 reference read from a file that was not mounted from any catalog plugin
-(hand-authored global config, an ancestor overlay) has no containing plugin
+(hand-authored global config, a project layer) has no containing plugin
 to resolve against, and fails loud rather than guessing. The containing
 plugin's own executable list is also the entire search space — a bare name
 never matches another plugin's executable, even one mounted alongside it,
@@ -330,7 +330,7 @@ so two plugins may reuse the same executable name with no collision.
 
 The fully-qualified `<catalog-alias>/<plugin-path>[/<executable-name>]` form
 remains exactly as specified above, for user-authored config (global
-config, ancestor overlays) that names any mounted plugin's executable by the
+config, a project layer) that names any mounted plugin's executable by the
 alias the user chose. A shipped plugin may not use that alias-qualified form:
 the referencing plugin has no alias to name the other plugin with, and
 cross-catalog references remain unsupported. Shipped plugin config can
@@ -496,7 +496,7 @@ Resolution flow:
 
 1. Read catalog registrations and nested plugin selections from global user
    config.
-   The first implementation does not read them from ancestor overlays.
+   They are never read from a project layer.
 2. For each referenced catalog, resolve the registration to concrete content:
    - Git catalog: fetch the source and resolve the requested revision supplied by
      the add or update command to a commit SHA. `--revision` accepts tags and
@@ -802,8 +802,9 @@ For loaders that receive plugin dirs, resolution order is:
 
 1. Plugin layers, in declaration order.
 2. Global user config.
-3. Trusted ancestor overlays above the invocation directory, outermost to
-   innermost.
+3. The selected project layer: the `.plect/` of the nearest directory at or
+   above the invocation whose `.plect/project.toml` exists, when
+   `trusted_project_roots` lists it.
 
 Each mounted plugin is its own namespace, addressed by its catalog alias and
 plugin path, and the user-owned layers are one namespace between them. Two

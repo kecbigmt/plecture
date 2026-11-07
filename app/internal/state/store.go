@@ -200,7 +200,7 @@ func (s *Store) ResetNodes(name string) error {
 
 // Population returns one population's durable state, or nil if key has
 // never been recorded.
-func (s *Store) Population(key string) (*PopulationState, error) {
+func (s *Store) Population(key contract.PopulationProvenance) (*PopulationState, error) {
 	db, err := s.dbHandle()
 	if err != nil {
 		return nil, err
@@ -210,10 +210,10 @@ func (s *Store) Population(key string) (*PopulationState, error) {
 
 // UpdatePopulation atomically applies fn to the named population (creating
 // it, and its Members map, if absent) and persists the result.
-func (s *Store) UpdatePopulation(key string, fn func(*PopulationState) error) error {
+func (s *Store) UpdatePopulation(key contract.PopulationProvenance, fn func(*PopulationState) error) error {
 	db, err := s.dbHandle()
 	if err != nil {
-		return fmt.Errorf("state: update population %q: %w", key, err)
+		return fmt.Errorf("state: update population %+v: %w", key, err)
 	}
 	// fn's own error is returned verbatim; see Update's identical rationale.
 	return db.UpdatePopulation(context.Background(), key, fn)

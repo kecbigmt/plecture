@@ -19,7 +19,8 @@ type populationConflictError struct {
 func (e *populationConflictError) Error() string { return e.reason }
 
 func serviceHooks(cfg func() *config.Config, store *state.Store, def Definition, coordinator *capacityCoordinator) Hooks {
-	provenance := &contract.PopulationProvenance{Workflow: def.Workflow.Address, Name: def.Population.Name}
+	key := populationKey(def)
+	provenance := &key
 	return Hooks{
 		Up: func(_ context.Context, resource string, inputs map[string]any) (UpOutcome, error) {
 			if coordinator != nil {
@@ -48,7 +49,7 @@ func serviceHooks(cfg func() *config.Config, store *state.Store, def Definition,
 }
 
 func upPopulation(cfg func() *config.Config, store *state.Store, def Definition, provenance *contract.PopulationProvenance, resource string, inputs map[string]any) (UpOutcome, error) {
-	name, current, collision, err := service.ResolvePopulationSession(cfg(), store, def.Workflow.Address, resource)
+	name, current, collision, err := service.ResolvePopulationSession(cfg(), store, def.ProjectRoot, def.Workflow.Address, resource)
 	if collision != nil {
 		return UpOutcome{}, &populationConflictError{session: name, reason: collision.Message}
 	}
@@ -67,10 +68,11 @@ func upPopulation(cfg func() *config.Config, store *state.Store, def Definition,
 		return UpOutcome{SessionName: result.SessionName, AlreadyUp: alreadyUp, Sleeping: result.Result == "sleeping", Woke: result.Woke}, nil
 	}
 	result, err := service.Up(cfg(), store, service.UpParams{
-		Identifier: resource,
-		Workflow:   def.Workflow.Address,
-		Inputs:     inputs,
-		Population: provenance,
+		Identifier:  resource,
+		Workflow:    def.Workflow.Address,
+		Inputs:      inputs,
+		Population:  provenance,
+		ProjectRoot: def.ProjectRoot,
 	})
 	if err != nil {
 		return UpOutcome{}, err

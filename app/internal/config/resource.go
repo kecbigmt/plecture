@@ -78,8 +78,7 @@ func (r ResourceDef) Ownership() lang.Ownership {
 }
 
 // LoadResourceDefs loads every resource the trusted base layers
-// declare: plugin roots first, then the global config dir. The ancestor overlay
-// cascade is excluded, as for channels.
+// declare: plugin roots first, then the global config dir.
 func (c *Config) LoadResourceDefs() (map[string]ResourceDef, error) {
 	resolved, err := c.trustedKind(lang.KindResource)
 	if err != nil {

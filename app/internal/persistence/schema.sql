@@ -60,7 +60,7 @@ CREATE TABLE sessions (
     alias TEXT,
     workflow TEXT NOT NULL,
     workflow_revision TEXT,
-    invocation_dir TEXT,
+    project_root TEXT NOT NULL DEFAULT '',
     population_workflow TEXT,
     population_name TEXT,
     inputs_json TEXT CHECK (inputs_json IS NULL OR json_valid(inputs_json)),
@@ -85,7 +85,11 @@ CREATE TABLE sessions (
     CHECK (NOT (parent_session_id IS NOT NULL AND root_session_id IS NOT NULL)),
     CHECK (root_session_id IS NULL OR root_session_id <> id),
     CHECK ((population_workflow IS NULL) = (population_name IS NULL)),
-    FOREIGN KEY (population_workflow, population_name) REFERENCES populations(workflow, name) ON DELETE SET NULL
+    -- A population-owned session shares its population's configuration
+    -- context, so project_root is both the session's context and the first
+    -- column of the population it names. No code path deletes a population
+    -- row; SET NULL would null project_root, which is NOT NULL.
+    FOREIGN KEY (project_root, population_workflow, population_name) REFERENCES populations(project_root, workflow, name) ON DELETE NO ACTION
 );
 
 -- Unique only among live rows; a destroyed session's name is free to reuse.
@@ -271,18 +275,20 @@ CREATE TABLE task_done_when_judges (
     PRIMARY KEY (task_instance_id, leaf_id)
 );
 
--- (workflow, name) is the population's own domain identity, not the
--- "workflow/name" map-key string built elsewhere (a caller-side artefact
--- the persistence boundary parses back into its two parts).
+-- (project_root, workflow, name) is the population's own domain identity:
+-- the configuration context that declares it ('' for the global-only
+-- context), its workflow's address, and its name.
 CREATE TABLE populations (
+    project_root TEXT NOT NULL DEFAULT '',
     workflow TEXT NOT NULL,
     name TEXT NOT NULL,
-    PRIMARY KEY (workflow, name)
+    PRIMARY KEY (project_root, workflow, name)
 );
 
 -- session_name is a recorded fact, not a foreign key: a poll/appearance can
 -- accept a member and record its intended session name before that session's own row exists.
 CREATE TABLE population_members (
+    project_root TEXT NOT NULL DEFAULT '',
     workflow TEXT NOT NULL,
     name TEXT NOT NULL,
     resource_id TEXT NOT NULL REFERENCES resources(id),
@@ -301,21 +307,22 @@ CREATE TABLE population_members (
     decision_kind TEXT CHECK (decision_kind IN ('plect.workflow_population.destroy', 'plect.workflow_population.destroy_deferred', 'plect.workflow_population.destroy_dry_run')),
     decision_reason TEXT,
     item_json TEXT NOT NULL DEFAULT '{}' CHECK (json_valid(item_json)),
-    PRIMARY KEY (workflow, name, resource_id),
-    FOREIGN KEY (workflow, name) REFERENCES populations(workflow, name) ON DELETE CASCADE
+    PRIMARY KEY (project_root, workflow, name, resource_id),
+    FOREIGN KEY (project_root, workflow, name) REFERENCES populations(project_root, workflow, name) ON DELETE CASCADE
 );
 
 CREATE INDEX population_members_resource_idx ON population_members(resource_id);
 
 -- Ordered list; same replace-wholesale pattern as task_done_when_unsatisfied_items.
 CREATE TABLE population_member_blockers (
+    project_root TEXT NOT NULL DEFAULT '',
     workflow TEXT NOT NULL,
     name TEXT NOT NULL,
     resource_id TEXT NOT NULL,
     position INTEGER NOT NULL,
     reason TEXT NOT NULL,
-    PRIMARY KEY (workflow, name, resource_id, position),
-    FOREIGN KEY (workflow, name, resource_id) REFERENCES population_members(workflow, name, resource_id) ON DELETE CASCADE
+    PRIMARY KEY (project_root, workflow, name, resource_id, position),
+    FOREIGN KEY (project_root, workflow, name, resource_id) REFERENCES population_members(project_root, workflow, name, resource_id) ON DELETE CASCADE
 );
 
 -- Two independent failure streaks (validation, delivery); no row when open.

@@ -13,40 +13,25 @@ import (
 	contract "github.com/kecbigmt/plecture/contracts/state"
 )
 
-// splitPopulationKey recovers a population's (workflow, name) domain
-// identity from the "workflow/name" string callers use as a JSON map key
-// and in-memory lookup key. It splits on the last slash — safe because a
-// workflow address is dot-separated (plecture.schema.json's staticReference
-// grammar) and a population name is a plain identifier, so neither half can
-// itself contain a slash.
-func splitPopulationKey(key string) (workflow, name string) {
-	i := strings.LastIndex(key, "/")
-	if i < 0 {
-		return key, ""
-	}
-	return key[:i], key[i+1:]
-}
-
 // Population returns one population's durable state, or (nil, nil) if key
 // has never been recorded. The population row and its members are read
 // inside one transaction, so a concurrent UpdatePopulation can never be
 // interleaved into a single logical value that never existed as such.
-func (db *DB) Population(ctx context.Context, key string) (*domain.PopulationState, error) {
-	workflow, name := splitPopulationKey(key)
+func (db *DB) Population(ctx context.Context, key contract.PopulationProvenance) (*domain.PopulationState, error) {
 	var population *domain.PopulationState
 	err := db.WithReadTx(ctx, func(tx *sql.Tx) error {
-		row, err := sqlcgen.New(tx).GetPopulation(ctx, sqlcgen.GetPopulationParams{Workflow: workflow, Name: name})
+		row, err := sqlcgen.New(tx).GetPopulation(ctx, sqlcgen.GetPopulationParams{ProjectRoot: key.ProjectRoot, Workflow: key.Workflow, Name: key.Name})
 		if err != nil {
 			if errors.Is(err, sql.ErrNoRows) {
 				return nil
 			}
-			return fmt.Errorf("get population %q: %w", key, err)
+			return fmt.Errorf("get population %+v: %w", key, err)
 		}
-		members, err := loadPopulationMembers(ctx, tx, workflow, name)
+		members, err := loadPopulationMembers(ctx, tx, key)
 		if err != nil {
 			return err
 		}
-		population = &domain.PopulationState{Workflow: row.Workflow, Name: row.Name, Members: members}
+		population = &domain.PopulationState{ProjectRoot: row.ProjectRoot, Workflow: row.Workflow, Name: row.Name, Members: members}
 		return nil
 	})
 	if err != nil {
@@ -58,27 +43,26 @@ func (db *DB) Population(ctx context.Context, key string) (*domain.PopulationSta
 // UpdatePopulation reads or creates one population and its members, runs fn
 // against it, and replaces that population's row and member rows — all in
 // one write transaction scoped to key alone.
-func (db *DB) UpdatePopulation(ctx context.Context, key string, fn func(*domain.PopulationState) error) error {
-	workflow, name := splitPopulationKey(key)
+func (db *DB) UpdatePopulation(ctx context.Context, key contract.PopulationProvenance, fn func(*domain.PopulationState) error) error {
 	return db.WithImmediateTx(ctx, func(tx *sql.Tx) error {
 		q := sqlcgen.New(tx)
-		row, err := q.GetPopulation(ctx, sqlcgen.GetPopulationParams{Workflow: workflow, Name: name})
+		row, err := q.GetPopulation(ctx, sqlcgen.GetPopulationParams{ProjectRoot: key.ProjectRoot, Workflow: key.Workflow, Name: key.Name})
 		var population *domain.PopulationState
 		previous := map[string]bool{}
 		switch {
 		case errors.Is(err, sql.ErrNoRows):
-			population = &domain.PopulationState{Workflow: workflow, Name: name}
+			population = &domain.PopulationState{ProjectRoot: key.ProjectRoot, Workflow: key.Workflow, Name: key.Name}
 		case err != nil:
-			return fmt.Errorf("get population %q: %w", key, err)
+			return fmt.Errorf("get population %+v: %w", key, err)
 		default:
-			members, err := loadPopulationMembers(ctx, tx, workflow, name)
+			members, err := loadPopulationMembers(ctx, tx, key)
 			if err != nil {
 				return err
 			}
 			for _, member := range members {
 				previous[member.Resource.ID] = true
 			}
-			population = &domain.PopulationState{Workflow: row.Workflow, Name: row.Name, Members: members}
+			population = &domain.PopulationState{ProjectRoot: row.ProjectRoot, Workflow: row.Workflow, Name: row.Name, Members: members}
 		}
 		if population.Members == nil {
 			population.Members = make(map[string]*domain.PopulationMember)
@@ -88,14 +72,10 @@ func (db *DB) UpdatePopulation(ctx context.Context, key string, fn func(*domain.
 			return err
 		}
 
-		// workflow/name (split from key) are the write's own FK target for
-		// population_members below; used here too rather than whatever fn
-		// left in population.Workflow/Name, so the two can never disagree.
-		if err := q.UpsertPopulation(ctx, sqlcgen.UpsertPopulationParams{
-			Workflow: workflow,
-			Name:     name,
-		}); err != nil {
-			return fmt.Errorf("upsert population %q: %w", key, err)
+		// key, not whatever fn left in population's identity fields, is the FK
+		// target below, so the two can never disagree.
+		if err := q.UpsertPopulation(ctx, sqlcgen.UpsertPopulationParams{ProjectRoot: key.ProjectRoot, Workflow: key.Workflow, Name: key.Name}); err != nil {
+			return fmt.Errorf("upsert population %+v: %w", key, err)
 		}
 		// Kept members are upserted rather than deleted and reinserted, so a
 		// resource every write still references is never released in between.
@@ -104,7 +84,7 @@ func (db *DB) UpdatePopulation(ctx context.Context, key string, fn func(*domain.
 			if member == nil {
 				continue
 			}
-			if err := writePopulationMemberTx(ctx, q, workflow, name, member); err != nil {
+			if err := writePopulationMemberTx(ctx, q, key, member); err != nil {
 				return err
 			}
 			kept[member.Resource.ID] = true
@@ -114,8 +94,8 @@ func (db *DB) UpdatePopulation(ctx context.Context, key string, fn func(*domain.
 			if kept[id] {
 				continue
 			}
-			if err := q.DeletePopulationMember(ctx, sqlcgen.DeletePopulationMemberParams{Workflow: workflow, Name: name, ResourceID: id}); err != nil {
-				return fmt.Errorf("delete population member %s of %q: %w", id, key, err)
+			if err := q.DeletePopulationMember(ctx, sqlcgen.DeletePopulationMemberParams{ProjectRoot: key.ProjectRoot, Workflow: key.Workflow, Name: key.Name, ResourceID: id}); err != nil {
+				return fmt.Errorf("delete population member %s of %+v: %w", id, key, err)
 			}
 			dropped = append(dropped, id)
 		}
@@ -123,15 +103,15 @@ func (db *DB) UpdatePopulation(ctx context.Context, key string, fn func(*domain.
 	})
 }
 
-func loadPopulationMembers(ctx context.Context, q sqlcgen.DBTX, workflow, name string) (map[string]*domain.PopulationMember, error) {
+func loadPopulationMembers(ctx context.Context, q sqlcgen.DBTX, key contract.PopulationProvenance) (map[string]*domain.PopulationMember, error) {
 	queries := sqlcgen.New(q)
-	rows, err := queries.ListPopulationMembers(ctx, sqlcgen.ListPopulationMembersParams{Workflow: workflow, Name: name})
+	rows, err := queries.ListPopulationMembers(ctx, sqlcgen.ListPopulationMembersParams{ProjectRoot: key.ProjectRoot, Workflow: key.Workflow, Name: key.Name})
 	if err != nil {
-		return nil, fmt.Errorf("list population members for %q/%q: %w", workflow, name, err)
+		return nil, fmt.Errorf("list population members for %+v: %w", key, err)
 	}
-	blockerRows, err := queries.ListPopulationMemberBlockersForPopulation(ctx, sqlcgen.ListPopulationMemberBlockersForPopulationParams{Workflow: workflow, Name: name})
+	blockerRows, err := queries.ListPopulationMemberBlockersForPopulation(ctx, sqlcgen.ListPopulationMemberBlockersForPopulationParams{ProjectRoot: key.ProjectRoot, Workflow: key.Workflow, Name: key.Name})
 	if err != nil {
-		return nil, fmt.Errorf("list population member blockers for %q/%q: %w", workflow, name, err)
+		return nil, fmt.Errorf("list population member blockers for %+v: %w", key, err)
 	}
 	blockersByResource := map[string][]string{}
 	for _, b := range blockerRows {
@@ -222,9 +202,9 @@ func populationMemberFromRow(row sqlcgen.PopulationMember, blockers []string) (*
 	}, nil
 }
 
-func writePopulationMemberTx(ctx context.Context, q *sqlcgen.Queries, workflow, name string, member *domain.PopulationMember) error {
+func writePopulationMemberTx(ctx context.Context, q *sqlcgen.Queries, key contract.PopulationProvenance, member *domain.PopulationMember) error {
 	if err := recordResourceTx(ctx, q, &member.Resource); err != nil {
-		return fmt.Errorf("population %s/%s member: %w", workflow, name, err)
+		return fmt.Errorf("population %+v member: %w", key, err)
 	}
 	resource := member.Resource.ID
 	itemJSON, err := json.Marshal(member.Item)
@@ -233,8 +213,9 @@ func writePopulationMemberTx(ctx context.Context, q *sqlcgen.Queries, workflow, 
 	}
 	decisionKind, decisionReason := splitLastDecision(member.LastDecision)
 	if err := q.UpsertPopulationMember(ctx, sqlcgen.UpsertPopulationMemberParams{
-		Workflow:                 workflow,
-		Name:                     name,
+		ProjectRoot:              key.ProjectRoot,
+		Workflow:                 key.Workflow,
+		Name:                     key.Name,
 		ResourceID:               resource,
 		SessionName:              nullString(member.SessionName),
 		Generation:               int64(member.Generation),
@@ -254,16 +235,17 @@ func writePopulationMemberTx(ctx context.Context, q *sqlcgen.Queries, workflow, 
 	}); err != nil {
 		return fmt.Errorf("write population member %q: %w", resource, err)
 	}
-	if err := q.DeletePopulationMemberBlockers(ctx, sqlcgen.DeletePopulationMemberBlockersParams{Workflow: workflow, Name: name, ResourceID: resource}); err != nil {
+	if err := q.DeletePopulationMemberBlockers(ctx, sqlcgen.DeletePopulationMemberBlockersParams{ProjectRoot: key.ProjectRoot, Workflow: key.Workflow, Name: key.Name, ResourceID: resource}); err != nil {
 		return fmt.Errorf("clear population member %q blockers: %w", resource, err)
 	}
 	for i, reason := range member.LastBlockers {
 		if err := q.InsertPopulationMemberBlocker(ctx, sqlcgen.InsertPopulationMemberBlockerParams{
-			Workflow:   workflow,
-			Name:       name,
-			ResourceID: resource,
-			Position:   int64(i),
-			Reason:     reason,
+			ProjectRoot: key.ProjectRoot,
+			Workflow:    key.Workflow,
+			Name:        key.Name,
+			ResourceID:  resource,
+			Position:    int64(i),
+			Reason:      reason,
 		}); err != nil {
 			return fmt.Errorf("insert population member %q blocker %d: %w", resource, i, err)
 		}
