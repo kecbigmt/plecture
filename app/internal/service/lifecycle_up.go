@@ -276,10 +276,10 @@ func upUnlocked(cfg *config.Config, store *state.Store, params UpParams) (*UpRes
 		}
 		plan, recreateErr = recreateSessionRuntime(cfg, store, sessionName, session, wf, plan, params.Observer)
 		if recreateErr != nil {
-			return nil, recreateErr
+			return nil, keepInitialSelection(store, sessionName, initialTask, recreateErr)
 		}
 		if err := ensureInitialTask(cfg, store, sessionName, initialTask); err != nil {
-			return nil, err
+			return nil, keepInitialSelection(store, sessionName, initialTask, err)
 		}
 	} else if cleanupErr := cleanupStaleWorkflowNodes(cfg, store, sessionName, session, plan, params.Observer); cleanupErr != nil {
 		return nil, cleanupErr

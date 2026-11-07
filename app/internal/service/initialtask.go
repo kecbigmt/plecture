@@ -3,10 +3,12 @@ package service
 import (
 	"fmt"
 	"strings"
+	"time"
 
 	"github.com/kecbigmt/plecture/app/internal/config"
 	"github.com/kecbigmt/plecture/app/internal/domain"
 	"github.com/kecbigmt/plecture/app/internal/state"
+	"github.com/kecbigmt/plecture/app/internal/task"
 	contract "github.com/kecbigmt/plecture/contracts/state"
 )
 
@@ -110,4 +112,37 @@ func ensureInitialTask(cfg *config.Config, store *state.Store, sessionName strin
 		Resource:    binding.Resource,
 	})
 	return err
+}
+
+// keepInitialSelection records a failed initial instance when a forced
+// recreate fails before re-instantiating it, because that instance is the
+// only durable record of the selection and the next recreate captures it.
+func keepInitialSelection(store *state.Store, sessionName string, binding *initialTaskBinding, cause error) error {
+	if binding == nil {
+		return cause
+	}
+	now := time.Now()
+	if err := store.Update(sessionName, func(s *domain.Session) error {
+		if s.Tasks == nil {
+			s.Tasks = make(map[string]*contract.TaskState)
+		}
+		if s.Tasks[initialInstance] != nil {
+			return nil
+		}
+		s.Tasks[initialInstance] = &contract.TaskState{
+			Scope:    contract.TaskScopeSession,
+			TaskID:   binding.TaskID,
+			Resource: binding.Resource,
+			Name:     initialInstance,
+			Status:   contract.TaskStatusFailed,
+			Error:    fmt.Sprintf("not re-instantiated: %v", cause),
+			Seq:      task.NextSeq(s.Nodes, s.Tasks),
+			FailedAt: now,
+		}
+		s.UpdatedAt = now
+		return nil
+	}); err != nil {
+		return &Error{Code: ErrExecutionFailed, Message: fmt.Sprintf("%v (and the initial task selection could not be kept: %v)", cause, err)}
+	}
+	return cause
 }

@@ -338,3 +338,36 @@ func TestUp_ForceRecreateWithoutATaskKeepsTheInitialTaskItWasCreatedWith(t *test
 		})
 	}
 }
+
+func TestUp_AFailedForceRecreateKeepsTheInitialSelectionForTheRetry(t *testing.T) {
+	store := testStore(t)
+	flag := filepath.Join(t.TempDir(), "fail")
+	cfg := writeWorkflowFixture(t, "flow",
+		[]taskFixture{{id: "noop", scope: "session", setup: "test ! -e " + flag + " && echo '{}'"}},
+		[]nodeFixture{{id: "noop"}})
+	useResource(t, cfg, "flow", "case", caseResourceDoc)
+	writeResourceDoc(t, cfg, "ticket", ticketResourceDoc)
+	writeServiceTaskDoc(t, cfg, "triage", triageTaskDoc)
+	first, err := Up(cfg, store, UpParams{Identifier: identityCaseID, InitialTask: &InitialTask{TaskID: "triage"}})
+	if err != nil {
+		t.Fatalf("first up: %v", err)
+	}
+
+	if err := os.WriteFile(flag, nil, 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := Up(cfg, store, UpParams{Identifier: identityCaseID, ForceRecreate: true}); err == nil {
+		t.Fatal("force-recreate succeeded although a session node's setup fails")
+	}
+	if err := os.Remove(flag); err != nil {
+		t.Fatal(err)
+	}
+
+	if _, err := Up(cfg, store, UpParams{Identifier: identityCaseID, ForceRecreate: true}); err != nil {
+		t.Fatalf("retried force-recreate: %v", err)
+	}
+	initial := store.Get(first.SessionName).Tasks["initial"]
+	if initial == nil || initial.TaskID != "triage" || initial.Resource != identityCaseID || initial.Status != contract.TaskStatusProduced {
+		t.Fatalf("initial = %+v after a failed rebuild and its retry, want triage reinstantiated", initial)
+	}
+}
