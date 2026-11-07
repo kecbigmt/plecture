@@ -3,9 +3,15 @@ package population
 import (
 	"context"
 	"errors"
+	"fmt"
+	"os"
+	"path/filepath"
+	"strings"
 	"testing"
 
+	"github.com/kecbigmt/plecture/app/internal/admitstatus"
 	"github.com/kecbigmt/plecture/app/internal/config"
+	"github.com/kecbigmt/plecture/app/internal/eventlog"
 	"github.com/kecbigmt/plecture/app/internal/service"
 	"github.com/kecbigmt/plecture/app/internal/state"
 	contract "github.com/kecbigmt/plecture/contracts/state"
@@ -143,5 +149,117 @@ command = "true"
 				t.Fatalf("error = %v, want a population identity conflict", err)
 			}
 		})
+	}
+}
+
+func TestPopulationKeepsQueryInputsApartFromResourceActionInputs(t *testing.T) {
+	dir := t.TempDir()
+	log := filepath.Join(dir, "actions.log")
+	writeDefinition(t, dir, "observer", fmt.Sprintf(`[source]
+kind = "resource"
+match = "^urn:case:(?P<id>[A-Za-z0-9]+)$"
+name = { from = "match.id" }
+
+[source.observe]
+type = "exec"
+command = "true"
+
+[source.subscribe]
+type   = "shell"
+script = '''
+printf 'subscribe scope=%%s\n' "$scope" >> %[1]q
+'''
+
+[source.subscribe.bind]
+scope = { from = "resource.inputs.scope", default = "absent" }
+
+[source.inputs_schema]
+type = "object"
+additionalProperties = false
+
+[source.inputs_schema.properties.scope]
+type = "string"
+
+[source.query.inputs_schema]
+type = "object"
+required = ["scope"]
+additionalProperties = false
+
+[source.query.inputs_schema.properties.scope]
+type = "string"
+
+[source.query.item_schema]
+type = "object"
+required = ["resource"]
+additionalProperties = false
+
+[source.query.item_schema.properties.resource]
+type = "string"
+
+[source.query.poll]
+type   = "shell"
+script = '''
+printf 'poll scope=%%s\n' "$scope" >> %[1]q
+echo '[{"resource":"urn:case:a"}]'
+'''
+
+[source.query.poll.bind]
+scope = { from = "inputs.scope" }
+`, log))
+	writeDefinition(t, dir, "workflow", `[agent]
+kind = "workflow"
+resource = "source"
+
+[[agent.nodes]]
+uses = "noop"
+
+[[agent.populations]]
+name = "dispatch"
+uses = ["poll"]
+poll_every = "1m"
+
+[agent.populations.query]
+scope = "all"
+`)
+	writeDefinition(t, dir, "noop", `[noop]
+kind = "effect"
+scope = "session"
+
+[noop.setup]
+type = "exec"
+command = "printf"
+args = ["{}"]
+
+[noop.health.alive]
+type = "noop"
+`)
+	cfg := &config.Config{BaseDir: dir}
+	definitions, err := Load(cfg)
+	if err != nil {
+		t.Fatal(err)
+	}
+	definition := definitions[0]
+	store := state.NewStore(t.TempDir())
+	logStore := eventlog.NewStore(store.Dir())
+	engine := NewEngine(definition, store, logStore, admitstatus.NewCache(logStore), serviceHooks(func() *config.Config { return cfg }, store, definition, nil))
+
+	items, err := actionRunner{cfg: cfg}.Poll(context.Background(), definition)
+	if err != nil {
+		t.Fatalf("poll: %v", err)
+	}
+	for _, item := range items {
+		if err := engine.ApplyAppearance(context.Background(), item); err != nil {
+			t.Fatalf("admit %v: %v", item, err)
+		}
+	}
+
+	raw, err := os.ReadFile(log)
+	if err != nil {
+		t.Fatal(err)
+	}
+	got := strings.Split(strings.TrimSpace(string(raw)), "\n")
+	want := []string{"poll scope=all", "subscribe scope=absent"}
+	if strings.Join(got, "|") != strings.Join(want, "|") {
+		t.Errorf("action log = %q, want the query to see its own inputs and subscribe only the empty action object %q", got, want)
 	}
 }

@@ -36,7 +36,10 @@ type UpParams struct {
 	HumanInitiated bool
 	// InvocationDir is forwarded to auto-create; see CreateParams.
 	InvocationDir string
-	repair        bool
+	// InitialTask is the caller's task selection, instantiated as the
+	// session's initial instance. Only valid with a resource identifier.
+	InitialTask *InitialTask
+	repair      bool
 }
 
 // UpResult holds the outcome of Up.
@@ -99,6 +102,7 @@ func upLifecycleLockName(cfg *config.Config, store *state.Store, params UpParams
 func upUnlocked(cfg *config.Config, store *state.Store, params UpParams) (*UpResult, error) {
 	identifier := params.Identifier
 	forceRecreateExisting := false
+	var initialTask *initialTaskBinding
 	disp, matched, dispErr := dispatchResource(cfg, params.InvocationDir, params.Workflow, params.Identifier)
 	if dispErr != nil {
 		if params.Tag == "" {
@@ -141,6 +145,11 @@ func upUnlocked(cfg *config.Config, store *state.Store, params UpParams) (*UpRes
 		if params.Workflow != "" && existing != nil && params.Workflow != existing.Workflow {
 			return nil, &Error{Code: ErrInvalidInput, Message: fmt.Sprintf("--workflow %q does not match the session's frozen workflow %q", params.Workflow, existing.Workflow)}
 		}
+		var taskErr error
+		initialTask, taskErr = checkInitialTask(cfg, params.InvocationDir, params.Identifier, existing, params.InitialTask)
+		if taskErr != nil {
+			return nil, taskErr
+		}
 		// Before Create: a rejected new child must leave no state entry.
 		// ForceRecreate excludes even an up target, since it tears the
 		// child down and rebuilds — the slot must stay reserved through that.
@@ -180,6 +189,12 @@ func upUnlocked(cfg *config.Config, store *state.Store, params UpParams) (*UpRes
 				return nil, err
 			}
 		}
+		// A queued up runs no recreate, so only one that proceeds defers this.
+		if !(params.ForceRecreate && existing != nil) || capped {
+			if err := ensureInitialTask(cfg, store, sessionName, initialTask); err != nil {
+				return nil, err
+			}
+		}
 		if capped {
 			return acceptSleepingUp(cfg, store, sessionName)
 		}
@@ -191,6 +206,10 @@ func upUnlocked(cfg *config.Config, store *state.Store, params UpParams) (*UpRes
 		if params.Inputs != nil {
 			return nil, &Error{Code: ErrInvalidInput, Message: "--input is only valid on the auto-create path; a bare session name implies an existing session"}
 		}
+		if params.InitialTask != nil {
+			return nil, &Error{Code: ErrInvalidInput, Message: "--task is only valid with a resource identifier; to add a task to an existing session, run `plect task setup`"}
+		}
+
 	}
 
 	sessionName, session, err := resolveSession(cfg, store, identifier)
@@ -250,9 +269,17 @@ func upUnlocked(cfg *config.Config, store *state.Store, params UpParams) (*UpRes
 	}
 	if params.ForceRecreate && forceRecreateExisting {
 		var recreateErr error
+		// The recreate discards every task instance, and the initial instance
+		// is the only record of the selection it was created with.
+		if initial := session.Tasks[initialInstance]; initialTask == nil && initial != nil {
+			initialTask = &initialTaskBinding{TaskID: initial.TaskID, Resource: initial.Resource}
+		}
 		plan, recreateErr = recreateSessionRuntime(cfg, store, sessionName, session, wf, plan, params.Observer)
 		if recreateErr != nil {
-			return nil, recreateErr
+			return nil, keepInitialSelection(store, sessionName, initialTask, recreateErr)
+		}
+		if err := ensureInitialTask(cfg, store, sessionName, initialTask); err != nil {
+			return nil, keepInitialSelection(store, sessionName, initialTask, err)
 		}
 	} else if cleanupErr := cleanupStaleWorkflowNodes(cfg, store, sessionName, session, plan, params.Observer); cleanupErr != nil {
 		return nil, cleanupErr

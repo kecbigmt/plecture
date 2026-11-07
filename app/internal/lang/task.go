@@ -92,6 +92,9 @@ func (v Validation) ValidateTaskContracts(def *Definition, r *Registry) error {
 		if err := v.checkChainWorkflowInputs(chainTbl, chainAt, r); err != nil {
 			return err
 		}
+		if err := v.checkChainInitialTask(chainTbl, chainAt, r); err != nil {
+			return err
+		}
 	}
 	for _, match := range bodyProjection.FindAllStringSubmatch(def.Instruction, -1) {
 		if err := c.resolve(match[1], childPos(pos, "instruction")); err != nil {
@@ -262,6 +265,47 @@ func (v Validation) checkChainWorkflowInputs(chain map[string]any, pos Position,
 			return newDiag(CodeFieldUnknown, LayerStructural, childPos(at, key),
 				fmt.Sprintf("workflow %q declares no input %q, and closes its inputs contract", ref, key))
 		}
+	}
+	return nil
+}
+
+// checkChainInitialTask holds a chain's selected task to the resource type
+// its spawned session binds: the target workflow's entry resource, whichever
+// concrete resource the chain names. Checking it here is what lets a
+// mismatch fail at load instead of at every fire.
+func (v Validation) checkChainInitialTask(chain map[string]any, pos Position, r *Registry) error {
+	rawTask, ok := chain["task"]
+	if !ok {
+		return nil
+	}
+	site := childPos(pos, "task")
+	taskRef, err := staticRef(rawTask, site.Path)
+	if err != nil {
+		return err
+	}
+	taskResource, err := v.taskDocumentResource(taskRef, r, site.Path)
+	if err != nil {
+		return err
+	}
+	workflowRef, err := staticRef(chain["workflow"], childPos(pos, "workflow").Path)
+	if err != nil {
+		return err
+	}
+	workflow, err := r.ExpectKind(workflowRef, v.From, KindWorkflow, childPos(pos, "workflow").Path)
+	if err != nil {
+		return err
+	}
+	entryRef, err := staticRef(workflow.Body["resource"], workflow.ID+".resource")
+	if err != nil {
+		return err
+	}
+	entry, err := r.ExpectKind(entryRef, r.OwnerOf(workflow), KindResource, workflow.ID+".resource")
+	if err != nil {
+		return err
+	}
+	if taskResource != entry {
+		return newDiag(CodeResourceObserverMismatch, LayerSemantic, site,
+			fmt.Sprintf("task %q is not written for resource %q, which workflow %q binds its spawned session to", taskRef, entryRef, workflowRef))
 	}
 	return nil
 }

@@ -148,7 +148,7 @@ the CLI's name would claim the language's rules for one of its consumers.
 | `PLECTURE-CFG-TASK-INSTRUCTION-CONTROL-FLOW` | semantic | An instruction body carries a `{{ ... }}` construct other than a dotted-path projection. |
 | `PLECTURE-CFG-FROM-ROOT` | structural / semantic | A value reads a root the containing surface does not offer. It is structural where a surface's roots are a fixed prefix set, as on an effect's `outputs.bind` and a task document's completion leaves, and semantic otherwise. |
 | `PLECTURE-CFG-FROM-PATH` | semantic | A projection names a field the resolved contract does not declare. |
-| `PLECTURE-CFG-RESOURCE-OBSERVER-MISMATCH` | instantiation | An instance's resource does not resolve to the resource its task document declares. |
+| `PLECTURE-CFG-RESOURCE-OBSERVER-MISMATCH` | semantic / instantiation | An instance's resource does not resolve to the resource its task document declares. It is semantic where a chain selects a task the target workflow's entry resource cannot satisfy, and instantiation otherwise. |
 | `PLECTURE-CFG-FIRST-OBSERVE-FAILED` | instantiation | The observation instantiation performs failed, so no instance is created; the resource's own error is reported. |
 | `PLECTURE-CFG-BIN-UNKNOWN` | semantic | An executable reference resolves to no declared executable. |
 | `PLECTURE-CFG-TERMINAL-UNAVAILABLE` | semantic | A terminal capability is consumed where no effect in the plan declares that verb. |

@@ -283,9 +283,11 @@ states a type, instantiation checks compatibility up front: binding an instance
 to a resource that does not resolve to the declared resource fails immediately,
 rather than producing an instance that can never satisfy.
 
-The initiating caller selects an optional initial task: `plect up`, a chain,
-or a population. A workflow does not select it. Each surface selects at most
-one task and supplies one compatible concrete resource binding.
+The initiating caller selects an optional initial task: `plect up --task`, a
+chain's `task`, or a population's `session.task`. A workflow does not select
+it, and a session input named `task` carries no selection. Each surface
+selects at most one task and supplies one compatible concrete resource
+binding.
 
 Every shipped task document is written for exactly one resource type, so this
 dependency already existed — it was hiding in a runtime convention. Declaring it

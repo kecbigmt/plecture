@@ -166,26 +166,13 @@ func setupTaskDocument(cfg *config.Config, store *state.Store, resolvedName stri
 	if err != nil {
 		return nil, &Error{Code: ErrExecutionFailed, Message: fmt.Sprintf("load resources: %v", err)}
 	}
-	observer, ok := observers[doc.Resource]
-	if !ok {
-		return nil, &Error{Code: ErrExecutionFailed, Message: fmt.Sprintf("task %s is written for resource %q, which no config layer declares", doc.ID, doc.Resource)}
-	}
 	resourceID := params.Resource
 	if resourceID == "" {
 		resourceID = session.ResourceID
 	}
-	if resourceID == "" {
-		return nil, &Error{Code: ErrInvalidInput, Message: fmt.Sprintf("task %s is written for resource %q, so an instance needs a resource; pass --resource", doc.ID, doc.Resource)}
-	}
-	// The document states a type, so compatibility is checked up front: an
-	// instance bound to a resource the declared observer does not claim can
-	// never satisfy, and is refused instead of created.
-	matchedAddress, _, ok, merr := task.MatchResourceDef(observers, resourceID)
-	if merr != nil {
-		return nil, &Error{Code: ErrExecutionFailed, Message: merr.Error()}
-	}
-	if !ok || matchedAddress != doc.Resource {
-		return nil, &Error{Code: ErrInvalidInput, Message: fmt.Sprintf("task %s is written for resource %q, which does not claim resource %q", doc.ID, doc.Resource, resourceID)}
+	observer, bindErr := checkTaskBinding(doc, observers, resourceID)
+	if bindErr != nil {
+		return nil, bindErr
 	}
 
 	inputs, bindErr := bindDocumentInputs(doc, params.Inputs, session)
@@ -263,6 +250,27 @@ func setupTaskDocument(cfg *config.Config, store *state.Store, resolvedName stri
 		SubscribeError: subscribeErrMsg,
 		Instruction:    instruction,
 	}, nil
+}
+
+// checkTaskBinding refuses an instance bound to a resource the document's
+// declared resource type does not claim, because such an instance could
+// never satisfy its completion contract.
+func checkTaskBinding(doc config.TaskDocument, observers map[string]config.ResourceDef, resourceID string) (config.ResourceDef, *Error) {
+	observer, ok := observers[doc.Resource]
+	if !ok {
+		return config.ResourceDef{}, &Error{Code: ErrExecutionFailed, Message: fmt.Sprintf("task %s is written for resource %q, which no config layer declares", doc.ID, doc.Resource)}
+	}
+	if resourceID == "" {
+		return config.ResourceDef{}, &Error{Code: ErrInvalidInput, Message: fmt.Sprintf("task %s is written for resource %q, so an instance needs a resource; pass --resource", doc.ID, doc.Resource)}
+	}
+	matchedAddress, _, matched, err := task.MatchResourceDef(observers, resourceID)
+	if err != nil {
+		return config.ResourceDef{}, &Error{Code: ErrExecutionFailed, Message: err.Error()}
+	}
+	if !matched || matchedAddress != doc.Resource {
+		return config.ResourceDef{}, &Error{Code: ErrInvalidInput, Message: fmt.Sprintf("task %s is written for resource %q, which does not claim resource %q", doc.ID, doc.Resource, resourceID)}
+	}
+	return observer, nil
 }
 
 // bindDocumentInputs resolves the document's declared inputs from the

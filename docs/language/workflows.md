@@ -25,6 +25,11 @@ plugin, workflow, or working-directory detail part of core identity.
 The caller optionally selects an initial task and its concrete resource
 binding. The task is compatible when its declared resource type matches that
 binding. `plect up` may omit it, creating an environment a person may use.
+`plect up --task <task>` binds the entry identifier unless `--task-resource`
+names another concrete resource; an incompatible selection fails before the
+session is created. The task becomes the session's `initial` instance.
+Repeating the same selection keeps that instance, and a different selection
+fails until the existing instance is cleaned.
 Chains and populations use the same one-task selection surface, not a workflow
 field. Adding or finishing a task never changes the entry resource, session
 name, environment, or session lifetime.

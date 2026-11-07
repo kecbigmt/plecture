@@ -72,6 +72,7 @@ func TickSession(cfg *config.Config, store *state.Store, params TickParams) (*Ch
 				Tag:           sp.Tag,
 				Workflow:      sp.Workflow,
 				Inputs:        sp.Inputs,
+				InitialTask:   InitialTaskSelection(sp.InitialTask, ""),
 				ParentSession: sp.ParentSession,
 				Observer:      params.Observer,
 			})

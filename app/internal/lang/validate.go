@@ -367,6 +367,11 @@ func (v Validation) validateTask(def *Definition, pos Position) error {
 		if err := v.valueTable(chain, "inputs", ClassData, surfaceChainInputs, at); err != nil {
 			return err
 		}
+		if raw, declared := chain["task"]; declared {
+			if _, err := staticRef(raw, childPos(at, "task").Path); err != nil {
+				return err
+			}
+		}
 	}
 	return v.instructionBody(def, pos)
 }

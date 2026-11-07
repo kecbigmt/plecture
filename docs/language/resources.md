@@ -13,17 +13,11 @@ completion. `finalize` records a task's accepted completion and its evidence.
 `subscribe` and `unsubscribe` bind or remove delivery for one session/resource
 pair.
 
-Each resource action takes a resource input object satisfying `inputs_schema`
-when the resource declares one; no declaration means the empty object. The
-object is supplied at the operation that needs it:
-
-- `plect up` supplies it for the entry resource;
-- adding a task supplies it for that task's concrete resource, including a
-  resource of another type;
-- a workflow node's `subscription` supplies the empty object when it binds
-  one of that node's produced output identifiers;
-- a standalone observe, subscribe, unsubscribe, or finalize operation supplies
-  it directly.
+`subscribe` and `unsubscribe` take a resource input object satisfying
+`inputs_schema` when the resource declares one; no declaration means the
+empty object. A binding made by `plect up`, `plect task setup`, a chain, a
+population, or a node's `subscription` passes the empty object. Only a
+standalone `plect subscribe` or unsubscribe supplies one.
 
 Resource action inputs are never inferred from workflow inputs or a previous
 resource binding. Query inputs are separate: a population supplies the literal
@@ -39,19 +33,18 @@ name  = { expr = "match.project + '-issue-' + match.number" }
 [issue.observe]
 type = "exec"
 bin  = "forge"
-args = ["issue", "observe", { from = "resource.id" }, "--token", { from = "resource.inputs.token" }]
+args = ["issue", "observe", { from = "resource.id" }]
 
 [issue.subscribe]
 type = "exec"
 bin  = "forge"
-args = ["issue", "subscribe", { from = "resource.id" }, { from = "session.name" }, "--token", { from = "resource.inputs.token" }]
+args = ["issue", "subscribe", { from = "resource.id" }, { from = "session.name" }, "--events", { from = "resource.inputs.events", default = "all" }]
 
 [issue.inputs_schema]
 type = "object"
-required = ["token"]
 
 [issue.inputs_schema.properties]
-token = { type = "string" }
+events = { type = "string", enum = ["all", "comments"] }
 
 [issue.state_schema]
 type = "object"
@@ -62,9 +55,9 @@ pr_url   = { type = "string" }
 ```
 
 The first observation is required before instantiation; later observation
-failure is recorded degradation. Finalization and delivery receive the
-concrete resource, the concrete session where applicable, and the resource
-action input object. A resource does not own a task's state or judge evidence.
+failure is recorded degradation. Finalization receives the concrete resource
+and session; delivery also receives the resource action input object. A
+resource does not own a task's state or judge evidence.
 
 `plect subscribe <resource-id>` selects exactly one matching resource
 declaration. It accepts `--inputs` or `--inputs-file` for the action input
@@ -89,7 +82,8 @@ optional appearance context. It does not duplicate observation state.
 
 - `match`, `name`, `observe`, and `state_schema` are required.
 - A `name` projection names only captures declared by `match`.
-- Every action operation receives an object satisfying `inputs_schema`.
+- Every subscribe and unsubscribe receives an object satisfying
+  `inputs_schema`.
 - Query inputs satisfy the query input schema independently of action inputs.
 - A query has its shared schemas and at least one means.
 - A task's resource type matches the concrete resource to which its instance

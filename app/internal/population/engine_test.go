@@ -558,7 +558,7 @@ func TestFailedInitialTaskDoesNotRunSetupAgainBeforeCleanup(t *testing.T) {
 	}
 	engine.hooks.EnsureInitial = func(context.Context, string, string, string) error {
 		setupCalls++
-		return &initialTaskCleanupRequiredError{session: "session-urn:case:a", reason: "initial task needs cleanup"}
+		return &service.Error{Code: service.ErrInvalidInput, Message: "initial task needs cleanup"}
 	}
 	ctx := context.Background()
 	if err := engine.ApplyAppearance(ctx, map[string]any{"resource": "urn:case:a"}); err == nil {

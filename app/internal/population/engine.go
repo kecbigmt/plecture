@@ -451,10 +451,6 @@ func isPermanentAdmitFailure(reason string, failure error) bool {
 	if errors.As(failure, &conflict) {
 		return true
 	}
-	var initial *initialTaskCleanupRequiredError
-	if errors.As(failure, &initial) {
-		return true
-	}
 	var serviceErr *service.Error
 	if errors.As(failure, &serviceErr) && serviceErr.Code == service.ErrInvalidInput {
 		return true

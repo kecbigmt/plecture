@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/mark3labs/mcp-go/mcp"
@@ -105,31 +106,33 @@ func TestHandleUp_ExistingSessionByName(t *testing.T) {
 	}
 }
 
-// The tool schemas must expose workflow/task so a client can discover the
+// The tool schemas must expose workflow/task/task_resource so a client can discover the
 // arguments without reading the handler source.
 func TestUpTool_ExposesWorkflowAndTask(t *testing.T) {
-	for _, name := range []string{"workflow", "task"} {
+	for _, name := range []string{"workflow", "task", "task_resource"} {
 		if _, ok := upTool.InputSchema.Properties[name]; !ok {
 			t.Errorf("%s: missing %q in InputSchema.Properties", upTool.Name, name)
 		}
 	}
 }
 
-// A task value conflicting with inputs.task must fail rather than silently
-// picking one — same rule the CLI/Web UI shorthand follows.
-func TestHandleUp_TaskConflictsWithInputs(t *testing.T) {
+// task is a selection core checks, not a session input the workflow's own
+// schema would judge.
+func TestHandleUp_TaskSelectsAnInitialTaskCoreChecks(t *testing.T) {
 	setUpConfigHome(t)
 
 	result, err := handleUp(context.Background(), reqWith(map[string]any{
 		"session":  "my-session",
 		"workflow": "plain",
 		"task":     "review",
-		"inputs":   map[string]any{"task": "work"},
 	}))
 	if err != nil {
 		t.Fatalf("handleUp: %v", err)
 	}
 	if !result.IsError {
-		t.Fatal("expected error result for conflicting task")
+		t.Fatal("expected an error result for a task no config layer declares")
+	}
+	if text := extractErrorText(result); !strings.Contains(text, "review") || !strings.Contains(text, "not found") {
+		t.Errorf("error = %q, want it to report the task selection", text)
 	}
 }

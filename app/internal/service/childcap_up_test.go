@@ -482,3 +482,46 @@ func TestUp_ForceRecreateHoldsItsCapSlotThroughTheRebuild(t *testing.T) {
 		t.Fatalf("Up --force-recreate: %v", err)
 	}
 }
+
+func TestUp_ForceRecreateWithATaskQueuedAtCapKeepsTheSelectionThroughWake(t *testing.T) {
+	store := testStore(t)
+	workdir := filepath.Join(t.TempDir(), "wd")
+	cfg := writeWorkflowFixture(t, "capwf",
+		[]taskFixture{{id: "noop", scope: "session", setup: "echo '{}'"}},
+		[]nodeFixture{{id: "noop"}})
+	useCapWorkflow(t, cfg, "capwf", workdir, false)
+	writeCapWorkflow(t, cfg.BaseDir, "parent_wf", intPtr(2))
+	writeServiceTaskDoc(t, cfg, "case_triage", `[case_triage]
+kind         = "task"
+description  = "Triage a case"
+resource     = "cases"
+instructions = [{ text = "Triage {{ resource.id }}." }]
+`)
+	seedSessionWithNodes(t, store, "parent1", "acct", 1, "parent_wf", nil)
+	for i, name := range []string{"childA", "childB"} {
+		seedSessionWithNodes(t, store, name, "acct", i, "", upTasks())
+		setParent(t, store, name, "parent1")
+	}
+
+	const url = "https://example.test/cases/queued"
+	if result, err := Up(cfg, store, UpParams{Identifier: url, ParentSession: "parent1"}); err != nil || result.Result != "sleeping" {
+		t.Fatalf("first up = %+v, %v; want a queued taskless session", result, err)
+	}
+	result, err := Up(cfg, store, UpParams{Identifier: url, ParentSession: "parent1", ForceRecreate: true, InitialTask: &InitialTask{TaskID: "case_triage"}})
+	if err != nil || result.Result != "sleeping" {
+		t.Fatalf("force-recreate up = %+v, %v; want it queued", result, err)
+	}
+	if initial := store.Get(result.SessionName).Tasks["initial"]; initial == nil || initial.TaskID != "case_triage" {
+		t.Fatalf("initial = %+v after a queued force-recreate, want the selected task recorded", initial)
+	}
+
+	if err := store.Update("childB", func(s *domain.Session) error { s.Nodes = nil; return nil }); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := Up(cfg, store, UpParams{Identifier: result.SessionName}); err != nil {
+		t.Fatalf("wake: %v", err)
+	}
+	if initial := store.Get(result.SessionName).Tasks["initial"]; initial == nil || initial.TaskID != "case_triage" || initial.Status != contract.TaskStatusProduced {
+		t.Fatalf("initial = %+v after wake, want case_triage kept", initial)
+	}
+}
