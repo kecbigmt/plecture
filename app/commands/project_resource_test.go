@@ -11,8 +11,6 @@ import (
 
 const projectTicketURL = "https://forge.example/tickets/7"
 
-// projectResourceFixture trusts projectInvocationFixture's root and declares,
-// in that root only, a resource type and a workflow written for it.
 func projectResourceFixture(t *testing.T) (root, outside string) {
 	t.Helper()
 	t.Setenv("PLECT_SESSION_NAME", "")

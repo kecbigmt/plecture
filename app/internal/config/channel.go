@@ -85,8 +85,6 @@ func (d ChannelDefinition) ApplyInputDefaults(inputs map[string]any) map[string]
 	return out
 }
 
-// LoadChannels loads every channel the layers hold, as LoadWorkflows does for
-// workflows.
 func (c *Config) LoadChannels(projectRoot string) (map[string]ChannelDefinition, error) {
 	return loadKind(c, projectRoot, lang.KindChannel, c.channelFromDefinition)
 }

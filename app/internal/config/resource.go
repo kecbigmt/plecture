@@ -77,8 +77,6 @@ func (r ResourceDef) Ownership() lang.Ownership {
 	return lang.Ownership{IsPlugin: r.FromPlugin}
 }
 
-// LoadResourceDefs loads every resource the layers hold, as LoadWorkflows
-// does for workflows.
 func (c *Config) LoadResourceDefs(projectRoot string) (map[string]ResourceDef, error) {
 	return loadKind(c, projectRoot, lang.KindResource, c.resourceDefFromDefinition)
 }

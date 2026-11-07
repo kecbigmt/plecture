@@ -8,9 +8,6 @@ import (
 
 const prTicketURL = "https://forge.example/tickets/7"
 
-// prProjectResource declares, in pcProject's root only, a resource type with
-// every hook a session consumer runs, each leaving a marker under $HOME, and a
-// workflow and task document written for it.
 func prProjectResource(t *testing.T, f *wdFixture) string {
 	t.Helper()
 	root := pcProject(t, f)
