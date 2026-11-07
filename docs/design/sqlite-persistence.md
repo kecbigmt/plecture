@@ -491,7 +491,7 @@ prerequisite's row already exists by the time the dependent looks up its
 current execution id.
 
 The migration from the prior single-row `node_instances` shape
-(`app/internal/persistence/migrations/20260907085032_add_node_execution_identity.sql`)
+(`app/db/migrations/20260907085032_add_node_execution_identity.sql`)
 carries its own reasoning for how it preserves existing rows.
 
 ## Session identity and lifecycle
@@ -608,7 +608,7 @@ appending a new one; a no-op call appends nothing.
 
 ## Schema excerpts
 
-`app/internal/persistence/schema.sql` declares the application-owned tables.
+`app/db/schema.sql` declares the application-owned tables.
 The following excerpt shows the resource, session relationship and event ordering shapes;
 the remaining tables follow the keys in the inventory above.
 
@@ -740,9 +740,10 @@ destroyed row remains available to post-teardown status and retry handling.
 
 ## Migration history
 
-`app/internal/persistence/schema.sql` is the declarative source of truth for
-the database structure. The migration history is hand-written goose SQL in
-`app/internal/persistence/migrations/`, embedded in the core binary and
+`app/db/schema.sql` is the declarative source of truth for the database
+structure, and `app/db/query.sql` holds the queries sqlc compiles into
+`app/internal/persistence/sqlcgen`. The migration history is hand-written
+goose SQL in `app/db/migrations/`, embedded in the core binary and
 applied by goose, whose `goose_db_version` ledger is the only record of which
 migrations have run. A migration runs in goose's transaction, so its ledger
 entry commits with its schema change. A migration that rebuilds a table that
@@ -768,7 +769,7 @@ Three Go tests keep the history and `schema.sql` in agreement:
   case is folded outside string literals. String-literal contents compare
   byte for byte. goose's ledger table is excluded.
 - `TestMigrationsMatchTheirManifest` (`app/internal/migrationsum`) compares
-  every migration file with `app/internal/persistence/migrations.sum`. The
+  every migration file with `app/db/migrations.sum`. The
   manifest is in `sha256sum` format: one `<sha256 hex>  <file name>` line
   per migration over its raw bytes, sorted by name, with no aggregate line.
   The test fails on a changed hash, an unlisted file, a listed file that no

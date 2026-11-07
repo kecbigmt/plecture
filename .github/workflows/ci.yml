@@ -382,8 +382,9 @@ jobs:
           mapfile -t names < <(jq -r '.[]' <<< '${{ needs.changes.outputs.affected_plugins }}')
           ./scripts/run-plugin-selftests.sh "${names[@]}"
 
-  # Regenerating sqlc's Go output from schema.sql/queries.sql must produce
-  # no diff, so the committed generated code cannot drift from its sources.
+  # Regenerating sqlc's Go output from app/db's schema.sql and query.sql
+  # must produce no diff, so the committed generated code cannot drift from
+  # its sources.
   # Schema drift (TestSchemaSQL_MatchesMigrationHistory) and migration
   # integrity (TestMigrationsMatchTheirManifest) need no external tool, so
   # they run in every build-test (app) job below instead of here.

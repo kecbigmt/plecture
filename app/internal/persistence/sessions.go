@@ -202,7 +202,7 @@ func (db *DB) sessionEverExisted(ctx context.Context, name string) (bool, error)
 }
 
 // PruneReleasedNode reports whether node_id's row was pruned; see
-// queries.sql's DeleteReleasedNodeInstance.
+// app/db/query.sql's DeleteReleasedNodeInstance.
 func (db *DB) PruneReleasedNode(ctx context.Context, sessionName, nodeID string) (bool, error) {
 	var pruned bool
 	err := db.WithImmediateTx(ctx, func(tx *sql.Tx) error {

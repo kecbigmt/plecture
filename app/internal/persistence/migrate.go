@@ -2,7 +2,6 @@ package persistence
 
 import (
 	"context"
-	"embed"
 	"errors"
 	"fmt"
 	"io/fs"
@@ -10,16 +9,15 @@ import (
 	"time"
 
 	"github.com/pressly/goose/v3"
+
+	appdb "github.com/kecbigmt/plecture/app/db"
 )
 
-//go:embed migrations/*.sql
-var migrationsFS embed.FS
-
 func migrationsSourceFS() fs.FS {
-	sub, err := fs.Sub(migrationsFS, "migrations")
+	sub, err := fs.Sub(appdb.Migrations, "migrations")
 	if err != nil {
-		// migrationsFS is compiled in via the go:embed directive above;
-		// a missing "migrations" subtree would be a build-time packaging
+		// appdb.Migrations is compiled in via a go:embed directive; a
+		// missing "migrations" subtree would be a build-time packaging
 		// bug, not a runtime condition a caller can recover from.
 		panic(fmt.Sprintf("persistence: embedded migrations tree missing: %v", err))
 	}

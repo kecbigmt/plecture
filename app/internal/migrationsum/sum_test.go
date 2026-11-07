@@ -8,17 +8,14 @@ import (
 	"testing/fstest"
 )
 
-// The real tree is read from disk rather than through the persistence
-// package's embed.FS: both name the same *.sql files, and importing the
-// persistence package would make this stdlib-only tool depend on cgo.
-const persistenceDir = "../persistence"
+const dbDir = "../../db"
 
 func TestMigrationsMatchTheirManifest(t *testing.T) {
-	manifest, err := os.ReadFile(filepath.Join(persistenceDir, "migrations.sum"))
+	manifest, err := os.ReadFile(filepath.Join(dbDir, "migrations.sum"))
 	if err != nil {
 		t.Fatalf("read migrations.sum: %v", err)
 	}
-	if err := verify(os.DirFS(filepath.Join(persistenceDir, "migrations")), manifest); err != nil {
+	if err := verify(os.DirFS(filepath.Join(dbDir, "migrations")), manifest); err != nil {
 		t.Fatal(err)
 	}
 }

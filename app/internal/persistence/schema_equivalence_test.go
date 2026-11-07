@@ -5,7 +5,6 @@ import (
 	"database/sql"
 	"fmt"
 	"io/fs"
-	"os"
 	"sort"
 	"strconv"
 	"strings"
@@ -14,14 +13,12 @@ import (
 	"unicode"
 
 	"github.com/pressly/goose/v3"
+
+	appdb "github.com/kecbigmt/plecture/app/db"
 )
 
 func TestSchemaSQL_MatchesMigrationHistory(t *testing.T) {
-	schemaSQL, err := os.ReadFile("schema.sql")
-	if err != nil {
-		t.Fatalf("read schema.sql: %v", err)
-	}
-	if diff := schemaDrift(t, string(schemaSQL), migrationsSourceFS()); diff != "" {
+	if diff := schemaDrift(t, appdb.Schema, migrationsSourceFS()); diff != "" {
 		t.Fatalf("schema.sql and the migration history disagree:\n%s", diff)
 	}
 }
