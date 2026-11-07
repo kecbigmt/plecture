@@ -63,6 +63,9 @@ func (a *Adapter) dispatchUnboundMention(ev *slackevents.AppMentionEvent, thread
 	if !hasHook && !hasStreamReaders {
 		return false
 	}
+	if a.broker.PendingMention(ev.Channel, threadTS) == ev.TimeStamp {
+		return false
+	}
 
 	resolver := a.permalinkResolver
 	if resolver == nil {

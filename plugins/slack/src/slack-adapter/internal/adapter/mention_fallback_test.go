@@ -111,6 +111,60 @@ func TestUnboundMentionIsPublishedOnceAcrossEventTypes(t *testing.T) {
 	}
 }
 
+func TestUnboundHookAndStreamDispatchOnceAcrossEventTypes(t *testing.T) {
+	for _, pair := range []struct {
+		name           string
+		messagePayload string
+		appPayload     string
+	}{
+		{"thread reply", messageMentionPayload, appMentionPayload},
+		{"top level", topLevelMessageMentionPayload, topLevelAppMentionPayload},
+	} {
+		for _, messageFirst := range []bool{true, false} {
+			name := pair.name + "/app first"
+			first, last := pair.appPayload, pair.messagePayload
+			if messageFirst {
+				name = pair.name + "/message first"
+				first, last = pair.messagePayload, pair.appPayload
+			}
+			t.Run(name, func(t *testing.T) {
+				path := filepath.Join(t.TempDir(), "subscribers.json")
+				a := newTestAdapter(&Config{OnUnboundMention: "/path/to/dispatch"})
+				a.broker = NewBroker(path, nil)
+				a.botUserID = "U-bot"
+				a.permalinkResolver = &fakePermalinkResolver{link: "https://example.slack.com/archives/C1/p1700000000000003"}
+				runner := &recordingMentionHookRunner{}
+				a.mentionHook = runner
+				stream, cancel := a.mentions.subscribe()
+				defer cancel()
+				a.handleEventsAPI(parseMentionFallbackEvent(t, first))
+				a.broker = NewBroker(path, nil)
+				a.handleEventsAPI(parseMentionFallbackEvent(t, last))
+				if runner.calls != 1 || len(stream) != 1 {
+					t.Fatalf("hook calls = %d, stream items = %d, want one each", runner.calls, len(stream))
+				}
+			})
+		}
+	}
+}
+
+func TestFailedUnboundHookCanRetryFromOtherEventType(t *testing.T) {
+	a := newTestAdapter(&Config{OnUnboundMention: "/path/to/dispatch"})
+	a.botUserID = "U-bot"
+	a.permalinkResolver = &fakePermalinkResolver{link: "https://example.slack.com/archives/C1/p1700000000000003"}
+	runner := &recordingMentionHookRunner{err: errors.New("dispatch failed")}
+	a.mentionHook = runner
+	a.handleEventsAPI(parseMentionFallbackEvent(t, topLevelMessageMentionPayload))
+	if pending := a.broker.PendingMention("C1", "1700000000.000003"); pending != "" {
+		t.Fatalf("failed dispatch left pending mention %q", pending)
+	}
+	runner.err = nil
+	a.handleEventsAPI(parseMentionFallbackEvent(t, topLevelAppMentionPayload))
+	if runner.calls != 2 || a.broker.PendingMention("C1", "1700000000.000003") != "1700000000.000003" {
+		t.Fatalf("hook calls = %d, pending = %q, want successful retry", runner.calls, a.broker.PendingMention("C1", "1700000000.000003"))
+	}
+}
+
 func TestUnboundMessageMentionPublishFailureCanRetryFromAppMention(t *testing.T) {
 	a := newTestAdapter(&Config{})
 	a.botUserID = "U-bot"
