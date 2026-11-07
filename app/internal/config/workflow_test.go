@@ -11,11 +11,11 @@ import (
 	"github.com/kecbigmt/plecture/app/internal/lang"
 )
 
-// trustAncestors lists every ancestor of dir as a trusted project root, for
+// trustAncestors lists dir and every ancestor of it as a trusted project root, for
 // tests that exercise how overlay layers compose rather than whether one is
 // trusted.
 func trustAncestors(c *Config, dir string) *Config {
-	c.TrustedProjectRoots = cascadeAncestors(dir)
+	c.TrustedProjectRoots = cascadeCandidates(dir)
 	return c
 }
 
@@ -1697,8 +1697,9 @@ func TestWorkflowRevisionCarriesPublicOutputs(t *testing.T) {
 }
 
 // The invocation directory can be a generated checkout, so its own `.plect/`
-// is never a layer, whatever kind it declares; only directories above it are.
-func TestLoadDefinitions_InvocationDirsOwnLayerIsNotRead(t *testing.T) {
+// is a layer only when it is listed as a trusted root, however an ancestor's
+// is treated.
+func TestLoadDefinitions_InvocationDirsOwnLayerNeedsItsOwnTrust(t *testing.T) {
 	home := t.TempDir()
 	t.Setenv("HOME", home)
 	globalDir := filepath.Join(home, ".config", "plect")
@@ -1708,29 +1709,42 @@ func TestLoadDefinitions_InvocationDirsOwnLayerIsNotRead(t *testing.T) {
 	invocation := filepath.Join(above, "checkout")
 	writeFile(t, filepath.Join(above, ".plect", "workflows", "shared.toml"), "[shared]\nkind = \"workflow\"\n[[shared.nodes]]\nuses = \"overlay\"\n")
 	writeFile(t, filepath.Join(invocation, ".plect", "workflows", "shared.toml"), "[shared]\nkind = \"workflow\"\n[[shared.nodes]]\nuses = \"clone\"\n")
-	writeFile(t, filepath.Join(invocation, ".plect", "tasks", "shell.toml"), "[shell]\nkind = \"effect\"\n[shell.setup]\ntype = \"shell\"\nscript = \"true\"\n")
-	cfg, err := Load()
-	if err != nil {
-		t.Fatal(err)
-	}
+	writeFile(t, filepath.Join(invocation, ".plect", "tasks", "shell.toml"), "[shell]\nkind = \"effect\"\n[shell.setup]\ntype = \"shell\"\nscript = \"true\"\n[shell.health.alive]\ntype = \"noop\"\n")
 
-	workflows, err := trustAncestors(cfg, invocation).LoadWorkflows(invocation)
-	if err != nil {
-		t.Fatalf("LoadWorkflows: %v", err)
-	}
-	var uses []string
-	for _, node := range workflows["shared"].Nodes {
-		uses = append(uses, node.Uses)
-	}
-	if strings.Join(uses, ",") != "base,overlay" {
-		t.Errorf("nodes = %v, want the global layer then the ancestor overlay, and nothing from the invocation directory", uses)
-	}
-	effects, err := trustAncestors(cfg, invocation).LoadTaskDefinitions(invocation)
-	if err != nil {
-		t.Fatalf("LoadTaskDefinitions: an effect under the invocation directory must be ignored, not refused: %v", err)
-	}
-	if _, ok := effects["shell"]; ok {
-		t.Errorf("an effect declared under the invocation directory was loaded")
+	for _, tc := range []struct {
+		name    string
+		trusted []string
+		want    string
+		effect  bool
+	}{
+		{"only the ancestor is trusted", []string{above}, "base,overlay", false},
+		{"the invocation directory is trusted too", []string{above, invocation}, "base,overlay,clone", true},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			cfg, err := Load()
+			if err != nil {
+				t.Fatal(err)
+			}
+			cfg.TrustedProjectRoots = tc.trusted
+			workflows, err := cfg.LoadWorkflows(invocation)
+			if err != nil {
+				t.Fatalf("LoadWorkflows: %v", err)
+			}
+			var uses []string
+			for _, node := range workflows["shared"].Nodes {
+				uses = append(uses, node.Uses)
+			}
+			if strings.Join(uses, ",") != tc.want {
+				t.Errorf("nodes = %v, want %s", uses, tc.want)
+			}
+			effects, err := cfg.LoadTaskDefinitions(invocation)
+			if err != nil {
+				t.Fatalf("LoadTaskDefinitions: %v", err)
+			}
+			if _, ok := effects["shell"]; ok != tc.effect {
+				t.Errorf("effect loaded = %v, want %v", ok, tc.effect)
+			}
+		})
 	}
 }
 

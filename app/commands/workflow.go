@@ -34,8 +34,8 @@ var workflowListCmd = &cobra.Command{
 	Use:     "list",
 	Aliases: []string{"ls"},
 	Short:   "List available workflows",
-	Long: `List workflows discoverable from the cascade (global + the .plect/workflows/ of ancestor directories
-listed in trusted_project_roots).
+	Long: `List workflows discoverable from the cascade (global + the .plect/workflows/ of the current directory
+and its ancestors that are listed in trusted_project_roots).
 
 Default output is a space-aligned table with ID / NAME / DESCRIPTION columns.
 Use --json for a fully structured listing; --no-header switches to tab-separated

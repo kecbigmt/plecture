@@ -168,8 +168,9 @@ func handleWorkflowRebase(ctx context.Context, request mcp.CallToolRequest) (*mc
 	return jsonResult(map[string]any{"ok": true, "session_name": result.SessionName, "from": result.From, "to": result.To, "class": result.Class, "recreate_nodes": result.RecreateNodes, "reasons": result.Reasons})
 }
 
-// callerDir is the MCP server's own working directory, whose trusted ancestors'
-// `.plect/` overlays a direct invocation reads; an unreadable one selects none.
+// callerDir is the MCP server's own working directory, which with its trusted
+// ancestors contributes the `.plect/` overlays a direct invocation reads; an
+// unreadable one selects none.
 func callerDir() string {
 	dir, err := os.Getwd()
 	if err != nil {

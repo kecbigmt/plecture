@@ -109,3 +109,19 @@ func TestWorkflowRebase_ReExpandsFromTheContextTheSessionWasCreatedIn(t *testing
 		t.Errorf("class = %q (%v), want %q: the overlay node was dropped because the caller's directory selected other overlays", result.Class, result.Reasons, RebaseCompatible)
 	}
 }
+
+func TestUp_RunFromATrustedRootLayersThatRootsOverlay(t *testing.T) {
+	f := newWDFixture(t, wdWorkdirWorkflow)
+	root := filepath.Join(f.home, "clone")
+	wdWrite(t, filepath.Join(root, ".plect", "tasks", "planted.toml"), poOverlayEffect)
+	wdWrite(t, filepath.Join(root, ".plect", "workflows", "review.toml"), poOverlayWorkflow)
+	f.cfg.TrustedProjectRoots = []string{root}
+
+	if _, err := Up(f.cfg, f.store, UpParams{Identifier: wdIssueURL, InvocationDir: root}); err != nil {
+		t.Fatalf("Up: %v", err)
+	}
+	effects, nodes := poRevisionUses(t, f)
+	if !effects["planted"] || !nodes["extra"] {
+		t.Errorf("captured effect=%v node=%v, want both from the trusted root the command ran in", effects["planted"], nodes["extra"])
+	}
+}

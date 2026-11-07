@@ -73,8 +73,8 @@ workflow's `workdir` and never stored.
    `cleanup.inputs.<key>`; `plect destroy --input key=value` supplies it, and
    an input no released effect declares is an error. `force` is a cleanup root
    of every effect.
-6. A direct invocation reads the `.plect/` overlay of an ancestor directory
-   only when that directory is listed in `trusted_project_roots` in the
+6. A direct invocation reads the `.plect/` overlay of its own directory or of
+   an ancestor directory only when that directory is listed in `trusted_project_roots` in the
    machine configuration; nothing is trusted implicitly, because an overlay can
    declare effects that run shell. List each project directory whose overlay you
    rely on, as an absolute path. A session records the directory it was created

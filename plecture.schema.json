@@ -924,7 +924,8 @@
         },
         "resource": {
           "$ref": "#/$defs/staticReference",
-          "description": "The one entry resource type this workflow accepts."
+          "description": "The one entry resource type this workflow accepts.",
+          "$comment": "Required on the merged workflow, not on each document: an overlay layer may extend a workflow it does not own without repeating its resource."
         },
         "workdir": {
           "type": "object",

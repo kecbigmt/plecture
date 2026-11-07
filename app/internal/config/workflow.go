@@ -528,8 +528,8 @@ type layerDir struct {
 }
 
 // LoadWorkflows loads every workflow declaration the cascade layers hold:
-// plugins (base), the global config, then each ancestor overlay ending at the
-// invocation directory's parent. A deeper layer merges into a same-id shallower
+// plugins (base), the global config, then each trusted overlay down to the
+// invocation directory. A deeper layer merges into a same-id shallower
 // workflow by the cascade rules — it may set a field the shallower layer left
 // unset, its nodes append, and its `[tick]` / `[healthcheck]` replace the
 // shallower table wholesale — so a project extends a shared workflow instead
@@ -653,7 +653,7 @@ func (c *Config) definitionRoots(invocationDir string) []layerDir {
 	if c.BaseDir != "" {
 		dirs = append(dirs, layerDir{dir: c.BaseDir, global: true})
 	}
-	for _, anc := range cascadeAncestors(invocationDir) {
+	for _, anc := range cascadeCandidates(invocationDir) {
 		if c.trustsProjectRoot(anc) {
 			dirs = append(dirs, layerDir{dir: filepath.Join(anc, ".plect")})
 		}
@@ -661,8 +661,7 @@ func (c *Config) definitionRoots(invocationDir string) []layerDir {
 	return dirs
 }
 
-// trustsProjectRoot counts only listed roots, because a checkout the caller
-// stands in may be third-party content whose `.plect/` runs shell.
+// trustsProjectRoot counts only listed roots, since an unlisted checkout's `.plect/` can run shell.
 func (c *Config) trustsProjectRoot(dir string) bool {
 	canonical := func(path string) string {
 		if real, err := filepath.EvalSymlinks(path); err == nil {
@@ -679,10 +678,10 @@ func (c *Config) trustsProjectRoot(dir string) bool {
 	return false
 }
 
-// cascadeAncestors walks up from invocationDir, excluding it, ordered outermost-first.
+// cascadeCandidates walks up from invocationDir, including it, ordered outermost-first.
 // $HOME is the exclusive upper bound because the user's global config lives
 // at `~/.config/plect/` and `$HOME/.plect/` would collide with that.
-func cascadeAncestors(invocationDir string) []string {
+func cascadeCandidates(invocationDir string) []string {
 	if invocationDir == "" {
 		return nil
 	}
@@ -691,7 +690,7 @@ func cascadeAncestors(invocationDir string) []string {
 		cleanHome = filepath.Clean(home)
 	}
 	var chain []string
-	cur := filepath.Dir(filepath.Clean(invocationDir))
+	cur := filepath.Clean(invocationDir)
 	for {
 		if cur == cleanHome || cur == string(filepath.Separator) {
 			break
