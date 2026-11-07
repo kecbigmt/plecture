@@ -28,10 +28,13 @@ independent stops refuse it, and step 2 below clears both:
   database and refuses while a session that has not been destroyed still holds
   an unreleased `@workflow` record: a worktree, conversation directory, or
   scratch directory that a workspace provider acquired. The error names this
-  procedure. By then an earlier part of the upgrade has already been applied,
-  so the previous release refuses the database as newer than it supports.
-  Restore the data backup taken right before upgrading (step 3), reinstall
-  the previous release, and continue with step 1.
+  procedure. The refusal comes before any part of the upgrade is applied, so
+  the database stays at the previous release's schema: reinstall the previous
+  release and continue with step 1. A build from before this release applied
+  an earlier part of the upgrade before refusing, after which the previous
+  release refuses the database as newer than it supports; if such a build
+  refused, restore the data backup taken right before upgrading (step 3)
+  first.
 - **Lifecycle stop.** A session that passes the storage upgrade but whose
   pinned revision still uses a retired spelling is listed with `!retired`
   after its revision in `plect ls`, and `plect status` names the spellings

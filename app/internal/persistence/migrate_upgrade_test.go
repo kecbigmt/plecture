@@ -3,6 +3,7 @@ package persistence
 import (
 	"context"
 	"database/sql"
+	"fmt"
 	"strings"
 	"testing"
 	"time"
@@ -253,8 +254,6 @@ func TestMigrate_AddNodeExecutionIdentityPreservesExistingNodeRows(t *testing.T)
 // is dropped and the @workflow rows are deleted.
 const preWorkdirDirectoryVersion = 20261104140000
 
-const workdirMigrationInstruction = "docs/migrations/resource-and-workspace-effects-migration.md"
-
 // workdirMigrationFixture opens a database at the version before the
 // workdir migration and seeds one session with a workspace_dir, a retired
 // @workflow node execution of the given status, and an ordinary node.
@@ -329,8 +328,8 @@ func TestMigrate_WorkdirDirectoryRefusesWhileALiveSessionHoldsAnUnreleasedWorkfl
 			if err == nil {
 				t.Fatal("migration succeeded, want a refusal while a live session holds an unreleased @workflow node")
 			}
-			if !strings.Contains(err.Error(), workdirMigrationInstruction) {
-				t.Errorf("error = %q, want it to name %s", err, workdirMigrationInstruction)
+			if !strings.Contains(err.Error(), workdirDirectoryRefusal) {
+				t.Errorf("error = %q, want the workdir-directory refusal %q", err, workdirDirectoryRefusal)
 			}
 			if !sessionsHasColumn(t, db, "workspace_dir") {
 				t.Error("sessions.workspace_dir was dropped by a refused migration")
@@ -613,5 +612,97 @@ func TestMigrate_PopulationIdentityGainsTheProjectRootWithoutLosingRows(t *testi
 	}
 	if _, err := db.write.ExecContext(ctx, `UPDATE sessions SET project_root = '/projects/gadgets' WHERE id = 's1'`); err == nil {
 		t.Error("a session named a population of a context that declares none")
+	}
+}
+
+func seedWorkflowNodeAt(t *testing.T, version int64, sessionStatus, workflowNodeStatus string) *DB {
+	t.Helper()
+	db := openTestDB(t)
+	ctx := context.Background()
+	now := formatTime(time.Now().UTC())
+	provider, err := goose.NewProvider(goose.DialectSQLite3, db.write, db.migrations)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := provider.UpTo(ctx, version); err != nil {
+		t.Fatalf("UpTo(%d): %v", version, err)
+	}
+	var destroyedAt sql.NullString
+	if sessionStatus == "destroyed" {
+		destroyedAt = sql.NullString{String: now, Valid: true}
+	}
+	if _, err := db.write.ExecContext(ctx,
+		`INSERT INTO sessions (id, name, status, destroyed_at, workflow, workspace_dir, created_at, updated_at) VALUES ('s1', 's1', ?, ?, 'wf', '/tmp/old-workspace', ?, ?)`,
+		sessionStatus, destroyedAt, now, now,
+	); err != nil {
+		t.Fatalf("seed session: %v", err)
+	}
+	if version < nodeExecutionsVersion {
+		if _, err := db.write.ExecContext(ctx,
+			`INSERT INTO node_instances (session_id, node_id, scope, status, sequence) VALUES ('s1', '@workflow', 'session', ?, 1)`,
+			workflowNodeStatus,
+		); err != nil {
+			t.Fatalf("seed node_instances: %v", err)
+		}
+		return db
+	}
+	if _, err := db.write.ExecContext(ctx, `INSERT INTO node_instances (session_id, node_id) VALUES ('s1', '@workflow')`); err != nil {
+		t.Fatalf("seed node_instances: %v", err)
+	}
+	if _, err := db.write.ExecContext(ctx,
+		`INSERT INTO node_executions (id, session_id, node_id, sequence, scope, status) VALUES ('exec-workflow', 's1', '@workflow', 1, 'session', ?)`,
+		workflowNodeStatus,
+	); err != nil {
+		t.Fatalf("seed node_executions: %v", err)
+	}
+	return db
+}
+
+func TestMigrate_RefusesBeforeApplyingAnyMigrationWhileALiveSessionHoldsAnUnreleasedWorkflowNode(t *testing.T) {
+	for _, version := range []int64{firstReleasedVersion, 20261104014706} {
+		for _, workflowNodeStatus := range []string{"produced", "failed"} {
+			t.Run(fmt.Sprintf("%d/%s", version, workflowNodeStatus), func(t *testing.T) {
+				db := seedWorkflowNodeAt(t, version, "up", workflowNodeStatus)
+				ctx := context.Background()
+
+				err := db.Migrate(ctx)
+				if err == nil {
+					t.Fatal("Migrate succeeded, want a refusal while a live session holds an unreleased @workflow node")
+				}
+				if !strings.Contains(err.Error(), workdirDirectoryRefusal) {
+					t.Errorf("error = %q, want the workdir-directory refusal %q", err, workdirDirectoryRefusal)
+				}
+				if current, err := db.Version(ctx); err != nil || current != version {
+					t.Errorf("version after the refusal = (%d, %v), want %d unchanged", current, err, version)
+				}
+			})
+		}
+	}
+}
+
+func TestMigrate_UpgradesPastAWorkflowNodeThatNoLiveSessionHolds(t *testing.T) {
+	tests := []struct {
+		name               string
+		sessionStatus      string
+		workflowNodeStatus string
+	}{
+		{"released workflow node of a live session", "up", "cleaned"},
+		{"unreleased workflow node of a destroyed session", "destroyed", "produced"},
+	}
+	for _, version := range []int64{firstReleasedVersion, 20261104014706} {
+		for _, tc := range tests {
+			t.Run(fmt.Sprintf("%d/%s", version, tc.name), func(t *testing.T) {
+				db := seedWorkflowNodeAt(t, version, tc.sessionStatus, tc.workflowNodeStatus)
+				ctx := context.Background()
+
+				if err := db.Migrate(ctx); err != nil {
+					t.Fatalf("Migrate: %v", err)
+				}
+				current, target, err := db.version(ctx)
+				if err != nil || current != target {
+					t.Errorf("version after Migrate = (%d, %v), want %d", current, err, target)
+				}
+			})
+		}
 	}
 }

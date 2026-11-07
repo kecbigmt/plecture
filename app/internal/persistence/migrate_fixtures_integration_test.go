@@ -4,11 +4,14 @@ package persistence
 
 import (
 	"context"
+	"io/fs"
 	"os"
 	"path/filepath"
 	"slices"
+	"strconv"
 	"strings"
 	"testing"
+	"testing/fstest"
 )
 
 type rowCheck struct {
@@ -183,4 +186,83 @@ func queryStrings(t *testing.T, ctx context.Context, db *DB, query string) []str
 		t.Fatalf("iterate %s: %v", query, err)
 	}
 	return got
+}
+
+// A fixture under testdata/upgrade/refused is a released schema whose rows
+// the current migrations must refuse; the refusal is only safe to follow if
+// that release's own binary can still open the store afterwards.
+func TestMigrate_RefusedUpgradeLeavesTheReleasedSchemaOpenable(t *testing.T) {
+	paths, err := filepath.Glob(filepath.Join("testdata", "upgrade", "refused", "*.sql"))
+	if err != nil {
+		t.Fatalf("list fixtures: %v", err)
+	}
+	if len(paths) == 0 {
+		t.Fatal("no refused-upgrade fixtures found")
+	}
+	for _, fixturePath := range paths {
+		fixture := strings.TrimSuffix(filepath.Base(fixturePath), ".sql")
+		t.Run(fixture, func(t *testing.T) {
+			released, err := strconv.ParseInt(fixture, 10, 64)
+			if err != nil {
+				t.Fatalf("fixture name %q is not a schema version: %v", fixture, err)
+			}
+			ctx := context.Background()
+			path := PathIn(t.TempDir())
+			db, err := Open(path)
+			if err != nil {
+				t.Fatalf("Open: %v", err)
+			}
+			loadUpgradeFixture(t, ctx, db, fixturePath)
+			before := queryStrings(t, ctx, db, workflowNodeExecutions)
+
+			err = db.Migrate(ctx)
+			if err == nil {
+				t.Fatal("Migrate succeeded, want a refusal")
+			}
+			if !strings.Contains(err.Error(), workdirDirectoryRefusal) {
+				t.Errorf("error = %q, want the workdir-directory refusal %q", err, workdirDirectoryRefusal)
+			}
+			if current, err := db.Version(ctx); err != nil || current != released {
+				t.Errorf("version after a refused Migrate = (%d, %v), want %d", current, err, released)
+			}
+			if err := db.Close(); err != nil {
+				t.Fatalf("Close: %v", err)
+			}
+
+			previous, err := ensureCurrent(ctx, path, migrationsThrough(t, released), false, false)
+			if err != nil {
+				t.Fatalf("the release at schema %d cannot open the store after the refusal: %v", released, err)
+			}
+			defer previous.Close()
+			if got := queryStrings(t, ctx, previous, workflowNodeExecutions); !slices.Equal(got, before) {
+				t.Errorf("@workflow executions = %q after the refusal, want %q", got, before)
+			}
+		})
+	}
+}
+
+const workflowNodeExecutions = `SELECT id || '|' || status FROM node_executions WHERE node_id = '@workflow' ORDER BY id`
+
+// migrationsThrough is the migration source of a binary whose newest
+// migration is version, standing in for that release's own binary.
+func migrationsThrough(t *testing.T, version int64) fs.FS {
+	t.Helper()
+	source := migrationsSourceFS()
+	entries, err := fs.ReadDir(source, ".")
+	if err != nil {
+		t.Fatalf("read migrations: %v", err)
+	}
+	through := fstest.MapFS{}
+	for _, entry := range entries {
+		v, err := strconv.ParseInt(strings.SplitN(entry.Name(), "_", 2)[0], 10, 64)
+		if err != nil || v > version {
+			continue
+		}
+		body, err := fs.ReadFile(source, entry.Name())
+		if err != nil {
+			t.Fatalf("read %s: %v", entry.Name(), err)
+		}
+		through[entry.Name()] = &fstest.MapFile{Data: body}
+	}
+	return through
 }
