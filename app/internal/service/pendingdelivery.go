@@ -19,28 +19,28 @@ func retryStore(store *state.Store) (*persistence.DB, error) {
 	return persistence.EnsureCurrentShared(context.Background(), persistence.PathIn(store.Dir()))
 }
 
-func queuePendingSubscribe(store *state.Store, sessionName, resourceID string) error {
+func queuePendingSubscribe(store *state.Store, sessionName, resourceID string, inputs map[string]any) error {
 	db, err := retryStore(store)
 	if err != nil {
 		return err
 	}
-	return db.QueueSubscriptionRetry(context.Background(), sessionName, retrySubscribe, resourceID, nil)
+	return db.QueueSubscriptionRetry(context.Background(), sessionName, retrySubscribe, resourceID, inputs)
 }
 
-func queuePendingUnsubscribe(store *state.Store, sessionName, resourceID string) error {
+func queuePendingUnsubscribe(store *state.Store, sessionName, resourceID string, inputs map[string]any) error {
 	db, err := retryStore(store)
 	if err != nil {
 		return err
 	}
-	return db.QueueSubscriptionRetry(context.Background(), sessionName, retryUnsubscribe, resourceID, nil)
+	return db.QueueSubscriptionRetry(context.Background(), sessionName, retryUnsubscribe, resourceID, inputs)
 }
 
-func queuePendingUnsubscribeForSessionID(store *state.Store, sessionID, resourceID string) error {
+func queuePendingUnsubscribeForSessionID(store *state.Store, sessionID, resourceID string, inputs map[string]any) error {
 	db, err := retryStore(store)
 	if err != nil {
 		return err
 	}
-	return db.QueueSubscriptionRetryByID(context.Background(), sessionID, retryUnsubscribe, resourceID, nil)
+	return db.QueueSubscriptionRetryByID(context.Background(), sessionID, retryUnsubscribe, resourceID, inputs)
 }
 
 func dequeuePendingDelivery(store *state.Store, retry persistence.SubscriptionRetry) error {
@@ -103,7 +103,7 @@ func sweepOrphanedPendingDeliveries(cfg *config.Config, store *state.Store) {
 				sweepErr = dequeuePendingDelivery(store, retry)
 				return
 			}
-			unsubscribed, err := unsubscribeIfWired(cfg, retry.Session, retry.ResourceID)
+			unsubscribed, err := unsubscribeIfWired(cfg, retry.Session, retry.ResourceID, retry.Inputs)
 			if err != nil || !unsubscribed {
 				sweepErr = err
 				return
@@ -153,7 +153,7 @@ func flushOnePendingDelivery(cfg *config.Config, store *state.Store, retry persi
 		if fresh == nil || !resourceStillNeededBySession(fresh, retry.ResourceID) {
 			return dequeuePendingDelivery(store, retry)
 		}
-		subscribed, err := subscribeIfWiredWithPolicy(cfg, retry.Session, retry.ResourceID, nodeSubscriptionNeededBySession(fresh, retry.ResourceID))
+		subscribed, err := subscribeIfWiredWithPolicy(cfg, retry.Session, retry.ResourceID, retry.Inputs, nodeSubscriptionNeededBySession(fresh, retry.ResourceID))
 		if err != nil || !subscribed {
 			return err
 		}
@@ -162,7 +162,7 @@ func flushOnePendingDelivery(cfg *config.Config, store *state.Store, retry persi
 		if fresh != nil && resourceStillNeededBySession(fresh, retry.ResourceID) {
 			return dequeuePendingDelivery(store, retry)
 		}
-		unsubscribed, err := unsubscribeIfWired(cfg, retry.Session, retry.ResourceID)
+		unsubscribed, err := unsubscribeIfWired(cfg, retry.Session, retry.ResourceID, retry.Inputs)
 		if err != nil || !unsubscribed {
 			return err
 		}

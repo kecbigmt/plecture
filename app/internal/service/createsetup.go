@@ -47,6 +47,9 @@ func createWithWorkflowSetup(cfg *config.Config, store *state.Store, params Crea
 		if params.Inputs != nil {
 			return nil, &Error{Code: ErrInvalidInput, Message: inputsOnExistingSessionMessage()}
 		}
+		if params.ResourceInputs != nil {
+			return nil, &Error{Code: ErrInvalidInput, Message: resourceInputsOnExistingSessionMessage()}
+		}
 		if params.Workflow != "" && params.Workflow != existing.Workflow {
 			return nil, &Error{Code: ErrInvalidInput, Message: fmt.Sprintf("--workflow %q does not match the session's frozen workflow %q; destroy and recreate to switch", params.Workflow, existing.Workflow)}
 		}
@@ -69,21 +72,25 @@ func createWithWorkflowSetup(cfg *config.Config, store *state.Store, params Crea
 		if validateErr != nil {
 			return nil, validateErr
 		}
+		if inputsErr := validateEntryInputs(cfg, disp.ResourceKey, params.ResourceInputs); inputsErr != nil {
+			return nil, inputsErr
+		}
 		session = &domain.Session{
 			Name: sessionName,
 			// The address, not the id: the id names the session and cannot say
 			// which declaration produced it, so a plan reloaded later would
 			// look for a workflow that answers to something else.
-			ParentSession: parentSession,
-			Status:        contract.SessionStatusDown,
-			Workflow:      wf.Address,
-			ResourceType:  disp.ResourceKey,
-			Tag:           params.Tag,
-			Population:    params.Population,
-			Inputs:        input,
-			Nodes:         make(map[string]*contract.TaskState),
-			Tasks:         make(map[string]*contract.TaskState),
-			CreatedAt:     now,
+			ParentSession:  parentSession,
+			Status:         contract.SessionStatusDown,
+			Workflow:       wf.Address,
+			ResourceType:   disp.ResourceKey,
+			Tag:            params.Tag,
+			Population:     params.Population,
+			Inputs:         input,
+			ResourceInputs: params.ResourceInputs,
+			Nodes:          make(map[string]*contract.TaskState),
+			Tasks:          make(map[string]*contract.TaskState),
+			CreatedAt:      now,
 		}
 	}
 	session.ResourceID = resource
@@ -145,7 +152,7 @@ func createWithWorkflowSetup(cfg *config.Config, store *state.Store, params Crea
 
 	// Binding implies delivery for the session's own resource too, not just
 	// a dynamic task setup's own bound one.
-	if _, errMsg := wireDeliveryOnSetup(cfg, store, sessionName, resource, false); errMsg != "" {
+	if _, errMsg := wireDeliveryOnSetup(cfg, store, sessionName, resource, session.ResourceInputs, false); errMsg != "" {
 		slog.Warn("resource delivery wiring failed at session create", "session", sessionName, "resource", resource, "error", errMsg)
 	}
 	flushPendingDeliveryLogged(cfg, store, sessionName)
@@ -172,5 +179,22 @@ func setSessionRevision(session *domain.Session, revision config.WorkflowRevisio
 	}
 	session.WorkflowRevision = digest
 	session.WorkflowRevisionBody = string(body)
+	return nil
+}
+
+// validateEntryInputs runs before the session row exists, so an entry
+// binding its resource would refuse leaves nothing behind.
+func validateEntryInputs(cfg *config.Config, resourceKey string, inputs map[string]any) *Error {
+	defs, err := cfg.LoadResourceDefs()
+	if err != nil {
+		return &Error{Code: ErrExecutionFailed, Message: fmt.Sprintf("load resources: %v", err)}
+	}
+	def, ok := defs[resourceKey]
+	if !ok {
+		return &Error{Code: ErrExecutionFailed, Message: fmt.Sprintf("entry resource %q is not declared", resourceKey)}
+	}
+	if err := task.ValidateResourceInputs(def, inputs); err != nil {
+		return &Error{Code: ErrInvalidInput, Message: fmt.Sprintf("entry resource inputs: %v", err)}
+	}
 	return nil
 }

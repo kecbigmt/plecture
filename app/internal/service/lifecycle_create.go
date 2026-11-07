@@ -16,13 +16,17 @@ import (
 // run-scoped lifecycle via Up. session-scoped tasks run after workspace
 // creation.
 type CreateParams struct {
-	URL           string
-	Tag           string
-	Workflow      string         // workflow name from --workflow; empty selects the one workflow accepting the resource type
-	Inputs        map[string]any // frozen at create time; passing to an existing session returns ErrInvalidInput
-	ParentSession string         // parent session name; empty falls back to PLECT_SESSION_NAME when it exists and is not self.
-	Observer      task.Observer
-	Population    *contract.PopulationProvenance
+	URL      string
+	Tag      string
+	Workflow string         // workflow name from --workflow; empty selects the one workflow accepting the resource type
+	Inputs   map[string]any // frozen at create time; passing to an existing session returns ErrInvalidInput
+	// ResourceInputs is the entry binding's resource action input object,
+	// recorded at create time; passing it to an existing session returns
+	// ErrInvalidInput.
+	ResourceInputs map[string]any
+	ParentSession  string // parent session name; empty falls back to PLECT_SESSION_NAME when it exists and is not self.
+	Observer       task.Observer
+	Population     *contract.PopulationProvenance
 	// InvocationDir is the caller's directory for a direct invocation, empty
 	// for a chain or a population, which read only plugin and global layers.
 	InvocationDir string

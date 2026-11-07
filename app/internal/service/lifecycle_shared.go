@@ -274,6 +274,10 @@ func inputsOnExistingSessionMessage() string {
 	return "--input can only be used when creating a session.\nThis session already exists; destroy and recreate it to change input."
 }
 
+func resourceInputsOnExistingSessionMessage() string {
+	return "--resource-inputs can only be used when creating a session, where the entry binding is made.\nThis session already exists; destroy and recreate it to change the entry resource inputs."
+}
+
 // resolveSessionInputs validates raw input against the active workflow's
 // input_schema when present, falling back to the global config-level schema
 // for the legacy inline-tasks path. nil is normalized to `{}` only when a

@@ -24,12 +24,15 @@ type UpParams struct {
 	// valid when Identifier is a resource; combining Tag with a bare session
 	// name returns ErrInvalidTag so misuse surfaces immediately rather than
 	// silently ignoring the flag.
-	Tag           string
-	Workflow      string         // forwarded to auto-create; rejected when state already exists
-	Inputs        map[string]any // forwarded to auto-create; rejected when state already exists
-	ParentSession string         // forwarded to auto-create; empty falls back to PLECT_SESSION_NAME when it exists and is not self.
-	Observer      task.Observer
-	Population    *contract.PopulationProvenance
+	Tag      string
+	Workflow string         // forwarded to auto-create; rejected when state already exists
+	Inputs   map[string]any // forwarded to auto-create; rejected when state already exists
+	// ResourceInputs is the entry binding's resource action input object,
+	// forwarded to auto-create; rejected when state already exists.
+	ResourceInputs map[string]any
+	ParentSession  string // forwarded to auto-create; empty falls back to PLECT_SESSION_NAME when it exists and is not self.
+	Observer       task.Observer
+	Population     *contract.PopulationProvenance
 	// ForceRecreate rebuilds the runtime for an existing session while
 	// preserving durable identity and event log state.
 	ForceRecreate  bool
@@ -141,6 +144,9 @@ func upUnlocked(cfg *config.Config, store *state.Store, params UpParams) (*UpRes
 		if params.Inputs != nil && existing != nil {
 			return nil, &Error{Code: ErrInvalidInput, Message: inputsOnExistingSessionMessage()}
 		}
+		if params.ResourceInputs != nil && existing != nil {
+			return nil, &Error{Code: ErrInvalidInput, Message: resourceInputsOnExistingSessionMessage()}
+		}
 		if params.Workflow != "" && existing != nil && params.Workflow != existing.Workflow {
 			return nil, &Error{Code: ErrInvalidInput, Message: fmt.Sprintf("--workflow %q does not match the session's frozen workflow %q", params.Workflow, existing.Workflow)}
 		}
@@ -175,14 +181,15 @@ func upUnlocked(cfg *config.Config, store *state.Store, params UpParams) (*UpRes
 		}
 		if existing == nil || hasIncompleteSessionTask(cfg, existing) {
 			if _, err := Create(cfg, store, CreateParams{
-				URL:           params.Identifier,
-				Tag:           tag,
-				Workflow:      params.Workflow,
-				Inputs:        params.Inputs,
-				ParentSession: params.ParentSession,
-				Observer:      params.Observer,
-				Population:    params.Population,
-				InvocationDir: params.InvocationDir,
+				URL:            params.Identifier,
+				Tag:            tag,
+				Workflow:       params.Workflow,
+				Inputs:         params.Inputs,
+				ResourceInputs: params.ResourceInputs,
+				ParentSession:  params.ParentSession,
+				Observer:       params.Observer,
+				Population:     params.Population,
+				InvocationDir:  params.InvocationDir,
 			}); err != nil {
 				return nil, err
 			}
@@ -203,6 +210,9 @@ func upUnlocked(cfg *config.Config, store *state.Store, params UpParams) (*UpRes
 		}
 		if params.InitialTask != nil {
 			return nil, &Error{Code: ErrInvalidInput, Message: "--task is only valid with a resource identifier; to add a task to an existing session, run `plect task setup`"}
+		}
+		if params.ResourceInputs != nil {
+			return nil, &Error{Code: ErrInvalidInput, Message: resourceInputsOnExistingSessionMessage()}
 		}
 	}
 

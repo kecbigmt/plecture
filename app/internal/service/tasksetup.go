@@ -277,7 +277,7 @@ func TaskSetup(cfg *config.Config, store *state.Store, params TaskSetupParams) (
 	// [[event.channel]] delivers.
 	appendInstruction(store, resolvedName, key, params.Resource, instructionOutput(resultOutputs))
 
-	subscribed, subscribeErrMsg := wireDeliveryOnSetup(cfg, store, resolvedName, params.Resource, false)
+	subscribed, subscribeErrMsg := wireDeliveryOnSetup(cfg, store, resolvedName, params.Resource, nil, false)
 
 	return &TaskSetupResult{
 		SessionName:    resolvedName,
