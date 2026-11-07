@@ -676,19 +676,10 @@ CREATE TABLE event_cursors (
 );
 ```
 
-The migration history begins with a transaction-only goose migration. Goose
-records the migration version in its ledger in the same transaction as the
-schema changes; migration files do not use a `NO TRANSACTION` directive.
-Migrations are Atlas-generated from `schema.sql` (see
-`app/internal/persistence/doc.go`) wherever Atlas's own diff is usable
-as-is; a structural change Atlas cannot safely diff against a database
-already holding rows (see `app/internal/persistence/migrations/`'s own
-`20260907002408_...` migration for the case this design's own session-id
-rework hit, and its `20260907085032_...` migration for the node execution
-identity split) is hand-written instead, reaching the identical structural
-end state `schema.sql` declares. Either way the migration file's exact SQL
-text — quoting, per-index `CREATE` statements — is authoritative over any
-excerpt here.
+The migration history (see "Migration history" below) reaches the structural
+end state `schema.sql` declares; each migration file's exact SQL text —
+quoting, per-index `CREATE` statements — is authoritative over any excerpt
+here.
 
 The append query obtains the next sequence inside the caller's write
 transaction. The persistence append method resolves the session's live row
@@ -746,6 +737,66 @@ state transition produces an event.
 Destroy preserves its checkpoint order: external cleanup, session checkpoint,
 lifecycle append, then the session's `Destroy` status transition. The retained
 destroyed row remains available to post-teardown status and retry handling.
+
+## Migration history
+
+`app/internal/persistence/schema.sql` is the declarative source of truth for
+the database structure. The migration history is hand-written goose SQL in
+`app/internal/persistence/migrations/`, embedded in the core binary and
+applied by goose, whose `goose_db_version` ledger is the only record of which
+migrations have run. A migration runs in goose's transaction, so its ledger
+entry commits with its schema change. A migration that rebuilds a table that
+other tables reference declares `-- +goose NO TRANSACTION` and opens its own
+`BEGIN IMMEDIATE` after `PRAGMA foreign_keys = off`: SQLite ignores that
+pragma inside a transaction, and dropping a referenced table with enforcement
+on deletes the referencing rows in cascade.
+
+Migrations are forward-only. A migration file has a `-- +goose Up` section
+and no `-- +goose Down` section. A migration that has shipped in a release
+never changes; a problem found after an upgrade is fixed with a new
+migration.
+
+Three Go tests keep the history and `schema.sql` in agreement:
+
+- `TestSchemaSQL_MatchesMigrationHistory` applies every embedded migration to
+  an empty database and compares the result with `schema.sql` applied
+  directly. Tables are compared through SQLite introspection: columns,
+  secondary indexes including a partial index's predicate, foreign keys, and
+  CHECK constraints. Triggers and views are compared by `(type, name)`, their
+  table, and their normalized `CREATE` text: comments outside string literals
+  are stripped, identifier quoting is dropped, whitespace is collapsed, and
+  case is folded outside string literals. String-literal contents compare
+  byte for byte. goose's ledger table is excluded.
+- `TestMigrationsMatchTheirManifest` (`app/internal/migrationsum`) compares
+  every migration file with `app/internal/persistence/migrations.sum`. The
+  manifest is in `sha256sum` format: one `<sha256 hex>  <file name>` line
+  per migration over its raw bytes, sorted by name, with no aggregate line.
+  The test fails on a changed hash, an unlisted file, a listed file that no
+  longer exists, and a migration with a `+goose Down` annotation.
+  `go generate ./internal/persistence/...` rewrites the manifest after an
+  intended edit of an unreleased migration, and refuses while any migration
+  has a Down section. `cd migrations && sha256sum -c ../migrations.sum`
+  checks it without Go.
+- `TestMigrate_UpgradesEveryReleasedSchema` (`-tags integration`) loads one
+  fixture per released schema version,
+  `app/internal/persistence/testdata/upgrade/<version>.sql`: a `sqlite3`
+  dump of a store built from that release tag's own migration files, its
+  goose ledger, and representative rows. It runs the current migrations with
+  foreign keys enforced and asserts the resulting version and the rows that
+  survive. A release with a new schema version adds its fixture.
+
+### Rollback
+
+A problem found after an upgrade is fixed forward, with a new migration.
+Restoring the backup taken before the upgrade is allowed only right after the
+upgrade, before anything has been written to the new schema: that is the one
+case in which a restore loses nothing. There is no other rollback path.
+
+`plect` has no command that reverses a migration. Running the goose CLI's
+`down` against `storage.db` must never be done: goose treats a missing Down
+section as an empty migration, so it deletes the ledger entry and leaves the
+schema unchanged, and the ledger then describes a schema the store does not
+have. A development reset uses a scratch `PLECT_DATA_HOME` instead.
 
 ## Migration access gate
 

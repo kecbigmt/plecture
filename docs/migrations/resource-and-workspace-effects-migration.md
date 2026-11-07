@@ -311,6 +311,11 @@ session's remaining execution records.
 
 ## Roll back
 
-To recover, stop the new release, restore the configuration and state copies,
-and restart the previous release. Do not mix old configuration with migrated
-state or migrated configuration with old state.
+A problem found after the upgrade is fixed forward, by a release that carries a
+new migration. Restoring the backup is allowed only right after the upgrade,
+before anything has been written to the new schema: that is the one case in
+which it loses nothing. In that case, stop the new release, restore the
+configuration and state copies together, and restart the previous release. Do
+not mix old configuration with migrated state or migrated configuration with
+old state. There is no other rollback path; never run the goose CLI's `down`
+against `storage.db`.
