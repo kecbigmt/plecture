@@ -953,6 +953,15 @@ func TestExtractChecks_HandlesNestedParens(t *testing.T) {
 	}
 }
 
+func TestNormalizeSQLFragment_KeepsWhitespaceInsideQuotedIdentifiers(t *testing.T) {
+	if a, b := normalizeSQLFragment(`SELECT "a  b" FROM t`), normalizeSQLFragment(`SELECT "a b" FROM t`); a == b {
+		t.Errorf("two names that differ only in inner whitespace both normalized to %q", a)
+	}
+	if a, b := normalizeSQLFragment(`SELECT "Note" FROM t`), normalizeSQLFragment("SELECT [note] FROM `t`"); a != b {
+		t.Errorf("the same names in different quoting normalized to %q and %q", a, b)
+	}
+}
+
 // TestNormalizeSQLFragment_PreservesStringLiteralCaseAndWhitespace proves
 // normalizeSQLFragment folds keyword/identifier case and whitespace layout
 // but never touches what is inside a string literal — the regression a
@@ -970,15 +979,6 @@ func TestNormalizeSQLFragment_PreservesStringLiteralCaseAndWhitespace(t *testing
 // TestExtractChecks_DistinguishesLiteralCase is the same regression as
 // above, exercised through the full CHECK-extraction path rather than
 // normalizeSQLFragment in isolation.
-func TestNormalizeSQLFragment_KeepsWhitespaceInsideQuotedIdentifiers(t *testing.T) {
-	if a, b := normalizeSQLFragment(`SELECT "a  b" FROM t`), normalizeSQLFragment(`SELECT "a b" FROM t`); a == b {
-		t.Errorf("two names that differ only in inner whitespace both normalized to %q", a)
-	}
-	if a, b := normalizeSQLFragment(`SELECT "Note" FROM t`), normalizeSQLFragment("SELECT [note] FROM `t`"); a != b {
-		t.Errorf("the same names in different quoting normalized to %q and %q", a, b)
-	}
-}
-
 func TestExtractChecks_DistinguishesLiteralCase(t *testing.T) {
 	upper := extractChecks("CREATE TABLE t (status TEXT, CHECK (status = 'Active'))")
 	lower := extractChecks("CREATE TABLE t (status TEXT, CHECK (status = 'active'))")
