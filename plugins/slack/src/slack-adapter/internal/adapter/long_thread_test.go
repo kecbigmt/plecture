@@ -8,6 +8,7 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"unicode/utf8"
 
 	"github.com/slack-go/slack"
 	"github.com/slack-go/slack/slackevents"
@@ -234,5 +235,121 @@ func TestDeliveredMentionIsLogged(t *testing.T) {
 
 	if !strings.Contains(log.String(), "app mention delivered") || !strings.Contains(log.String(), "session_name=work") {
 		t.Fatalf("delivery was not logged:\n%s", log.String())
+	}
+}
+
+func TestMessageEventMentionEntryGuardsLogTheirReason(t *testing.T) {
+	for _, tc := range []struct {
+		name    string
+		cfg     Config
+		payload string
+		reason  string
+	}{
+		{
+			name:    "bot message",
+			payload: `{"type":"event_callback","event":{"type":"message","bot_id":"B1","user":"U-person","text":"<@U-bot> act","ts":"1700000000.000003","thread_ts":"1700000000.000001","channel":"C1"}}`,
+			reason:  "bot_or_subtype",
+		},
+		{
+			name:    "user not allowed",
+			cfg:     Config{AllowedUserIDs: []string{"U-allowed"}},
+			payload: messageMentionPayload,
+			reason:  "user_not_allowed",
+		},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			cfg := tc.cfg
+			a := newTestAdapter(&cfg)
+			a.botUserID = "U-bot"
+			a.eventPublisher = &recordingEventPublisher{}
+			var log bytes.Buffer
+			a.logger = slog.New(slog.NewTextHandler(&log, nil))
+
+			a.handleEventsAPI(parseMentionFallbackEvent(t, tc.payload))
+
+			if !strings.Contains(log.String(), "msg=\"message mention skipped\" reason="+tc.reason) {
+				t.Fatalf("log does not state reason %q at INFO:\n%s", tc.reason, log.String())
+			}
+		})
+	}
+}
+
+// Ordinary bot posts and edits arrive constantly; only a dropped mention is
+// worth an INFO line.
+func TestNonMentionMessageDropStaysOutOfInfoLog(t *testing.T) {
+	a := newTestAdapter(&Config{})
+	a.botUserID = "U-bot"
+	var log bytes.Buffer
+	a.logger = slog.New(slog.NewTextHandler(&log, nil))
+
+	a.handleEventsAPI(parseMentionFallbackEvent(t, `{"type":"event_callback","event":{"type":"message","bot_id":"B1","user":"U-other-bot","text":"progress update","ts":"1700000000.000003","thread_ts":"1700000000.000001","channel":"C1"}}`))
+
+	if strings.Contains(log.String(), "skipped") {
+		t.Fatalf("non-mention drop logged at INFO:\n%s", log.String())
+	}
+}
+
+// Each "あ" is one three-byte UTF-8 character, so these texts exercise
+// a byte budget that a character count would underestimate.
+func TestOversizedRetainedLinesStayWithinTranscriptBudget(t *testing.T) {
+	huge := func(n int) string { return strings.Repeat("あ", n) }
+	for _, tc := range []struct {
+		name    string
+		root    string
+		mention string
+	}{
+		{name: "root", root: "Root " + huge(45000), mention: "<@U-bot> act"},
+		{name: "mention", root: "Root", mention: "<@U-bot> act " + huge(45000)},
+		{name: "root and mention", root: "Root " + huge(30000), mention: "<@U-bot> act " + huge(15000)},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			argsPath := installRecordingPlect(t)
+			a := newTestAdapter(&Config{})
+			a.botUserID = "U-bot"
+			a.eventPublisher = cliEventPublisher{}
+			a.broker.Subscribe(Subscriber{SessionName: "work", ThreadTS: longThreadTS, ChannelID: "C1"})
+			a.threadFetcher = &fakeThreadFetcher{messages: []slack.Message{
+				slackMessage(longThreadTS, "U-root", tc.root),
+				slackMessage("1700000001.000001", "U-alice", "reply"),
+			}}
+
+			a.handleAppMention(&slackevents.AppMentionEvent{User: "U-person", Text: tc.mention, TimeStamp: longMentionTS, ThreadTimeStamp: longThreadTS, Channel: "C1"})
+
+			body := recordedPublishBody(t, argsPath)
+			assertWithinTranscriptBudget(t, body)
+			assertBodyContainsInOrder(t, body, []string{"Root", "<@U-bot> act"})
+			if sub, _ := a.broker.Find("work", longThreadTS); sub.DeliveredThrough != longMentionTS {
+				t.Fatalf("watermark = %q, want mention timestamp", sub.DeliveredThrough)
+			}
+		})
+	}
+}
+
+func TestCatchUpWithOversizedRootStaysWithinTranscriptBudget(t *testing.T) {
+	argsPath := installRecordingPlect(t)
+	a := newTestAdapter(&Config{})
+	a.eventPublisher = cliEventPublisher{}
+	a.threadFetcher = &fakeThreadFetcher{messages: []slack.Message{
+		slackMessage(longThreadTS, "U-root", "Root "+strings.Repeat("あ", 45000)),
+		slackMessage("1700000001.000001", "U-alice", "reply"),
+	}}
+	sub := a.broker.Subscribe(Subscriber{SessionName: "work", ThreadTS: longThreadTS, ChannelID: "C1"})
+
+	sub = a.catchUpThread(sub, "1700000001.000001")
+
+	body := recordedPublishBody(t, argsPath)
+	assertWithinTranscriptBudget(t, body)
+	if !strings.Contains(body, "Root") || sub.DeliveredThrough != "1700000001.000001" {
+		t.Fatalf("catch-up body or watermark wrong: watermark=%q", sub.DeliveredThrough)
+	}
+}
+
+func assertWithinTranscriptBudget(t *testing.T, body string) {
+	t.Helper()
+	if len(body) > maxTranscriptBytes {
+		t.Fatalf("transcript is %d bytes, over the %d-byte budget", len(body), maxTranscriptBytes)
+	}
+	if !utf8.ValidString(body) {
+		t.Fatalf("transcript was cut inside a UTF-8 sequence")
 	}
 }
