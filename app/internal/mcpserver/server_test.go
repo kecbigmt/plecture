@@ -3,6 +3,7 @@ package mcpserver
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
@@ -180,5 +181,52 @@ func TestHandleUp_BySessionNameIgnoresTheServersUntrustedRoot(t *testing.T) {
 	}
 	if after, _ := os.ReadFile(configPath); string(after) != string(trustedConfig) {
 		t.Errorf("config.toml changed:\n%s", after)
+	}
+}
+
+func TestHandleWorkflowList_InACheckoutUsesTheSessionVariablesRoot(t *testing.T) {
+	setUpConfigHome(t)
+	projects, err := filepath.EvalSymlinks(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	root := filepath.Join(projects, "repo")
+	checkout := filepath.Join(projects, "checkout")
+	for _, dir := range []string{root, checkout} {
+		if err := os.MkdirAll(filepath.Join(dir, ".plect", "workflows"), 0o755); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(filepath.Join(dir, ".plect", "project.toml"), []byte("schema_version = 2\n"), 0o644); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(filepath.Join(dir, ".plect", "workflows", "local.toml"), []byte("[local]\nkind = \"workflow\"\nresource = \"plain_resource\"\n"), 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
+	configPath := filepath.Join(os.Getenv("HOME"), ".config", "plect", "config.toml")
+	trustedConfig := []byte("schema_version = 2\ntrusted_project_roots = [\"" + root + "\"]\n")
+	if err := os.WriteFile(configPath, trustedConfig, 0o644); err != nil {
+		t.Fatal(err)
+	}
+	cfg, err := config.Load()
+	if err != nil {
+		t.Fatal(err)
+	}
+	created, err := service.Create(cfg, state.NewStore(""), service.CreateParams{URL: "widget", Workflow: "plain", Tag: "work", ProjectRoot: root})
+	if err != nil {
+		t.Fatalf("Create in the trusted root: %v", err)
+	}
+	t.Setenv("PLECT_SESSION_NAME", created.SessionName)
+	t.Chdir(checkout)
+
+	result, err := handleWorkflowList(context.Background(), reqWith(map[string]any{}))
+	if err != nil {
+		t.Fatalf("handleWorkflowList: %v", err)
+	}
+	if result.IsError {
+		t.Fatalf("workflow list from the checkout failed: %s", extractErrorText(result))
+	}
+	if out := decodeJSONResult(t, result); !strings.Contains(fmt.Sprint(out["workflows"]), "local") {
+		t.Errorf("workflows = %v; want the session root's workflow", out["workflows"])
 	}
 }

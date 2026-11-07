@@ -10,16 +10,22 @@ import (
 	"github.com/spf13/cobra"
 
 	"github.com/kecbigmt/plecture/app/internal/config"
+	"github.com/kecbigmt/plecture/app/internal/service"
+	"github.com/kecbigmt/plecture/app/internal/state"
 )
 
-// selectProjectRoot chooses the configuration context of the command's
-// working directory. An unlisted project root is put to the person at the
-// terminal; with no one to ask, the untrusted-root error stands. The prompt
-// goes to stderr so a confirmed run's stdout stays the command's own output.
+// selectProjectRoot puts an unlisted project root to the person at the
+// terminal; with no one to ask, the untrusted-root error stands. A session's
+// own root is never put to them: trust is granted to a root found from the
+// working directory, not to one a session recorded. The prompt goes to stderr
+// so a confirmed run's stdout stays the command's own output.
 func selectProjectRoot(cmd *cobra.Command, cfg *config.Config) (string, error) {
 	dir, err := os.Getwd()
 	if err != nil {
 		return "", fmt.Errorf("getwd: %w", err)
+	}
+	if root, found, err := service.SessionProjectRoot(cfg, state.NewStore(""), dir); found || err != nil {
+		return root, err
 	}
 	root, err := cfg.SelectProjectRoot(dir)
 	var untrusted *config.UntrustedProjectError

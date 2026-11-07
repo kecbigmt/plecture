@@ -49,6 +49,17 @@ canonical path is in `trusted_project_roots`, that root's `.plect/` definition
 tree composes after plugins and the machine-owned global layer. No other
 ancestor is read, and a generated checkout is never a configuration source.
 
+A CLI or MCP invocation made for a live session takes that session's recorded
+root and searches no directory. The session is the one `PLECT_SESSION_NAME`
+names, or, without one, the session whose evaluated `workdir` is or contains
+the invocation directory; when several workdirs contain it, the deepest one
+decides. Sessions that share that deepest workdir but record different roots
+stop the invocation with an error naming them. A session whose workdir cannot
+yet be evaluated claims no directory. The recorded root must still be marked
+and trusted, is never offered for trust, and a session recorded in the
+global-only context gives the global-only context. `plect serve` and
+`plect-web` select from the directory they start in.
+
 An interactive invocation encountering an unlisted root displays its canonical
 path, explains that project definitions can execute commands, and asks whether
 to trust it. Yes writes the canonical root to `trusted_project_roots` and
