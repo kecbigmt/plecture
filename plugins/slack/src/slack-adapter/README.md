@@ -66,18 +66,22 @@ subscribe to `agent_session_stopped`, so Slack may return a
 `missing_agent_session_stopped_event_subscription` warning and shows no
 interactive stop button. This API migration does not switch `agent_view`.
 
-When Socket Mode is enabled, an `app_mention` in a subscribed thread publishes
+When Socket Mode is enabled, an app mention in a subscribed thread publishes
 one inbound `user.emit` per subscribed session. The event body is an
 ordered Slack transcript with display names, message times, and text. By
 default each delivery includes the root message plus only replies after the
 thread's last successful delivery watermark, followed by the mentioning
 message. Set `deliver_full_thread = true` to send the full thread on every
-mention. Empty `allowed_user_ids` allows any channel member to drive this
+mention. A transcript larger than 64 KiB keeps the root message, the newest
+replies that fit, and the mentioning message, and replaces the oldest replies
+with an `[N earlier messages omitted]` line. If the root and mentioning
+messages alone exceed the budget, they share it, and each cut message ends in
+` [truncated]`. Thread history catch-up is bounded the same way. Empty `allowed_user_ids` allows any channel member to drive this
 mention and reply paths; setting it restricts both to the listed Slack users.
 
 ### `on_unbound_mention` hook
 
-An `app_mention` that resolves to no subscription is normally logged and
+An app mention that resolves to no subscription is normally logged and
 dropped (`app mention skipped: unbound thread`). When `on_unbound_mention` is
 set, slack-adapter instead runs that command once, with a JSON document on
 stdin describing the mention, and logs its exit status. `allowed_user_ids`
@@ -338,9 +342,12 @@ Returns the active subscription list as a JSON array.
 
 A nonmention human reply in a subscribed thread becomes `slack.message`.
 A mention of the app becomes `user.emit`, carrying the root and replies
-since that session's previous mention delivery. The `message` and
-`app_mention` Slack events for one bot mention do not create both event
-types. Both event types carry `channel_id` and `thread_ts` metadata.
+since that session's previous mention delivery. Both `message` and
+`app_mention` events can deliver mentions in subscribed or unbound threads,
+including top-level mentions. The log identifies which event type carried
+the mention.
+When both Slack event types arrive, each subscriber receives the mention once.
+Both event types carry `channel_id` and `thread_ts` metadata.
 `slack.message` does not advance the transcript watermark.
 
 ## Persistence

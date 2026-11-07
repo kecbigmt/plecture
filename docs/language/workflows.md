@@ -170,14 +170,43 @@ population-produced sessions, independently of population up/down events.
 `body` carries a bounded stderr or error tail only for `failed`; persisted
 outputs remain the authority for produced and cleaned nodes.
 
-## Desired workflow and execution records
+## Workflow revisions
 
-The workflow loaded from the session's selected project root is the latest
-desired workflow. It is reloaded for each desired operation and a population
-reload. Before `up`, `down`, or `destroy` executes it is compared with the
-session's shared lifecycle-configuration baseline. A change warns and then
-executes the current trusted configuration; it never tears down or rebuilds a
-node on its own.
+Session creation stores the expanded workflow as a revision: nodes, binding
+expressions, health and healthcheck declarations, event channels, ticks, and
+instruction text, together with every effect and task declaration the session
+can execute, including dynamic task instances, resolved nesting, and cascade.
+The revision's SHA-256 digest is its identity, so equal expansions share one
+revision and an edit to any captured declaration changes the digest.
+
+`up`, `down`, `destroy`, repair, health, tick, delivery, and cleanup execute the
+session's revision. A configuration edit does not reach an existing session,
+and the original workflow file need not exist. Only the trusted configuration
+tree expanded by serve or the CLI writes a revision; runtime inputs, untrusted
+messages, and stored execution results cannot.
+
+### Rebase
+
+`plect workflow rebase <session>... | --all` expands the workflow from current
+trusted configuration, classifies the difference from the session's revision,
+and moves the session to the new revision when the class permits. `--all`
+covers every active session with a workflow and `--workflow <name>` narrows it.
+
+| Class | Raised by | Outcome |
+|---|---|---|
+| compatible | No difference below. A difference only in instructions, display, event channels, ticks, workflow-level `[<id>.health]`, or the `description` or `instruction` of a task document is compatible. | The revision is replaced. |
+| automatic | A node added or removed; an alive probe changed on a node or a live dynamic instance, with the rest of its declaration unchanged. | Removed nodes, and nodes that depended on them, are cleaned with the old revision before the switch, whatever the session's status. Added nodes are set up by an `up` on the new revision, which a rebase runs only when the session is up. |
+| restart | A run-scoped node with unchanged scope whose node entry, effect definition, execution directory, or a public output its inputs read changed; every run-scoped node replaced by different ones; a live run-scoped dynamic effect instance whose definition changed. | Refused unless `--with-restart`, which brings the session down on the old revision, cleans removed nodes, switches, and brings an up session back up. |
+| recreate | A node whose scope changed, or a session-scoped node whose declaration, execution directory, or a public output its inputs read changed; a changed entry resource; for a live dynamic instance, a removed or missing definition, a changed session-scoped effect definition, or a changed task document beyond its `description` or `instruction`; saved outputs that a new node input, alive binding, nesting layer, or event channel input cannot resolve from; a release of the workdir's producer while a live dynamic instance runs in that directory. | Always refused; destroy and recreate the session. |
+
+A session takes the highest class any difference raises, and the command prints
+each reason. `--dry-run` prints the classification and the nodes to recreate
+without changing the session. A refusal by class leaves the revision unchanged.
+Every classified, non-dry attempt appends one `plect.session.rebase` event
+recording the digests, class, and result, except an attempt that the session
+guard or the lifecycle relation guard refuses; a refusal by class is recorded.
+
+## Execution records
 
 Each setup attempt has a session-owned execution record, including partial and
 failed attempts. It records the acquired resource identity, setup facts,
@@ -189,31 +218,26 @@ session-state store protects writes to this evidence but is not a trust boundary
 for executable code.
 
 Retained execution records are a retained execution plan. Release follows its
-recorded dependency order rather than an order derived from the latest desired
-workflow: an old agent depending on an old checkout is cleaned up before that
+recorded dependency order rather than an order derived from the session's
+revision: an old agent depending on an old checkout is cleaned up before that
 checkout is released. This preserves the lifetime boundaries of allocations
 whose declarations were removed or changed.
 
 The current operation supplies only `force`; it does not replace setup-time
-facts. A record that still matches a desired node
-remains in use. New nodes are set up from the latest desired
-workflow. A changed node effect, resolved setup inputs, scope, or execution
-directory requires reconstruction; the diagnostic directs the caller to
-`--force-recreate`. A node removed from the desired workflow is not set up
-again, but its record remains available for cleanup and release. Thus a
-declaration revision takes effect immediately for future setup and population
-policy, while an existing node's execution contract changes only by
-reconstruction. Population reload follows the same rule: its current policy
-controls future evaluation, while members and their provenance remain retained
-as specified below.
+facts. A record that still matches a node of the
+session's revision remains in use. A node's effect, scope, or declaration
+changes only through a rebase, which classifies the change as described in
+[Rebase](#rebase). A node removed by a rebase is not set up again, but its
+record remains available for cleanup and release.
+Population reload is separate: its current policy controls future evaluation,
+while members and their provenance remain retained as specified below.
 
 ## Cleanup and reconstruction
 
-Before teardown, plect resolves the matching cleanup layer from the current
-trusted configuration tree. A changed lifecycle-configuration baseline warns
-before this execution but does not make cleanup unavailable. A missing
-definition, valid project trust, setup fact, directory, credential, environment,
-or reliable target identity is a cleanup precondition failure. The record stays
+Before teardown, plect resolves the matching cleanup layer from the session's
+revision. A missing definition, valid project trust, setup fact, directory,
+credential, environment, or reliable target identity is a cleanup precondition
+failure. The record stays
 inspectable with its outstanding obligation and a non-secret reason; cleanup
 never falls back to another directory or infers release.
 

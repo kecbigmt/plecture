@@ -71,22 +71,33 @@ root revokes use of its project definitions for future desired operations.
 
 A session records its selected project root, participating layer revisions,
 and effective digest at creation. Later operations use that root rather than
-their caller's cwd, but load the latest valid definitions at the recorded root.
-The session has one lifecycle-configuration baseline shared by `up`, `down`,
-and `destroy`. Before lifecycle execution, plect compares the current parsed
-lifecycle configuration with that baseline, warns when it changed, then begins
-the operation using that current trusted configuration and advances the
-baseline. A first execution records the baseline without warning; read-only
-operations do not change it. The baseline is a notification, not a cleanup
-authorization boundary.
+their caller's cwd.
 
-The current workflow is the desired state used for reconciliation. Nodes
-already set up retain their operational cleanup facts, while executable cleanup
-code always comes from the current trusted tree. If a desired revision requires
-a node to be rebuilt, the diagnostic directs the caller to `--force-recreate`.
-If the recorded root cannot be read, desired operations fail with an actionable
-error and do not select another root; cleanup is unavailable because trusted
-configuration is an execution precondition, not because a digest changed.
+Creation also expands the selected workflow, with the effect and task
+declarations its session can execute, into a workflow revision identified by
+its SHA-256 digest. `plect ls` and `plect status` show the first eight
+hexadecimal characters. `up`, `down`, `destroy`, repair, health, tick,
+delivery, and cleanup execute the declarations of that revision, including
+after the workflow file is edited or removed. Editing configuration does not
+change an existing session, and lifecycle operations neither compare current
+configuration with the revision nor warn about edits. `plect workflow rebase`
+moves a session to a newer revision; see
+[Workflow revisions](workflows.md#workflow-revisions).
+
+Plugin executable contents, executable lookup through `PATH`, and population
+definitions are outside the revision. An executable reference resolves against
+the mounted plugins when an operation runs, and population evaluates current
+configuration. A session without a workflow has no revision; its dynamic task
+declarations and channels resolve from current trusted configuration.
+
+The session's revision is the desired state used for reconciliation. Nodes
+already set up retain their operational cleanup facts, and executable cleanup
+code comes from the revision. A change to a node's declaration reaches the
+session only through a rebase, which classifies it as described in
+[Rebase](workflows.md#rebase). Creation and rebase read definitions
+from the recorded root; if it cannot be read, they fail with an actionable
+error and do not select another root. Operations that execute a stored
+revision do not need the tree.
 Chains inherit their triggering session's root. A resident population inherits
 the root captured when the resident started, not its process cwd.
 

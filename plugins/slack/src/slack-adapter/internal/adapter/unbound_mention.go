@@ -61,6 +61,11 @@ func (a *Adapter) dispatchUnboundMention(ev *slackevents.AppMentionEvent, thread
 	hasHook := a.cfg.OnUnboundMention != ""
 	hasStreamReaders := a.mentions != nil && a.mentions.hasSubscribers()
 	if !hasHook && !hasStreamReaders {
+		a.logger.Info("unbound mention dispatch skipped", "reason", "no_unbound_consumer", "thread_ts", threadTS, "ts", ev.TimeStamp, "channel_id", ev.Channel)
+		return false
+	}
+	if a.broker.PendingMention(ev.Channel, threadTS) == ev.TimeStamp {
+		a.logger.Info("unbound mention dispatch skipped", "reason", "already_dispatched", "thread_ts", threadTS, "ts", ev.TimeStamp, "channel_id", ev.Channel)
 		return false
 	}
 
