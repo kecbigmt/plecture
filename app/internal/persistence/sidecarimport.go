@@ -95,12 +95,13 @@ func (db *DB) ImportSidecars(ctx context.Context, dir string) error {
 	return nil
 }
 
+// retiredSidecarNames are the data-home entries that ImportSidecars moves
+// into the database and then removes.
+var retiredSidecarNames = []string{"pending_delivery.json", "pending_delivery.json.lock", "events"}
+
 func sidecarsPresent(dir string) (bool, error) {
-	for _, path := range []string{
-		filepath.Join(dir, "pending_delivery.json"),
-		filepath.Join(dir, "pending_delivery.json.lock"),
-		filepath.Join(dir, "events"),
-	} {
+	for _, name := range retiredSidecarNames {
+		path := filepath.Join(dir, name)
 		if _, err := os.Stat(path); err == nil {
 			return true, nil
 		} else if !os.IsNotExist(err) {

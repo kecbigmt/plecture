@@ -44,16 +44,10 @@ migrate their own database once instead of relying on a compatibility read.
 
 ## Backup
 
-Stop every running plect process and copy the database before running a
-binary built from this change, since the schema rewrite is applied
-automatically on open and rebuilds several tables in place:
-
-```bash
-DATA_DIR="${XDG_DATA_HOME:-$HOME/.local/share}/plect"
-BACKUP_DIR="$DATA_DIR/migration-backups/$(date -u +%Y%m%dT%H%M%SZ)"
-mkdir -p "$BACKUP_DIR"
-cp "$DATA_DIR/storage.db" "$BACKUP_DIR/storage.db"
-```
+The schema rewrite is applied automatically when the store is opened, and it
+rebuilds several tables in place. Before running a binary built from this
+change, stop every running plect process and follow
+[storage upgrade backup and rollback](storage-upgrade-backup-and-rollback.md#before-upgrading).
 
 ## What the migration preserves, and what it cannot
 
@@ -97,6 +91,7 @@ The grep is authoritative for your own automation; it should return
 nothing. Then confirm the migrated database:
 
 ```bash
+DATA_DIR="${XDG_DATA_HOME:-$HOME/.local/share}/plect"
 sqlite3 "$DATA_DIR/storage.db" 'PRAGMA table_info(sessions);'         # id, status, destroyed_at present; no record_json
 sqlite3 "$DATA_DIR/storage.db" 'PRAGMA table_info(events);'           # session_id, not stream_id
 sqlite3 "$DATA_DIR/storage.db" "SELECT name, status FROM sessions;"   # every prior session reads status='down'
@@ -104,13 +99,8 @@ sqlite3 "$DATA_DIR/storage.db" "SELECT name, status FROM sessions;"   # every pr
 
 ## Rollback
 
-Stop plect, restore the backup, and run a plect binary built before this
-change — the restored `storage.db` still has the pre-migration shape, which
-a post-migration binary would otherwise have rewritten on next open:
-
-```bash
-cp "$BACKUP_DIR/storage.db" "$DATA_DIR/storage.db"
-```
-
-Restoring the backup discards any session/task/event activity recorded
-between the backup and the rollback; it is not lossless.
+Follow [storage upgrade backup and rollback](storage-upgrade-backup-and-rollback.md#rollback),
+then run a plect binary built before this change. The restored `storage.db`
+still has the pre-migration shape. Restoring the backup discards any session,
+task, or event activity recorded between the backup and the rollback, so the
+rollback is not lossless.

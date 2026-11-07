@@ -79,6 +79,12 @@ identifier no resolver matches selects a workflow explicitly (see
 			// silent migration landing ahead of that backup.
 			return nil
 		}
+		if cmd == storageBackupsCmd || cmd == storageRestoreCmd {
+			// A rollback runs these against a store this binary may refuse
+			// as too new, and a restore refuses while any handle is open,
+			// including the one this hook would leave behind.
+			return nil
+		}
 		store := state.NewStore("")
 		if err := store.CheckReadable(); err != nil {
 			return err

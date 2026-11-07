@@ -3,6 +3,8 @@ package commands
 import (
 	"fmt"
 	"path/filepath"
+	"strconv"
+	"text/tabwriter"
 
 	"github.com/spf13/cobra"
 
@@ -142,6 +144,66 @@ first.`,
 	},
 }
 
+var storageBackupsCmd = &cobra.Command{
+	Use:   "backups",
+	Short: "List the backups taken before each schema migration",
+	Long: `Lists, newest first, the backups plect takes in <data home>/backups/
+before it applies a schema migration to an existing store: each backup's
+name, the schema version recorded in its own migration ledger, and its size.
+
+$` + persistence.BackupRetainEnvVar + ` sets how many backups are kept (default 3);
+0 stops taking them.`,
+	Args: cobra.NoArgs,
+	RunE: func(cmd *cobra.Command, _ []string) error {
+		backups, err := persistence.ListBackups(cmd.Context(), persistence.DefaultPath())
+		if err != nil {
+			return err
+		}
+		out := cmd.OutOrStdout()
+		if len(backups) == 0 {
+			fmt.Fprintf(out, "no backups in %s\n", filepath.Join(defaultDataHome(), "backups"))
+			return nil
+		}
+		w := tabwriter.NewWriter(out, 0, 0, 2, ' ', 0)
+		fmt.Fprintln(w, "NAME\tSCHEMA\tSIZE")
+		for _, b := range backups {
+			schema := strconv.FormatInt(b.Version, 10)
+			if b.Err != nil {
+				schema = "unreadable: " + b.Err.Error()
+			}
+			fmt.Fprintf(w, "%s\t%s\t%d\n", b.Name, schema, b.Size)
+		}
+		return w.Flush()
+	},
+}
+
+var storageRestoreCmd = &cobra.Command{
+	Use:   "restore <backup>",
+	Short: "Replace the store with a backup taken before a schema migration",
+	Long: `Copies the named backup (as 'plect storage backups' lists it) back into
+the data home. The files it replaces -- storage.db, its -wal/-shm/-journal
+siblings, and any retired sidecars -- are moved to
+<data home>/restore-displaced/<timestamp>/, and the backup itself is kept.
+
+Stop every plect process using the data home first (plect serve, plect-web,
+and any command): this command refuses while any of them has the store open.
+It also refuses a backup whose schema is newer than this binary supports.
+
+Restoring is a rollback only for the moment right after an upgrade, before
+anything has been written to the new schema: whatever was written since the
+backup is not carried over. Run it with either binary, then start the
+earlier one.`,
+	Args: cobra.ExactArgs(1),
+	RunE: func(cmd *cobra.Command, args []string) error {
+		displaced, err := persistence.Restore(cmd.Context(), persistence.DefaultPath(), args[0])
+		if err != nil {
+			return err
+		}
+		fmt.Fprintf(cmd.OutOrStdout(), "restored %s into %s; the replaced files are in %s\n", args[0], defaultDataHome(), displaced)
+		return nil
+	},
+}
+
 // defaultDataHome is the directory persistence.DefaultPath's storage.db
 // lives in, derived rather than duplicated so the two never disagree about
 // data-home resolution.
@@ -166,6 +228,9 @@ func init() {
 	storageRepairCmd.Flags().BoolVar(&storageRepairDryRun, "dry-run", false, "Report what would be deleted without writing anything")
 	_ = storageRepairCmd.MarkFlagRequired("from")
 	storageCmd.AddCommand(storageRepairCmd)
+
+	storageCmd.AddCommand(storageBackupsCmd)
+	storageCmd.AddCommand(storageRestoreCmd)
 
 	rootCmd.AddCommand(storageCmd)
 }

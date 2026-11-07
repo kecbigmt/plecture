@@ -307,6 +307,14 @@ a design smell in this image, not in the downstream one.
 - Health: `HEALTHCHECK` runs `curl --unix-socket "$PLECT_BUS_SOCKET"
   http://localhost/healthz` — the one route the bus server never gates on
   `PLECT_BUS_TOKEN`.
+- Upgrading to a release with a schema migration: the first `plect` process
+  that opens the store backs it up to
+  `/var/lib/plect/data/plect/backups/<UTC timestamp>-v<from version>/`, on
+  the volume, before migrating. Size the volume for
+  `PLECT_STORAGE_BACKUP_RETAIN` copies of `storage.db` (default 3). To roll
+  back, stop the task and run `plect storage restore <name>` from either
+  image, then start the earlier image. See
+  [storage upgrade backup and rollback](../../docs/migrations/storage-upgrade-backup-and-rollback.md).
 - CLI diagnostics from CloudShell (as the `plect` user):
   `plect ls`, `plect status <session> --json`, `plect event list <session>`,
   `github-watcher list`.

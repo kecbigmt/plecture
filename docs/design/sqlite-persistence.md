@@ -202,7 +202,9 @@ provider hook and carries no durable fact.
 | File | Reason |
 | --- | --- |
 | `storage.db`, `storage.db-wal`, `storage.db-shm` | SQLite's database and journal sidecars. |
-| `storage.db.access.lock`, `storage.db.coordination.lock`, `storage.db.migration.json` | The persistence migration access gate's lock and diagnostic state. |
+| `storage.db.access.lock`, `storage.db.coordination.lock`, `storage.db.handle.lock`, `storage.db.migration.json` | The persistence migration access gate's lock and diagnostic state. |
+| `backups/<UTC timestamp>-v<from version>/` | A copy of the store taken before a migration; see "Pre-migration backups and restore". |
+| `restore-displaced/<UTC timestamp>/` | The files a restore replaced; kept for the operator to inspect and delete. |
 | `delivery-locks/<escaped-session>.lock` | OS-level mutual exclusion for one provider delivery decision; it is a `flock`, not durable state. |
 
 The retained `sessions` row with `status = 'destroyed'` and `destroyed_at`
@@ -848,7 +850,7 @@ have. A development reset uses a scratch `PLECT_DATA_HOME` instead.
 
 SQLite's single-writer rule is insufficient: it does not make a running binary
 aware that its schema assumptions are incompatible. `persistence` therefore
-uses two local advisory lock files next to `storage.db`:
+uses three local advisory lock files next to `storage.db`:
 
 - `storage.db.access.lock` is the data-access gate. Every query and explicit
   transaction takes a shared lock for its duration. A migration takes its
@@ -857,9 +859,13 @@ uses two local advisory lock files next to `storage.db`:
   briefly takes a shared lock before taking the access gate. A migration takes
   it exclusively, writes and fsyncs `storage.db.migration.json`, and retains it
   until the migration completes or fails.
+- `storage.db.handle.lock` marks an open store. Every open handle takes a shared
+  lock when it opens and keeps it until it closes, even while idle. Only a
+  restore takes it exclusively. The access lock cannot serve this purpose,
+  because it is held only for the length of one operation.
 
 The marker records only diagnostics: process ID, binary version, start time,
-stage, and a failure message. It is not a version ledger. A process that sees
+stage, a failure message, and the path of the pre-migration backup. It is not a version ledger. A process that sees
 the coordination lock or a live marker waits for 30 seconds, then fails with an
 actionable "migration in progress" error; it does not open the database. The
 bound is `app/internal/persistence`'s fixed `migrationWait` constant, not a
@@ -928,6 +934,78 @@ the same facade. Plugin executables never open core's database; a plugin that
 invokes `plect` or the local event service receives the same wait-or-refuse
 result. This keeps plugin code outside migration coordination and prevents a
 second storage authority.
+
+## Pre-migration backups and restore
+
+Restoring the backup taken before an upgrade is the only rollback. The
+[forward-only migrations decision](../adr/2026-11-07-forward-only-migrations.md)
+allows it only right after the upgrade, before anything has been written to
+the new schema. The migration runner takes that backup itself. It is the only
+component that knows a migration is about to be applied, and it holds
+exclusion at the one point where the copy is consistent.
+
+After the ledger recheck and the workdir-directory pre-check, and before goose
+applies anything, the runner copies the store to
+`<data home>/backups/<UTC timestamp>-v<from version>/`. It does this only when
+the from version is above zero and retention is above zero. The copy is made
+with SQLite's online backup API on the migrator's own connection, which still
+holds the exclusive access lock. The result is a single self-contained,
+page-exact `storage.db` in every journal mode, with no `-wal`, `-shm`, or
+`-journal` beside it. The retired sidecars that are still present
+(`pending_delivery.json`, `pending_delivery.json.lock`, `events/`) are copied
+next to it, because the sidecar import that follows the migration removes
+them. The backup is built in `backups/.tmp-<name>/` and renamed into place,
+so a directory named `<UTC timestamp>-v<version>` is always a completed
+backup; plect neither lists, prunes, nor restores any other entry. The
+timestamp is the clock's second, or one second past the newest existing
+backup when the clock has not passed it, so name order is creation order even
+for backups taken within one second or after the clock was set back. The
+name's from version is a label for people; the version of a backup is read
+from its own goose ledger.
+
+If the backup fails, the marker records a `failed` stage with the error, and
+the runner refuses without applying any migration. When the backup succeeds,
+the runner writes its path into the marker and prints it on stderr together
+with the from and to versions. After a new backup, the runner deletes the
+oldest completed backups beyond the retention count, and any leftover
+temporary directories. A failure to delete prints a warning and does not
+refuse the migration.
+
+`PLECT_STORAGE_BACKUP_RETAIN` is the retention count. It defaults to 3, and
+`0` disables backups, in which case existing backups are never pruned. Like
+`PLECT_SQLITE_JOURNAL_MODE`, it is set by the deployment environment and has
+no `config.toml` key, because the store is opened and migrated before any
+configuration is loaded. A value that is not a non-negative integer makes
+`EnsureCurrent` refuse.
+
+`plect storage backups` lists the completed backups newest first, with each
+one's name, ledger version, and size. `plect storage restore <name>` accepts
+only a name from that list. It refuses in three cases:
+
+- the backup is missing, or its ledger cannot be read;
+- the backup's ledger version is newer than the binary's embedded target;
+- any of the coordination, handle, or access locks cannot be taken
+  exclusively without waiting, meaning some process still has the store open
+  or is migrating it.
+
+The restore then:
+
+1. stages a copy of the backup inside the data home, so the backup stays
+   restorable;
+2. moves `storage.db`, its `-wal`/`-shm`/`-journal` siblings, the retired
+   sidecars, and `storage.db.migration.json` into
+   `<data home>/restore-displaced/<UTC timestamp>/`;
+3. renames the staged files into place.
+
+Moving every journal sibling aside means a newer store's WAL or hot journal is
+never replayed onto the restored file. Because the restore works inside the data
+home, it also works when the data home is a mount point.
+Neither command goes through root's `EnsureCurrent`: a rollback runs them
+against a store the running binary may refuse as too new. A binary can restore
+any backup at or below its own target, so the newer release can perform the
+rollback, and the earlier release then starts on the restored store.
+[Storage upgrade backup and rollback](../migrations/storage-upgrade-backup-and-rollback.md)
+is the operator procedure.
 
 ## Event positions and cursors
 
