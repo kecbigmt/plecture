@@ -56,16 +56,17 @@ func (d dispatchResult) sessionName(tag string) (string, *Error) {
 }
 
 // Two different entries can compose one name, so a name match alone is not
-// the same session.
+// the same session. Under one composed name a matching type and tag already
+// fix the resource name, so it is not compared.
 func checkEntryCollision(existing *domain.Session, d dispatchResult, tag string) *Error {
-	if existing.ResourceType == d.ResourceKey && existing.InstanceName == d.Name && existing.Tag == tag {
+	if existing.ResourceType == d.ResourceKey && existing.Tag == tag {
 		return nil
 	}
-	requested := fmt.Sprintf("resource %q instance %q with %s", d.ResourceKey, d.Name, describeTag(tag))
+	requested := fmt.Sprintf("resource %q name %q with %s", d.ResourceKey, d.Name, describeTag(tag))
 	if existing.ResourceType == "" {
 		return &Error{Code: ErrInvalidInput, Message: fmt.Sprintf("session %q collides with %s: the existing session records no entry resource; address it by its session name, or pass a --tag", existing.Name, requested)}
 	}
-	recorded := fmt.Sprintf("resource %q instance %q with %s", existing.ResourceType, existing.InstanceName, describeTag(existing.Tag))
+	recorded := fmt.Sprintf("resource %q with %s", existing.ResourceType, describeTag(existing.Tag))
 	return &Error{Code: ErrInvalidInput, Message: fmt.Sprintf("session %q collides with %s: it was created for %s; pass a different --tag", existing.Name, requested, recorded)}
 }
 

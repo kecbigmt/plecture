@@ -31,8 +31,8 @@ func identityFixture(t *testing.T) *config.Config {
 	return cfg
 }
 
-// addPlainResource declares a resource whose instance name is the identifier's
-// own tail, so a test can choose an instance name that contains the tag
+// addPlainResource declares a resource whose name is the identifier's
+// own tail, so a test can choose a resource name that contains the tag
 // separator.
 func addPlainResource(t *testing.T, cfg *config.Config) {
 	t.Helper()
@@ -48,7 +48,7 @@ script = "echo '{}'"
 	addFixtureWorkflow(t, cfg, "plain_wf", "plain", "noop", "")
 }
 
-func TestUp_UntaggedSessionNameIsTheResourceInstanceName(t *testing.T) {
+func TestUp_UntaggedSessionNameIsTheResourceName(t *testing.T) {
 	store := testStore(t)
 	cfg := identityFixture(t)
 
@@ -57,11 +57,11 @@ func TestUp_UntaggedSessionNameIsTheResourceInstanceName(t *testing.T) {
 		t.Fatalf("up: %v", err)
 	}
 	if res.SessionName != "case-1" {
-		t.Errorf("session = %q, want the instance name case-1", res.SessionName)
+		t.Errorf("session = %q, want the resource name case-1", res.SessionName)
 	}
 }
 
-func TestUp_TagAppendsOneSegmentToTheInstanceName(t *testing.T) {
+func TestUp_TagAppendsOneSegmentToTheResourceName(t *testing.T) {
 	store := testStore(t)
 	cfg := identityFixture(t)
 
@@ -122,8 +122,8 @@ func TestUp_RecordsTheEntryResourceOnTheSession(t *testing.T) {
 	if got == nil {
 		t.Fatal("session not recorded")
 	}
-	if got.ResourceType != "case" || got.ResourceID != identityCaseID || got.InstanceName != "case-1" || got.Tag != "review" {
-		t.Errorf("entry = (type %q, id %q, instance %q, tag %q), want (case, %s, case-1, review)", got.ResourceType, got.ResourceID, got.InstanceName, got.Tag, identityCaseID)
+	if got.ResourceType != "case" || got.ResourceID != identityCaseID || got.Tag != "review" {
+		t.Errorf("entry = (type %q, id %q, tag %q), want (case, %s, review)", got.ResourceType, got.ResourceID, got.Tag, identityCaseID)
 	}
 }
 
@@ -140,10 +140,10 @@ func TestStatus_ReportsTheRecordedTagRatherThanParsingTheName(t *testing.T) {
 		t.Fatalf("status: %v", err)
 	}
 	if status.Identity.Tag != "" {
-		t.Errorf("tag = %q, want none: the instance name itself contains the separator", status.Identity.Tag)
+		t.Errorf("tag = %q, want none: the resource name itself contains the separator", status.Identity.Tag)
 	}
-	if status.Identity.ResourceType != "plain" || status.Identity.InstanceName != "a+t" {
-		t.Errorf("identity = (type %q, instance %q), want (plain, a+t)", status.Identity.ResourceType, status.Identity.InstanceName)
+	if status.Identity.ResourceType != "plain" {
+		t.Errorf("resource type = %q, want plain", status.Identity.ResourceType)
 	}
 }
 
@@ -228,7 +228,7 @@ func TestResolveSession_ResourceIdentifierDoesNotReachAnotherEntrysSession(t *te
 	store := testStore(t)
 	cfg := identityFixture(t)
 	now := time.Now()
-	if err := store.Put(&domain.Session{Name: "case-1", Workflow: "flow", ResourceType: "alt", InstanceName: "case-1", CreatedAt: now, UpdatedAt: now}); err != nil {
+	if err := store.Put(&domain.Session{Name: "case-1", Workflow: "flow", ResourceType: "alt", CreatedAt: now, UpdatedAt: now}); err != nil {
 		t.Fatal(err)
 	}
 
@@ -241,7 +241,7 @@ func TestResolveSessionName_ResourceIdentifierDoesNotNameAnotherEntrysSession(t 
 	store := testStore(t)
 	cfg := identityFixture(t)
 	now := time.Now()
-	if err := store.Put(&domain.Session{Name: "case-1", Workflow: "flow", ResourceType: "alt", InstanceName: "case-1", CreatedAt: now, UpdatedAt: now}); err != nil {
+	if err := store.Put(&domain.Session{Name: "case-1", Workflow: "flow", ResourceType: "alt", CreatedAt: now, UpdatedAt: now}); err != nil {
 		t.Fatal(err)
 	}
 

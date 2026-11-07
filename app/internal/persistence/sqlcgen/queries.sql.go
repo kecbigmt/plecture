@@ -284,7 +284,7 @@ func (q *Queries) GetEventCursor(ctx context.Context, arg GetEventCursorParams) 
 
 const getLatestDestroyedSession = `-- name: GetLatestDestroyedSession :one
 SELECT id, name, status, sleep_since, destroyed_at, parent_session_id, root_session_id,
-       resource_id, resource_type, instance_name, tag, alias, workflow, workflow_revision, invocation_dir,
+       resource_id, resource_type, tag, alias, workflow, workflow_revision, invocation_dir,
        population_workflow, population_name, inputs_json,
        health_last_checked_at, health_last_activity_at, health_last_fingerprint,
        health_last_state, health_last_reason, health_last_notified_at, health_notify_count,
@@ -310,7 +310,6 @@ func (q *Queries) GetLatestDestroyedSession(ctx context.Context, name string) (S
 		&i.RootSessionID,
 		&i.ResourceID,
 		&i.ResourceType,
-		&i.InstanceName,
 		&i.Tag,
 		&i.Alias,
 		&i.Workflow,
@@ -338,7 +337,7 @@ func (q *Queries) GetLatestDestroyedSession(ctx context.Context, name string) (S
 
 const getLiveSession = `-- name: GetLiveSession :one
 SELECT id, name, status, sleep_since, destroyed_at, parent_session_id, root_session_id,
-       resource_id, resource_type, instance_name, tag, alias, workflow, workflow_revision, invocation_dir,
+       resource_id, resource_type, tag, alias, workflow, workflow_revision, invocation_dir,
        population_workflow, population_name, inputs_json,
        health_last_checked_at, health_last_activity_at, health_last_fingerprint,
        health_last_state, health_last_reason, health_last_notified_at, health_notify_count,
@@ -361,7 +360,6 @@ func (q *Queries) GetLiveSession(ctx context.Context, name string) (Session, err
 		&i.RootSessionID,
 		&i.ResourceID,
 		&i.ResourceType,
-		&i.InstanceName,
 		&i.Tag,
 		&i.Alias,
 		&i.Workflow,
@@ -668,14 +666,14 @@ const insertSession = `-- name: InsertSession :exec
 
 INSERT INTO sessions (
     id, name, status, sleep_since, destroyed_at, parent_session_id, root_session_id,
-    resource_id, resource_type, instance_name, tag, alias, workflow, workflow_revision, invocation_dir,
+    resource_id, resource_type, tag, alias, workflow, workflow_revision, invocation_dir,
     population_workflow, population_name, inputs_json,
     health_last_checked_at, health_last_activity_at, health_last_fingerprint,
     health_last_state, health_last_reason, health_last_notified_at, health_notify_count,
     health_unevaluable_cycles,
     tick_consecutive_unchanged, tick_last_fingerprint, last_tick_at,
     created_at, updated_at
-) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 `
 
 type InsertSessionParams struct {
@@ -688,7 +686,6 @@ type InsertSessionParams struct {
 	RootSessionID            sql.NullString
 	ResourceID               sql.NullString
 	ResourceType             sql.NullString
-	InstanceName             sql.NullString
 	Tag                      sql.NullString
 	Alias                    sql.NullString
 	Workflow                 string
@@ -724,7 +721,6 @@ func (q *Queries) InsertSession(ctx context.Context, arg InsertSessionParams) er
 		arg.RootSessionID,
 		arg.ResourceID,
 		arg.ResourceType,
-		arg.InstanceName,
 		arg.Tag,
 		arg.Alias,
 		arg.Workflow,
@@ -1269,7 +1265,7 @@ func (q *Queries) ListLiveChildSessionNamesForSessions(ctx context.Context, pare
 
 const listLiveSessions = `-- name: ListLiveSessions :many
 SELECT id, name, status, sleep_since, destroyed_at, parent_session_id, root_session_id,
-       resource_id, resource_type, instance_name, tag, alias, workflow, workflow_revision, invocation_dir,
+       resource_id, resource_type, tag, alias, workflow, workflow_revision, invocation_dir,
        population_workflow, population_name, inputs_json,
        health_last_checked_at, health_last_activity_at, health_last_fingerprint,
        health_last_state, health_last_reason, health_last_notified_at, health_notify_count,
@@ -1298,7 +1294,6 @@ func (q *Queries) ListLiveSessions(ctx context.Context) ([]Session, error) {
 			&i.RootSessionID,
 			&i.ResourceID,
 			&i.ResourceType,
-			&i.InstanceName,
 			&i.Tag,
 			&i.Alias,
 			&i.Workflow,
@@ -1336,7 +1331,7 @@ func (q *Queries) ListLiveSessions(ctx context.Context) ([]Session, error) {
 
 const listLiveSessionsByAlias = `-- name: ListLiveSessionsByAlias :many
 SELECT id, name, status, sleep_since, destroyed_at, parent_session_id, root_session_id,
-       resource_id, resource_type, instance_name, tag, alias, workflow, workflow_revision, invocation_dir,
+       resource_id, resource_type, tag, alias, workflow, workflow_revision, invocation_dir,
        population_workflow, population_name, inputs_json,
        health_last_checked_at, health_last_activity_at, health_last_fingerprint,
        health_last_state, health_last_reason, health_last_notified_at, health_notify_count,
@@ -1365,7 +1360,6 @@ func (q *Queries) ListLiveSessionsByAlias(ctx context.Context, alias sql.NullStr
 			&i.RootSessionID,
 			&i.ResourceID,
 			&i.ResourceType,
-			&i.InstanceName,
 			&i.Tag,
 			&i.Alias,
 			&i.Workflow,
@@ -2547,7 +2541,6 @@ UPDATE sessions SET
     root_session_id = ?,
     resource_id = ?,
     resource_type = ?,
-    instance_name = ?,
     tag = ?,
     alias = ?,
     workflow = ?,
@@ -2580,7 +2573,6 @@ type UpdateSessionByIDParams struct {
 	RootSessionID            sql.NullString
 	ResourceID               sql.NullString
 	ResourceType             sql.NullString
-	InstanceName             sql.NullString
 	Tag                      sql.NullString
 	Alias                    sql.NullString
 	Workflow                 string
@@ -2614,7 +2606,6 @@ func (q *Queries) UpdateSessionByID(ctx context.Context, arg UpdateSessionByIDPa
 		arg.RootSessionID,
 		arg.ResourceID,
 		arg.ResourceType,
-		arg.InstanceName,
 		arg.Tag,
 		arg.Alias,
 		arg.Workflow,

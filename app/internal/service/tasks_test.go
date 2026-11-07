@@ -91,7 +91,6 @@ func seedSessionSplit(t *testing.T, store interface {
 	// have recorded, so a later up of that issue finds the same entry.
 	if instance := fmt.Sprintf("%s-%d", ownerRepo, number); sessionName == instance || strings.HasPrefix(sessionName, instance+"+") {
 		session.ResourceType = "issue"
-		session.InstanceName = instance
 		session.Tag = strings.TrimPrefix(strings.TrimPrefix(sessionName, instance), "+")
 	}
 	if workflow != "" {

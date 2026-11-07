@@ -42,7 +42,6 @@ CREATE TABLE sessions (
     -- the session predates the record, so no later resource-addressed up can
     -- prove it names the same entry.
     resource_type TEXT,
-    instance_name TEXT,
     tag TEXT,
     alias TEXT,
     workflow TEXT NOT NULL,

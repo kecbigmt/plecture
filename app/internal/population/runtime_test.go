@@ -133,7 +133,7 @@ command = "true"
 		t.Run(recorded.label, func(t *testing.T) {
 			store := state.NewStore(t.TempDir())
 			seedPopulationRow(t, store, definition)
-			if err := store.Put(&contract.Session{Name: name, ResourceID: "urn:case:a", ResourceType: recorded.resourceType, InstanceName: name, Workflow: definition.Workflow.Address, Population: provenance}); err != nil {
+			if err := store.Put(&contract.Session{Name: name, ResourceID: "urn:case:a", ResourceType: recorded.resourceType, Workflow: definition.Workflow.Address, Population: provenance}); err != nil {
 				t.Fatal(err)
 			}
 

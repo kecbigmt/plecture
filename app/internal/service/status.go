@@ -26,7 +26,6 @@ type StatusIdentity struct {
 	SessionName   string                         `json:"session_name"`
 	ResourceID    string                         `json:"resource_id,omitempty"`
 	ResourceType  string                         `json:"resource_type,omitempty"`
-	InstanceName  string                         `json:"instance_name,omitempty"`
 	Title         string                         `json:"title,omitempty"`
 	Workflow      string                         `json:"workflow,omitempty"`
 	Revision      string                         `json:"revision,omitempty"`
@@ -234,7 +233,6 @@ func Status(cfg *config.Config, store *state.Store, identifier string) (*StatusR
 			Revision:      shortWorkflowRevision(session.WorkflowRevision),
 			Population:    session.Population,
 			ResourceType:  session.ResourceType,
-			InstanceName:  session.InstanceName,
 			Tag:           session.Tag,
 			ParentSession: session.ParentSession,
 			Children:      childNames(sessions, sessionName),
@@ -411,7 +409,6 @@ func tombstoneStatusResult(tomb *contract.Tombstone) *StatusResult {
 			ResourceID:    identityResourceID(&tomb.Session),
 			Workflow:      tomb.Workflow,
 			ResourceType:  tomb.ResourceType,
-			InstanceName:  tomb.InstanceName,
 			Tag:           tomb.Tag,
 			ParentSession: tomb.ParentSession,
 			CreatedAt:     tomb.CreatedAt,

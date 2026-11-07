@@ -173,7 +173,7 @@ classifies every `_json` column by its owning declaration:
 
 | Table | Key and relational columns | JSON or scalar payload | Source |
 | --- | --- | --- | --- |
-| `sessions` | `id` (ULID) primary key; `name` (unique only among live rows — see "Session identity and lifecycle"); `status`, nullable `destroyed_at`; nullable `parent_session_id` and `root_session_id`, each referencing `sessions(id)`; nullable `resource_id`, `resource_type`, `instance_name`, `tag`, `alias`, `population_workflow`, `population_name` (the pair also references `populations(workflow, name)`); nullable lifecycle-configuration digest baseline; `workflow`, `created_at`, `updated_at` | inputs, health, tick backoff | `state.json` `sessions` entries |
+| `sessions` | `id` (ULID) primary key; `name` (unique only among live rows — see "Session identity and lifecycle"); `status`, nullable `destroyed_at`; nullable `parent_session_id` and `root_session_id`, each referencing `sessions(id)`; nullable `resource_id`, `resource_type`, `tag`, `alias`, `population_workflow`, `population_name` (the pair also references `populations(workflow, name)`); nullable lifecycle-configuration digest baseline; `workflow`, `created_at`, `updated_at` | inputs, health, tick backoff | `state.json` `sessions` entries |
 | `node_instances` | `(session_id, node_id)` primary key; session foreign key; no other columns | none — purely the logical node's identity | `state.json` `sessions.*.tasks` entries with `dynamic` unset (keys only) |
 | `node_executions` | `id` (ULID, minted per setup attempt) primary key; `(session_id, node_id)` foreign key to `node_instances`; `sequence`; nullable `task_id`, `name`, `resource`; `scope`, `status`, nullable `finalized_at`; release outcome and unavailable reason; at most one unreleased row per `(session_id, node_id)` — see "Node execution identity" | inputs, outputs, state, observed value, `done_when` (rare, not relationally queried), setup-time cleanup facts, nullable `directory` (the directory the setup ran in; `NULL` when setup ran with no explicit directory), error, lifecycle timestamps | `state.json` `sessions.*.tasks` entries with `dynamic` unset (per-attempt facts) |
 | `node_execution_layers` | `(execution_id, position)` primary key; execution foreign key (`ON DELETE CASCADE`) | inputs, locals, outputs, env, heartbeat counters, lifecycle timestamps, error | `TaskState.Layers` (static node instances) |
@@ -507,10 +507,11 @@ one; reads by name always resolve the live row, and a superseded
 incarnation stays reachable only by its own `id`.
 
 A name composed from a resource is not, by itself, an entry identity.
-`resource_type`, `instance_name` and `tag` record the entry resource the row
-was created for, next to the concrete `resource_id`. A resource-addressed
-`plect up` reuses a live row only when all three match what the identifier
-resolves to, and reports a collision otherwise. A row whose `resource_type`
+`resource_type` and `tag` record the entry resource the row was created for,
+next to the concrete `resource_id`. A resource-addressed `plect up` reuses a
+live row only when both match what the identifier resolves to, and reports a
+collision otherwise; under one composed name, a matching type and tag already
+fix the resource name. A row whose `resource_type`
 is NULL records no entry, so it never matches and is reachable only by name.
 
 `status TEXT CHECK (status IN ('down', 'up', 'destroyed'))` is a lifecycle
@@ -582,7 +583,6 @@ CREATE TABLE sessions (
     root_session_id TEXT REFERENCES sessions(id) ON DELETE NO ACTION,
     resource_id TEXT,
     resource_type TEXT,
-    instance_name TEXT,
     tag TEXT,
     alias TEXT,
     workflow TEXT NOT NULL,

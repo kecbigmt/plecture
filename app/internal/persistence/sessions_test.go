@@ -1293,7 +1293,7 @@ func TestPutSession_RoundTripsTheEntryResourceAcrossLaterWrites(t *testing.T) {
 	db := migratedTestDB(t)
 	ctx := context.Background()
 	now := time.Now().UTC().Truncate(time.Second)
-	if err := db.PutSession(ctx, &domain.Session{Name: "case-1+review", Workflow: "review", ResourceID: "urn:case:1", ResourceType: "case", InstanceName: "case-1", Tag: "review", CreatedAt: now, UpdatedAt: now}); err != nil {
+	if err := db.PutSession(ctx, &domain.Session{Name: "case-1+review", Workflow: "review", ResourceID: "urn:case:1", ResourceType: "case", Tag: "review", CreatedAt: now, UpdatedAt: now}); err != nil {
 		t.Fatalf("PutSession: %v", err)
 	}
 	got, err := db.GetSession(ctx, "case-1+review")
@@ -1308,7 +1308,7 @@ func TestPutSession_RoundTripsTheEntryResourceAcrossLaterWrites(t *testing.T) {
 	if err != nil || again == nil {
 		t.Fatalf("GetSession: %v, %v", again, err)
 	}
-	if again.ResourceType != "case" || again.InstanceName != "case-1" || again.Tag != "review" {
-		t.Errorf("entry = (%q, %q, %q) after an update, want (case, case-1, review)", again.ResourceType, again.InstanceName, again.Tag)
+	if again.ResourceType != "case" || again.Tag != "review" {
+		t.Errorf("entry = (%q, %q) after an update, want (case, review)", again.ResourceType, again.Tag)
 	}
 }

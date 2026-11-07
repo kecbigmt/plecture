@@ -254,12 +254,11 @@ type Session struct {
 	SleepSince  time.Time `json:"sleep_since,omitzero"`
 	DestroyedAt time.Time `json:"destroyed_at,omitzero"`
 	ResourceID  string    `json:"resource_id,omitempty"`
-	// ResourceType, InstanceName and Tag are the entry resource the session
-	// was created for. They are recorded rather than parsed back out of Name
-	// because an instance name may itself contain the tag separator, and an
-	// empty ResourceType marks a session created before they were recorded.
+	// ResourceType and Tag are the entry resource the session was created
+	// for. The tag is recorded rather than parsed back out of Name because a
+	// resource name may itself contain the tag separator, and an empty
+	// ResourceType marks a session created before they were recorded.
 	ResourceType string `json:"resource_type,omitempty"`
-	InstanceName string `json:"instance_name,omitempty"`
 	Tag          string `json:"tag,omitempty"`
 	// ParentSessionID and RootSessionID are ParentSession's durable
 	// identity, resolved once and never re-resolved on a later write, so a

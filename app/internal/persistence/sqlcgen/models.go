@@ -132,7 +132,6 @@ type Session struct {
 	RootSessionID            sql.NullString
 	ResourceID               sql.NullString
 	ResourceType             sql.NullString
-	InstanceName             sql.NullString
 	Tag                      sql.NullString
 	Alias                    sql.NullString
 	Workflow                 string

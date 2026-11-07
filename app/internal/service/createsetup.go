@@ -78,7 +78,6 @@ func createWithWorkflowSetup(cfg *config.Config, store *state.Store, params Crea
 			Status:        contract.SessionStatusDown,
 			Workflow:      wf.Address,
 			ResourceType:  disp.ResourceKey,
-			InstanceName:  disp.Name,
 			Tag:           params.Tag,
 			Population:    params.Population,
 			Inputs:        input,

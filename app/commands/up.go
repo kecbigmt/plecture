@@ -43,10 +43,10 @@ attach target return after setup regardless of TTY.
 
 A resource identifier selects the one workflow whose entry resource is the
 identifier's resource type; pass --workflow when several accept it. The
-session is named after the resource's instance name, so repeated
+session is named after the resource name, so repeated
 'plect up <resource-id>' calls converge on the same session.
 
---tag appends one segment to that name ('<instance>+<tag>', the tag matching
+--tag appends one segment to that name ('<resource-name>+<tag>', the tag matching
 [A-Za-z0-9_-]+) to run a second session for the same resource. --tag is only
 valid with a resource identifier, not a bare session name (the name already
 encodes the tag). An existing session with the composed name but a different
@@ -148,7 +148,7 @@ func stdoutIsTerminal() bool {
 }
 
 func init() {
-	upCmd.Flags().StringVar(&upTag, "tag", "", "Segment appended to the resource instance name to distinguish another session for the same resource (resource-identifier only).")
+	upCmd.Flags().StringVar(&upTag, "tag", "", "Segment appended to the resource name to distinguish another session for the same resource (resource-identifier only).")
 	upCmd.Flags().StringVarP(&upWorkflow, "workflow", "w", "", "Workflow id (auto-create path only; must match session's frozen workflow)")
 	upCmd.Flags().StringVar(&upInputs, "inputs", "", "Session inputs as a JSON object string (auto-create path only)")
 	upCmd.Flags().StringVar(&upInputsFile, "inputs-file", "", "Path to a JSON file containing the session inputs object (auto-create path only)")

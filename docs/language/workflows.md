@@ -12,13 +12,13 @@ accepts `--workflow <id>` and optional `--tag <tag>`. The selected workflow's
 workflow accepting that type is required; zero or more than one is an error
 that lists the candidates.
 
-The resource's `name` creates its instance name. Without a tag, that value is
+The resource's `name` derives its resource name. Without a tag, that value is
 the session name. A tag appends one validated non-empty session-name segment,
-`<instance>+<tag>` with the tag matching `[A-Za-z0-9_-]+`. The resulting name
-must either be new or name the same entry-resource and tag record: a live
-session with that name whose entry resource type, instance name, or tag
-differs is a collision, not the same session. The session records its entry
-resource type, the concrete identifier, the instance name, and the tag. Tags
+`<resource-name>+<tag>` with the tag matching `[A-Za-z0-9_-]+`. The resulting
+name must either be new or name the same entry-resource and tag record: a live
+session with that name whose entry resource type or tag differs is a
+collision, not the same session. The session records its entry resource type,
+the concrete identifier, and the tag. Tags
 distinguish concurrent sessions for one resource without making a task,
 plugin, workflow, or working-directory detail part of core identity.
 

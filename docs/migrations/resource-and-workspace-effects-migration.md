@@ -93,16 +93,17 @@ workflow's `workdir` and never stored.
 
 ## Session names
 
-A session created from a resource identifier is named after the resource's
-instance name alone; the workflow id is no longer appended as a default tag.
-`plect up <resource> --tag <tag>` appends `+<tag>`. A session records the entry
-resource type, identifier, instance name, and tag it was created for, and a
+A session created from a resource identifier is named after the resource name
+alone (the value the resource's `name` derives); the workflow id is no longer
+appended as a default tag. `plect up <resource> --tag <tag>` appends `+<tag>`.
+A session records the entry resource type, identifier, and tag it was created
+for, and a
 live session with the composed name but a different entry is reported as a
 collision.
 
 1. Rewrite scripts, chains, and orchestration prompts that build a session
-   name as `<instance>+<workflow-id>`: the name of an untagged session is the
-   instance name. Pass `--tag` where two sessions for one resource must run
+   name as `<resource-name>+<workflow-id>`: the name of an untagged session is
+   the resource name. Pass `--tag` where two sessions for one resource must run
    side by side, for example a work session and a review session.
 2. A session created before this release keeps its name and records no entry
    resource. Address it by its session name. A resource-addressed `plect up`

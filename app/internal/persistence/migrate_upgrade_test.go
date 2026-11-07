@@ -607,11 +607,11 @@ func TestMigrate_EntryResourceLeavesExistingSessionsUnrecorded(t *testing.T) {
 		}
 	}
 
-	var resourceType, instanceName, tag sql.NullString
-	if err := db.write.QueryRow(`SELECT resource_type, instance_name, tag FROM sessions WHERE id = ?`, sessionID).Scan(&resourceType, &instanceName, &tag); err != nil {
+	var resourceType, tag sql.NullString
+	if err := db.write.QueryRow(`SELECT resource_type, tag FROM sessions WHERE id = ?`, sessionID).Scan(&resourceType, &tag); err != nil {
 		t.Fatalf("read entry columns: %v", err)
 	}
-	if resourceType.Valid || instanceName.Valid || tag.Valid {
-		t.Errorf("entry = (%v, %v, %v) for a pre-existing session, want all NULL", resourceType, instanceName, tag)
+	if resourceType.Valid || tag.Valid {
+		t.Errorf("entry = (%v, %v) for a pre-existing session, want both NULL", resourceType, tag)
 	}
 }
