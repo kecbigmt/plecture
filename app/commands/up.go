@@ -24,6 +24,8 @@ var (
 	upTaskRes    string
 	upResInputs  string
 	upResInFile  string
+	upTaskResIn  string
+	upTaskResInF string
 	upParent     string
 	upDetach     bool
 	upRecreate   bool
@@ -73,6 +75,10 @@ concrete resource. Either way the task's resource type must claim that
 resource, or up fails before creating anything. Repeating the same
 selection against an existing session is a no-op; selecting a different one
 fails until 'plect task cleanup initial' removes the existing instance.
+--task-resource-inputs / --task-resource-inputs-file supply the task
+binding's own resource action input object (default: the empty object). It
+is checked against the task resource's inputs_schema and never inherited
+from --resource-inputs, even when the task binds the entry resource.
 
 --force-recreate rebuilds the session runtime for an existing session while
 keeping its durable identity and event log. It cleans and forgets workflow
@@ -91,6 +97,10 @@ queue position. --json reports result and queue_position for scripts.`,
 		if err != nil {
 			return err
 		}
+		taskResourceInputs, err := resolveObjectFlags("task-resource-inputs", upTaskResIn, upTaskResInF)
+		if err != nil {
+			return err
+		}
 		cfg, err := config.Load()
 		if err != nil {
 			return err
@@ -102,7 +112,7 @@ queue position. --json reports result and queue_position for scripts.`,
 			Workflow:       upWorkflow,
 			Inputs:         inputs,
 			ResourceInputs: resourceInputs,
-			InitialTask:    service.InitialTaskSelection(upTask, upTaskRes),
+			InitialTask:    service.InitialTaskSelection(upTask, upTaskRes, taskResourceInputs),
 			ParentSession:  upParent,
 			Observer:       newTaskObserver(cfg),
 			ForceRecreate:  upRecreate,
@@ -171,6 +181,8 @@ func init() {
 	upCmd.Flags().StringVar(&upResInputs, "resource-inputs", "", "Entry resource action inputs as a JSON object string (auto-create path only)")
 	upCmd.Flags().StringVar(&upResInFile, "resource-inputs-file", "", "Path to a JSON file containing the entry resource action inputs object (auto-create path only)")
 	upCmd.Flags().StringVar(&upTask, "task", "", "Task document to instantiate as the session's initial instance (resource-identifier only)")
+	upCmd.Flags().StringVar(&upTaskResIn, "task-resource-inputs", "", "The initial task binding's resource action inputs as a JSON object string (requires --task)")
+	upCmd.Flags().StringVar(&upTaskResInF, "task-resource-inputs-file", "", "Path to a JSON file containing the initial task binding's resource action inputs object (requires --task)")
 	upCmd.Flags().StringVar(&upTaskRes, "task-resource", "", "Concrete resource the initial task binds (default: the entry resource identifier; requires --task)")
 	upCmd.Flags().StringVar(&upParent, "parent", "", "Parent session name for auto-created sessions, or \"root:<session>\" to join that (possibly parentless) session's siblings; falls back to $PLECT_SESSION_NAME when it names an existing session")
 	upCmd.Flags().BoolVarP(&upDetach, "detach", "d", false, "Return after setup instead of attaching (docker-compose-style up -d)")

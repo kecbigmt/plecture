@@ -115,9 +115,14 @@ func TestResolveObjectFlags_NamesTheFlagPairItReads(t *testing.T) {
 }
 
 func TestUpCommand_DeclaresTheBindingInputFlags(t *testing.T) {
-	for _, name := range []string{"resource-inputs", "resource-inputs-file"} {
+	for _, name := range []string{"resource-inputs", "resource-inputs-file", "task-resource-inputs", "task-resource-inputs-file"} {
 		if upCmd.Flags().Lookup(name) == nil {
 			t.Errorf("plect up declares no --%s flag", name)
+		}
+	}
+	for _, name := range []string{"resource-inputs", "resource-inputs-file"} {
+		if taskSetupCmd.Flags().Lookup(name) == nil {
+			t.Errorf("plect task setup declares no --%s flag", name)
 		}
 	}
 }

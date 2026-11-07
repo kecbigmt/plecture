@@ -31,7 +31,10 @@ type TaskSetupParams struct {
 	// Resource is bound to the instance (exposed to its setup/done_when as
 	// .ResourceID) — it is no longer part of the instance key, so the same
 	// task can be instantiated repeatedly regardless of resource.
-	Resource          string
+	Resource string
+	// ResourceInputs is this binding's own resource action input object,
+	// never inherited from the entry binding or another task's.
+	ResourceInputs    map[string]any
 	Inputs            map[string]string // raw --input k=v bindings
 	ExtraDoneWhenJSON string
 	Observer          task.Observer
@@ -144,6 +147,9 @@ func TaskSetup(cfg *config.Config, store *state.Store, params TaskSetupParams) (
 	if extraErr != nil {
 		return nil, extraErr
 	}
+	if inputsErr := validateEffectBindingInputs(cfg, params.Resource, params.ResourceInputs); inputsErr != nil {
+		return nil, inputsErr
+	}
 
 	// The bound resource is the instance's own resource, exposed to its setup /
 	// done_when as .ResourceID (overriding the session's when present).
@@ -187,14 +193,15 @@ func TaskSetup(cfg *config.Config, store *state.Store, params TaskSetupParams) (
 			// or flips to failed. An interrupted run leaves it produced-with-no-
 			// outputs, which reads as not-done (done_when pending) rather than
 			// claiming work that never ran.
-			Status:        contract.TaskStatusProduced,
-			Directory:     dir,
-			Inputs:        inputs,
-			Resource:      params.Resource,
-			Name:          params.Name,
-			ExtraDoneWhen: extraDoneWhen,
-			Seq:           task.NextSeq(s.Nodes, s.Tasks),
-			SetupAt:       now,
+			Status:         contract.TaskStatusProduced,
+			Directory:      dir,
+			Inputs:         inputs,
+			ResourceInputs: params.ResourceInputs,
+			Resource:       params.Resource,
+			Name:           params.Name,
+			ExtraDoneWhen:  extraDoneWhen,
+			Seq:            task.NextSeq(s.Nodes, s.Tasks),
+			SetupAt:        now,
 		}
 		s.UpdatedAt = now
 		return nil
@@ -277,7 +284,7 @@ func TaskSetup(cfg *config.Config, store *state.Store, params TaskSetupParams) (
 	// [[event.channel]] delivers.
 	appendInstruction(store, resolvedName, key, params.Resource, instructionOutput(resultOutputs))
 
-	subscribed, subscribeErrMsg := wireDeliveryOnSetup(cfg, store, resolvedName, params.Resource, nil, false)
+	subscribed, subscribeErrMsg := wireDeliveryOnSetup(cfg, store, resolvedName, params.Resource, params.ResourceInputs, false)
 
 	return &TaskSetupResult{
 		SessionName:    resolvedName,
@@ -355,4 +362,41 @@ func bindDynamicInputs(def config.TaskDefinition, cliInputs map[string]string, s
 		}
 	}
 	return out, nil
+}
+
+// validateEffectBindingInputs checks an effect instance's binding inputs
+// against the declaration that claims its resource. A resource no declaration
+// claims has no action to receive inputs, so supplying some is refused rather
+// than recorded where nothing reads them.
+func validateEffectBindingInputs(cfg *config.Config, resource string, inputs map[string]any) *Error {
+	if resource == "" {
+		if len(inputs) > 0 {
+			return &Error{Code: ErrInvalidInput, Message: "resource inputs need a resource: pass --resource"}
+		}
+		return nil
+	}
+	defs, err := cfg.LoadResourceDefs()
+	if err != nil {
+		return &Error{Code: ErrExecutionFailed, Message: fmt.Sprintf("load resources: %v", err)}
+	}
+	_, def, matched, err := task.MatchResourceDef(defs, resource)
+	if err != nil {
+		// Delivery wiring reports an ambiguous match and queues its retry
+		// after configuration repair; only inputs that could reach no single
+		// declaration are refused here.
+		if len(inputs) == 0 {
+			return nil
+		}
+		return &Error{Code: ErrInvalidInput, Message: err.Error()}
+	}
+	if !matched {
+		if len(inputs) > 0 {
+			return &Error{Code: ErrInvalidInput, Message: fmt.Sprintf("no resource declaration recognizes %q, so nothing receives its inputs", resource)}
+		}
+		return nil
+	}
+	if err := task.ValidateResourceInputs(def, inputs); err != nil {
+		return &Error{Code: ErrInvalidInput, Message: err.Error()}
+	}
+	return nil
 }

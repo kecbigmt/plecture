@@ -186,3 +186,118 @@ func TestUp_EntryInputsForAResourceWithoutASchemaAreRefused(t *testing.T) {
 		t.Errorf("refused entry inputs created sessions: %v", all)
 	}
 }
+
+const gatedTriageTaskDoc = `[triage]
+kind         = "task"
+description  = "Triage a case"
+resource     = "case"
+instructions = [{ text = "Triage {{ resource.id }}." }]
+`
+
+func newGatedTaskFixture(t *testing.T) gatedFixture {
+	t.Helper()
+	f := newGatedFixture(t)
+	writeServiceTaskDoc(t, f.cfg, "triage", gatedTriageTaskDoc)
+	return f
+}
+
+func TestUp_TaskBindingInputsReachTheTaskResourceAndStayApartFromTheEntry(t *testing.T) {
+	store := testStore(t)
+	f := newGatedTaskFixture(t)
+
+	res, err := Up(f.cfg, store, UpParams{
+		Identifier:     identityCaseID,
+		ResourceInputs: map[string]any{"token": "entry"},
+		InitialTask:    &InitialTask{TaskID: "triage", ResourceInputs: map[string]any{"token": "task"}},
+	})
+	if err != nil {
+		t.Fatalf("up: %v", err)
+	}
+	s := store.Get(res.SessionName)
+	initial := s.Tasks["initial"]
+	if initial == nil || initial.ResourceInputs["token"] != "task" {
+		t.Fatalf("initial = %+v, want the task binding's own inputs recorded", initial)
+	}
+	if _, ok := initial.Inputs["token"]; ok {
+		t.Errorf("task inputs = %v, want the binding inputs kept out of them", initial.Inputs)
+	}
+	if s.ResourceInputs["token"] != "entry" {
+		t.Errorf("entry inputs = %v, want them unchanged by the task binding", s.ResourceInputs)
+	}
+	f.requireLine(t, "observe "+identityCaseID+" task")
+	f.requireLine(t, "subscribe "+identityCaseID+" entry")
+}
+
+func TestUp_ATaskBoundToTheEntryDoesNotInheritTheEntryInputs(t *testing.T) {
+	store := testStore(t)
+	f := newGatedTaskFixture(t)
+
+	_, err := Up(f.cfg, store, UpParams{
+		Identifier:     identityCaseID,
+		ResourceInputs: map[string]any{"token": "entry"},
+		InitialTask:    &InitialTask{TaskID: "triage"},
+	})
+	requireErrorCode(t, err, ErrInvalidInput)
+	if all := store.All(); len(all) != 0 {
+		t.Errorf("a refused task binding created sessions: %v", all)
+	}
+	if lines := f.lines(t); len(lines) != 0 {
+		t.Errorf("an action ran for a refused selection: %q", lines)
+	}
+}
+
+func TestTaskSetup_BindingInputsReachObserveSubscribeAndUnsubscribe(t *testing.T) {
+	store := testStore(t)
+	f := newGatedTaskFixture(t)
+	res, err := Up(f.cfg, store, UpParams{Identifier: identityCaseID, ResourceInputs: map[string]any{"token": "entry"}})
+	if err != nil {
+		t.Fatalf("up: %v", err)
+	}
+
+	setup, err := TaskSetup(f.cfg, store, TaskSetupParams{
+		TaskID: "triage", SessionName: res.SessionName, Resource: "case://2",
+		ResourceInputs: map[string]any{"token": "task"},
+	})
+	if err != nil {
+		t.Fatalf("task setup: %v", err)
+	}
+	f.requireLine(t, "observe case://2 task")
+	f.requireLine(t, "subscribe case://2 task")
+	if got := store.Get(res.SessionName).Tasks[setup.Instance].ResourceInputs["token"]; got != "task" {
+		t.Errorf("recorded binding inputs token = %v, want task", got)
+	}
+
+	if err := os.Remove(f.log); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := ObserveSessionResources(f.cfg, store, res.SessionName); err != nil {
+		t.Fatalf("observe: %v", err)
+	}
+	f.requireLine(t, "observe case://2 task")
+
+	if _, err := TaskCleanup(f.cfg, store, TaskCleanupParams{SessionName: res.SessionName, Instance: setup.Instance}); err != nil {
+		t.Fatalf("task cleanup: %v", err)
+	}
+	f.requireLine(t, "unsubscribe case://2 task")
+}
+
+func TestTaskSetup_RejectsBindingInputsTheTaskResourceRefuses(t *testing.T) {
+	store := testStore(t)
+	f := newGatedTaskFixture(t)
+	res, err := Up(f.cfg, store, UpParams{Identifier: identityCaseID, ResourceInputs: map[string]any{"token": "entry"}})
+	if err != nil {
+		t.Fatalf("up: %v", err)
+	}
+	if err := os.Remove(f.log); err != nil {
+		t.Fatal(err)
+	}
+
+	_, err = TaskSetup(f.cfg, store, TaskSetupParams{TaskID: "triage", SessionName: res.SessionName, Resource: "case://2"})
+	requireErrorCode(t, err, ErrInvalidInput)
+	if tasks := store.Get(res.SessionName).Tasks; len(tasks) != 0 {
+		t.Errorf("tasks = %v, want no instance for a refused binding", tasks)
+	}
+	if lines := f.lines(t); len(lines) != 0 {
+		t.Errorf("an action ran for a refused binding: %q", lines)
+	}
+}

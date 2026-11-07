@@ -6,6 +6,7 @@ import (
 
 	"github.com/kecbigmt/plecture/app/internal/config"
 	"github.com/kecbigmt/plecture/app/internal/state"
+	"github.com/kecbigmt/plecture/app/internal/task"
 	contract "github.com/kecbigmt/plecture/contracts/state"
 )
 
@@ -19,23 +20,27 @@ const initialInstance = "initial"
 type InitialTask struct {
 	TaskID   string
 	Resource string
+	// ResourceInputs is the task binding's own action input object; a task
+	// bound to the entry identifier does not inherit the entry's.
+	ResourceInputs map[string]any
 }
 
 // InitialTaskSelection builds the selection a caller's task flags state, nil
 // when they state none, so every surface treats an empty flag as no task.
-func InitialTaskSelection(taskID, resource string) *InitialTask {
-	if taskID == "" && resource == "" {
+func InitialTaskSelection(taskID, resource string, resourceInputs map[string]any) *InitialTask {
+	if taskID == "" && resource == "" && resourceInputs == nil {
 		return nil
 	}
-	return &InitialTask{TaskID: taskID, Resource: resource}
+	return &InitialTask{TaskID: taskID, Resource: resource, ResourceInputs: resourceInputs}
 }
 
 // initialTaskBinding is a selection checked against the configuration: the
 // task resolves to a task document and its concrete resource is one that
 // document's resource type claims.
 type initialTaskBinding struct {
-	TaskID   string
-	Resource string
+	TaskID         string
+	Resource       string
+	ResourceInputs map[string]any
 }
 
 // checkInitialTask runs before anything is created, so a selection that can
@@ -45,7 +50,7 @@ func checkInitialTask(cfg *config.Config, invocationDir, entry string, sel *Init
 		return nil, nil
 	}
 	if strings.TrimSpace(sel.TaskID) == "" {
-		return nil, &Error{Code: ErrInvalidInput, Message: "a task resource needs a task: pass --task with --task-resource"}
+		return nil, &Error{Code: ErrInvalidInput, Message: "a task resource or its inputs need a task: pass --task"}
 	}
 	docs, effects, err := cfg.LoadTaskDeclarations(invocationDir)
 	if err != nil {
@@ -67,10 +72,14 @@ func checkInitialTask(cfg *config.Config, invocationDir, entry string, sel *Init
 	if err != nil {
 		return nil, &Error{Code: ErrExecutionFailed, Message: fmt.Sprintf("load resources: %v", err)}
 	}
-	if _, bindErr := checkTaskBinding(doc, observers, resource); bindErr != nil {
+	observer, bindErr := checkTaskBinding(doc, observers, resource)
+	if bindErr != nil {
 		return nil, bindErr
 	}
-	return &initialTaskBinding{TaskID: sel.TaskID, Resource: resource}, nil
+	if err := task.ValidateResourceInputs(observer, sel.ResourceInputs); err != nil {
+		return nil, &Error{Code: ErrInvalidInput, Message: fmt.Sprintf("task %s resource inputs: %v", doc.ID, err)}
+	}
+	return &initialTaskBinding{TaskID: sel.TaskID, Resource: resource, ResourceInputs: sel.ResourceInputs}, nil
 }
 
 // ensureInitialTask converges the session's initial instance on the
@@ -98,10 +107,11 @@ func ensureInitialTask(cfg *config.Config, store *state.Store, sessionName strin
 		return &Error{Code: ErrInvalidInput, Message: fmt.Sprintf("session %q initial task is %q; run `plect task cleanup initial --session %s` before selecting it again", sessionName, existing.Status, sessionName)}
 	}
 	_, err = TaskSetup(cfg, store, TaskSetupParams{
-		TaskID:      binding.TaskID,
-		SessionName: sessionName,
-		Name:        initialInstance,
-		Resource:    binding.Resource,
+		TaskID:         binding.TaskID,
+		SessionName:    sessionName,
+		Name:           initialInstance,
+		Resource:       binding.Resource,
+		ResourceInputs: binding.ResourceInputs,
 	})
 	return err
 }
