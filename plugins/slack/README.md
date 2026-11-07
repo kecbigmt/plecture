@@ -91,7 +91,8 @@ resource is a thread subscribes on creation and unsubscribes on destroy.
 The `mentions` resource observer matches `slack://<team_id>/mentions`, where
 `team_id` is the Slack workspace ID returned by `auth.test`. Subscribe an
 existing session with `plect subscribe slack://T01234567/mentions --session
-<session-name>`. Every `app_mention` the bot receives then appends a
+<session-name>`. Every app mention the bot receives through a `message` or
+`app_mention` event then appends a
 `user.emit` to that session's event log, including when the session is down.
 Each event includes the thread root, replies since that session's previous
 mention in the thread, and the mention. Its metadata includes `channel_id`,

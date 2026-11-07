@@ -30,10 +30,6 @@ type threadFetcher interface {
 }
 
 func (a *Adapter) handleAppMention(ev *slackevents.AppMentionEvent) {
-	a.logger.Info("received app mention",
-		"user", ev.User, "bot_id", ev.BotID,
-		"thread_ts", ev.ThreadTimeStamp, "ts", ev.TimeStamp, "channel", ev.Channel)
-
 	if ev.BotID != "" {
 		a.logger.Debug("dropping app mention", "reason", "bot_message", "bot_id", ev.BotID)
 		return
@@ -61,7 +57,7 @@ func (a *Adapter) handleAppMention(ev *slackevents.AppMentionEvent) {
 	}
 	valid := threadSubs[:0]
 	for _, sub := range threadSubs {
-		if sub.SessionName != "" && sub.ChannelID == ev.Channel && (sub.DeliveredThrough == "" || compareSlackTS(sub.DeliveredThrough, ev.TimeStamp) < 0) {
+		if subscribedThreadInChannel(sub, ev.Channel) && (sub.DeliveredThrough == "" || compareSlackTS(sub.DeliveredThrough, ev.TimeStamp) < 0) {
 			valid = append(valid, sub)
 		}
 	}
@@ -285,6 +281,8 @@ func selectDeliberationMessages(replies []slack.Message, threadTS, mentionTS, wa
 		}
 		isRoot := msg.Timestamp == threadTS
 		switch {
+		case isRoot && msg.Timestamp == mentionTS:
+			continue
 		case isRoot:
 			out = append(out, msg)
 		case mentionTS != "" && compareSlackTS(msg.Timestamp, mentionTS) >= 0:
