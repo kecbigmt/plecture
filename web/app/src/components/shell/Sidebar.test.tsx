@@ -59,7 +59,7 @@ describe("Sidebar", () => {
   it("renders the tree once the session list resolves", async () => {
     vi.mocked(fetch).mockResolvedValue(
       jsonResponse({
-        items: [{ sessionName: "release", displayStatus: "up", run: "up", resourceId: "" }],
+        items: [{ sessionName: "release", displayStatus: "up", run: "up" }],
         count: 1,
       }),
     );

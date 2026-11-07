@@ -16,7 +16,7 @@ import (
 	contract "github.com/kecbigmt/plecture/contracts/state"
 )
 
-const workflowHeader = "\n[wf]\nkind = \"workflow\"\n[[wf.nodes]]\nid = \"claude\"\nuses = \"claude\"\n"
+const workflowHeader = "\n[wf]\nkind = \"workflow\"\nresource = \"issue\"\n[[wf.nodes]]\nid = \"claude\"\nuses = \"claude\"\n"
 
 const heartbeatWorkflow = workflowHeader + `
 [wf.tick]
@@ -32,7 +32,7 @@ func TestSessionReactor_KeepsLastGoodTickConfigWhenWorkflowLoadFails(t *testing.
 	writeClaudeRunTask(t, base)
 	workflowPath := filepath.Join(base, "workflows", "wf.toml")
 	writeFile(t, workflowPath, heartbeatWorkflow)
-	cfg := &config.Config{BaseDir: base, WorkspaceDirsRoot: t.TempDir()}
+	cfg := &config.Config{BaseDir: base}
 
 	dir := t.TempDir()
 	log := eventlog.NewStore(dir)
@@ -100,7 +100,7 @@ func newRefreshFixture(t *testing.T, body string) (*sessionReactor, string) {
 	writeClaudeRunTask(t, base)
 	workflowPath := filepath.Join(base, "workflows", "wf.toml")
 	writeFile(t, workflowPath, body)
-	cfg := &config.Config{BaseDir: base, WorkspaceDirsRoot: t.TempDir()}
+	cfg := &config.Config{BaseDir: base}
 	dir := t.TempDir()
 	log := eventlog.NewStore(dir)
 	hub := sessionhub.NewRegistry(log, sessionhub.WithPollInterval(2*time.Millisecond))

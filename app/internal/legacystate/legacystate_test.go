@@ -2,6 +2,7 @@ package legacystate
 
 import (
 	"fmt"
+	contract "github.com/kecbigmt/plecture/contracts/state"
 	"strings"
 	"testing"
 )
@@ -247,5 +248,39 @@ func TestParse_ExposesHeartbeatLogPositionSideChannel(t *testing.T) {
 	// side channel, not a promoted domain field.
 	if sf.Sessions["case1"].TickBackoff == nil || sf.Sessions["case1"].TickBackoff.LastFingerprint != "abc" {
 		t.Fatalf("case1.TickBackoff = %+v, want LastFingerprint preserved", sf.Sessions["case1"].TickBackoff)
+	}
+}
+
+func TestParse_LiftsEveryLegacyResourceStringIntoAnUntypedResource(t *testing.T) {
+	data := []byte(`{
+  "version": 7,
+  "sessions": {
+    "case1": {
+      "session_name": "case1",
+      "resource_id": "https://example.test/items/1",
+      "tasks": {
+        "work#1": {"scope": "run", "status": "produced", "resource": "https://example.test/items/2", "dynamic": true}
+      }
+    }
+  },
+  "populations": {
+    "wf/pop": {"workflow": "wf", "name": "pop", "members": {"https://example.test/items/3": {"resource_id": "https://example.test/items/3", "generation": 1}}}
+  }
+}`)
+	sf, err := Parse(data)
+	if err != nil {
+		t.Fatalf("Parse: %v", err)
+	}
+	s := sf.Sessions["case1"]
+	if s.Resource == nil || *s.Resource != (contract.Resource{Locator: "https://example.test/items/1"}) {
+		t.Errorf("session resource = %+v, want an untyped resource for its identifier", s.Resource)
+	}
+	task := s.Tasks["work#1"]
+	if task == nil || task.Resource == nil || *task.Resource != (contract.Resource{Locator: "https://example.test/items/2"}) {
+		t.Errorf("task = %+v, want an untyped resource for its identifier", task)
+	}
+	member := sf.Populations["wf/pop"].Members["https://example.test/items/3"]
+	if member == nil || member.Resource != (contract.Resource{Locator: "https://example.test/items/3"}) {
+		t.Errorf("member = %+v, want an untyped resource for its identifier", member)
 	}
 }

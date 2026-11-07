@@ -70,7 +70,7 @@ Where practical, this schema should be derived from the same implementation mode
 The schema can describe rules such as:
 
 * available definition kinds;
-* valid fields for a task, workflow, channel, workspace provider, and other definition kinds;
+* valid fields for a task, workflow, channel, resource, effect, and other definition kinds;
 * required and optional fields;
 * mutually exclusive variants;
 * action variants such as `exec`, `shell`, and `noop`;

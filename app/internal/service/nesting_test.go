@@ -41,7 +41,7 @@ func nestedConfig(t *testing.T, inner taskFixture, outerExtra string) *config.Co
 		scope: contract.TaskScopeRun,
 		extra: "inner = \"runtime\"\n" + outerExtra,
 	}
-	return writeWorkflowFixture(t, t.TempDir(), "default",
+	return writeWorkflowFixture(t, "default",
 		[]taskFixture{inner, outer},
 		[]nodeFixture{{id: "runtime", uses: "team_runtime"}})
 }

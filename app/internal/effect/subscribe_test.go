@@ -44,68 +44,6 @@ func TestRunProviderSubscribe_ReadsItsSurfaceRoots(t *testing.T) {
 	}
 }
 
-// A subscribe hook that reads session.branch sees the session's workspace
-// branch, so the GitHub workspace provider (and any other one keyed on a
-// session's working branch) can forward it to its own delivery mechanism.
-func TestRunProviderSubscribe_ProjectsSessionBranch(t *testing.T) {
-	marker := filepath.Join(t.TempDir(), "branch.out")
-	prov := config.ResourceDef{
-		ID: "wf",
-		Subscribe: &lang.Action{
-			Type:    lang.ActionExec,
-			Command: "sh",
-			Args: []*lang.Value{
-				{Form: lang.FormLiteral, Literal: "-c"},
-				{Form: lang.FormLiteral, Literal: `printf '%s' "$1" > "$2"`},
-				{Form: lang.FormLiteral, Literal: "subscribe"},
-				{Form: lang.FormFrom, From: "session.branch"},
-				{Form: lang.FormLiteral, Literal: marker},
-			},
-		},
-	}
-	if err := RunResourceSubscribe(prov, SubscribeHookVars{ResourceID: "res-1", SessionName: "sess-1", Branch: "issue/1"}); err != nil {
-		t.Fatalf("RunResourceSubscribe: %v", err)
-	}
-	raw, err := os.ReadFile(marker)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if got := string(raw); got != "issue/1" {
-		t.Errorf("session.branch = %q, want issue/1", got)
-	}
-}
-
-// A provider that produced no branch (or has no use for one) must see
-// subscribe behave exactly as before Branch existed: session.branch resolves
-// to the empty string rather than failing the projection.
-func TestRunProviderSubscribe_EmptyBranchResolvesToEmptyString(t *testing.T) {
-	marker := filepath.Join(t.TempDir(), "branch.out")
-	prov := config.ResourceDef{
-		ID: "wf",
-		Subscribe: &lang.Action{
-			Type:    lang.ActionExec,
-			Command: "sh",
-			Args: []*lang.Value{
-				{Form: lang.FormLiteral, Literal: "-c"},
-				{Form: lang.FormLiteral, Literal: `printf '[%s]' "$1" > "$2"`},
-				{Form: lang.FormLiteral, Literal: "subscribe"},
-				{Form: lang.FormFrom, From: "session.branch"},
-				{Form: lang.FormLiteral, Literal: marker},
-			},
-		},
-	}
-	if err := RunResourceSubscribe(prov, SubscribeHookVars{ResourceID: "res-1", SessionName: "sess-1"}); err != nil {
-		t.Fatalf("RunResourceSubscribe: %v", err)
-	}
-	raw, err := os.ReadFile(marker)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if got := string(raw); got != "[]" {
-		t.Errorf("session.branch = %q, want empty", got)
-	}
-}
-
 func TestRunProviderSubscribe_NoSubscribeHookIsAnError(t *testing.T) {
 	err := RunResourceSubscribe(config.ResourceDef{ID: "wf"}, SubscribeHookVars{ResourceID: "r", SessionName: "s"})
 	if err == nil {
@@ -155,24 +93,23 @@ func TestRunResourceUnsubscribe_ReadsItsSurfaceRoots(t *testing.T) {
 			Command: "sh",
 			Args: []*lang.Value{
 				{Form: lang.FormLiteral, Literal: "-c"},
-				{Form: lang.FormLiteral, Literal: `printf '%s %s %s %s' "$1" "$2" "$3" "$4" > "$5"`},
+				{Form: lang.FormLiteral, Literal: `printf '%s %s %s' "$1" "$2" "$3" > "$4"`},
 				{Form: lang.FormLiteral, Literal: "unsubscribe"},
 				{Form: lang.FormFrom, From: "resource.id"},
 				{Form: lang.FormFrom, From: "session.name"},
-				{Form: lang.FormFrom, From: "session.branch"},
 				{Form: lang.FormFrom, From: "resource.inputs.token"},
 				{Form: lang.FormLiteral, Literal: marker},
 			},
 		},
 	}
-	if err := RunResourceUnsubscribe(prov, SubscribeHookVars{ResourceID: "res-1", SessionName: "sess-1", Branch: "branch-1", Inputs: map[string]any{"token": "secret"}}); err != nil {
+	if err := RunResourceUnsubscribe(prov, SubscribeHookVars{ResourceID: "res-1", SessionName: "sess-1", Inputs: map[string]any{"token": "secret"}}); err != nil {
 		t.Fatalf("RunResourceUnsubscribe: %v", err)
 	}
 	raw, err := os.ReadFile(marker)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if got := string(raw); got != "res-1 sess-1 branch-1 secret" {
+	if got := string(raw); got != "res-1 sess-1 secret" {
 		t.Errorf("unsubscribe saw %q, want the resource and session", got)
 	}
 }

@@ -17,7 +17,7 @@ func (f fakeRunner) Status(alias string) ([]byte, error) {
 	if f.err != nil {
 		return f.output, f.err
 	}
-	return []byte(fmt.Sprintf(`{"runtime":{"workspace_dir_path":%q,"workspace_dir_exists":true}}`, f.workspaceDir)), nil
+	return []byte(fmt.Sprintf(`{"runtime":{"workdir":%q,"workdir_exists":true}}`, f.workspaceDir)), nil
 }
 
 func newBundle(t *testing.T) (workspaceDir string) {

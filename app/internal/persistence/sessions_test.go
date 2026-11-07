@@ -29,11 +29,10 @@ func TestPutSessionAndGetSession_RoundTripsRelationalFields(t *testing.T) {
 
 	now := time.Now().UTC().Truncate(time.Second)
 	session := &domain.Session{
-		Name:             "case123",
-		ResourceID:       "https://example.test/resource/123",
-		WorkspaceDirPath: "/tmp/workdirs/case123",
-		CreatedAt:        now,
-		UpdatedAt:        now,
+		Name:      "case123",
+		Resource:  testResource("case123", "https://example.test/resource/123"),
+		CreatedAt: now,
+		UpdatedAt: now,
 	}
 
 	if err := db.PutSession(ctx, session); err != nil {
@@ -47,7 +46,7 @@ func TestPutSessionAndGetSession_RoundTripsRelationalFields(t *testing.T) {
 	if got == nil {
 		t.Fatal("GetSession returned nil")
 	}
-	if got.Name != session.Name || got.ResourceID != session.ResourceID {
+	if got.Name != session.Name || got.Resource == nil || got.Resource.Locator != session.Resource.Locator {
 		t.Errorf("got = %+v, want name/resource_id to match", got)
 	}
 	if got.ID == "" {
@@ -470,7 +469,7 @@ func TestFindSessionsByAlias_MatchesEveryTagVariantAndNeverMatchesEmpty(t *testi
 	url := "https://example.test/resource/9"
 	now := time.Now().UTC()
 	for _, name := range []string{"case9", "case9+review"} {
-		if err := db.PutSession(ctx, &domain.Session{Name: name, ResourceID: url, Alias: url, CreatedAt: now, UpdatedAt: now}); err != nil {
+		if err := db.PutSession(ctx, &domain.Session{Name: name, Resource: testResource("case9", url), Alias: url, CreatedAt: now, UpdatedAt: now}); err != nil {
 			t.Fatalf("PutSession(%q): %v", name, err)
 		}
 	}
@@ -505,7 +504,7 @@ func TestUpdateSession_AppliesFnAndPersistsNodes(t *testing.T) {
 
 	err := db.UpdateSession(ctx, "s1", func(s *domain.Session) error {
 		s.Nodes = map[string]*contract.TaskState{
-			"@workflow": {Scope: contract.TaskScopeSession, Status: contract.TaskStatusProduced, Outputs: map[string]any{"workspace_dir": "/tmp/x"}},
+			"prepare": {Scope: contract.TaskScopeSession, Status: contract.TaskStatusProduced, Outputs: map[string]any{"path": "/tmp/x"}},
 		}
 		return nil
 	})
@@ -517,12 +516,12 @@ func TestUpdateSession_AppliesFnAndPersistsNodes(t *testing.T) {
 	if err != nil {
 		t.Fatalf("GetSession: %v", err)
 	}
-	node := got.Nodes["@workflow"]
+	node := got.Nodes["prepare"]
 	if node == nil {
-		t.Fatal("node @workflow missing after UpdateSession")
+		t.Fatal("node prepare missing after UpdateSession")
 	}
-	if node.Outputs["workspace_dir"] != "/tmp/x" {
-		t.Errorf("node outputs = %v, want workspace_dir=/tmp/x", node.Outputs)
+	if node.Outputs["path"] != "/tmp/x" {
+		t.Errorf("node outputs = %v, want path=/tmp/x", node.Outputs)
 	}
 }
 
@@ -533,7 +532,7 @@ func TestUpdateSession_FnErrorAbortsWithoutWriting(t *testing.T) {
 
 	wantErr := fmt.Errorf("boom")
 	err := db.UpdateSession(ctx, "s1", func(s *domain.Session) error {
-		s.WorkspaceDirPath = "/should/not/persist"
+		s.Alias = "should-not-persist"
 		return wantErr
 	})
 	if err != wantErr {
@@ -544,8 +543,8 @@ func TestUpdateSession_FnErrorAbortsWithoutWriting(t *testing.T) {
 	if err != nil {
 		t.Fatalf("GetSession: %v", err)
 	}
-	if got.WorkspaceDirPath != "" {
-		t.Errorf("WorkspaceDirPath = %q, want empty (fn's error must have rolled back the write)", got.WorkspaceDirPath)
+	if got.Alias != "" {
+		t.Errorf("Alias = %q, want empty (fn's error must have rolled back the write)", got.Alias)
 	}
 }
 
@@ -618,7 +617,7 @@ func TestPutSession_NodeInstanceDoneWhenRoundTripsAsEmbeddedJSON(t *testing.T) {
 	session := &domain.Session{
 		Name: "s1", CreatedAt: now, UpdatedAt: now,
 		Nodes: map[string]*contract.TaskState{
-			"@workflow": {
+			"build": {
 				Scope: contract.TaskScopeSession, Status: contract.TaskStatusProduced,
 				DoneWhen: &contract.DoneWhenState{LastFingerprint: "wf-fingerprint"},
 			},
@@ -632,7 +631,7 @@ func TestPutSession_NodeInstanceDoneWhenRoundTripsAsEmbeddedJSON(t *testing.T) {
 	if err != nil {
 		t.Fatalf("GetSession: %v", err)
 	}
-	node := got.Nodes["@workflow"]
+	node := got.Nodes["build"]
 	if node == nil {
 		t.Fatalf("node = %+v, want a node instance", node)
 	}
@@ -826,7 +825,7 @@ func TestPutSessionAndGetSession_RoundTripsPopulationThroughColumns(t *testing.T
 	ctx := context.Background()
 	now := time.Now().UTC()
 
-	if err := db.UpdatePopulation(ctx, "wf1/pop1", func(p *domain.PopulationState) error {
+	if err := db.UpdatePopulation(ctx, contract.PopulationProvenance{Workflow: "wf1", Name: "pop1"}, func(p *domain.PopulationState) error {
 		p.Workflow = "wf1"
 		p.Name = "pop1"
 		return nil
@@ -873,12 +872,11 @@ func TestPutSessionAndGetSession_EveryFieldRoundTrips(t *testing.T) {
 	earlier := now.Add(-time.Hour)
 
 	session := &domain.Session{
-		Name:             "full",
-		ResourceID:       "https://example.test/resource/full",
-		Alias:            "https://example.test/resource/full",
-		WorkspaceDirPath: "/tmp/workdirs/full",
-		Workflow:         "coding-agent",
-		Inputs:           map[string]any{"reason": "investigate"},
+		Name:     "full",
+		Resource: testResource("full", "https://example.test/resource/full"),
+		Alias:    "https://example.test/resource/full",
+		Workflow: "coding-agent",
+		Inputs:   map[string]any{"reason": "investigate"},
 		Health: &contract.HealthState{
 			LastCheckedAt:     earlier,
 			LastActivityAt:    earlier,
@@ -910,7 +908,7 @@ func TestPutSessionAndGetSession_EveryFieldRoundTrips(t *testing.T) {
 		Tasks: map[string]*contract.TaskState{
 			"work": {
 				Scope: contract.TaskScopeRun, Status: contract.TaskStatusProduced,
-				TaskID: "work-def", Resource: "resource-1", Name: "work",
+				TaskID: "work-def", Resource: testResource("resource-1", "resource://1"), Name: "work",
 				Inputs:  map[string]any{"in": 1},
 				Outputs: map[string]any{"out": 2},
 				State:   map[string]any{"reviewed": true},
@@ -955,8 +953,7 @@ func TestPutSessionAndGetSession_EveryFieldRoundTrips(t *testing.T) {
 		t.Fatal("GetSession returned nil")
 	}
 
-	if got.ResourceID != session.ResourceID || got.Alias != session.Alias ||
-		got.WorkspaceDirPath != session.WorkspaceDirPath || got.Workflow != session.Workflow {
+	if *got.Resource != *session.Resource || got.Alias != session.Alias || got.Workflow != session.Workflow {
 		t.Fatalf("relational fields = %+v, want %+v", got, session)
 	}
 	if got.Inputs["reason"] != "investigate" {
@@ -989,7 +986,7 @@ func TestPutSessionAndGetSession_EveryFieldRoundTrips(t *testing.T) {
 	if task == nil {
 		t.Fatal("task work missing")
 	}
-	if task.TaskID != "work-def" || task.Resource != "resource-1" || task.Name != "work" {
+	if task.TaskID != "work-def" || task.Resource == nil || task.Resource.Name != "resource-1" || task.Name != "work" {
 		t.Errorf("task identity = %+v", task)
 	}
 	if fmt.Sprint(task.Inputs) != fmt.Sprint(map[string]any{"in": float64(1)}) {
@@ -1261,5 +1258,78 @@ func TestPurgeSessionByName_MissingNameIsANoOp(t *testing.T) {
 	db := migratedTestDB(t)
 	if err := db.PurgeSessionByName(context.Background(), "never-existed"); err != nil {
 		t.Fatalf("PurgeSessionByName on a name with no row: %v", err)
+	}
+}
+
+func TestPutSession_RoundTripsTheProjectRootAcrossLaterWrites(t *testing.T) {
+	db := migratedTestDB(t)
+	ctx := context.Background()
+	now := time.Now().UTC().Truncate(time.Second)
+	if err := db.PutSession(ctx, &domain.Session{Name: "review-1", Workflow: "review", ProjectRoot: "/projects/widgets", CreatedAt: now, UpdatedAt: now}); err != nil {
+		t.Fatalf("PutSession: %v", err)
+	}
+	got, err := db.GetSession(ctx, "review-1")
+	if err != nil || got == nil {
+		t.Fatalf("GetSession: %v, %v", got, err)
+	}
+	if got.ProjectRoot != "/projects/widgets" {
+		t.Fatalf("ProjectRoot = %q after create, want the recorded root", got.ProjectRoot)
+	}
+
+	got.Status = contract.SessionStatusUp
+	if err := db.PutSession(ctx, got); err != nil {
+		t.Fatalf("PutSession (update): %v", err)
+	}
+	again, err := db.GetSession(ctx, "review-1")
+	if err != nil || again == nil {
+		t.Fatalf("GetSession: %v, %v", again, err)
+	}
+	if again.ProjectRoot != "/projects/widgets" {
+		t.Errorf("ProjectRoot = %q after an update, want it kept", again.ProjectRoot)
+	}
+}
+
+func TestPutSession_RoundTripsTheEntryResourceAcrossLaterWrites(t *testing.T) {
+	db := migratedTestDB(t)
+	ctx := context.Background()
+	now := time.Now().UTC().Truncate(time.Second)
+	if err := db.PutSession(ctx, &domain.Session{Name: "case-1+review", Workflow: "review", Resource: &contract.Resource{Type: "case", Name: "case-1", Locator: "urn:case:1"}, Tag: "review", CreatedAt: now, UpdatedAt: now}); err != nil {
+		t.Fatalf("PutSession: %v", err)
+	}
+	got, err := db.GetSession(ctx, "case-1+review")
+	if err != nil || got == nil {
+		t.Fatalf("GetSession: %v, %v", got, err)
+	}
+	got.Status = contract.SessionStatusUp
+	if err := db.PutSession(ctx, got); err != nil {
+		t.Fatalf("PutSession (update): %v", err)
+	}
+	again, err := db.GetSession(ctx, "case-1+review")
+	if err != nil || again == nil {
+		t.Fatalf("GetSession: %v, %v", again, err)
+	}
+	if again.Resource == nil || again.Resource.Type != "case" || again.Resource.Name != "case-1" || again.Tag != "review" {
+		t.Errorf("entry = (%+v, %q) after an update, want (case case-1, review)", again.Resource, again.Tag)
+	}
+}
+
+func TestPutSession_PopulationProvenanceCarriesTheSessionsProjectRoot(t *testing.T) {
+	db := migratedTestDB(t)
+	ctx := context.Background()
+	now := time.Now().UTC().Truncate(time.Second)
+	owner := contract.PopulationProvenance{ProjectRoot: "/projects/widgets", Workflow: "review", Name: "standing"}
+	if err := db.UpdatePopulation(ctx, owner, func(*domain.PopulationState) error { return nil }); err != nil {
+		t.Fatal(err)
+	}
+
+	if err := db.PutSession(ctx, &domain.Session{Name: "issue-1", Workflow: "review", ProjectRoot: "/projects/gadgets", Population: &owner, CreatedAt: now, UpdatedAt: now}); err == nil {
+		t.Error("PutSession recorded a population of a context other than the session's own")
+	}
+	if err := db.PutSession(ctx, &domain.Session{Name: "issue-2", Workflow: "review", ProjectRoot: owner.ProjectRoot, Population: &owner, CreatedAt: now, UpdatedAt: now}); err != nil {
+		t.Fatalf("PutSession: %v", err)
+	}
+	got, err := db.GetSession(ctx, "issue-2")
+	if err != nil || got == nil || got.Population == nil || *got.Population != owner {
+		t.Fatalf("GetSession = %+v, %v; want the provenance %+v", got, err, owner)
 	}
 }

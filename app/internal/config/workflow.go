@@ -13,7 +13,7 @@ import (
 )
 
 // WorkflowFile is one `kind = "workflow"` declaration, loaded from a
-// definition document under a `workflows/` directory in any cascade layer.
+// definition document under a `workflows/` directory in any layer.
 //
 // A workflow is a named bundle of nodes plus the event channels, display
 // values and clocks for the sessions it produces. Each node selects an effect
@@ -25,7 +25,7 @@ import (
 // `plect workflow list/show` and the MCP discovery tools present.
 type WorkflowFile struct {
 	ID string
-	// Address is the name this workflow answers to across the cascade — its id
+	// Address is the name this workflow answers to across the layers — its id
 	// alone when the user owns it, its catalog address when a plugin declares
 	// it. A session freezes this rather than the id, because the id is what
 	// names the session and cannot say which declaration produced it.
@@ -36,22 +36,15 @@ type WorkflowFile struct {
 	Definition  *lang.Definition
 	Name        string
 	Description string
-	// WorkspaceProvider names the workspace provider this workflow runs on.
-	// The workspace provider owns the resource-kind knowledge — resolver,
-	// workspace setup/cleanup, the @workflow outputs contract; the workflow
-	// owns the effect shape on top. A workflow without one cannot acquire a
-	// workspace, so it cannot back a session.
-	WorkspaceProvider string
-	// WorkspaceProviderInputs sets the workspace provider's author-declared
-	// parameters (its `[inputs_schema]`). The values are literal data: the
-	// provider's hooks run before any workspace or node output exists, so
-	// there is nothing for a projection to read.
-	WorkspaceProviderInputs map[string]any
+	Workdir     *lang.WorkdirRef
+	Resource    string
 	// Display declares the values `plect ls` / `show` and the web UI render.
 	// They read persisted outputs and the session's inputs only — no network
 	// — so their freshness follows whatever cadence updates those outputs.
-	Display    map[string]*lang.Value
-	AutoSelect *bool
+	Display       map[string]*lang.Value
+	Outputs       map[string]*lang.Value
+	OutputsSchema map[string]any
+	AutoSelect    *bool
 	// MaxUpChildren optionally caps concurrently-up children under a session
 	// this workflow produces (see service.reserveChildCapSlot); nil means no cap.
 	MaxUpChildren *int
@@ -59,16 +52,11 @@ type WorkflowFile struct {
 	Populations   []WorkflowPopulation
 	Event         WorkflowEvent
 	// Tick declares the machine-driven conditions that tick the sessions this
-	// workflow produces. Unlike the other WorkflowFile fields, a deeper
-	// cascade layer's `[tick]` replaces a shallower layer's wholesale — the
-	// deeper-wins policy the ratified language states for runtime tuning
-	// tables, not the additive/no-redeclare policy the rest of this struct
-	// uses. Nil means no declaration: the session advances only via manual
-	// `plect tick` and the judge builtin.
+	// workflow produces. Nil means no declaration: the session advances only
+	// via manual `plect tick` and the judge builtin.
 	Tick *TickConfig
 	// Healthcheck declares the dedicated health sampling clock for sessions
-	// produced by this workflow. Like `[tick]`, it is a deeper-wins
-	// whole-table runtime tuning declaration. It names the sampling cycle,
+	// produced by this workflow. It names the sampling cycle,
 	// not what health means: what each probe observes is an effect-level
 	// `[health]` declaration.
 	Healthcheck      *HealthcheckConfig
@@ -212,28 +200,26 @@ func NormalizeHealthcheckConfig(in *HealthcheckConfig) HealthcheckConfig {
 //
 // Blocks declares reverse dependency edges: each listed node id becomes a
 // dependent of this one, equivalent to writing the inverse dependency in the
-// listed node. It exists for a cascade overlay that must insert itself ahead
-// of base nodes it cannot modify (e.g. a workspace-dir-process killer that
-// must clean up after the runtime and agent effects).
+// listed node.
 type WorkflowNode struct {
-	ID     string
-	Uses   string
-	Inputs map[string]*lang.Value
-	Blocks []string
+	ID           string
+	Uses         string
+	Inputs       map[string]*lang.Value
+	Blocks       []string
+	Subscription string
 }
 
 // WorkflowPopulation declares one desired set of sessions owned by its
 // containing workflow and identified below it by Name.
 type WorkflowPopulation struct {
-	Name             string
-	ResourceObserver string
-	Query            map[string]any
-	Session          PopulationSession
-	Uses             []string
-	PollEvery        Duration
-	ExpireAfter      Duration
-	AutoDown         bool
-	AutoDestroy      bool
+	Name        string
+	Query       map[string]any
+	Session     PopulationSession
+	Uses        []string
+	PollEvery   Duration
+	ExpireAfter Duration
+	AutoDown    bool
+	AutoDestroy bool
 }
 
 func (p WorkflowPopulation) UsesPoll() bool {
@@ -514,21 +500,15 @@ func resolveSchemaPath(file, baseDir string) string {
 	return filepath.Join(baseDir, file)
 }
 
-// layerDir pairs a cascade search directory with its trust classification.
-// The workspace-dir layer (`.plect/` inside the workspace directory itself)
-// is clone content — an attacker-controlled repository must not be able to
-// introduce shell that plect would execute. Every other layer (plugin,
-// global, ancestor overlays above the workspace dir) is machine-owned and
-// trusted.
+// layerDir pairs a layer's definition root with its classification.
 //
 // plugin marks a layer sourced from c.PluginDirs specifically (as opposed to
-// the global config dir or an ancestor overlay), which is what decides the
+// the global config dir or the project layer), which is what decides the
 // address its declarations answer to: a mounted plugin's carry its catalog
 // address, and everything else is addressed by id alone.
 type layerDir struct {
-	dir          string
-	workspaceDir bool
-	plugin       bool
+	dir    string
+	plugin bool
 	// global marks the machine's own config root, which is trusted the way a
 	// plugin layer is but is not one, so a same-id collision with a plugin
 	// layer is a replacement rather than an error.
@@ -537,25 +517,15 @@ type layerDir struct {
 	// was mounted from, empty for a hand-authored plugin_dirs entry (which
 	// carries no catalog identity) and for the non-plugin layers.
 	pluginID string
+	// project marks the selected project root's tree, whose only reserved
+	// file is its marker.
+	project bool
 }
 
-// LoadWorkflows loads every workflow declaration the cascade layers hold:
-// plugins (base), the global config, then each ancestor overlay ending at the
-// workspace directory. A deeper layer merges into a same-id shallower
-// workflow by the cascade rules — it may set a field the shallower layer left
-// unset, its nodes append, and its `[tick]` / `[healthcheck]` replace the
-// shallower table wholesale — so a project extends a shared workflow instead
-// of forking it.
-//
-// Two plugins declaring one id land on separate addresses and both load; a
-// user-owned workflow sharing an id with a plugin's does not extend it either,
-// for the same reason. Only a deeper user-owned layer merges into a shallower
-// one, which is what lets a project extend a workflow it owns.
-//
-// Trust restriction: a workflow document in the workspace-dir layer is clone
-// content and may only add nodes.
-func (c *Config) LoadWorkflows(workspaceDirPath string) (map[string]WorkflowFile, error) {
-	layers, err := c.discoverLayers(workspaceDirPath)
+// LoadWorkflows loads every workflow declaration the layers hold: plugins
+// (base), the global config, then projectRoot's tree when it is not empty.
+func (c *Config) LoadWorkflows(projectRoot string) (map[string]WorkflowFile, error) {
+	layers, err := c.discoverLayers(projectRoot)
 	if err != nil {
 		return nil, err
 	}
@@ -592,7 +562,7 @@ func (c *Config) LoadWorkflows(workspaceDirPath string) (map[string]WorkflowFile
 	if err != nil {
 		return nil, err
 	}
-	docs, err := c.LoadTaskDocuments(workspaceDirPath)
+	docs, err := c.LoadTaskDocuments(projectRoot)
 	if err != nil {
 		return nil, err
 	}
@@ -619,21 +589,13 @@ func workflowsHavePopulations(workflows map[string]WorkflowFile) bool {
 	return false
 }
 
-// LoadTaskDefinitions merges plugin + global + ancestor `.plect/tasks/`
-// layers. Same-id deeper (user-owned) layer wins because setup/cleanup is
-// atomic — appending two shell scripts doesn't have a sensible meaning the
-// way appending nodes does. Two plugins declaring one id land on separate
+// LoadTaskDefinitions loads every effect the layers hold, as LoadWorkflows
+// does for workflows. Two plugins declaring one id land on separate
 // addresses and both load; only a layer with no catalog identity to name it by
 // still collides, since there declaration order would be deciding between two
 // plugins' shell.
-//
-// Trust restriction: task definitions are arbitrary shell, so the
-// workspace-dir layer (clone content) must not contribute any. A
-// `.plect/tasks/*.toml` inside the workspace directory is a load error
-// rather than a silent skip — silently ignoring it would make the author
-// think the task is active.
-func (c *Config) LoadTaskDefinitions(workspaceDirPath string) (map[string]TaskDefinition, error) {
-	layers, err := c.discoverLayers(workspaceDirPath)
+func (c *Config) LoadTaskDefinitions(projectRoot string) (map[string]TaskDefinition, error) {
+	layers, err := c.discoverLayers(projectRoot)
 	if err != nil {
 		return nil, err
 	}
@@ -660,15 +622,9 @@ func (c *Config) LoadTaskDefinitions(workspaceDirPath string) (map[string]TaskDe
 	return out, nil
 }
 
-// definitionRoots orders the cascade: plugins (base) → global → ancestor
-// overlays, outermost-first, ending at the workspace directory itself — the
-// only untrusted layer. Each entry is a whole definition root rather than one
-// kind's directory, because a directory under a root is author organization.
-//
-// The workspace-dir layer is walked whole too, but it is not a definition
-// root: a declaration it must not carry has to be found in order to be
-// refused, and only `.plect/workflows/` contributes (see discoverLayer).
-func (c *Config) definitionRoots(workspaceDirPath string) []layerDir {
+// definitionRoots orders the layers: plugins (base), global, then the
+// selected project root's tree when there is one.
+func (c *Config) definitionRoots(projectRoot string) ([]layerDir, error) {
 	pluginIDs := make(map[string]string, len(c.Plugins))
 	for _, m := range c.Plugins {
 		pluginIDs[m.Dir] = m.ID
@@ -680,44 +636,14 @@ func (c *Config) definitionRoots(workspaceDirPath string) []layerDir {
 	if c.BaseDir != "" {
 		dirs = append(dirs, layerDir{dir: c.BaseDir, global: true})
 	}
-	cleanWorkspaceDir := ""
-	if workspaceDirPath != "" {
-		cleanWorkspaceDir = filepath.Clean(workspaceDirPath)
-	}
-	for _, anc := range cascadeAncestors(workspaceDirPath) {
-		dirs = append(dirs, layerDir{dir: filepath.Join(anc, ".plect"), workspaceDir: anc == cleanWorkspaceDir})
-	}
-	return dirs
-}
-
-// cascadeAncestors walks up from workspaceDirPath, ordered outermost-first.
-// $HOME is the exclusive upper bound because the user's global config lives
-// at `~/.config/plect/` and `$HOME/.plect/` would collide with that.
-func cascadeAncestors(workspaceDirPath string) []string {
-	if workspaceDirPath == "" {
-		return nil
-	}
-	var cleanHome string
-	if home, err := os.UserHomeDir(); err == nil && home != "" {
-		cleanHome = filepath.Clean(home)
-	}
-	var chain []string
-	cur := filepath.Clean(workspaceDirPath)
-	for {
-		if cur == cleanHome || cur == string(filepath.Separator) {
-			break
+	if projectRoot != "" {
+		project, err := c.projectLayer(projectRoot)
+		if err != nil {
+			return nil, err
 		}
-		chain = append(chain, cur)
-		parent := filepath.Dir(cur)
-		if parent == cur {
-			break
-		}
-		cur = parent
+		dirs = append(dirs, project)
 	}
-	for i, j := 0, len(chain)-1; i < j; i, j = i+1, j-1 {
-		chain[i], chain[j] = chain[j], chain[i]
-	}
-	return chain
+	return dirs, nil
 }
 
 // listTOMLFiles returns sorted *.toml entries in dir. A missing dir returns an

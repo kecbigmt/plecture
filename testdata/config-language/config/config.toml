@@ -3,11 +3,11 @@
 
 schema_version = 2
 
-workspace_dirs_root = "~/worktrees"
 max_up_children     = 12
 resource_allowlist  = ["^https://github\\.com/kecbigmt/"]
 plugin_dirs         = ["~/.config/plect/plugins"]
 channels            = ["notify"]
+trusted_project_roots = ["/projects/widgets"]
 
 [inputs_schema]
 type                 = "object"

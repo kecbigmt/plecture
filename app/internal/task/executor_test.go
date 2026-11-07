@@ -62,10 +62,10 @@ func TestExecutor_RunSetupIssuesExpectedExecRequest(t *testing.T) {
 		[]nodeStub{{id: "a"}},
 	)
 	tasks := map[string]*contract.TaskState{}
-	if err := RunSetup(context.Background(), plan.Run, SessionVars{Name: "x", WorkspaceDirPath: "/work/x"}, tasks, nil); err != nil {
+	if err := RunSetup(context.Background(), plan.Run, SessionVars{Name: "x"}, tasks, nil); err != nil {
 		t.Fatalf("setup: %v", err)
 	}
-	assertShellRequest(t, spy, `echo '{"value":"x"}'`, "/work/x")
+	assertShellRequest(t, spy, `echo '{"value":"x"}'`, "")
 }
 
 func TestExecutor_RunCleanupIssuesExpectedExecRequest(t *testing.T) {
@@ -74,10 +74,10 @@ func TestExecutor_RunCleanupIssuesExpectedExecRequest(t *testing.T) {
 		[]nodeStub{{id: "a"}},
 	)
 	tasks := map[string]*contract.TaskState{
-		"a": {Scope: "run", Status: contract.TaskStatusProduced, Outputs: map[string]any{}},
+		"a": {Scope: "run", Status: contract.TaskStatusProduced, Outputs: map[string]any{}, Directory: "/work/x"},
 	}
 	spy := withSpyExecutor(t)
-	if err := RunCleanup(context.Background(), plan.Run, SessionVars{Name: "x", WorkspaceDirPath: "/work/x"}, tasks, nil); err != nil {
+	if err := RunCleanup(context.Background(), plan.Run, SessionVars{Name: "x"}, tasks, nil); err != nil {
 		t.Fatalf("cleanup: %v", err)
 	}
 	assertShellRequest(t, spy, `echo cleaned`, "/work/x")
@@ -86,8 +86,8 @@ func TestExecutor_RunCleanupIssuesExpectedExecRequest(t *testing.T) {
 func TestExecutor_RunAliveProbeIssuesExpectedExecRequest(t *testing.T) {
 	spy := withSpyExecutor(t)
 	spy.Stdout = []byte("ok")
-	session := SessionVars{Name: "x", WorkspaceDirPath: "/work/x"}
-	if err := RunAliveProbe(context.Background(), Probe{Action: shellStub(`echo ok`)}, session); err != nil {
+	session := SessionVars{Name: "x"}
+	if err := RunAliveProbe(context.Background(), Probe{Action: shellStub(`echo ok`), Dir: "/work/x"}, session); err != nil {
 		t.Fatalf("alive probe: %v", err)
 	}
 	assertShellRequest(t, spy, `echo ok`, "/work/x")
@@ -96,8 +96,8 @@ func TestExecutor_RunAliveProbeIssuesExpectedExecRequest(t *testing.T) {
 func TestExecutor_RunCaptureIssuesExpectedExecRequest(t *testing.T) {
 	spy := withSpyExecutor(t)
 	spy.Stdout = []byte("pane contents")
-	session := SessionVars{Name: "x", WorkspaceDirPath: "/work/x"}
-	binding := &TerminalBinding{Ops: &config.TerminalConfig{Capture: shellStub(`tmux capture-pane`)}}
+	session := SessionVars{Name: "x"}
+	binding := &TerminalBinding{Ops: &config.TerminalConfig{Capture: shellStub(`tmux capture-pane`)}, Dir: "/work/x"}
 	out, err := RunCapture(context.Background(), binding, session)
 	if err != nil {
 		t.Fatalf("capture: %v", err)
@@ -113,8 +113,8 @@ func TestExecutor_ExecuteTaskSetupIssuesExpectedExecRequest(t *testing.T) {
 	spy.Stdout = []byte(`{"ready":"yes"}`)
 	def := config.TaskDefinition{ID: "review", Scope: "session", Setup: shellStub(`echo '{"ready":"yes"}'`)}
 	r := resolveDef(t, def, "review#1")
-	session := SessionVars{Name: "x", WorkspaceDirPath: "/work/x"}
-	result, err := ExecuteTaskSetup(context.Background(), r, nil, session, map[string]*contract.TaskState{})
+	session := SessionVars{Name: "x"}
+	result, err := ExecuteTaskSetup(context.Background(), r, nil, session, map[string]*contract.TaskState{}, "/work/x")
 	if err != nil {
 		t.Fatalf("ExecuteTaskSetup: %v", err)
 	}
@@ -127,8 +127,8 @@ func TestExecutor_ExecuteTaskSetupIssuesExpectedExecRequest(t *testing.T) {
 func TestExecutor_RunActivityProbeIssuesExpectedExecRequest(t *testing.T) {
 	spy := withSpyExecutor(t)
 	spy.Stdout = []byte(`{"fingerprint":"f1"}`)
-	session := SessionVars{Name: "x", WorkspaceDirPath: "/work/x"}
-	sig, err := RunActivityProbe(context.Background(), Probe{Action: shellStub(`probe`), Env: []string{"PLECT_GUARD=on"}}, session)
+	session := SessionVars{Name: "x"}
+	sig, err := RunActivityProbe(context.Background(), Probe{Action: shellStub(`probe`), Env: []string{"PLECT_GUARD=on"}, Dir: "/work/x"}, session)
 	if err != nil {
 		t.Fatalf("activity probe: %v", err)
 	}
@@ -143,7 +143,7 @@ func TestExecutor_RunActivityProbeIssuesExpectedExecRequest(t *testing.T) {
 // keeps a shared request-building path from quietly giving a shell action a
 // stdin it never declared.
 func TestExecutor_ShellActionsPassNoStdin(t *testing.T) {
-	session := SessionVars{Name: "x", WorkspaceDirPath: "/work/x"}
+	session := SessionVars{Name: "x"}
 	paths := map[string]func(t *testing.T){
 		"task setup": func(t *testing.T) {
 			plan := buildPlan(t,
@@ -155,7 +155,7 @@ func TestExecutor_ShellActionsPassNoStdin(t *testing.T) {
 			}
 		},
 		"alive probe": func(t *testing.T) {
-			if err := RunAliveProbe(context.Background(), Probe{Action: shellStub(`echo ok`)}, session); err != nil {
+			if err := RunAliveProbe(context.Background(), Probe{Action: shellStub(`echo ok`), Dir: "/work/x"}, session); err != nil {
 				t.Fatal(err)
 			}
 		},
@@ -168,7 +168,7 @@ func TestExecutor_ShellActionsPassNoStdin(t *testing.T) {
 		"dynamic instance setup": func(t *testing.T) {
 			def := config.TaskDefinition{ID: "review", Scope: "session", Setup: shellStub(`echo '{}'`)}
 			r := resolveDef(t, def, "review#1")
-			if _, err := ExecuteTaskSetup(context.Background(), r, nil, session, map[string]*contract.TaskState{}); err != nil {
+			if _, err := ExecuteTaskSetup(context.Background(), r, nil, session, map[string]*contract.TaskState{}, "/work/x"); err != nil {
 				t.Fatal(err)
 			}
 		},

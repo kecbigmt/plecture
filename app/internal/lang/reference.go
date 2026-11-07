@@ -36,7 +36,7 @@ type Registry struct {
 }
 
 // NewRegistry builds a Registry from the enabled plugin layers and the
-// merged user-owned namespace (the output of repeated MergeLayer calls).
+// user-owned namespace after its layers have replaced same-id declarations.
 func NewRegistry(plugins []PluginLayer, user []*Definition) *Registry {
 	r := &Registry{
 		plugins: make(map[string]map[string]*Definition, len(plugins)),
@@ -155,29 +155,16 @@ func staticRef(v any, site string) (string, error) {
 }
 
 // ResolveWorkflowRefs checks a workflow definition's static references: its
-// workspace_provider (kind workspace_provider), each node's uses (kind
-// effect), and each event.channel entry's uses (kind channel).
+// entry resource (kind resource), each node's uses (kind effect) and each event.channel entry's uses (kind
+// channel).
 func ResolveWorkflowRefs(def *Definition, from Ownership, r *Registry) error {
-	if wp, ok := def.Body["workspace_provider"]; ok {
-		ref, err := staticRef(wp, def.ID+".workspace_provider")
+	if raw, ok := def.Body["resource"]; ok {
+		ref, err := staticRef(raw, def.ID+".resource")
 		if err != nil {
 			return err
 		}
-		if _, err := r.ExpectKind(ref, from, KindWorkspaceProvider, def.ID+".workspace_provider"); err != nil {
+		if _, err := r.ExpectKind(ref, from, KindResource, def.ID+".resource"); err != nil {
 			return err
-		}
-	}
-	if inputsVal, ok := def.Body["workspace_provider_inputs"]; ok {
-		inputs, ok := inputsVal.(map[string]any)
-		if !ok {
-			return fmt.Errorf("%s.workspace_provider_inputs: expected a table", def.ID)
-		}
-		for key, v := range inputs {
-			if _, isTagged := v.(map[string]any); isTagged {
-				return newDiag(CodeValueTagSurface, LayerStructural,
-					Position{Path: fmt.Sprintf("%s.workspace_provider_inputs.%s", def.ID, key)},
-					"a workspace provider's hooks run before any node output exists, so its parameters are literal data")
-			}
 		}
 	}
 	if nodesVal, ok := def.Body["nodes"]; ok {

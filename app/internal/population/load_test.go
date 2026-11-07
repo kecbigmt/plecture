@@ -20,8 +20,9 @@ func populationConfig(t *testing.T, queryMeans, timing, sessionInputs string) *c
 	t.Helper()
 	dir := t.TempDir()
 	writeDefinition(t, dir, "observer", `[source]
-kind = "resource_observer"
-match = "^urn:case:"
+kind = "resource"
+match = "^urn:case:(?P<id>[A-Za-z0-9]+)(#[a-z]+)?$"
+name = { from = "match.id" }
 [source.observe]
 type = "exec"
 command = "true"
@@ -40,16 +41,6 @@ type = "string"
 [source.query.item_schema.properties.context]
 type = "string"
 `+queryMeans)
-	writeDefinition(t, dir, "provider", `[provider]
-kind = "workspace_provider"
-match = "^urn:case:(?P<id>[A-Za-z0-9]+)$"
-name = { from = "match.id" }
-[provider.setup]
-type = "exec"
-command = "true"
-[provider.outputs_schema]
-type = "object"
-`)
 	writeDefinition(t, dir, "runtime", `[runtime]
 kind = "effect"
 scope = "run"
@@ -61,7 +52,7 @@ type = "noop"
 `)
 	writeDefinition(t, dir, "workflow", `[agent]
 kind = "workflow"
-workspace_provider = "provider"
+resource = "source"
 [agent.inputs_schema]
 type = "object"
 required = ["resource"]
@@ -73,13 +64,12 @@ id = "runtime"
 uses = "runtime"
 [[agent.populations]]
 name = "dispatch"
-resource_observer = "source"
 `+timing+`
 [agent.populations.query]
 scope = "all"
 [agent.populations.session.inputs]
 `+sessionInputs)
-	return &config.Config{BaseDir: dir, WorkspaceDirsRoot: t.TempDir()}
+	return &config.Config{BaseDir: dir}
 }
 
 func TestLoadAcceptsPollPopulationAndCompilesContracts(t *testing.T) {
@@ -88,11 +78,11 @@ type = "exec"
 command = "printf"
 `, "uses = [\"poll\"]\npoll_every = \"1m\"", `resource = { from = "resource.id" }`)
 
-	defs, err := Load(cfg)
+	defs, err := Load(cfg, "")
 	if err != nil {
 		t.Fatalf("Load: %v", err)
 	}
-	if len(defs) != 1 || defs[0].Workflow.Address != "agent" || defs[0].Observer.ID != "source" {
+	if len(defs) != 1 || defs[0].Workflow.Address != "agent" || defs[0].Entry.ID != "source" {
 		t.Fatalf("definitions = %+v", defs)
 	}
 }
@@ -111,7 +101,7 @@ func TestLoadRequiresTimingForTheUsesSelection(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			_, err := Load(populationConfig(t, tt.means, tt.timing, `resource = { from = "resource.id" }`))
+			_, err := Load(populationConfig(t, tt.means, tt.timing, `resource = { from = "resource.id" }`), "")
 			if err == nil || !strings.Contains(err.Error(), tt.want) {
 				t.Fatalf("error = %v, want %q", err, tt.want)
 			}
@@ -124,7 +114,7 @@ func TestLoadRejectsAUsesSelectionTheObserverDoesNotDeclare(t *testing.T) {
 type = "exec"
 command = "true"
 `, `uses = ["subscribe"]`, `resource = { from = "resource.id" }`)
-	_, err := Load(cfg)
+	_, err := Load(cfg, "")
 	if err == nil || !strings.Contains(err.Error(), "subscribe") {
 		t.Fatalf("error = %v, want a diagnostic naming the undeclared subscribe means", err)
 	}
@@ -136,8 +126,36 @@ type = "exec"
 command = "true"
 `, "uses = [\"poll\"]\npoll_every = \"1m\"", `resource = { from = "item.missing" }`)
 
-	_, err := Load(cfg)
+	_, err := Load(cfg, "")
 	if err == nil || !strings.Contains(err.Error(), "item.missing") {
 		t.Fatalf("error = %v, want unknown item projection", err)
+	}
+}
+
+func TestLoadReadsThePopulationsOfTheSelectedProjectRoot(t *testing.T) {
+	cfg := populationConfig(t, `[source.query.poll]
+type = "exec"
+command = "printf"
+`, "uses = [\"poll\"]\npoll_every = \"1m\"", `resource = { from = "resource.id" }`)
+	root := filepath.Join(t.TempDir(), "widgets")
+	if err := os.MkdirAll(filepath.Join(root, ".plect"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	writeDefinition(t, filepath.Join(root, ".plect"), "project", "schema_version = 2\n")
+	if err := os.Rename(filepath.Join(cfg.BaseDir, "workflow.toml"), filepath.Join(root, ".plect", "workflow.toml")); err != nil {
+		t.Fatal(err)
+	}
+	cfg.TrustedProjectRoots = []string{root}
+
+	defs, err := Load(cfg, root)
+	if err != nil {
+		t.Fatalf("Load: %v", err)
+	}
+	if len(defs) != 1 || defs[0].ProjectRoot != root || populationKey(defs[0]).ProjectRoot != root {
+		t.Fatalf("defs = %+v, want the project's population keyed by its root", defs)
+	}
+	global, err := Load(cfg, "")
+	if err != nil || len(global) != 0 {
+		t.Fatalf("Load(global-only) = %d defs, %v; want none", len(global), err)
 	}
 }

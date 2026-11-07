@@ -2,8 +2,8 @@
 # reason: a reference written inside a plugin uses only the relative form, so naming a catalog alias or another plugin's ownership segment is an error.
 
 [review_session]
-kind               = "workflow"
-workspace_provider = "official.github.worktree"
+kind     = "workflow"
+resource = "official.github.issue"
 
 [[review_session.nodes]]
 uses = "runtime"

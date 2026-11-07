@@ -2,11 +2,11 @@
 # reason: a plugin cannot ship the user-owned deployment policy that decides which sessions exist.
 
 [plugin_dispatch]
-kind = "workflow"
+kind     = "workflow"
+resource = "query_source"
 
 [[plugin_dispatch.populations]]
 name              = "dispatch"
-resource_observer = "query_source"
 uses              = ["poll"]
 
 [plugin_dispatch.populations.query]

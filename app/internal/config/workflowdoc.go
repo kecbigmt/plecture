@@ -14,39 +14,14 @@ import (
 // diagnostic names the layer that wrote the offending value; the merged
 // definition's own topology is checked when it is decoded.
 func (c *Config) checkWorkflowDefinition(def *lang.Definition, layer layerDir) error {
-	if _, declares := def.Body["populations"]; declares && !layer.global {
-		return fmt.Errorf("workflow %s: populations must be declared in the workspace-independent user configuration layer", def.File)
-	}
-	if layer.workspaceDir {
-		if err := checkWorkspaceDirFragment(def, def.File); err != nil {
-			return err
-		}
+	if _, declares := def.Body["populations"]; declares && !layer.global && !layer.project {
+		return fmt.Errorf("workflow %s: populations are deployment policy and must be declared in the global configuration or a project root", def.File)
 	}
 	validation := lang.Validation{
 		From:        lang.Ownership{IsPlugin: layer.plugin},
 		Executables: c.binResolver(def.File),
 	}
 	return validation.ValidateDefinition(def)
-}
-
-// checkWorkspaceDirFragment enforces the node-addition-only rule for a
-// workflow document inside the workspace directory. That layer is clone
-// content: an attacker-controlled repository must not be able to name the
-// provider a session runs on, wire an event channel to a delivery primitive,
-// or supply a clock that drives execution with nobody in the loop. `nodes` is
-// stated as an allowlist rather than the offending fields as a denylist, so a
-// field added to the workflow surface later is closed here by default.
-func checkWorkspaceDirFragment(def *lang.Definition, path string) error {
-	var offending []string
-	for _, field := range sortedBodyKeys(def.Body) {
-		if field != "nodes" {
-			offending = append(offending, field)
-		}
-	}
-	if len(offending) > 0 {
-		return fmt.Errorf("workflow %s: a `.plect/workflows/` document inside the workspace directory may only add [[nodes]]; %v must move to a trusted layer (global config, plugin, or a directory above the workspace dir)", path, offending)
-	}
-	return nil
 }
 
 // workflowFrom reads the fields the runtime needs off one merged workflow
@@ -67,7 +42,7 @@ func workflowFrom(def *lang.Definition, sourcePath string) (WorkflowFile, error)
 	}{
 		{"name", &w.Name},
 		{"description", &w.Description},
-		{"workspace_provider", &w.WorkspaceProvider},
+		{"resource", &w.Resource},
 		{"inputs_schema_file", &w.InputsSchemaFile},
 	} {
 		if raw, ok := def.Body[field.key]; ok {
@@ -115,7 +90,17 @@ func workflowFrom(def *lang.Definition, sourcePath string) (WorkflowFile, error)
 	if w.Display, err = valueTableFrom(def.Body, "display", lang.ClassData, pos); err != nil {
 		return w, err
 	}
-	if w.WorkspaceProviderInputs, err = providerInputsFrom(def.Body, pos); err != nil {
+	if w.Outputs, err = valueTableFrom(def.Body, "outputs", lang.ClassData, pos); err != nil {
+		return w, err
+	}
+	if raw, ok := def.Body["outputs_schema"]; ok {
+		schema, ok := raw.(map[string]any)
+		if !ok {
+			return w, fmt.Errorf("`outputs_schema` is a JSON Schema document")
+		}
+		w.OutputsSchema = schema
+	}
+	if w.Workdir, err = lang.WorkflowWorkdir(def); err != nil {
 		return w, err
 	}
 	if w.Nodes, err = workflowNodesFrom(def, pos); err != nil {
@@ -186,9 +171,8 @@ func workflowPopulationsFrom(def *lang.Definition, pos lang.Position) ([]Workflo
 	out := make([]WorkflowPopulation, 0, len(entries))
 	for i, entry := range entries {
 		p := WorkflowPopulation{
-			Name:             entry["name"].(string),
-			ResourceObserver: entry["resource_observer"].(string),
-			Query:            entry["query"].(map[string]any),
+			Name:  entry["name"].(string),
+			Query: entry["query"].(map[string]any),
 		}
 		for _, field := range []struct {
 			key    string
@@ -233,27 +217,6 @@ func workflowPopulationsFrom(def *lang.Definition, pos lang.Position) ([]Workflo
 	return out, nil
 }
 
-func providerInputsFrom(body map[string]any, pos lang.Position) (map[string]any, error) {
-	raw, ok := body["workspace_provider_inputs"]
-	if !ok {
-		return nil, nil
-	}
-	tbl, ok := raw.(map[string]any)
-	if !ok {
-		return nil, fmt.Errorf("`workspace_provider_inputs` is a table")
-	}
-	at := childPosition(pos, "workspace_provider_inputs")
-	out := make(map[string]any, len(tbl))
-	for key, entry := range tbl {
-		value, err := lang.ParseValue(entry, lang.ClassLiteral, childPosition(at, key))
-		if err != nil {
-			return nil, err
-		}
-		out[key] = value.Literal
-	}
-	return out, nil
-}
-
 func workflowNodesFrom(def *lang.Definition, pos lang.Position) ([]WorkflowNode, error) {
 	topology, err := lang.WorkflowNodes(def)
 	if err != nil {
@@ -274,10 +237,11 @@ func workflowNodesFrom(def *lang.Definition, pos lang.Position) ([]WorkflowNode,
 			return nil, err
 		}
 		out = append(out, WorkflowNode{
-			ID:     node.ID,
-			Uses:   node.Uses,
-			Inputs: inputs,
-			Blocks: node.Blocks,
+			ID:           node.ID,
+			Uses:         node.Uses,
+			Inputs:       inputs,
+			Blocks:       node.Blocks,
+			Subscription: node.Subscription,
 		})
 	}
 	return out, nil

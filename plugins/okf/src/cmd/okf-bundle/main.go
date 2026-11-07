@@ -1,5 +1,5 @@
 // Command okf-bundle is the executable the shipped okf plugin config
-// invokes for its workspace provider hooks over the owner's knowledge
+// invokes for its goal_dir effect's actions over the owner's knowledge
 // bundle. Each subcommand prints the contract its TOML caller expects on
 // stdout (JSON for setup) and reports failure through its exit status.
 package main
@@ -22,7 +22,7 @@ func main() {
 }
 
 // run dispatches directly to setup/cleanup with no intervening "provider"
-// subcommand group: the binary itself is the workspace provider realization
+// subcommand group: the binary itself is the goal_dir effect's realization
 // (mirroring github-worktree's flat setup/cleanup shape), so a group noun
 // naming that same concept again would be redundant.
 func run(args []string) error {

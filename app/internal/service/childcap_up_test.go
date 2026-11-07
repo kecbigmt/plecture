@@ -23,32 +23,36 @@ const capResolverFields = `match = '^https://example\.test/cases/(?P<id>[A-Za-z0
 name  = { expr = "'case_' + match.id" }
 `
 
-func capProviderCreatingWorkspace(id, workspaceDir string) string {
-	return capProviderRunning(id, fmt.Sprintf("mkdir -p %s\nprintf '{\"workspace_dir\":\"%s\"}'\n", workspaceDir, workspaceDir))
-}
+// capResourceDoc declares the resource type this file's fixtures accept.
+const capResourceDoc = `[cases]
+kind = "resource"
+` + capResolverFields + `
+[cases.observe]
+type   = "shell"
+script = "echo '{}'"
+`
 
-// capProviderSlowWorkspace is capProviderCreatingWorkspace but pauses
-// first, widening the window a concurrent Up() attempt for the same child
-// has to land its own reservation attempt while this one is still in flight.
-func capProviderSlowWorkspace(id, workspaceDir string) string {
-	return capProviderRunning(id, fmt.Sprintf("sleep 0.5\nmkdir -p %s\nprintf '{\"workspace_dir\":\"%s\"}'\n", workspaceDir, workspaceDir))
-}
-
-func capProviderRunning(id, script string) string {
-	return providerDoc(id, capResolverFields, `[%[1]s.setup]
-type    = "exec"
-command = "sh"
-args    = ["-c", `+fmt.Sprintf("%q", script)+`, "provider"]
-`)
+// useCapWorkflow points the fixture workflow at the cases resource and gives
+// it a directory-creating effect; slow widens the window a concurrent Up()
+// for the same child has to land its own reservation while this one is in
+// flight.
+func useCapWorkflow(t *testing.T, cfg *config.Config, wfID, workdir string, slow bool) {
+	t.Helper()
+	useResource(t, cfg, wfID, "cases", capResourceDoc)
+	script := mkdirScript(workdir)
+	if slow {
+		script = "sleep 0.5\n" + script
+	}
+	attachWorkdir(t, cfg, wfID, taskFixture{setup: script})
 }
 
 func TestUp_AcceptsThirdChildAtCapAsQueuedSleep(t *testing.T) {
 	store := testStore(t)
 	workdir := filepath.Join(t.TempDir(), "wd")
-	cfg := writeWorkflowFixture(t, filepath.Join(t.TempDir(), "workdirs"), "capwf",
+	cfg := writeWorkflowFixture(t, "capwf",
 		[]taskFixture{{id: "noop", scope: "session", setup: "echo '{}'"}},
 		[]nodeFixture{{id: "noop"}})
-	writeSetupWorkflow(t, cfg, "capwf", capProviderCreatingWorkspace("capwf", workdir))
+	useCapWorkflow(t, cfg, "capwf", workdir, false)
 	writeCapWorkflow(t, cfg.BaseDir, "parent_wf", intPtr(2))
 
 	seedSessionWithNodes(t, store, "parent1", "acct", 1, "parent_wf", nil)
@@ -58,7 +62,7 @@ func TestUp_AcceptsThirdChildAtCapAsQueuedSleep(t *testing.T) {
 	}
 
 	url := "https://example.test/cases/reject"
-	newChildName := "case_reject+capwf"
+	newChildName := "case_reject"
 	result, err := Up(cfg, store, UpParams{Identifier: url, ParentSession: "parent1"})
 	if err != nil {
 		t.Fatal(err)
@@ -74,10 +78,10 @@ func TestUp_AcceptsThirdChildAtCapAsQueuedSleep(t *testing.T) {
 func TestUp_ManualParentlessAdmissionQueuesAtVirtualRootCap(t *testing.T) {
 	store := testStore(t)
 	workdir := filepath.Join(t.TempDir(), "wd")
-	cfg := writeWorkflowFixture(t, filepath.Join(t.TempDir(), "workdirs"), "capwf",
+	cfg := writeWorkflowFixture(t, "capwf",
 		[]taskFixture{{id: "noop", scope: "session", setup: "echo '{}'"}},
 		[]nodeFixture{{id: "noop"}})
-	writeSetupWorkflow(t, cfg, "capwf", capProviderCreatingWorkspace("capwf", workdir))
+	useCapWorkflow(t, cfg, "capwf", workdir, false)
 	cfg.MaxUpChildren = intPtr(1)
 	seedSessionWithNodes(t, store, "existingRoot", "acct", 1, "", upTasks())
 
@@ -88,14 +92,14 @@ func TestUp_ManualParentlessAdmissionQueuesAtVirtualRootCap(t *testing.T) {
 	if result.Result != "sleeping" || result.QueuePosition != 1 {
 		t.Fatalf("Up result = %+v, want queued sleep", result)
 	}
-	if got := store.Get("case_manual+capwf"); got == nil || got.SleepSince.IsZero() {
+	if got := store.Get("case_manual"); got == nil || got.SleepSince.IsZero() {
 		t.Fatalf("session = %+v, want persisted sleep", got)
 	}
 }
 
 func TestWakeQueuedSessions_UsesCapacityInQueueOrder(t *testing.T) {
 	store := testStore(t)
-	cfg := writeWorkflowFixture(t, t.TempDir(), "child_wf",
+	cfg := writeWorkflowFixture(t, "child_wf",
 		[]taskFixture{{id: "runtime", scope: "run", setup: "echo '{}'", cleanup: "true"}},
 		[]nodeFixture{{id: "runtime"}})
 	writeCapWorkflow(t, cfg.BaseDir, "parent_wf", intPtr(1))
@@ -158,7 +162,7 @@ func TestUp_IgnoresQueuedSessionsThatCannotWake(t *testing.T) {
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			store := testStore(t)
-			cfg := writeWorkflowFixture(t, t.TempDir(), "child_wf",
+			cfg := writeWorkflowFixture(t, "child_wf",
 				[]taskFixture{{id: "runtime", scope: "run", setup: "echo '{}'"}},
 				[]nodeFixture{{id: "runtime"}})
 			writeCapWorkflow(t, cfg.BaseDir, "parent_wf", intPtr(1))
@@ -202,7 +206,7 @@ func TestWakeQueuedSessions_DoesNotRestartFullStoppedSnapshotEntry(t *testing.T)
 	started := filepath.Join(t.TempDir(), "started")
 	release := filepath.Join(t.TempDir(), "release")
 	setup := fmt.Sprintf("touch %q; while [ ! -e %q ]; do sleep 0.01; done; echo '{}'", started, release)
-	cfg := writeWorkflowFixture(t, t.TempDir(), "child_wf",
+	cfg := writeWorkflowFixture(t, "child_wf",
 		[]taskFixture{{id: "runtime", scope: "run", setup: setup, cleanup: "true"}},
 		[]nodeFixture{{id: "runtime"}})
 	writeCapWorkflow(t, cfg.BaseDir, "parent_wf", intPtr(1))
@@ -247,10 +251,10 @@ func TestWakeQueuedSessions_DoesNotRestartFullStoppedSnapshotEntry(t *testing.T)
 func TestUp_AllowsNewChildAfterSiblingDrops(t *testing.T) {
 	store := testStore(t)
 	workdir := filepath.Join(t.TempDir(), "wd")
-	cfg := writeWorkflowFixture(t, filepath.Join(t.TempDir(), "workdirs"), "capwf",
+	cfg := writeWorkflowFixture(t, "capwf",
 		[]taskFixture{{id: "noop", scope: "session", setup: "echo '{}'"}},
 		[]nodeFixture{{id: "noop"}})
-	writeSetupWorkflow(t, cfg, "capwf", capProviderCreatingWorkspace("capwf", workdir))
+	useCapWorkflow(t, cfg, "capwf", workdir, false)
 	writeCapWorkflow(t, cfg.BaseDir, "parent_wf", intPtr(2))
 
 	seedSessionWithNodes(t, store, "parent1", "acct", 1, "parent_wf", nil)
@@ -276,10 +280,10 @@ func TestUp_AllowsNewChildAfterSiblingDrops(t *testing.T) {
 func TestUp_NoCapDeclaredAllowsUnlimitedChildrenViaUp(t *testing.T) {
 	store := testStore(t)
 	workdir := filepath.Join(t.TempDir(), "wd")
-	cfg := writeWorkflowFixture(t, filepath.Join(t.TempDir(), "workdirs"), "capwf",
+	cfg := writeWorkflowFixture(t, "capwf",
 		[]taskFixture{{id: "noop", scope: "session", setup: "echo '{}'"}},
 		[]nodeFixture{{id: "noop"}})
-	writeSetupWorkflow(t, cfg, "capwf", capProviderCreatingWorkspace("capwf", workdir))
+	useCapWorkflow(t, cfg, "capwf", workdir, false)
 	writeCapWorkflow(t, cfg.BaseDir, "parent_wf", nil)
 
 	seedSessionWithNodes(t, store, "parent1", "acct", 1, "parent_wf", nil)
@@ -296,7 +300,7 @@ func TestUp_NoCapDeclaredAllowsUnlimitedChildrenViaUp(t *testing.T) {
 
 func TestUp_ReRunOnAlreadyUpChildAtFullCapStaysIdempotent(t *testing.T) {
 	store := testStore(t)
-	cfg := writeWorkflowFixture(t, filepath.Join(t.TempDir(), "workdirs"), "child_wf",
+	cfg := writeWorkflowFixture(t, "child_wf",
 		[]taskFixture{{id: "noop", scope: "run", setup: "echo '{}'"}},
 		[]nodeFixture{{id: "noop"}})
 	writeCapWorkflow(t, cfg.BaseDir, "parent_wf", intPtr(2))
@@ -317,10 +321,10 @@ func TestUp_ReRunOnAlreadyUpChildAtFullCapStaysIdempotent(t *testing.T) {
 func TestUp_ReleasesReservationAfterSuccessfulAdmission(t *testing.T) {
 	store := testStore(t)
 	workdir := filepath.Join(t.TempDir(), "wd")
-	cfg := writeWorkflowFixture(t, filepath.Join(t.TempDir(), "workdirs"), "capwf",
+	cfg := writeWorkflowFixture(t, "capwf",
 		[]taskFixture{{id: "noop", scope: "session", setup: "echo '{}'"}},
 		[]nodeFixture{{id: "noop"}})
-	writeSetupWorkflow(t, cfg, "capwf", capProviderCreatingWorkspace("capwf", workdir))
+	useCapWorkflow(t, cfg, "capwf", workdir, false)
 	writeCapWorkflow(t, cfg.BaseDir, "parent_wf", intPtr(2))
 	seedSessionWithNodes(t, store, "parent1", "acct", 1, "parent_wf", nil)
 
@@ -339,7 +343,7 @@ func TestUp_ReleasesReservationAfterSuccessfulAdmission(t *testing.T) {
 
 func TestDestroy_ClearsStaleReservationForTheDestroyedChild(t *testing.T) {
 	store := testStore(t)
-	cfg := writeWorkflowFixture(t, filepath.Join(t.TempDir(), "workdirs"), "child_wf",
+	cfg := writeWorkflowFixture(t, "child_wf",
 		[]taskFixture{{id: "noop", scope: "session", setup: "echo '{}'"}},
 		[]nodeFixture{{id: "noop"}})
 	writeCapWorkflow(t, cfg.BaseDir, "parent_wf", intPtr(1))
@@ -366,10 +370,10 @@ func TestDestroy_ClearsStaleReservationForTheDestroyedChild(t *testing.T) {
 func TestUp_LiveReservationBlocksSiblingThroughTheRealUpPath(t *testing.T) {
 	store := testStore(t)
 	workdir := filepath.Join(t.TempDir(), "wd")
-	cfg := writeWorkflowFixture(t, filepath.Join(t.TempDir(), "workdirs"), "capwf",
+	cfg := writeWorkflowFixture(t, "capwf",
 		[]taskFixture{{id: "noop", scope: "session", setup: "echo '{}'"}},
 		[]nodeFixture{{id: "noop"}})
-	writeSetupWorkflow(t, cfg, "capwf", capProviderCreatingWorkspace("capwf", workdir))
+	useCapWorkflow(t, cfg, "capwf", workdir, false)
 	writeCapWorkflow(t, cfg.BaseDir, "parent_wf", intPtr(1))
 	seedSessionWithNodes(t, store, "parent1", "acct", 1, "parent_wf", nil)
 
@@ -388,10 +392,10 @@ func TestUp_LiveReservationBlocksSiblingThroughTheRealUpPath(t *testing.T) {
 func TestUp_ConcurrentSameChildAttemptsRejectAllButOne(t *testing.T) {
 	store := testStore(t)
 	workdir := filepath.Join(t.TempDir(), "wd")
-	cfg := writeWorkflowFixture(t, filepath.Join(t.TempDir(), "workdirs"), "capwf",
+	cfg := writeWorkflowFixture(t, "capwf",
 		[]taskFixture{{id: "noop", scope: "session", setup: "echo '{}'"}},
 		[]nodeFixture{{id: "noop"}})
-	writeSetupWorkflow(t, cfg, "capwf", capProviderSlowWorkspace("capwf", workdir))
+	useCapWorkflow(t, cfg, "capwf", workdir, true)
 	writeCapWorkflow(t, cfg.BaseDir, "parent_wf", intPtr(5))
 	seedSessionWithNodes(t, store, "parent1", "acct", 1, "parent_wf", nil)
 
@@ -438,30 +442,24 @@ func TestUp_ForceRecreateHoldsItsCapSlotThroughTheRebuild(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	cfg := writeWorkflowFixture(t, filepath.Join(t.TempDir(), "workdirs"), "capwf",
+	cfg := writeWorkflowFixture(t, "capwf",
 		[]taskFixture{{id: "noop", scope: "run", setup: "echo '{}'"}},
 		[]nodeFixture{{id: "noop"}})
 	// Slow enough that the sibling attempt below reliably lands while the
 	// teardown-and-rebuild is still in flight.
-	writeSetupWorkflow(t, cfg, "capwf", capProviderSlowWorkspace("capwf", newWorkdir))
+	useCapWorkflow(t, cfg, "capwf", newWorkdir, true)
 	writeCapWorkflow(t, cfg.BaseDir, "parent_wf", intPtr(1))
 
 	seedSessionWithNodes(t, store, "parent1", "acct", 1, "parent_wf", nil)
 	seedSessionWithNodes(t, store, "childA", "acct", 0, "capwf", map[string]*contract.TaskState{
-		contract.WorkflowPseudoNodeID: {
+		workdirEffectID: {
 			Scope:   contract.TaskScopeSession,
 			Status:  contract.TaskStatusProduced,
-			Outputs: map[string]any{contract.OutputKeyWorkspaceDir: oldWorkdir},
+			Outputs: map[string]any{"workspace_dir": oldWorkdir},
 		},
 		"noop": {Scope: contract.TaskScopeRun, Status: contract.TaskStatusProduced},
 	})
 	setParent(t, store, "childA", "parent1")
-	if err := store.Update("childA", func(s *domain.Session) error {
-		s.WorkspaceDirPath = oldWorkdir
-		return nil
-	}); err != nil {
-		t.Fatalf("seed workspace dir: %v", err)
-	}
 	seedSessionWithNodes(t, store, "childB", "acct", 1, "capwf", nil)
 	setParent(t, store, "childB", "parent1")
 
@@ -482,5 +480,48 @@ func TestUp_ForceRecreateHoldsItsCapSlotThroughTheRebuild(t *testing.T) {
 
 	if err := <-done; err != nil {
 		t.Fatalf("Up --force-recreate: %v", err)
+	}
+}
+
+func TestUp_ForceRecreateWithATaskQueuedAtCapKeepsTheSelectionThroughWake(t *testing.T) {
+	store := testStore(t)
+	workdir := filepath.Join(t.TempDir(), "wd")
+	cfg := writeWorkflowFixture(t, "capwf",
+		[]taskFixture{{id: "noop", scope: "session", setup: "echo '{}'"}},
+		[]nodeFixture{{id: "noop"}})
+	useCapWorkflow(t, cfg, "capwf", workdir, false)
+	writeCapWorkflow(t, cfg.BaseDir, "parent_wf", intPtr(2))
+	writeServiceTaskDoc(t, cfg, "case_triage", `[case_triage]
+kind         = "task"
+description  = "Triage a case"
+resource     = "cases"
+instructions = [{ text = "Triage {{ resource.id }}." }]
+`)
+	seedSessionWithNodes(t, store, "parent1", "acct", 1, "parent_wf", nil)
+	for i, name := range []string{"childA", "childB"} {
+		seedSessionWithNodes(t, store, name, "acct", i, "", upTasks())
+		setParent(t, store, name, "parent1")
+	}
+
+	const url = "https://example.test/cases/queued"
+	if result, err := Up(cfg, store, UpParams{Identifier: url, ParentSession: "parent1"}); err != nil || result.Result != "sleeping" {
+		t.Fatalf("first up = %+v, %v; want a queued taskless session", result, err)
+	}
+	result, err := Up(cfg, store, UpParams{Identifier: url, ParentSession: "parent1", ForceRecreate: true, InitialTask: &InitialTask{TaskID: "case_triage"}})
+	if err != nil || result.Result != "sleeping" {
+		t.Fatalf("force-recreate up = %+v, %v; want it queued", result, err)
+	}
+	if initial := store.Get(result.SessionName).Tasks["initial"]; initial == nil || initial.TaskID != "case_triage" {
+		t.Fatalf("initial = %+v after a queued force-recreate, want the selected task recorded", initial)
+	}
+
+	if err := store.Update("childB", func(s *domain.Session) error { s.Nodes = nil; return nil }); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := Up(cfg, store, UpParams{Identifier: result.SessionName}); err != nil {
+		t.Fatalf("wake: %v", err)
+	}
+	if initial := store.Get(result.SessionName).Tasks["initial"]; initial == nil || initial.TaskID != "case_triage" || initial.Status != contract.TaskStatusProduced {
+		t.Fatalf("initial = %+v after wake, want case_triage kept", initial)
 	}
 }

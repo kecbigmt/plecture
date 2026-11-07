@@ -9,7 +9,7 @@
 [goal_review]
 kind              = "task"
 description       = "Review a local-okf goal file and record whether it is achieved"
-resource_observer = "okf_goal"
+resource          = "okf_goal"
 instructions      = [{ file = "goal_review.md" }]
 
 [goal_review.inputs_schema]

@@ -38,6 +38,7 @@ scope = "run"
 	writeFile(t, filepath.Join(root, "workflows", "standing.toml"), `
 [standing]
 kind = "workflow"
+resource = "issue"
 [[standing.nodes]]
 id   = "runtime"
 uses = "runtime"
@@ -55,7 +56,7 @@ include     = ["plect.instruction"]
 	stateStore := state.NewStore(log.Dir())
 	dead := filepath.Join(t.TempDir(), "absent.sock")
 	s := &domain.Session{
-		Name: "session-1", Workflow: "standing", WorkspaceDirPath: t.TempDir(),
+		Name: "session-1", Workflow: "standing",
 		Nodes: map[string]*contract.TaskState{
 			"runtime": {Scope: contract.TaskScopeRun, Status: contract.TaskStatusProduced, Outputs: map[string]any{"socket_path": dead}},
 		},

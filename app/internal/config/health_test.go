@@ -151,6 +151,7 @@ func TestLoadWorkflows_RetiredTickMovementSourceRejected(t *testing.T) {
 	writeFile(t, filepath.Join(baseDir, "workflows", "default.toml"), `
 [default]
 kind = "workflow"
+resource = "issue"
 [[default.nodes]]
 id   = "initial"
 uses = "runtime"

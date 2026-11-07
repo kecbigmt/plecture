@@ -3,6 +3,7 @@ package legacyimport
 import (
 	"context"
 	"database/sql"
+	contract "github.com/kecbigmt/plecture/contracts/state"
 	"os"
 	"path/filepath"
 	"strconv"
@@ -239,11 +240,15 @@ func TestRun_ImportsAFullLegacyDirectoryAndRoundTrips(t *testing.T) {
 		t.Errorf("heartbeat cursor = %d, want 3 (past both events)", heartbeatCursor)
 	}
 
-	pop, err := db.Population(ctx, "wf1/pop")
+	pop, err := db.Population(ctx, contract.PopulationProvenance{Workflow: "wf1", Name: "pop"})
 	if err != nil || pop == nil {
 		t.Fatalf("Population(wf1/pop) = %v, %v", pop, err)
 	}
-	if pop.Members["res-1"] == nil {
+	var imported bool
+	for _, member := range pop.Members {
+		imported = imported || member.Resource.Locator == "res-1"
+	}
+	if !imported {
 		t.Errorf("pop.Members = %+v, want res-1 present", pop.Members)
 	}
 

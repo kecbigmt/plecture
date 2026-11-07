@@ -363,16 +363,14 @@ func TestResolveNodeInputs_ResolvesAgainstDepsWorkflowAndSession(t *testing.T) {
 	}
 	out, err := ResolveNodeInputs(map[string]*lang.Value{
 		"session_name":  fromValue("nodes.tmux.outputs.session_name"),
-		"branch":        fromValue("workspace.branch"),
 		"workspace_dir": fromValue("workflow.outputs.workspace_dir"),
 		"fixed":         literalValue("held"),
-	}, deps, map[string]any{"workspace_dir": "/tmp/wd"}, SessionVars{Branch: "main"})
+	}, deps, map[string]any{"workspace_dir": "/tmp/wd"}, SessionVars{})
 	if err != nil {
 		t.Fatalf("ResolveNodeInputs: %v", err)
 	}
 	for _, want := range []struct{ key, value string }{
 		{"session_name", "abc"},
-		{"branch", "main"},
 		{"workspace_dir", "/tmp/wd"},
 		{"fixed", "held"},
 	} {

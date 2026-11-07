@@ -99,7 +99,6 @@ func run(args []string) error {
 	case "observe":
 		fs := flag.NewFlagSet("observe", flag.ContinueOnError)
 		resource := fs.String("resource", "", "resource identifier (issue URL or pull request URL)")
-		workspaceDirPath := fs.String("workspace-dir-path", "", "the observing session's workspace directory, when one exists")
 		watcherBin := fs.String("watcher-bin", "", "path to a github-watcher binary; gh-api calls route through its shared rate budget when set, otherwise call gh directly")
 		if err := fs.Parse(args[1:]); err != nil {
 			return err
@@ -107,7 +106,7 @@ func run(args []string) error {
 		if *resource == "" {
 			return fmt.Errorf("observe requires --resource")
 		}
-		result, err := observe.Observe(ctx, observe.Options{ResourceID: *resource, WorkspaceDirPath: *workspaceDirPath, GHClient: ghClient(*watcherBin)})
+		result, err := observe.Observe(ctx, observe.Options{ResourceID: *resource, GHClient: ghClient(*watcherBin)})
 		if err != nil {
 			return err
 		}

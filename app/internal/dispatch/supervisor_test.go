@@ -31,7 +31,7 @@ func writeFile(t *testing.T, path, content string) {
 
 func putRevisionSession(t *testing.T, cfg *config.Config, store *state.Store, session *domain.Session) {
 	t.Helper()
-	revision, err := cfg.CaptureWorkflowRevision(session.WorkspaceDirPath, session.Workflow)
+	revision, err := cfg.CaptureWorkflowRevision("", session.Workflow)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -82,6 +82,7 @@ path = { type = "string", required = true }
 	writeFile(t, filepath.Join(globalDir, "workflows", "coding.toml"), `
 [coding]
 kind = "workflow"
+resource = "issue"
 [[coding.nodes]]
 id   = "claude"
 uses = "claude"
@@ -99,7 +100,7 @@ include     = ["plect.instruction"]
 	stateStore := state.NewStore(t.TempDir())
 	sock, _ := startFakeSocket(t)
 	putRevisionSession(t, cfg, stateStore, &domain.Session{
-		Name: "o/r-1", Workflow: "coding", WorkspaceDirPath: t.TempDir(),
+		Name: "o/r-1", Workflow: "coding",
 		Nodes: map[string]*contract.TaskState{
 			"claude": {Scope: contract.TaskScopeRun, Status: contract.TaskStatusProduced, Outputs: map[string]any{"socket_path": sock}},
 		},
@@ -175,6 +176,7 @@ scope = "run"
 	writeFile(t, filepath.Join(globalDir, "workflows", "coding.toml"), `
 [coding]
 kind = "workflow"
+resource = "issue"
 [[coding.nodes]]
 id   = "claude"
 uses = "claude"
@@ -192,7 +194,7 @@ include     = ["plect.instruction"]
 	stateStore := state.NewStore(t.TempDir())
 	sock, _ := startFakeSocket(t)
 	putRevisionSession(t, cfg, stateStore, &domain.Session{
-		Name: "o/r-1", Workflow: "coding", WorkspaceDirPath: t.TempDir(),
+		Name: "o/r-1", Workflow: "coding",
 		Nodes: map[string]*contract.TaskState{
 			"claude": {Scope: contract.TaskScopeRun, Status: contract.TaskStatusProduced, Outputs: map[string]any{"socket_path": sock}},
 		},
@@ -260,6 +262,7 @@ path = { type = "string", required = true }
 	writeFile(t, filepath.Join(globalDir, "workflows", "coding.toml"), `
 [coding]
 kind = "workflow"
+resource = "issue"
 [[coding.nodes]]
 id   = "claude"
 uses = "claude"
@@ -275,7 +278,7 @@ include     = ["plect.instruction"]
 
 	stateStore := state.NewStore(t.TempDir())
 	putRevisionSession(t, cfg, stateStore, &domain.Session{
-		Name: "o/r-1", Workflow: "coding", WorkspaceDirPath: t.TempDir(),
+		Name: "o/r-1", Workflow: "coding",
 		Nodes: map[string]*contract.TaskState{
 			"claude": {Scope: contract.TaskScopeRun, Status: contract.TaskStatusProduced},
 		},
@@ -345,6 +348,7 @@ path = { type = "string", required = true }
 	writeFile(t, filepath.Join(globalDir, "workflows", "coding.toml"), `
 [coding]
 kind = "workflow"
+resource = "issue"
 [[coding.nodes]]
 id   = "claude"
 uses = "claude"
@@ -360,7 +364,7 @@ include     = ["plect.instruction"]
 
 	stateStore := state.NewStore(t.TempDir())
 	putRevisionSession(t, cfg, stateStore, &domain.Session{
-		Name: "o/r-1", Workflow: "coding", WorkspaceDirPath: t.TempDir(),
+		Name: "o/r-1", Workflow: "coding",
 		Nodes: map[string]*contract.TaskState{
 			"claude": {Scope: contract.TaskScopeRun, Status: contract.TaskStatusProduced},
 		},
@@ -465,6 +469,7 @@ path = { type = "string", required = true }
 	writeFile(t, filepath.Join(globalDir, "workflows", "coding.toml"), `
 [coding]
 kind = "workflow"
+resource = "issue"
 [[coding.nodes]]
 id   = "claude"
 uses = "claude"
@@ -482,7 +487,7 @@ include     = ["plect.instruction"]
 	stateStore := state.NewStore(t.TempDir())
 	sock, _ := startFakeSocket(t)
 	putRevisionSession(t, cfg, stateStore, &domain.Session{
-		Name: "o/r-1", Workflow: "coding", WorkspaceDirPath: t.TempDir(),
+		Name: "o/r-1", Workflow: "coding",
 		Nodes: map[string]*contract.TaskState{
 			"claude": {Scope: contract.TaskScopeRun, Status: contract.TaskStatusProduced, Outputs: map[string]any{"socket_path": sock}},
 		},
@@ -550,6 +555,7 @@ scope = "run"
 	writeFile(t, filepath.Join(pluginDir, "config", "workflows", "coding.toml"), `
 [coding]
 kind = "workflow"
+resource = "issue"
 [[coding.nodes]]
 id   = "claude"
 uses = "claude_runtime"
@@ -571,7 +577,7 @@ include     = ["plect.instruction"]
 	stateStore := state.NewStore(dir)
 	sock, recv := startFakeSocket(t)
 	putRevisionSession(t, mountedCfg, stateStore, &domain.Session{
-		Name: "o/r-1", Workflow: "coding", WorkspaceDirPath: t.TempDir(),
+		Name: "o/r-1", Workflow: "coding",
 		Nodes: map[string]*contract.TaskState{
 			"claude": {Scope: contract.TaskScopeRun, Status: contract.TaskStatusProduced, Outputs: map[string]any{"socket_path": sock}},
 		},

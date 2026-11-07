@@ -12,6 +12,7 @@ import (
 
 	"github.com/kecbigmt/plecture/app/internal/config"
 	"github.com/kecbigmt/plecture/app/internal/domain"
+	"github.com/kecbigmt/plecture/app/internal/lang"
 	"github.com/kecbigmt/plecture/app/internal/service"
 	"github.com/kecbigmt/plecture/app/internal/state"
 	"github.com/kecbigmt/plecture/app/internal/task"
@@ -102,7 +103,7 @@ func renderStatus(cmd *cobra.Command, result *service.StatusResult) {
 	fmt.Fprintf(w, "Session:\t%s\n", id.SessionName)
 	if result.Destroyed {
 		fmt.Fprintf(w, "Status:\tdestroyed (tombstone)\n")
-		fmt.Fprintf(w, "Resource:\t%s\n", id.ResourceID)
+		fmt.Fprintf(w, "Resource:\t%s\n", resourceLocator(id.Resource))
 		fmt.Fprintf(w, "Created:\t%s\n", id.CreatedAt.Format("2006-01-02 15:04:05"))
 		fmt.Fprintf(w, "Destroyed:\t%s\n", result.DestroyedAt.Format("2006-01-02 15:04:05"))
 		w.Flush()
@@ -110,7 +111,7 @@ func renderStatus(cmd *cobra.Command, result *service.StatusResult) {
 		return
 	}
 
-	fmt.Fprintf(w, "Resource:\t%s\n", id.ResourceID)
+	fmt.Fprintf(w, "Resource:\t%s\n", resourceLocator(id.Resource))
 	if id.Title != "" {
 		fmt.Fprintf(w, "Title:\t%s\n", id.Title)
 	}
@@ -122,7 +123,10 @@ func renderStatus(cmd *cobra.Command, result *service.StatusResult) {
 	case id.Tag != "":
 		fmt.Fprintf(w, "Tag:\t%s\n", id.Tag)
 	}
-	if id.Revision != "" {
+	switch {
+	case id.Revision != "" && len(id.RetiredSpellings) > 0:
+		fmt.Fprintf(w, "Revision:\t%s (retired dialect: %s; destroy with the previous release — see %s)\n", id.Revision, strings.Join(id.RetiredSpellings, ", "), lang.WorkspaceProviderMigrationGuide)
+	case id.Revision != "":
 		fmt.Fprintf(w, "Revision:\t%s\n", id.Revision)
 	}
 	if id.ParentSession != "" {
@@ -166,7 +170,7 @@ func renderStatus(cmd *cobra.Command, result *service.StatusResult) {
 // renderStatusWork prints one "Task <name> <status>" line per produced
 // instance, with a done expansion only for instances that declare a
 // done_when — the unified display rule applies regardless of task origin
-// (run / node / @workflow / initial / runtime-added), so there is no
+// (run / node / initial / runtime-added), so there is no
 // scope/case-splitting by origin here.
 func renderStatusWork(out interface{ Write([]byte) (int, error) }, work []service.StatusTask, persisted bool) {
 	for i, t := range work {
@@ -406,4 +410,11 @@ func init() {
 	statusCmd.Flags().BoolVar(&statusRefresh, "refresh", false, "Observe each instance's resource before reporting, so the facts shown are current")
 	statusCmd.Flags().BoolVar(&statusFull, "full", false, "With --json, output the full report (all task instances, unfiltered outputs, runtime/flow detail) instead of the default done_when-focused summary")
 	rootCmd.AddCommand(statusCmd)
+}
+
+func resourceLocator(r *service.ResourceView) string {
+	if r == nil {
+		return ""
+	}
+	return r.Locator
 }

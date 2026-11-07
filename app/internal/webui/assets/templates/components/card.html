@@ -19,7 +19,6 @@
   <div class="mt-2 flex flex-wrap items-center gap-2">
     {{ template "badge" .Run }}
     {{- if .Health }}{{ template "badge" .Health }}{{ end }}
-    {{- if .Branch }}<span class="inline-flex items-center gap-1 text-label text-muted-foreground">{{ template "icon-git-branch" "size-3" }}{{ .Branch }}</span>{{ end }}
     {{- if .DisplayStatus }}<span class="text-label text-muted-foreground">{{ .DisplayStatus }}</span>{{ end }}
     {{- with gateSummary .Tasks }}{{ template "gate-badge" . }}{{ end }}
   </div>

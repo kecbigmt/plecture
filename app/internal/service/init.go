@@ -16,7 +16,6 @@ import (
 // anything init defaults on its own — every value here came from an
 // explicit answer.
 type InitConfigValues struct {
-	WorkspaceDirsRoot string
 	ResourceAllowlist []string
 }
 
@@ -27,7 +26,6 @@ type InitConfigValues struct {
 // about.
 type initConfigDoc struct {
 	SchemaVersion     int      `toml:"schema_version"`
-	WorkspaceDirsRoot string   `toml:"workspace_dirs_root"`
 	ResourceAllowlist []string `toml:"resource_allowlist,omitempty"`
 }
 
@@ -46,7 +44,7 @@ func WriteInitConfig(path string, values InitConfigValues) error {
 	}
 	defer f.Close()
 
-	doc := initConfigDoc{SchemaVersion: lang.KnownSchemaVersion, WorkspaceDirsRoot: values.WorkspaceDirsRoot, ResourceAllowlist: values.ResourceAllowlist}
+	doc := initConfigDoc{SchemaVersion: lang.KnownSchemaVersion, ResourceAllowlist: values.ResourceAllowlist}
 	if err := toml.NewEncoder(f).Encode(doc); err != nil {
 		return &Error{Code: ErrExecutionFailed, Message: err.Error()}
 	}

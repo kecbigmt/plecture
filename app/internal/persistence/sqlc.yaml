@@ -3,8 +3,8 @@
 version: "2"
 sql:
   - engine: "sqlite"
-    schema: "schema.sql"
-    queries: "queries.sql"
+    schema: "../../db/schema.sql"
+    queries: "../../db/query.sql"
     gen:
       go:
         package: "sqlcgen"

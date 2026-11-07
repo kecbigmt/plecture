@@ -46,6 +46,9 @@ func downUnlocked(cfg *config.Config, store *state.Store, params DownParams) (*D
 	if err != nil {
 		return nil, err
 	}
+	if err := requireSessionRoot(cfg, session); err != nil {
+		return nil, err
+	}
 	params.Observer = withNodeResultRecording(store, sessionName, params.Observer)
 	// Running cleanup against an existing session mutates it; clamp it to the
 	// active guard like the other write paths.
@@ -54,6 +57,9 @@ func downUnlocked(cfg *config.Config, store *state.Store, params DownParams) (*D
 	}
 	if guardErr := checkLifecycleRelationGuard(store, sessionName, "down"); guardErr != nil {
 		return nil, guardErr
+	}
+	if refusal := retiredRevisionRefusal(session, "`down`"); refusal != nil {
+		return nil, refusal
 	}
 	if session.Nodes == nil {
 		session.Nodes = make(map[string]*contract.TaskState)
@@ -86,7 +92,7 @@ func downUnlocked(cfg *config.Config, store *state.Store, params DownParams) (*D
 			return nil, &Error{Code: ErrExecutionFailed, Message: fmt.Sprintf("failed to record session status: %v", err)}
 		}
 	}
-	plan, err := buildPlanForSession(cfg, session.WorkspaceDirPath, session)
+	plan, err := buildPlanForSession(cfg, session)
 	if err != nil {
 		return nil, &Error{Code: ErrExecutionFailed, Message: err.Error()}
 	}
@@ -99,7 +105,7 @@ func downUnlocked(cfg *config.Config, store *state.Store, params DownParams) (*D
 	if teardownErr != nil {
 		return nil, &Error{Code: ErrExecutionFailed, Message: teardownErr.Error()}
 	}
-	cleanupErr := runTaskCleanup(context.Background(), teardown, sessionVars(cfg, session, plan), session, params.Observer)
+	cleanupErr := runTaskCleanup(context.Background(), cfg, store, teardown, sessionVars(cfg, session, plan), session, params.Observer)
 	session.UpdatedAt = time.Now()
 	if !params.preserveStatus {
 		session.Status = contract.SessionStatusDown

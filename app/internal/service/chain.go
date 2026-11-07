@@ -1,12 +1,14 @@
 package service
 
 import (
+	"fmt"
 	"sort"
 	"strings"
 
 	"github.com/kecbigmt/plecture/app/internal/chain"
 	"github.com/kecbigmt/plecture/app/internal/config"
 	"github.com/kecbigmt/plecture/app/internal/domain"
+	"github.com/kecbigmt/plecture/app/internal/state"
 	"github.com/kecbigmt/plecture/app/internal/task"
 )
 
@@ -27,12 +29,15 @@ const (
 // not-already-active entry and fills Spawned/TargetSession in
 // with the result.
 type ChainSpawn struct {
-	ChainID       string `json:"chain_id"`
-	Task          string `json:"task,omitempty"`
-	Instance      string `json:"instance"`
-	Workflow      string `json:"workflow"`
-	Placement     string `json:"placement"`
-	Resource      string `json:"resource,omitempty"`
+	ChainID   string `json:"chain_id"`
+	Task      string `json:"task,omitempty"`
+	Instance  string `json:"instance"`
+	Workflow  string `json:"workflow"`
+	Placement string `json:"placement"`
+	Resource  string `json:"resource,omitempty"`
+	// InitialTask is the task the spawned session starts with, bound to
+	// Resource.
+	InitialTask   string `json:"initial_task,omitempty"`
 	Tag           string `json:"tag,omitempty"`
 	ParentSession string `json:"parent_session,omitempty"`
 	TargetSession string `json:"target_session,omitempty"`
@@ -121,20 +126,15 @@ func sanitizeTag(s string) string {
 }
 
 // resolveSpawnSessionName derives, offline, the session name a fire's spawn
-// would resolve to — mirroring Up's name derivation (the workspace provider resolver) so
-// the idempotency check sees the same name Up will. A resource no resolver
-// matches is an identity dispatch, whose name is the resource itself.
-func resolveSpawnSessionName(cfg *config.Config, resource, workflow, tag string) (string, error) {
-	disp, matched, err := dispatchResource(cfg, workflow, resource)
+// would resolve to — mirroring Up's name derivation so the idempotency check
+// sees the same name Up will.
+func resolveSpawnSessionName(cfg *config.Config, store *state.Store, projectRoot, resource, workflow, tag string) (name string, existing *domain.Session, collision *Error, err error) {
+	disp, matched, err := dispatchResource(cfg, projectRoot, workflow, resource)
 	if err != nil {
-		return "", err
+		return "", nil, nil, err
 	}
-	if matched {
-		name := disp.Name
-		if tag != "" {
-			name = name + "+" + tag
-		}
-		return name, nil
+	if !matched {
+		return "", nil, nil, &Error{Code: ErrInvalidInput, Message: fmt.Sprintf("no resource declaration recognizes %q", resource)}
 	}
-	return resource, nil
+	return entrySession(store, &disp, tag)
 }

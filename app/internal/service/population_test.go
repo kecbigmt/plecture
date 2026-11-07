@@ -18,7 +18,7 @@ import (
 // population before admitting a session into it.
 func seedPopulationRowForTest(t *testing.T, store *state.Store, p *contract.PopulationProvenance) {
 	t.Helper()
-	if err := store.UpdatePopulation(p.Workflow+"/"+p.Name, func(population *state.PopulationState) error {
+	if err := store.UpdatePopulation(*p, func(population *state.PopulationState) error {
 		population.Workflow = p.Workflow
 		population.Name = p.Name
 		return nil
@@ -30,10 +30,10 @@ func seedPopulationRowForTest(t *testing.T, store *state.Store, p *contract.Popu
 func TestUpPopulationProvenanceCannotAdoptAnExistingSession(t *testing.T) {
 	store := testStore(t)
 	workdir := filepath.Join(t.TempDir(), "wd")
-	cfg := writeWorkflowFixture(t, filepath.Join(t.TempDir(), "workdirs"), "agent",
+	cfg := writeWorkflowFixture(t, "agent",
 		[]taskFixture{{id: "noop", scope: "session", setup: "echo '{}'"}},
 		[]nodeFixture{{id: "noop"}})
-	writeSetupWorkflow(t, cfg, "agent", capProviderCreatingWorkspace("agent", workdir))
+	useCapWorkflow(t, cfg, "agent", workdir, false)
 	resource := "https://example.test/cases/owned"
 	owner := &contract.PopulationProvenance{Workflow: "agent", Name: "first"}
 	seedPopulationRowForTest(t, store, owner)
@@ -57,10 +57,10 @@ func TestUpPopulationProvenanceCannotAdoptAnExistingSession(t *testing.T) {
 func TestChainStyleDispatchCannotAdoptAPopulationSession(t *testing.T) {
 	store := testStore(t)
 	workdir := filepath.Join(t.TempDir(), "wd")
-	cfg := writeWorkflowFixture(t, filepath.Join(t.TempDir(), "workdirs"), "agent",
+	cfg := writeWorkflowFixture(t, "agent",
 		[]taskFixture{{id: "noop", scope: "session", setup: "echo '{}'"}},
 		[]nodeFixture{{id: "noop"}})
-	writeSetupWorkflow(t, cfg, "agent", capProviderCreatingWorkspace("agent", workdir))
+	useCapWorkflow(t, cfg, "agent", workdir, false)
 	resource := "https://example.test/cases/owned"
 	owner := &contract.PopulationProvenance{Workflow: "agent", Name: "dispatch"}
 	seedPopulationRowForTest(t, store, owner)
@@ -77,24 +77,24 @@ func TestChainStyleDispatchCannotAdoptAPopulationSession(t *testing.T) {
 func TestPopulationTaskBlockersFailsClosedAndClearsOnlySatisfiedTasks(t *testing.T) {
 	missingPolicy := `[unbounded]
 kind              = "task"
-resource_observer = "issue_pr"
+resource          = "issue_pr"
 instructions      = [{ text = "Handle {{ resource.id }}." }]
 `
 	store := testStore(t)
-	cfg := writeTaskDocumentFixture(t, t.TempDir(), "wf",
+	cfg := writeTaskDocumentFixture(t, "wf",
 		map[string]string{"resource_kind": "pull", "revision": "sha2"}, reviewDocument, missingPolicy)
 	seedSession(t, store, "session-a", "workspace-a", 1, "wf", map[string]*contract.TaskState{
 		"review#1": {
 			Scope: contract.TaskScopeSession, TaskID: "review", Status: contract.TaskStatusProduced,
-			Resource: "https://example.test/pull/1", State: map[string]any{"verdict_revision": "sha1"}, SetupAt: time.Now(),
+			Resource: testResource("https://example.test/pull/1"), State: map[string]any{"verdict_revision": "sha1"}, SetupAt: time.Now(),
 		},
 		"unbounded#1": {
 			Scope: contract.TaskScopeSession, TaskID: "unbounded", Status: contract.TaskStatusProduced,
-			Resource: "https://example.test/pull/2", SetupAt: time.Now(),
+			Resource: testResource("https://example.test/pull/2"), SetupAt: time.Now(),
 		},
 		"failed#1": {
 			Scope: contract.TaskScopeSession, TaskID: "review", Status: contract.TaskStatusFailed,
-			Resource: "https://example.test/pull/3", SetupAt: time.Now(),
+			Resource: testResource("https://example.test/pull/3"), SetupAt: time.Now(),
 		},
 	})
 

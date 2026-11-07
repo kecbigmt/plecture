@@ -1,6 +1,7 @@
 [mentions]
-kind  = "resource_observer"
-match = '^slack://[A-Z0-9]+/mentions$'
+kind  = "resource"
+match = '^slack://(?P<team_id>[A-Z0-9]+)/mentions$'
+name  = { expr = "'slack/' + match.team_id + '-mentions'" }
 
 [mentions.observe]
 type = "exec"

@@ -1,0 +1,8 @@
+delete_branch=false
+prev=
+for arg in "$@"; do
+  [ "$prev" = "--delete-branch" ] && delete_branch=$arg
+  prev=$arg
+done
+mkdir -p "$PLECT_EFFECT_STATE/worktree"
+printf '%s' "{\"workspace_dir\":\"$PLECT_EFFECT_STATE/worktree\",\"branch\":\"spy-branch\",\"delete_branch\":$delete_branch}"

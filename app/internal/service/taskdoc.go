@@ -11,6 +11,7 @@ import (
 	"github.com/kecbigmt/plecture/app/internal/config"
 	"github.com/kecbigmt/plecture/app/internal/domain"
 	"github.com/kecbigmt/plecture/app/internal/lang"
+	"github.com/kecbigmt/plecture/app/internal/publicoutput"
 	"github.com/kecbigmt/plecture/app/internal/state"
 	"github.com/kecbigmt/plecture/app/internal/task"
 	contract "github.com/kecbigmt/plecture/contracts/state"
@@ -42,9 +43,9 @@ func validateTaskDocuments(cfg *config.Config, session *domain.Session, docs map
 	}
 	observers, err := cfg.LoadResourceDefs()
 	if err != nil {
-		return &Error{Code: ErrExecutionFailed, Message: fmt.Sprintf("load resource observers: %v", err)}
+		return &Error{Code: ErrExecutionFailed, Message: fmt.Sprintf("load resources: %v", err)}
 	}
-	workflows, err := cfg.LoadWorkflows(session.WorkspaceDirPath)
+	workflows, err := cfg.LoadWorkflows(session.ProjectRoot)
 	if err != nil {
 		return &Error{Code: ErrExecutionFailed, Message: fmt.Sprintf("load workflows: %v", err)}
 	}
@@ -163,28 +164,23 @@ func SetTaskState(cfg *config.Config, store *state.Store, params SetTaskStatePar
 func setupTaskDocument(cfg *config.Config, store *state.Store, resolvedName string, session *domain.Session, doc config.TaskDocument, params TaskSetupParams) (*TaskSetupResult, error) {
 	observers, err := cfg.LoadResourceDefs()
 	if err != nil {
-		return nil, &Error{Code: ErrExecutionFailed, Message: fmt.Sprintf("load resource observers: %v", err)}
+		return nil, &Error{Code: ErrExecutionFailed, Message: fmt.Sprintf("load resources: %v", err)}
 	}
-	observer, ok := observers[doc.ResourceObserver]
-	if !ok {
-		return nil, &Error{Code: ErrExecutionFailed, Message: fmt.Sprintf("task %s is written for resource observer %q, which no config layer declares", doc.ID, doc.ResourceObserver)}
+	bound := session.Resource
+	resourceID := domain.Locator(bound)
+	if params.Resource != "" {
+		bound, resourceID = nil, params.Resource
 	}
-	resourceID := params.Resource
-	if resourceID == "" {
-		resourceID = session.ResourceID
+	observer, bindErr := checkTaskBinding(doc, observers, resourceID)
+	if bindErr != nil {
+		return nil, bindErr
 	}
-	if resourceID == "" {
-		return nil, &Error{Code: ErrInvalidInput, Message: fmt.Sprintf("task %s is written for resource observer %q, so an instance needs a resource; pass --resource", doc.ID, doc.ResourceObserver)}
-	}
-	// The document states a type, so compatibility is checked up front: an
-	// instance bound to a resource the declared observer does not claim can
-	// never satisfy, and is refused instead of created.
-	matchedAddress, _, ok, merr := task.MatchResourceDef(observers, resourceID)
-	if merr != nil {
-		return nil, &Error{Code: ErrExecutionFailed, Message: merr.Error()}
-	}
-	if !ok || matchedAddress != doc.ResourceObserver {
-		return nil, &Error{Code: ErrInvalidInput, Message: fmt.Sprintf("task %s is written for resource observer %q, which does not claim resource %q", doc.ID, doc.ResourceObserver, resourceID)}
+	if bound == nil {
+		resolved, _, resolveErr := ResolveResource(store, doc.Resource, observer, resourceID)
+		if resolveErr != nil {
+			return nil, asServiceError(resolveErr)
+		}
+		bound, resourceID = &resolved, resolved.Locator
 	}
 
 	inputs, bindErr := bindDocumentInputs(doc, params.Inputs, session)
@@ -193,7 +189,7 @@ func setupTaskDocument(cfg *config.Config, store *state.Store, resolvedName stri
 	}
 	// Instantiation observes once, and a failed first observation rejects it:
 	// an instance whose predicate has nothing to read is worse than none.
-	observed, oerr := task.ObserveResource(observer, resourceID, domain.SessionBranch(session), session.WorkspaceDirPath, cfg.Plugins)
+	observed, oerr := task.ObserveResource(observer, resourceID, cfg.Plugins)
 	if oerr != nil {
 		return nil, &Error{Code: ErrExecutionFailed, Message: fmt.Sprintf("task %s: observing %s failed, so no instance was created: %v", doc.ID, resourceID, oerr)}
 	}
@@ -229,7 +225,7 @@ func setupTaskDocument(cfg *config.Config, store *state.Store, resolvedName stri
 			TaskID:   params.TaskID,
 			Status:   contract.TaskStatusProduced,
 			Inputs:   inputs,
-			Resource: params.Resource,
+			Resource: bound,
 			Name:     params.Name,
 			Observed: observation,
 			Seq:      task.NextSeq(s.Nodes, s.Tasks),
@@ -247,7 +243,7 @@ func setupTaskDocument(cfg *config.Config, store *state.Store, resolvedName stri
 	recordLifecycle(store, resolvedName, "task_setup", fmt.Sprintf("instantiated %s", key))
 	appendInstruction(store, resolvedName, key, params.Resource, instruction)
 
-	subscribed, subscribeErrMsg := wireDeliveryOnSetup(cfg, store, resolvedName, params.Resource, domain.SessionBranch(session))
+	subscribed, subscribeErrMsg := wireDeliveryOnSetup(cfg, store, resolvedName, bound, false)
 
 	return &TaskSetupResult{
 		SessionName: resolvedName,
@@ -262,6 +258,27 @@ func setupTaskDocument(cfg *config.Config, store *state.Store, resolvedName stri
 		SubscribeError: subscribeErrMsg,
 		Instruction:    instruction,
 	}, nil
+}
+
+// checkTaskBinding refuses an instance bound to a resource the document's
+// declared resource type does not claim, because such an instance could
+// never satisfy its completion contract.
+func checkTaskBinding(doc config.TaskDocument, observers map[string]config.ResourceDef, resourceID string) (config.ResourceDef, *Error) {
+	observer, ok := observers[doc.Resource]
+	if !ok {
+		return config.ResourceDef{}, &Error{Code: ErrExecutionFailed, Message: fmt.Sprintf("task %s is written for resource %q, which no config layer declares", doc.ID, doc.Resource)}
+	}
+	if resourceID == "" {
+		return config.ResourceDef{}, &Error{Code: ErrInvalidInput, Message: fmt.Sprintf("task %s is written for resource %q, so an instance needs a resource; pass --resource", doc.ID, doc.Resource)}
+	}
+	matchedAddress, _, matched, err := task.MatchResourceDef(observers, resourceID)
+	if err != nil {
+		return config.ResourceDef{}, &Error{Code: ErrExecutionFailed, Message: err.Error()}
+	}
+	if !matched || matchedAddress != doc.Resource {
+		return config.ResourceDef{}, &Error{Code: ErrInvalidInput, Message: fmt.Sprintf("task %s is written for resource %q, which does not claim resource %q", doc.ID, doc.Resource, resourceID)}
+	}
+	return observer, nil
 }
 
 // bindDocumentInputs resolves the document's declared inputs from the
@@ -311,18 +328,15 @@ func bindDocumentInputs(doc config.TaskDocument, cliInputs map[string]string, se
 // renderInstruction resolves the document body's projections against the
 // roots the instruction surface observes.
 func renderInstruction(cfg *config.Config, session *domain.Session, doc config.TaskDocument, inputs map[string]any, resourceID string, observed map[string]any) (string, *Error) {
-	workflowOutputs := map[string]any{}
-	if w := session.Nodes[contract.WorkflowPseudoNodeID]; w != nil && w.Outputs != nil {
-		workflowOutputs = w.Outputs
+	workflowOutputs, _ := publicoutput.Of(session, publicoutput.ProducedOnly)
+	if workflowOutputs == nil {
+		workflowOutputs = map[string]any{}
 	}
 	env := lang.Roots{
 		"resource": map[string]any{"id": resourceID, "state": observed},
 		"self":     map[string]any{"state": map[string]any{}},
 		"inputs":   inputs,
-		"session": map[string]any{
-			"name":   session.Name,
-			"inputs": session.Inputs,
-		},
+		"session":  instructionSessionRoot(session),
 		"workflow": map[string]any{"outputs": workflowOutputs},
 	}
 	rendered, err := lang.RenderInstruction(doc.Instruction, env)
@@ -437,4 +451,12 @@ func (d taskDeclarations) declares(taskID string) bool {
 	}
 	_, ok := d.effects[taskID]
 	return ok
+}
+
+func instructionSessionRoot(session *domain.Session) map[string]any {
+	root := map[string]any{"name": session.Name, "inputs": session.Inputs}
+	if session.Tag != "" {
+		root["tag"] = session.Tag
+	}
+	return root
 }

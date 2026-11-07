@@ -114,7 +114,7 @@ describe("AppShell narrow layout", () => {
   });
 
   it("closes the sidebar overlay once a session is selected from it", async () => {
-    mockFetchJson(sessionListBody([{ sessionName: "team/a", displayStatus: "up", run: "up", resourceId: "" }]));
+    mockFetchJson(sessionListBody([{ sessionName: "team/a", displayStatus: "up", run: "up" }]));
     const user = userEvent.setup();
     renderShell();
     await user.click(screen.getByRole("button", { name: /open sessions/i }));
@@ -128,7 +128,7 @@ describe("AppShell session selection", () => {
   beforeEach(() => stubMatchMedia(true));
 
   it("shows a placeholder in the main area until a session is selected", async () => {
-    mockFetchJson(sessionListBody([{ sessionName: "team/a", displayStatus: "up", run: "up", resourceId: "" }]));
+    mockFetchJson(sessionListBody([{ sessionName: "team/a", displayStatus: "up", run: "up" }]));
     renderShell();
     expect(screen.getByText(/select a session/i)).toBeInTheDocument();
     await screen.findByRole("treeitem", { name: /team\/a/i });
@@ -153,8 +153,6 @@ describe("AppShell session selection", () => {
           jsonResponse({
             sessionName: "team/a",
             run: "up",
-            resourceId: "",
-            workspaceDirExists: true,
             createdAt: "2026-01-01T00:00:00Z",
           }),
         );
@@ -162,8 +160,8 @@ describe("AppShell session selection", () => {
       return Promise.resolve(
         jsonResponse(
           sessionListBody([
-            { sessionName: "team/a", displayStatus: "up", run: "up", resourceId: "" },
-            { sessionName: "team/b", displayStatus: "up", run: "up", resourceId: "" },
+            { sessionName: "team/a", displayStatus: "up", run: "up" },
+            { sessionName: "team/b", displayStatus: "up", run: "up" },
           ]),
         ),
       );
@@ -185,12 +183,11 @@ describe("AppShell session selection", () => {
   it("expands a session's ancestors when it is selected, so it stays visible after a search that revealed it is cleared", async () => {
     mockFetchJson(
       sessionListBody([
-        { sessionName: "release", displayStatus: "up", run: "up", resourceId: "" },
+        { sessionName: "release", displayStatus: "up", run: "up" },
         {
           sessionName: "release/config",
           displayStatus: "up",
           run: "up",
-          resourceId: "",
           parentSession: "release",
         },
       ]),

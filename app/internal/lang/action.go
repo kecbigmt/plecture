@@ -108,6 +108,19 @@ func ParseAliveAction(raw any, pos Position) (*Action, error) {
 	return action, nil
 }
 
+// ParseCleanup reads an effect's `cleanup` action.
+func ParseCleanup(raw any, pos Position) (*Action, error) {
+	tbl, ok := raw.(map[string]any)
+	if !ok {
+		return nil, newDiag(CodeFieldType, LayerStructural, pos, "an action is a table")
+	}
+	if _, ok := tbl["inputs_schema"]; ok {
+		return nil, newDiag(CodeFieldUnknown, LayerStructural, childPos(pos, "inputs_schema"),
+			fmt.Sprintf("cleanup inputs are retired: what a cleanup releases is decided when the session is created, through the effect's inputs and mutable outputs; see %s", WorkspaceProviderMigrationGuide))
+	}
+	return ParseAction(tbl, pos)
+}
+
 // The reference is a bare string rather than a tagged value because the only
 // legal source is the effect's own output: a pid read from anywhere else has
 // no identity core recorded.

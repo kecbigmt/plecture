@@ -17,7 +17,7 @@ func seedDownSession(t *testing.T, store *state.Store, name, resourceID, parent 
 	t.Helper()
 	now := time.Now()
 	if err := store.Put(&domain.Session{
-		Name: name, ResourceID: resourceID, ParentSession: parent, CreatedAt: now, UpdatedAt: now,
+		Name: name, Resource: testResource(resourceID), ParentSession: parent, CreatedAt: now, UpdatedAt: now,
 	}); err != nil {
 		t.Fatalf("seed %q: %v", name, err)
 	}

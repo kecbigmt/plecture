@@ -9,14 +9,15 @@ import (
 // topology its wiring declares rather than for the effect it selects.
 //
 // Reads holds the node ids this node's input values project from, in
-// first-appearance order, whether or not this definition declares them: a
-// cascade layer may add a node whose inputs read a base layer's node, so
-// which ids resolve is a question only the merged definition answers.
+// first-appearance order, whether or not this definition declares them:
+// rejecting an undeclared id is the compiled plan's job, which reports it
+// with the node that reads it.
 type WorkflowNode struct {
-	ID     string
-	Uses   string
-	Reads  []string
-	Blocks []string
+	ID           string
+	Uses         string
+	Reads        []string
+	Blocks       []string
+	Subscription string
 }
 
 // nodeReadPrefix is the projection that declares a dependency edge:
@@ -24,6 +25,13 @@ type WorkflowNode struct {
 // rather than from a `depends_on` field, so this prefix is the whole edge
 // vocabulary.
 const nodeReadPrefix = "nodes."
+
+const publicOutputReadPrefix = "workflow.outputs."
+
+type WorkdirRef struct {
+	Node string
+	Key  string
+}
 
 // WorkflowNodes reads one workflow definition's node array as the topology it
 // declares: each node's id (defaulted from the referenced definition's id),
@@ -38,11 +46,15 @@ func WorkflowNodes(def *Definition) ([]WorkflowNode, error) {
 	if err != nil {
 		return nil, err
 	}
+	outputs, err := WorkflowOutputValues(def)
+	if err != nil {
+		return nil, err
+	}
 	out := make([]WorkflowNode, 0, len(raw))
 	declared := make(map[string]int, len(raw))
 	for i, entry := range raw {
 		at := childPos(childPos(pos, "nodes"), fmt.Sprintf("[%d]", i))
-		node, err := workflowNode(entry, at)
+		node, err := workflowNode(entry, at, outputs)
 		if err != nil {
 			return nil, err
 		}
@@ -71,9 +83,9 @@ func WorkflowEventChannels(def *Definition) ([]map[string]any, error) {
 	return Validation{}.eventChannels(def, Position{File: def.File, Path: def.ID})
 }
 
-func workflowNode(entry map[string]any, pos Position) (WorkflowNode, error) {
+func workflowNode(entry map[string]any, pos Position, outputs map[string]*Value) (WorkflowNode, error) {
 	var node WorkflowNode
-	if err := rejectUnknownFields(entry, pos, "id", "uses", "inputs", "blocks"); err != nil {
+	if err := rejectUnknownFields(entry, pos, "id", "uses", "inputs", "blocks", "subscription"); err != nil {
 		return node, err
 	}
 	raw, declared := entry["uses"]
@@ -105,13 +117,78 @@ func workflowNode(entry map[string]any, pos Position) (WorkflowNode, error) {
 	if err != nil {
 		return node, err
 	}
-	node.Reads = NodeReads(inputs)
+	node.Reads = NodeReads(inputs, outputs)
 	blocks, err := nodeBlocks(entry, pos)
 	if err != nil {
 		return node, err
 	}
 	node.Blocks = blocks
+	if raw, ok := entry["subscription"]; ok {
+		at := childPos(pos, "subscription")
+		tbl, err := table(raw, at)
+		if err != nil {
+			return node, err
+		}
+		if err := rejectUnknownFields(tbl, at, "from"); err != nil {
+			return node, err
+		}
+		path, ok := tbl["from"].(string)
+		if !ok || len(tbl) != 1 || !strings.HasPrefix(path, "self.outputs.") || !isValidID(strings.TrimPrefix(path, "self.outputs.")) {
+			return node, newDiag(CodeFromRoot, LayerSemantic, at, "subscription must project one of this node's own outputs as self.outputs.<key>")
+		}
+		node.Subscription = strings.TrimPrefix(path, "self.outputs.")
+	}
 	return node, nil
+}
+
+// WorkflowWorkdir reads `workdir` as one node-output projection rather than a
+// general value: the preparation nodes are derived from the node it names
+// before anything is evaluated.
+func WorkflowWorkdir(def *Definition) (*WorkdirRef, error) {
+	raw, ok := def.Body["workdir"]
+	if !ok {
+		return nil, nil
+	}
+	at := childPos(Position{File: def.File, Path: def.ID}, "workdir")
+	tbl, err := table(raw, at)
+	if err != nil {
+		return nil, err
+	}
+	const shape = "workdir projects one node output as { from = \"nodes.<id>.outputs.<key>\" }"
+	if err := rejectUnknownFields(tbl, at, "from"); err != nil {
+		return nil, err
+	}
+	path, isString := tbl["from"].(string)
+	if !isString {
+		return nil, newDiag(CodeFromRoot, LayerStructural, at, shape)
+	}
+	segments := strings.Split(path, ".")
+	if len(segments) != 4 || segments[0] != "nodes" || segments[2] != "outputs" ||
+		!isValidID(segments[1]) || !isValidID(segments[3]) {
+		return nil, newDiag(CodeFromRoot, LayerStructural, at, shape)
+	}
+	return &WorkdirRef{Node: segments[1], Key: segments[3]}, nil
+}
+
+func WorkflowOutputValues(def *Definition) (map[string]*Value, error) {
+	raw, ok := def.Body["outputs"]
+	if !ok {
+		return nil, nil
+	}
+	at := childPos(Position{File: def.File, Path: def.ID}, "outputs")
+	tbl, err := table(raw, at)
+	if err != nil {
+		return nil, err
+	}
+	out := make(map[string]*Value, len(tbl))
+	for _, key := range sortedKeys(tbl) {
+		value, err := ParseValue(tbl[key], ClassData, childPos(at, key))
+		if err != nil {
+			return nil, err
+		}
+		out[key] = value
+	}
+	return out, nil
 }
 
 func nodeInputValues(entry map[string]any, pos Position) (map[string]*Value, error) {
@@ -161,19 +238,53 @@ func nodeBlocks(entry map[string]any, pos Position) ([]string, error) {
 // the whole edge vocabulary of the workflow dependency graph: the load-time
 // cycle check and the runtime's execution order both derive their edges here,
 // so they cannot disagree about what a wiring declares.
-func NodeReads(inputs map[string]*Value) []string {
+//
+// A projection of `workflow.outputs.<key>` reads the nodes that public
+// output's own binding reads, looked up in outputs; a key outputs does not
+// declare reads nothing, since it names no producer.
+func NodeReads(inputs, outputs map[string]*Value) []string {
 	var out []string
 	seen := map[string]bool{}
-	add := func(path string) {
-		id, ok := nodeReadID(path)
-		if !ok || seen[id] {
+	addID := func(id string) {
+		if seen[id] {
 			return
 		}
 		seen[id] = true
 		out = append(out, id)
 	}
+	add := func(path string) {
+		if id, ok := nodeReadID(path); ok {
+			addID(id)
+			return
+		}
+		key, ok := publicOutputKey(path)
+		if !ok {
+			return
+		}
+		valueReads(outputs[key], func(path string) {
+			if id, ok := nodeReadID(path); ok {
+				addID(id)
+			}
+		})
+	}
 	for _, key := range sortedValueKeys(inputs) {
 		valueReads(inputs[key], add)
+	}
+	return out
+}
+
+// PublicOutputReads lists the public output keys one node's input wiring
+// projects from, in key order.
+func PublicOutputReads(inputs map[string]*Value) []string {
+	var out []string
+	seen := map[string]bool{}
+	for _, key := range sortedValueKeys(inputs) {
+		valueReads(inputs[key], func(path string) {
+			if read, ok := publicOutputKey(path); ok && !seen[read] {
+				seen[read] = true
+				out = append(out, read)
+			}
+		})
 	}
 	return out
 }
@@ -226,6 +337,15 @@ func nodeReadID(path string) (string, bool) {
 		return "", false
 	}
 	return segments[1], true
+}
+
+func publicOutputKey(path string) (string, bool) {
+	rest, ok := strings.CutPrefix(path, publicOutputReadPrefix)
+	if !ok || rest == "" {
+		return "", false
+	}
+	key, _, _ := strings.Cut(rest, ".")
+	return key, true
 }
 
 func sortedValueKeys(values map[string]*Value) []string {

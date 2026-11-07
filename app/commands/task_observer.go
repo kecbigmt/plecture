@@ -5,7 +5,6 @@ import (
 
 	"github.com/kecbigmt/plecture/app/internal/config"
 	"github.com/kecbigmt/plecture/app/internal/task"
-	contract "github.com/kecbigmt/plecture/contracts/state"
 )
 
 // We seed the id column from the *global* task definitions only — repoDir
@@ -14,10 +13,7 @@ import (
 // seed.
 func newTaskObserver(cfg *config.Config) task.Observer {
 	defs, _ := cfg.LoadTaskDefinitions("")
-	ids := make([]string, 0, len(defs)+1)
-	// The workflow pseudo-node reports through the same Observer; seed its
-	// id so the column is wide enough when it appears.
-	ids = append(ids, contract.WorkflowPseudoNodeID)
+	ids := make([]string, 0, len(defs))
 	for id := range defs {
 		ids = append(ids, id)
 	}

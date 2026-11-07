@@ -2,6 +2,7 @@ package service
 
 import (
 	"fmt"
+	"github.com/kecbigmt/plecture/app/internal/domain"
 	"log/slog"
 	"strings"
 
@@ -32,7 +33,7 @@ func ForwardDownSessionEvent(cfg *config.Config, store *state.Store, origin stri
 	}
 	meta := map[string]string{
 		"forward_kind":   "resource",
-		"resource":       s.ResourceID,
+		"resource":       domain.Locator(s.Resource),
 		"forwarded_type": ev.Type,
 	}
 	if url := ev.Metadata["url"]; url != "" {
@@ -41,7 +42,7 @@ func ForwardDownSessionEvent(cfg *config.Config, store *state.Store, origin stri
 	id, wakeErr, err := publishTerminalTo(cfg, store, origin, target, true, TerminalParams{
 		Type:     event.TypeResourceForwarded,
 		Summary:  ev.Summary,
-		Body:     resourceForwardBody(origin, s.ResourceID, ev),
+		Body:     resourceForwardBody(origin, domain.Locator(s.Resource), ev),
 		Metadata: meta,
 		DedupKey: origin + "|resource_forward|" + ev.ID,
 	})

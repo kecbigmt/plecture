@@ -2,12 +2,11 @@
 # reason: a query means is one of the two keywords the language defines, not an arbitrary string.
 
 [bad_uses_keyword]
-kind               = "workflow"
-workspace_provider = "query_provider"
+kind     = "workflow"
+resource = "query_source"
 
 [[bad_uses_keyword.populations]]
 name              = "dispatch"
-resource_observer = "query_source"
 uses              = ["watch"]
 poll_every        = "5m"
 

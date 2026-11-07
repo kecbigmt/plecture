@@ -25,7 +25,15 @@ import (
 	"time"
 
 	"github.com/BurntSushi/toml"
-	contract "github.com/kecbigmt/plecture/contracts/state"
+)
+
+// legacyWorkflowPseudoNodeID and legacyWorkspaceDirOutputKey are the on-disk
+// spellings this tool reads from legacy state.json files. They are named here
+// rather than imported because the shared contract no longer defines them:
+// the pseudo-node and the reserved output key no longer exist at runtime.
+const (
+	legacyWorkflowPseudoNodeID  = "@workflow"
+	legacyWorkspaceDirOutputKey = "workspace_dir"
 )
 
 const preGuardStateVersion = 5
@@ -427,16 +435,15 @@ func migrateWorkspaceDirPath(session map[string]any) bool {
 }
 
 // migrateWorkflowOutputsWorkdirKey renames the @workflow pseudo-node's
-// reserved setup output key from "workdir" to "workspace_dir", mirroring
-// contract.OutputKeyWorkspaceDir. Other tasks' outputs are left alone: only
-// the @workflow pseudo-node's outputs carry a plect-reserved key with
-// contract meaning.
+// reserved setup output key from "workdir" to "workspace_dir". Other tasks'
+// outputs are left alone: only the @workflow pseudo-node's outputs carried a
+// plect-reserved key with contract meaning.
 func migrateWorkflowOutputsWorkdirKey(session map[string]any) bool {
 	tasks, _ := session["tasks"].(map[string]any)
 	if tasks == nil {
 		return false
 	}
-	wf, _ := tasks[contract.WorkflowPseudoNodeID].(map[string]any)
+	wf, _ := tasks[legacyWorkflowPseudoNodeID].(map[string]any)
 	if wf == nil {
 		return false
 	}
@@ -449,8 +456,8 @@ func migrateWorkflowOutputsWorkdirKey(session map[string]any) bool {
 		return false
 	}
 	delete(outputs, "workdir")
-	if current, exists := outputs["workspace_dir"]; !exists || current == "" {
-		outputs["workspace_dir"] = value
+	if current, exists := outputs[legacyWorkspaceDirOutputKey]; !exists || current == "" {
+		outputs[legacyWorkspaceDirOutputKey] = value
 	}
 	return true
 }

@@ -48,7 +48,7 @@ func resolveTaskDocuments(t *testing.T, src string) error {
 func TestExtendsResolvesStateInheritedFromTheBase(t *testing.T) {
 	src := `[base_task]
 kind              = "task"
-resource_observer = "issue_pr"
+resource          = "issue_pr"
 instructions      = [{ text = "Base." }]
 
 [base_task.state_schema]
@@ -72,7 +72,7 @@ all = [{ check = "self.state.verdict_revision", ne = "" }]
 func TestExtendsAccumulatesJudgeIdsAcrossThreeLayers(t *testing.T) {
 	src := `[root_task]
 kind              = "task"
-resource_observer = "issue_pr"
+resource          = "issue_pr"
 instructions      = [{ text = "Root." }]
 
 [root_task.done_when]
@@ -95,7 +95,7 @@ all = [{ judge = "a different question", id = "correct" }]
 func TestExtendsAllowsAnUnrelatedNewSchemaKey(t *testing.T) {
 	src := `[base_task]
 kind              = "task"
-resource_observer = "issue_pr"
+resource          = "issue_pr"
 instructions      = [{ text = "Base." }]
 
 [base_task.state_schema]
@@ -122,7 +122,7 @@ reviewed_by = { type = "string", default = "" }
 func TestExtendsAllowsBudgetAlongsideExtends(t *testing.T) {
 	src := `[base_task]
 kind              = "task"
-resource_observer = "issue_pr"
+resource          = "issue_pr"
 instructions      = [{ text = "Base." }]
 
 [ext_task]
@@ -141,7 +141,7 @@ on_exhaust       = "escalate"
 func TestExtendsRejectsAComputedReference(t *testing.T) {
 	src := `[base_task]
 kind              = "task"
-resource_observer = "issue_pr"
+resource          = "issue_pr"
 instructions      = [{ text = "Base." }]
 
 [ext_task]
@@ -174,7 +174,7 @@ extends = "root_task"
 func TestExtendsRejectsRequiredOnAnExtensionSchema(t *testing.T) {
 	src := `[base_task]
 kind              = "task"
-resource_observer = "issue_pr"
+resource          = "issue_pr"
 instructions      = [{ text = "Base." }]
 
 [base_task.state_schema]
@@ -197,7 +197,7 @@ required = ["priority"]
 func TestExtendsRejectsAdditionalPropertiesOnAnExtensionSchema(t *testing.T) {
 	src := `[base_task]
 kind              = "task"
-resource_observer = "issue_pr"
+resource          = "issue_pr"
 instructions      = [{ text = "Base." }]
 
 [ext_task]
@@ -217,7 +217,7 @@ reviewed_by = { type = "string" }
 func TestExtendsAllowsTypeAndPropertiesOnAnExtensionSchema(t *testing.T) {
 	src := `[base_task]
 kind              = "task"
-resource_observer = "issue_pr"
+resource          = "issue_pr"
 instructions      = [{ text = "Base." }]
 
 [ext_task]
@@ -238,7 +238,7 @@ reviewed_by = { type = "string" }
 func TestExtendsRejectsATypeDisagreement(t *testing.T) {
 	src := `[base_task]
 kind              = "task"
-resource_observer = "issue_pr"
+resource          = "issue_pr"
 instructions      = [{ text = "Base." }]
 
 [base_task.state_schema]
@@ -260,7 +260,7 @@ type = "array"
 func TestExtendsRejectsSchemaFileAcrossMoreThanOneLayer(t *testing.T) {
 	src := `[base_task]
 kind              = "task"
-resource_observer = "issue_pr"
+resource          = "issue_pr"
 instructions      = [{ text = "Base." }]
 state_schema_file = "state.schema.json"
 
@@ -274,7 +274,7 @@ extends = "base_task"
 func TestExtendsAllowsSchemaFileOnAStandaloneDocument(t *testing.T) {
 	src := `[work]
 kind              = "task"
-resource_observer = "issue_pr"
+resource          = "issue_pr"
 instructions      = [{ text = "Resolve the issue." }]
 state_schema_file = "state.schema.json"
 `
@@ -286,7 +286,7 @@ state_schema_file = "state.schema.json"
 func TestExtendsRejectsADuplicateChainID(t *testing.T) {
 	src := `[base_task]
 kind              = "task"
-resource_observer = "issue_pr"
+resource          = "issue_pr"
 instructions      = [{ text = "Base." }]
 
 [[base_task.chains]]

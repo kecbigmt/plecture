@@ -165,8 +165,9 @@ Changing sessions must not leave another session's details visible.
 Within one session, a Task can remain selected while the center shows Terminal.
 Narrow screens use an overlay or temporary main-area detail view.
 
-Session resource_id and Task resource are separate; neither implicitly fills
-the other. HTTP(S) resources are links. Other identifiers remain visible and
+A Session's resource (its `type`, `name` and `locator`) and a Task's resource
+are separate; neither implicitly fills the other. A resource is shown by its
+locator: HTTP(S) locators are links. Other identifiers remain visible and
 copyable without a generic Open action. A remote server's filesystem path is
 not a path on the user's desktop. Generic resource resolution, arbitrary URI
 launching, previews, editing, and an Artifact model are outside the initial scope.

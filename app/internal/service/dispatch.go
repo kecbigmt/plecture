@@ -7,7 +7,7 @@ import (
 	"strings"
 
 	"github.com/kecbigmt/plecture/app/internal/config"
-	"github.com/kecbigmt/plecture/app/internal/lang"
+	contract "github.com/kecbigmt/plecture/contracts/state"
 )
 
 // validSessionNameRE is plect's own conservative session id charset: ids
@@ -28,11 +28,11 @@ func validateSessionName(name string) *Error {
 }
 
 // checkSessionGuard enforces the per-session SessionGuard (PLECT_SESSION_GUARD)
-// against the resolved session name, before any workspace/setup side task.
+// against the resolved session name, before any setup side task.
 // The orchestrator's pane exports a guard like "^acme/" so a cross-owner
 // dispatch (which resolves to "exampleorg/...") is rejected server-side rather
 // than relying on the loop-spec prompt. plect core never parses the owner — the
-// guard is an opaque regex the workspace provider supplied.
+// guard is an opaque regex its caller supplied.
 func checkSessionGuard(cfg *config.Config, sessionName string) *Error {
 	// No config means no guard configured — allow (mirrors an empty guard).
 	// EventPublish and other write paths accept a nil cfg from in-process
@@ -66,171 +66,142 @@ func SessionGuardForOwnSession(sessionName string) (string, error) {
 	return "^" + regexp.QuoteMeta(sessionName) + "($|/)", nil
 }
 
-// dispatchResult is the outcome of resolver dispatch: which workflow handles
-// the resource, the workspace provider that resolved it, and the derived
-// session id (before any +tag suffix).
+// Resource is what the identifier derives, before it is reconciled with the
+// recorded row (see recordedResource).
 type dispatchResult struct {
-	Workflow          config.WorkflowFile
-	WorkspaceProvider config.WorkspaceProviderConfig
-	Name              string
+	Workflow config.WorkflowFile
+	Resource contract.Resource
 }
 
-// resolveName runs a workspace provider's resolver against the resource id. A
-// non-matching input is an error — the regex doubles as input validation for
-// explicitly-selected workflows.
-func resolveName(prov config.WorkspaceProviderConfig, resource string) (string, error) {
-	name, ok, err := tryResolveName(prov, resource)
-	if err != nil {
-		return "", err
+// resolveResource treats two matching declarations as an ambiguity, since the
+// resource type decides which workflow accepts the identifier.
+func resolveResource(resources map[string]config.ResourceDef, id string) (key, name string, matched bool, err error) {
+	keys := make([]string, 0, len(resources))
+	for k := range resources {
+		keys = append(keys, k)
 	}
-	if !ok {
-		return "", fmt.Errorf("resource %q does not match workspace provider %q resolver (%s)", resource, prov.ID, prov.Match)
-	}
-	return name, nil
-}
-
-// tryResolveName attempts the resolver match, reporting (name, matched, err).
-// Pure: a regex match and one value resolution, no I/O.
-func tryResolveName(prov config.WorkspaceProviderConfig, resource string) (string, bool, error) {
-	re, err := regexp.Compile(prov.Match)
-	if err != nil {
-		return "", false, fmt.Errorf("workspace provider %q resolver match: %w", prov.ID, err)
-	}
-	m := re.FindStringSubmatch(resource)
-	if m == nil {
-		return "", false, nil
-	}
-	captures := map[string]any{}
-	for i, group := range re.SubexpNames() {
-		if group != "" && i < len(m) {
-			captures[group] = m[i]
+	sort.Strings(keys)
+	var hits []string
+	for _, k := range keys {
+		n, ok, nameErr := resources[k].InstanceName(id)
+		if nameErr != nil {
+			return "", "", false, nameErr
+		}
+		if ok {
+			hits = append(hits, k)
+			key, name = k, n
 		}
 	}
-	eval := lang.Eval{Roots: lang.Roots{"match": captures}}
-	resolved, _, err := eval.Argument(prov.Name)
-	if err != nil {
-		return "", false, fmt.Errorf("workspace provider %q resolver name: %w", prov.ID, err)
-	}
-	name := strings.TrimSpace(resolved)
-	if name == "" {
-		return "", false, fmt.Errorf("workspace provider %q resolver produced an empty session id for %q", prov.ID, resource)
-	}
-	return name, true, nil
-}
-
-// workspaceProviderFor resolves a workflow's workspace provider reference.
-// ok=false when the workflow declares no workspace provider, which leaves it
-// unable to back a session. A dangling reference is an error — silently
-// ignoring it would route the create to the wrong path.
-func workspaceProviderFor(wf config.WorkflowFile, workspaceProviders map[string]config.WorkspaceProviderConfig) (config.WorkspaceProviderConfig, bool, error) {
-	if wf.WorkspaceProvider == "" {
-		return config.WorkspaceProviderConfig{}, false, nil
-	}
-	prov, ok := workspaceProviders[wf.WorkspaceProvider]
-	if !ok {
-		if hint := config.AddressHint(config.Addresses(workspaceProviders), wf.WorkspaceProvider); hint != "" {
-			return config.WorkspaceProviderConfig{}, false, fmt.Errorf("workflow %q references unknown workspace provider %q%s", wf.ID, wf.WorkspaceProvider, hint)
+	switch len(hits) {
+	case 0:
+		return "", "", false, nil
+	case 1:
+		if err := validateResourceName(key, name); err != nil {
+			return "", "", false, err
 		}
-		return config.WorkspaceProviderConfig{}, false, fmt.Errorf("workflow %q references unknown workspace provider %q; add workspaces/%s.toml to the global config or a plugin", wf.ID, wf.WorkspaceProvider, wf.WorkspaceProvider)
+		return key, name, true, nil
 	}
-	return prov, true, nil
+	return "", "", false, &Error{Code: ErrInvalidInput, Message: fmt.Sprintf("resource %q matches more than one resource declaration (%s)", id, strings.Join(hits, ", "))}
 }
 
 func workflowAutoSelect(wf config.WorkflowFile) bool {
 	return wf.AutoSelect == nil || *wf.AutoSelect
 }
 
-// dispatchResource selects the workflow for a resource identifier.
-//
-//	flag != "" — that workflow handles it; its workspace provider's resolver
-//	             derives the name, and a resolver mismatch is an error.
-//	flag == "" — every trusted-layer workflow whose workspace provider has a
-//	             resolver tries to match. Exactly one match wins; several is
-//	             an ambiguity error; zero returns ok=false so the caller can
-//	             fall back to identity dispatch. Workflows without a
-//	             resolver never participate — identity dispatch on arbitrary
-//	             input would shadow every other workflow.
-//
-// Dispatch reads only the trusted base layers (plugin + global): the
-// workspace doesn't exist yet, and identity must not depend on clone content.
-func dispatchResource(cfg *config.Config, flag, resource string) (dispatchResult, bool, error) {
-	workflows, err := cfg.LoadWorkflows("")
+// RecognizesResource reports whether identifier is a resource identifier
+// rather than a session name, which is what decides whether a caller needs a
+// configuration context at all: a session runs from its recorded root. A
+// caller may ignore its error, which Up reports again when it dispatches.
+func RecognizesResource(cfg *config.Config, identifier string) (bool, error) {
+	resources, err := cfg.LoadResourceDefs()
 	if err != nil {
-		return dispatchResult{}, false, fmt.Errorf("load workflows: %w", err)
+		return false, err
 	}
-	workspaceProviders, err := cfg.LoadWorkspaceProviders()
+	_, _, recognized, err := resolveResource(resources, identifier)
+	return recognized, err
+}
+
+// dispatchResource selects the workflow for a resource identifier by its entry
+// resource type. matched is false, with no error, for an identifier no resource
+// recognizes, so a caller may treat it as a session name. Workflows come from
+// the same layers revision capture reads for projectRoot.
+func dispatchResource(cfg *config.Config, projectRoot, flag, resource string) (result dispatchResult, matched bool, err error) {
+	workflows, err := cfg.LoadWorkflows(projectRoot)
 	if err != nil {
-		return dispatchResult{}, false, fmt.Errorf("load workspace providers: %w", err)
+		return dispatchResult{}, false, &Error{Code: ErrExecutionFailed, Message: fmt.Sprintf("load workflows: %v", err)}
+	}
+	resources, err := cfg.LoadResourceDefs()
+	if err != nil {
+		return dispatchResult{}, false, &Error{Code: ErrExecutionFailed, Message: fmt.Sprintf("load resources: %v", err)}
+	}
+	key, name, recognized, err := resolveResource(resources, resource)
+	if err != nil {
+		if svcErr, ok := err.(*Error); ok {
+			return dispatchResult{}, false, svcErr
+		}
+		return dispatchResult{}, false, &Error{Code: ErrExecutionFailed, Message: err.Error()}
+	}
+	if !recognized {
+		return dispatchResult{}, false, nil
 	}
 
 	if flag != "" {
 		wf, ok := workflows[flag]
 		if !ok {
-			// Not in the trusted base layers. Fall through so the identity
-			// branch surfaces its own not-found message, which can name the
-			// file the user needs to add.
-			return dispatchResult{}, false, nil
+			return dispatchResult{}, false, &Error{Code: ErrInvalidInput, Message: fmt.Sprintf("workflow %q not found; add workflows/%s.toml to the global config or a plugin", flag, flag)}
 		}
-		prov, ok, provErr := workspaceProviderFor(wf, workspaceProviders)
-		if provErr != nil {
-			return dispatchResult{}, false, &Error{Code: ErrExecutionFailed, Message: provErr.Error()}
+		if wf.Resource != key {
+			return dispatchResult{}, false, &Error{Code: ErrInvalidInput, Message: fmt.Sprintf("workflow %q accepts resource %q, but %q resolves to resource %q", flag, wf.Resource, resource, key)}
 		}
-		if !ok || !prov.HasResolver() {
-			// Identity is the caller's branch — it needs context (is the
-			// workflow workspace-provider-backed at all?) that dispatch
-			// doesn't have.
-			return dispatchResult{}, false, nil
-		}
-		name, err := resolveName(prov, resource)
-		if err != nil {
-			return dispatchResult{}, false, &Error{Code: ErrInvalidInput, Message: err.Error()}
-		}
-		return dispatchResult{Workflow: wf, WorkspaceProvider: prov, Name: name}, true, nil
+		return dispatchResult{Workflow: wf, Resource: contract.Resource{Type: key, Name: name, Locator: resource}}, true, nil
 	}
 
-	type candidate struct {
-		wf   config.WorkflowFile
-		prov config.WorkspaceProviderConfig
-		name string
-	}
-	var matches []candidate
-	ids := make([]string, 0, len(workflows))
-	for id := range workflows {
-		ids = append(ids, id)
-	}
-	sort.Strings(ids)
-	for _, id := range ids {
-		wf := workflows[id]
-		if !workflowAutoSelect(wf) {
-			continue
-		}
-		prov, ok, provErr := workspaceProviderFor(wf, workspaceProviders)
-		if provErr != nil {
-			return dispatchResult{}, false, &Error{Code: ErrExecutionFailed, Message: provErr.Error()}
-		}
-		if !ok || !prov.HasResolver() {
-			continue
-		}
-		name, matched, err := tryResolveName(prov, resource)
-		if err != nil {
-			return dispatchResult{}, false, &Error{Code: ErrExecutionFailed, Message: err.Error()}
-		}
-		if matched {
-			matches = append(matches, candidate{wf: wf, prov: prov, name: name})
+	var candidates, explicitOnly []config.WorkflowFile
+	addresses := config.Addresses(workflows)
+	sort.Strings(addresses)
+	for _, address := range addresses {
+		wf := workflows[address]
+		switch {
+		case wf.Resource != key:
+		case workflowAutoSelect(wf):
+			candidates = append(candidates, wf)
+		default:
+			explicitOnly = append(explicitOnly, wf)
 		}
 	}
-	switch len(matches) {
+	switch len(candidates) {
 	case 0:
-		return dispatchResult{}, false, nil
+		return dispatchResult{}, false, noWorkflowError(key, resource, explicitOnly, workflows, addresses)
 	case 1:
-		return dispatchResult{Workflow: matches[0].wf, WorkspaceProvider: matches[0].prov, Name: matches[0].name}, true, nil
-	default:
-		// Addresses, not ids: two plugins may declare one id, and a list that
-		// printed it twice would name nothing the reader could pass back.
-		names := make([]string, len(matches))
-		for i, m := range matches {
-			names[i] = m.wf.Address
-		}
-		return dispatchResult{}, false, &Error{Code: ErrInvalidInput, Message: fmt.Sprintf("resource matches multiple workflow resolvers (%s); pass --workflow to choose", strings.Join(names, ", "))}
+		return dispatchResult{Workflow: candidates[0], Resource: contract.Resource{Type: key, Name: name, Locator: resource}}, true, nil
 	}
+	// Addresses, not ids: two plugins may declare one id, and a list that
+	// printed it twice would name nothing the reader could pass back.
+	named := make([]string, len(candidates))
+	for i, wf := range candidates {
+		named[i] = wf.Address
+	}
+	return dispatchResult{}, false, &Error{Code: ErrInvalidInput, Message: fmt.Sprintf("resource %q matches multiple workflows (%s); pass --workflow to choose", key, strings.Join(named, ", "))}
+}
+
+// noWorkflowError lists what the caller can do next: the workflows that accept
+// the type only when named, or else what every declared workflow accepts, so
+// a misrecognized identifier reads as such.
+func noWorkflowError(key, resource string, explicitOnly []config.WorkflowFile, workflows map[string]config.WorkflowFile, addresses []string) *Error {
+	if len(explicitOnly) > 0 {
+		named := make([]string, len(explicitOnly))
+		for i, wf := range explicitOnly {
+			named[i] = "--workflow " + wf.Address
+		}
+		return &Error{Code: ErrInvalidInput, Message: fmt.Sprintf("no workflow is selected for resource %q (the type of %q) by default; pass one of: %s", key, resource, strings.Join(named, ", "))}
+	}
+	accepted := make([]string, len(addresses))
+	for i, address := range addresses {
+		accepted[i] = fmt.Sprintf("%s (resource %q)", address, workflows[address].Resource)
+	}
+	declared := "no workflows are declared"
+	if len(accepted) > 0 {
+		declared = "declared workflows: " + strings.Join(accepted, ", ")
+	}
+	return &Error{Code: ErrInvalidInput, Message: fmt.Sprintf("no workflow accepts resource %q (the type of %q); declare one with `resource = %q`; %s", key, resource, key, declared)}
 }

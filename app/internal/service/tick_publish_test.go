@@ -21,7 +21,7 @@ func seedPendingJudgeWork(t *testing.T, store *state.Store, name string) {
 			Scope:    contract.TaskScopeSession,
 			TaskID:   "work",
 			Status:   contract.TaskStatusProduced,
-			Resource: "https://github.com/owner/repo/pull/1",
+			Resource: testResource("https://github.com/owner/repo/pull/1"),
 			Observed: observedFacts(map[string]any{"checks_status": "SUCCESS", "revision": "sha1"}),
 		},
 	})

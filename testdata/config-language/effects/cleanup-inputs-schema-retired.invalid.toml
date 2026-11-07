@@ -1,0 +1,24 @@
+# plect-fixture: result=invalid layer=structural diagnostic=PLECTURE-CFG-FIELD-UNKNOWN entry=definitions
+# reason: what a cleanup releases is decided when the session is created, so a cleanup no longer declares per-invocation inputs.
+
+[checkout_effect]
+kind  = "effect"
+scope = "session"
+
+[checkout_effect.setup]
+type = "exec"
+command = "checkout-tool"
+args = ["create"]
+
+[checkout_effect.cleanup]
+type   = "shell"
+script = 'checkout-tool remove --force="$force"'
+
+[checkout_effect.cleanup.bind]
+force = { from = "force" }
+
+[checkout_effect.cleanup.inputs_schema]
+type = "object"
+
+[checkout_effect.health.alive]
+type = "noop"

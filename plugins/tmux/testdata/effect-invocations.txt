@@ -1,6 +1,6 @@
 == pane / setup
 call[0]: "tmux" "has-session" "-t" "acme/widget-1"
-call[1]: "tmux" "new-session" "-d" "-s" "acme/widget-1" "-c" "<workspace>"
+call[1]: "tmux" "new-session" "-d" "-s" "acme/widget-1"
 call[2]: "tmux" "has-session" "-t" "acme/widget-1"
 outputs: {"session_name":"acme/widget-1"}
 

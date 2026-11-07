@@ -26,7 +26,7 @@ func newE2EConfig(t *testing.T) *config.Config {
 	writeFile(t, filepath.Join(base, "tasks", "work.toml"), `[work]
 kind              = "task"
 description       = "work fixture"
-resource_observer = "fixture"
+resource          = "fixture"
 instructions      = [{ text = "Carry out the work." }]
 
 [work.done_when]
@@ -34,20 +34,21 @@ all = [
   { check = "resource.state.checks_status", eq = "SUCCESS" },
 ]
 `)
-	return &config.Config{BaseDir: base, WorkspaceDirsRoot: t.TempDir()}
+	return &config.Config{BaseDir: base}
 }
 
 func writeE2EWorkflow(t *testing.T, base string) {
 	t.Helper()
 	writeFile(t, filepath.Join(base, "tasks", "claude.toml"), "[claude]\nkind = \"effect\"\nscope = \"run\"\n")
-	writeFile(t, filepath.Join(base, "workflows", "session.toml"), "[session]\nkind = \"workflow\"\n[[session.nodes]]\nuses = \"claude\"\n")
+	writeFile(t, filepath.Join(base, "workflows", "session.toml"), "[session]\nkind = \"workflow\"\nresource = \"issue\"\n[[session.nodes]]\nuses = \"claude\"\n")
 }
 
 // e2eObserver has no real resource to look at, so observing one fails and the
 // last observation a test seeded stands.
 const e2eObserver = `
 [fixture]
-kind  = "resource_observer"
+kind  = "resource"
+name  = "fixture"
 match = '^fixture://'
 
 [fixture.observe]
@@ -140,7 +141,7 @@ func newPendingJudgeConfig(t *testing.T) *config.Config {
 	writeFile(t, filepath.Join(base, "tasks", "work.toml"), `[work]
 kind              = "task"
 description       = "work fixture"
-resource_observer = "fixture"
+resource          = "fixture"
 instructions      = [{ text = "Carry out the work." }]
 
 [work.done_when]
@@ -148,7 +149,7 @@ all = [
   { judge = "AC met", id = "ac-met" },
 ]
 `)
-	return &config.Config{BaseDir: base, WorkspaceDirsRoot: t.TempDir()}
+	return &config.Config{BaseDir: base}
 }
 
 // TestSessionReactor_UnchangedUnmetStateAnnouncesOnce: a burst of external
@@ -172,7 +173,7 @@ func TestSessionReactor_UnchangedUnmetStateAnnouncesOnce(t *testing.T) {
 				Scope:    contract.TaskScopeSession,
 				TaskID:   "work",
 				Status:   contract.TaskStatusProduced,
-				Resource: "https://github.com/o/r/pull/1",
+				Resource: testResource("https://github.com/o/r/pull/1"),
 			},
 		},
 	}

@@ -3,7 +3,7 @@
 
 [base_task]
 kind              = "task"
-resource_observer = "issue_pr"
+resource          = "issue_pr"
 instructions      = [{ text = "Base." }]
 
 [base_task.state_schema.properties]

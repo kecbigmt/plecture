@@ -1,6 +1,7 @@
 package service
 
 import (
+	contract "github.com/kecbigmt/plecture/contracts/state"
 	"testing"
 
 	"github.com/kecbigmt/plecture/app/internal/eventlog"
@@ -10,7 +11,7 @@ import (
 
 func TestPopulationStatusNoSuchPopulationReturnsEmpty(t *testing.T) {
 	store := state.NewStore(t.TempDir())
-	members, err := PopulationStatus(store, "agent", "dispatch")
+	members, err := PopulationStatus(store, "", "agent", "dispatch")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -22,11 +23,11 @@ func TestPopulationStatusNoSuchPopulationReturnsEmpty(t *testing.T) {
 func TestPopulationStatusReportsPendingAndLastAdmitFailure(t *testing.T) {
 	store := state.NewStore(t.TempDir())
 	log := eventlog.NewStore(store.Dir())
-	if err := store.UpdatePopulation("agent/dispatch", func(population *state.PopulationState) error {
+	if err := store.UpdatePopulation(contract.PopulationProvenance{Workflow: "agent", Name: "dispatch"}, func(population *state.PopulationState) error {
 		population.Members["urn:case:a"] = &state.PopulationMember{
-			ResourceID: "urn:case:a", SessionName: "a+agent", PendingUp: true,
+			Resource: *testResource("urn:case:a"), SessionName: "a+agent", PendingUp: true,
 		}
-		population.Members["urn:case:b"] = &state.PopulationMember{ResourceID: "urn:case:b", PendingUp: true}
+		population.Members["urn:case:b"] = &state.PopulationMember{Resource: *testResource("urn:case:b"), PendingUp: true}
 		return nil
 	}); err != nil {
 		t.Fatal(err)
@@ -41,7 +42,7 @@ func TestPopulationStatusReportsPendingAndLastAdmitFailure(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	members, err := PopulationStatus(store, "agent", "dispatch")
+	members, err := PopulationStatus(store, "", "agent", "dispatch")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -62,8 +63,8 @@ func TestPopulationStatusReportsPendingAndLastAdmitFailure(t *testing.T) {
 func TestPopulationStatusClearsAfterAdmitOK(t *testing.T) {
 	store := state.NewStore(t.TempDir())
 	log := eventlog.NewStore(store.Dir())
-	if err := store.UpdatePopulation("agent/dispatch", func(population *state.PopulationState) error {
-		population.Members["urn:case:a"] = &state.PopulationMember{ResourceID: "urn:case:a", SessionName: "a+agent"}
+	if err := store.UpdatePopulation(contract.PopulationProvenance{Workflow: "agent", Name: "dispatch"}, func(population *state.PopulationState) error {
+		population.Members["urn:case:a"] = &state.PopulationMember{Resource: *testResource("urn:case:a"), SessionName: "a+agent"}
 		return nil
 	}); err != nil {
 		t.Fatal(err)
@@ -79,7 +80,7 @@ func TestPopulationStatusClearsAfterAdmitOK(t *testing.T) {
 		}
 	}
 
-	members, err := PopulationStatus(store, "agent", "dispatch")
+	members, err := PopulationStatus(store, "", "agent", "dispatch")
 	if err != nil {
 		t.Fatal(err)
 	}

@@ -9,17 +9,30 @@ caller may bind the entry resource or another concrete resource type.
 `plect up <resource>` resolves the concrete identifier to a resource type and
 accepts `--workflow <id>` and optional `--tag <tag>`. The selected workflow's
 `resource` must equal the resolved type. Without `--workflow`, exactly one
-workflow accepting that type is required; zero or more than one is an error.
+workflow accepting that type is required; zero or more than one is an error
+that lists the candidates.
 
-The resource's `name` creates its instance name. Without a tag, that value is
-the session name. A tag appends one validated non-empty session-name segment;
-the resulting name must either be new or name the same entry-resource and tag
-record. Tags distinguish concurrent sessions for one resource without making a
-task, plugin, or working-directory detail part of core identity.
+The resource's `name` derives its resource name. Without a tag, that value is
+the session name. A tag appends one validated non-empty session-name segment,
+`<resource-name>+<tag>` with the tag matching `[A-Za-z0-9_-]+`. The resulting
+name must either be new or name the same entry resource and tag: a live
+session with that name that refers to another resource, or that records
+another tag, is a collision, not the same session. The session records a
+reference to its entry resource, the tag, and the name composed from them at
+creation; the identifier its resource actions receive belongs to the resource,
+not the session. `session.tag` reads the recorded tag, so a resource name that
+itself contains `+` never changes it. Tags
+distinguish concurrent sessions for one resource without making a task,
+plugin, workflow, or working-directory detail part of core identity.
 
 The caller optionally selects an initial task and its concrete resource
 binding. The task is compatible when its declared resource type matches that
 binding. `plect up` may omit it, creating an environment a person may use.
+`plect up --task <task>` binds the entry identifier unless `--task-resource`
+names another concrete resource; an incompatible selection fails before the
+session is created. The task becomes the session's `initial` instance.
+Repeating the same selection keeps that instance, and a different selection
+fails until the existing instance is cleaned.
 Chains and populations use the same one-task selection surface, not a workflow
 field. Adding or finishing a task never changes the entry resource, session
 name, environment, or session lifetime.
@@ -30,11 +43,28 @@ Nodes are ordinary effects. A projection from `nodes.<id>.outputs.*` creates a
 dependency edge; `blocks` states a reverse edge. A reference to
 `workflow.outputs.*` expands to the producing node references in that public
 output's binding, so a consumer depends on those producing nodes too. Public
-outputs are evaluable as soon as their source node outputs exist; persistence
-does not add a lifecycle node. The expanded edges participate in cycle detection
+outputs are evaluable as soon as their source node outputs exist; evaluation
+adds no lifecycle node. The expanded edges participate in cycle detection
 and in the explicit graph used to derive preparation nodes, before
 default-workdir edges are added. A workflow has no provider node or special
 lifecycle.
+
+A node may declare `subscription = { from = "self.outputs.<key>" }` to bind
+its session to the resource identifier produced at that output. This is a
+single projection, separate from the node's setup inputs; it reads no other
+node or value root and supplies an empty resource action input object. After
+setup produces the node, core persists the identifier and runs the matching
+resource's `subscribe` action. After successful cleanup, core runs its
+`unsubscribe` action when no entry resource, task, or other live node still
+needs that identifier. A failed subscription is queued for retry. A resource
+requiring action inputs cannot be bound this way: an identifier known at load
+time causes a load error, and a runtime identifier reports a subscription
+failure. Omitting `subscription` leaves the node's output available without
+binding delivery.
+
+Changing only `subscription` in a workflow revision follows the ordinary
+node-change classification: a session-scoped node requires recreation and a
+run-scoped node requires a down/up restart.
 
 `workdir`, when present, is exactly one projection from a node output and must
 resolve to an absolute local filesystem directory path. Environments without a
@@ -64,14 +94,11 @@ workspace_dir = { from = "nodes.checkout.outputs.workspace_dir" }
 
 The workdir producer and all its transitive prerequisites are preparation
 nodes. The graph determines that set before default-workdir dependencies are
-added. Session creation records a preparation directory separately from its
-configuration context: direct `plect up` records its caller's canonical working
-directory; a chain inherits the triggering session's recorded preparation
-directory; and a population inherits the directory recorded when its resident
-started. Preparation setup, liveness, and cleanup actions use that recorded
-directory, never a daemon's incidental cwd. Every other node's setup and
-liveness actions run in the declared directory and depend on its producer. If
-`workdir` is omitted, no node receives a default directory. There are no
+added. Preparation setup actions run in the current user's home directory,
+whichever way the session was created, so they never depend on the directory
+they are creating or on a daemon's incidental cwd. Every other node's setup
+and liveness actions run in the declared directory and depend on its producer.
+If `workdir` is omitted, no node receives a default directory. There are no
 per-node or per-action cwd overrides.
 
 Cleanup uses the directory chosen for its node setup. If that directory has
@@ -83,10 +110,15 @@ directory; it never treats the missing directory as release evidence.
 
 `[<id>.outputs]` is the workflow's explicit public projection record;
 `outputs_schema` declares it. Each binding is evaluable from node outputs as
-soon as its sources have been produced and is persisted on the session.
+soon as its sources have been produced. The record is derived from the
+session's revision and node outputs, never stored: a binding follows its
+sources when a node is recreated and is unset while any source is not produced.
+Once every binding has a value, the record must satisfy `outputs_schema`; a
+record that does not is not published. A cleanup also
+reads the last recorded outputs of a node that is no longer produced, so a
+dependent of a failed node can still be released; a setup never does.
 `workflow.outputs.*` is the only workflow-output root for display,
-instructions, node inputs, and channel delivery. It replaces the former
-provider output path without creating an `@workflow` pseudo-node.
+instructions, node inputs, and channel delivery.
 
 ```toml
 [pull_review.outputs]
@@ -145,10 +177,7 @@ expressions, health and healthcheck declarations, event channels, ticks, and
 instruction text, together with every effect and task declaration the session
 can execute, including dynamic task instances, resolved nesting, and cascade.
 The revision's SHA-256 digest is its identity, so equal expansions share one
-revision and an edit to any captured declaration changes the digest. Workspace
-overlays are captured after workspace setup succeeds; until then the revision
-is marked capture-pending, and a failed setup keeps the revision whose provider
-declaration made the allocation.
+revision and an edit to any captured declaration changes the digest.
 
 `up`, `down`, `destroy`, repair, health, tick, delivery, and cleanup execute the
 session's revision. A configuration edit does not reach an existing session,
@@ -167,8 +196,8 @@ covers every active session with a workflow and `--workflow <name>` narrows it.
 |---|---|---|
 | compatible | No difference below. A difference only in instructions, display, event channels, ticks, workflow-level `[<id>.health]`, or the `description` or `instruction` of a task document is compatible. | The revision is replaced. |
 | automatic | A node added or removed; an alive probe changed on a node or a live dynamic instance, with the rest of its declaration unchanged. | Removed nodes, and nodes that depended on them, are cleaned with the old revision before the switch, whatever the session's status. Added nodes are set up by an `up` on the new revision, which a rebase runs only when the session is up. |
-| restart | A run-scoped node with unchanged scope whose node entry or effect definition changed; every run-scoped node replaced by different ones; a live run-scoped dynamic effect instance whose definition changed. | Refused unless `--with-restart`, which brings the session down on the old revision, cleans removed nodes, switches, and brings an up session back up. |
-| recreate | A node whose scope changed, or a session-scoped node whose declaration changed; a changed workspace provider or provider inputs; for a live dynamic instance, a removed or missing definition, a changed session-scoped effect definition, or a changed task document beyond its `description` or `instruction`; saved outputs that a new node input, alive binding, nesting layer, or event channel input cannot resolve from. | Always refused; destroy and recreate the session. |
+| restart | A run-scoped node with unchanged scope whose node entry, effect definition, execution directory, or a public output its inputs read changed; every run-scoped node replaced by different ones; a live run-scoped dynamic effect instance whose definition changed. | Refused unless `--with-restart`, which brings the session down on the old revision, cleans removed nodes, switches, and brings an up session back up. |
+| recreate | A node whose scope changed, or a session-scoped node whose declaration, execution directory, or a public output its inputs read changed; a changed entry resource; for a live dynamic instance, a removed or missing definition, a changed session-scoped effect definition, or a changed task document beyond its `description` or `instruction`; saved outputs that a new node input, alive binding, nesting layer, or event channel input cannot resolve from; a release of the workdir's producer while a live dynamic instance runs in that directory. | Always refused; destroy and recreate the session. |
 
 A session takes the highest class any difference raises, and the command prints
 each reason. `--dry-run` prints the classification and the nodes to recreate
@@ -194,8 +223,8 @@ revision: an old agent depending on an old checkout is cleaned up before that
 checkout is released. This preserves the lifetime boundaries of allocations
 whose declarations were removed or changed.
 
-The current operation supplies `force` and plugin-owned cleanup inputs; they
-do not replace setup-time facts. A record that still matches a node of the
+The current operation supplies only `force`; it does not replace setup-time
+facts. A record that still matches a node of the
 session's revision remains in use. A node's effect, scope, or declaration
 changes only through a rebase, which classifies the change as described in
 [Rebase](#rebase). A node removed by a rebase is not set up again, but its
@@ -223,16 +252,29 @@ successful cleanup and cannot release another generation.
 Ordinary `up` can retry cleanup but cannot reconstruct an allocation or a
 required prerequisite while its release obligation remains outstanding.
 `--force-recreate` follows the same release-then-new-generation path and never
-acknowledges or discards an obligation. `destroy --force` is the separate,
-explicit record-discard operation: it warns and records that release was not
-verified, then removes the session's remaining execution records. It is not
+acknowledges or discards an obligation; the cleanup it runs receives
+`force = true`, because the node is rebuilt right after.
+
+`destroy --force` ignores destroy's safeguards and errors and runs it to the
+end:
+
+- It destroys a session that has child sessions, orphaning them.
+- It removes a session with no stored workflow revision, without cleanup.
+- A failed cleanup becomes a warning. Destroy records that release was not
+  verified and removes the session's remaining execution records.
+- The prerequisites of a node whose cleanup failed are released anyway.
+- Every effect's cleanup receives `force = true`, so it may override its own
+  safeguards as well; see [effects](effects.md#cleanup-and-force).
+
+Whatever those safeguards protected — uncommitted changes, child sessions, an
+allocation whose release nobody verified — can be lost. `destroy --force` is not
 evidence that an external resource was released.
 
 ## Display
 
 `[<id>.display]` declares values the CLI and Plecture Web UI render. They read
-persisted public outputs only, never the network, so their freshness follows
-the output update cadence.
+public outputs derived from the session's revision and node outputs, never the
+network, so their freshness follows the node output update cadence.
 
 ## Clocks
 
@@ -292,6 +334,7 @@ default text. For example:
 
 [review_workflow]
 kind = "workflow"
+resource = "issue_pr"
 
 [review_workflow.health]
 auto_repair_attempts = 2
@@ -383,7 +426,6 @@ mutation or destruction.
 | `session.task` | Optional caller-selected initial task, compatible with the entry resource. |
 | `session.inputs` | Optional values over literals, `resource.id`, and `item.*` properties. |
 | `session.destroy.force` | Whether automatic destruction uses force; default false. |
-| `session.destroy.inputs` | Optional plugin-owned cleanup input object. |
 | `poll_every` | Required positive duration when `uses` selects `poll`; forbidden otherwise. |
 | `expire_after` | Required positive quiescence duration without `poll`; forbidden with it. |
 | `auto_down` | Permits capacity-pressure down selection; default false. |
@@ -440,9 +482,6 @@ context = { from = "item.context", optional = true }
 
 [standing_cases.populations.session.destroy]
 force = false
-
-[standing_cases.populations.session.destroy.inputs]
-delete_branch = false
 ```
 
 Population decisions are durable events:
@@ -554,7 +593,5 @@ neither turns the issue into the session's entry resource.
 - Node dependencies plus derived default-workdir edges have no cycle.
 - A population uses its containing workflow's resource and its query contract.
 - An initial task is caller-selected and compatible with its concrete binding.
-- Population cleanup inputs satisfy the cleanup schemas of the effects they
-  address.
 - Workflow public outputs satisfy `outputs_schema` and bind only declared node
   outputs or allowed session inputs.

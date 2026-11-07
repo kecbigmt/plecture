@@ -12,7 +12,8 @@ import (
 func TestLoadResourceDefsDecodesSharedQueryContract(t *testing.T) {
 	base := t.TempDir()
 	if err := os.WriteFile(filepath.Join(base, "source.toml"), []byte(`[source]
-kind = "resource_observer"
+kind = "resource"
+name = "fixture"
 match = "^urn:case:"
 [source.observe]
 type = "exec"
@@ -50,7 +51,8 @@ command = "printf"
 func TestLoadWorkflowsDecodesPopulationDefaultsAndDurations(t *testing.T) {
 	base := t.TempDir()
 	if err := os.WriteFile(filepath.Join(base, "agent.toml"), []byte(`[source]
-kind = "resource_observer"
+kind = "resource"
+name = "fixture"
 match = "^urn:case:"
 [source.observe]
 type = "exec"
@@ -70,7 +72,7 @@ command = "true"
 
 [base_work]
 kind = "task"
-resource_observer = "source"
+resource          = "source"
 
 [work]
 kind = "task"
@@ -78,10 +80,9 @@ extends = "base_work"
 
 [agent]
 kind = "workflow"
-workspace_provider = "provider"
+resource = "source"
 [[agent.populations]]
 name = "dispatch"
-resource_observer = "source"
 uses = ["poll"]
 poll_every = "45s"
 [agent.populations.query]
@@ -102,7 +103,7 @@ context = { from = "item.context", optional = true }
 		t.Fatalf("LoadWorkflows: %v", err)
 	}
 	population := workflows["agent"].Populations[0]
-	if population.Name != "dispatch" || population.ResourceObserver != "source" || population.Session.Task != "work" {
+	if population.Name != "dispatch" || population.Session.Task != "work" {
 		t.Fatalf("population = %+v", population)
 	}
 	if population.PollEvery.Duration.String() != "45s" || population.ExpireAfter.Duration != 0 {
@@ -123,7 +124,7 @@ func TestPopulationDurationsMustBePositive(t *testing.T) {
 	for _, field := range []string{"poll_every", "expire_after"} {
 		t.Run(field, func(t *testing.T) {
 			base := t.TempDir()
-			src := "[agent]\nkind = \"workflow\"\n[[agent.populations]]\nname = \"dispatch\"\nresource_observer = \"source\"\n" + field + " = \"0s\"\n[agent.populations.query]\n"
+			src := "[agent]\nkind = \"workflow\"\nresource = \"issue\"\n[[agent.populations]]\nname = \"dispatch\"\n" + field + " = \"0s\"\n[agent.populations.query]\n"
 			if err := os.WriteFile(filepath.Join(base, "agent.toml"), []byte(src), 0o644); err != nil {
 				t.Fatal(err)
 			}
@@ -170,7 +171,8 @@ task = "work"
 		t.Run(tt.name, func(t *testing.T) {
 			base := t.TempDir()
 			definitions := `[source]
-kind = "resource_observer"
+kind = "resource"
+name = "fixture"
 match = "^urn:case:"
 [source.observe]
 type = "exec"
@@ -191,7 +193,8 @@ type = "exec"
 command = "true"
 
 [other]
-kind = "resource_observer"
+kind = "resource"
+name = "fixture"
 match = "^urn:case:"
 [other.observe]
 type = "exec"
@@ -199,14 +202,13 @@ command = "true"
 
 [work]
 kind = "task"
-resource_observer = "other"
+resource          = "other"
 
 [agent]
 kind = "workflow"
-workspace_provider = "provider"
+resource = "source"
 [[agent.populations]]
 name = "dispatch"
-resource_observer = "source"
 ` + tt.population
 			if err := os.WriteFile(filepath.Join(base, "definitions.toml"), []byte(definitions), 0o644); err != nil {
 				t.Fatal(err)

@@ -420,3 +420,55 @@ if ! run_check "$head_sha" >/tmp/comment-density-selftest-buildtag-dup.log 2>&1;
   exit 1
 fi
 echo "ok: checker doesn't flag a shared //go:build directive as duplication"
+
+# Scenarios 14-15: a renamed file is scored against its source path, so a
+# pure rename adds nothing and a rename with an edit scores only the edit.
+reset_to_base
+{
+  echo "package app"
+  echo
+  echo "func Heavy() int {"
+  for i in $(seq 1 9); do
+    echo "	// line $i of a long comment block that predates the rename"
+  done
+  for i in $(seq 1 30); do
+    echo "	h$i := $i"
+  done
+  echo "	return 1"
+  echo "}"
+} >"$fixture/app/heavy.go"
+rename_base_sha="$(commit_scenario)"
+
+git -C "$fixture" mv app/heavy.go app/moved_heavy.go
+head_sha="$(commit_scenario)"
+if ! COMMENT_DENSITY_CHECK_ROOT="$fixture" "$checker" "$rename_base_sha" "$head_sha" >/tmp/comment-density-selftest-rename.log 2>&1; then
+  echo "FAIL: checker scored the content of a purely renamed file" >&2
+  cat /tmp/comment-density-selftest-rename.log >&2
+  exit 1
+fi
+echo "ok: checker scores nothing in a pure rename"
+
+git -C "$fixture" checkout -q -B work "$rename_base_sha"
+git -C "$fixture" mv app/heavy.go app/moved_heavy.go
+{
+  echo
+  echo "func Added() int {"
+  for i in $(seq 1 9); do
+    echo "	// line $i of a comment block the rename adds"
+  done
+  echo "	return 2"
+  echo "}"
+} >>"$fixture/app/moved_heavy.go"
+head_sha="$(commit_scenario)"
+if COMMENT_DENSITY_CHECK_ROOT="$fixture" "$checker" "$rename_base_sha" "$head_sha" >/tmp/comment-density-selftest-rename-edit.log 2>&1; then
+  echo "FAIL: checker passed a rename that adds a 9-line comment block" >&2
+  cat /tmp/comment-density-selftest-rename-edit.log >&2
+  exit 1
+fi
+if ! grep -qE 'app/moved_heavy\.go:47: block-length 9 > 8' /tmp/comment-density-selftest-rename-edit.log ||
+  grep -qE 'app/moved_heavy\.go:4: ' /tmp/comment-density-selftest-rename-edit.log; then
+  echo "FAIL: checker did not score exactly the edit made alongside the rename" >&2
+  cat /tmp/comment-density-selftest-rename-edit.log >&2
+  exit 1
+fi
+echo "ok: checker scores only the edit in a renamed file"

@@ -1,0 +1,53 @@
+# plect-fixture: result=valid entry=definitions
+# reason: a chain selects the task its spawned session starts with, written for the resource type the target workflow accepts.
+
+[case]
+kind  = "resource"
+match = '^case://(?P<n>[0-9]+)$'
+name  = { expr = "'case-' + match.n" }
+
+[case.observe]
+type    = "exec"
+command = "case-observe"
+args    = [{ from = "resource.id" }]
+
+[case.state_schema]
+type = "object"
+
+[case.state_schema.properties]
+ticket_url = { type = "string" }
+
+[ticket]
+kind  = "resource"
+match = '^ticket://(?P<n>[0-9]+)$'
+name  = { expr = "'ticket-' + match.n" }
+
+[ticket.observe]
+type    = "exec"
+command = "ticket-observe"
+args    = [{ from = "resource.id" }]
+
+[ticket_desk]
+kind     = "workflow"
+resource = "ticket"
+
+[work_ticket]
+kind         = "task"
+description  = "Work the ticket a case opened"
+resource     = "ticket"
+instructions = [{ text = "Work {{ resource.id }}." }]
+
+[escalate]
+kind         = "task"
+description  = "Escalate a case to a ticket"
+resource     = "case"
+instructions = [{ text = "Escalate {{ resource.id }}." }]
+
+[[escalate.chains]]
+id       = "ticket"
+workflow = "ticket_desk"
+resource = { from = "resource.state.ticket_url" }
+task     = "work_ticket"
+
+[escalate.chains.when]
+all = [{ check = "resource.state.ticket_url", in = ["ticket://7"] }]

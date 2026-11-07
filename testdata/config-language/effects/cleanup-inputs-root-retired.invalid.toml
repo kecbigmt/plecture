@@ -1,0 +1,19 @@
+# plect-fixture: result=invalid layer=semantic diagnostic=PLECTURE-CFG-FROM-ROOT entry=definitions
+# reason: a destroy carries no per-invocation inputs, so cleanup observes no cleanup.inputs root.
+
+[checkout_effect]
+kind  = "effect"
+scope = "session"
+
+[checkout_effect.setup]
+type = "exec"
+command = "checkout-tool"
+args = ["create"]
+
+[checkout_effect.cleanup]
+type = "exec"
+command = "checkout-tool"
+args = ["remove", { from = "cleanup.inputs.delete_branch", default = false }]
+
+[checkout_effect.health.alive]
+type = "noop"

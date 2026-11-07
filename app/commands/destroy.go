@@ -7,49 +7,56 @@ import (
 	"github.com/spf13/cobra"
 
 	"github.com/kecbigmt/plecture/app/internal/config"
+	"github.com/kecbigmt/plecture/app/internal/lang"
 	"github.com/kecbigmt/plecture/app/internal/service"
 	"github.com/kecbigmt/plecture/app/internal/state"
 )
 
 var (
 	destroyForce         bool
-	destroyCleanupInputs []string
+	destroyRetiredInputs []string
 )
 
 var destroyCmd = &cobra.Command{
 	Use:   "destroy <resource-id|session>",
 	Short: "Tear down a session via task cleanup",
-	Long: `Tear down a session in four ordered steps:
+	Long: `Tear down a session in three ordered steps:
 
   1. run-scoped cleanup (auto-down) — skipped if no run-scoped task is
      currently in "produced" status
   2. session-scoped cleanup
-  3. workspace provider cleanup
-  4. state entry deletion
+  3. state entry deletion
 
-Default policy is fail-fast: the first cleanup error aborts the remaining
-steps and the state entry is kept so you can inspect and retry. Use
---force to switch to best-effort teardown (see flag description).
+By default destroy stops at the first safeguard or error and keeps the state
+entry so you can inspect and retry: it refuses a session that has child
+sessions (deleting it would orphan them; plect up never re-adopts an orphan)
+or that has no stored workflow revision, and a failed cleanup aborts the
+remaining steps while the prerequisites of the failed node stay in place.
+To reset a session that has children without orphaning them, use
+` + "`plect down`" + ` + ` + "`plect up`" + ` instead.
 
---force means you accept losing unsaved local changes: it is forwarded to
-workspace provider cleanup, and a workspace provider whose release step
-refuses on unsaved local changes may discard them to complete the release
-instead of leaving them on disk.
+--force ignores those safeguards and errors and runs destroy to the end:
 
---input passes an opaque key=value cleanup intent through to workspace
-provider cleanup (repeatable); core does not interpret it. Consult the
-workspace provider's own docs for which keys it reads.
+  - child sessions are orphaned (reported as a warning)
+  - a session with no stored workflow revision is removed without cleanup
+  - a failed cleanup is demoted to a warning and the state entry is deleted
+    without verifying the release
+  - the prerequisites of a node whose cleanup failed are released too
+  - each effect's cleanup receives force = true, telling it to override its
+    own safeguards as well, for example by discarding uncommitted changes in
+    a directory it created
 
-If the session has child sessions, destroy fails before any teardown step
-runs: deleting it would orphan them (plect up never re-adopts an orphan). Use
---force to destroy anyway and orphan the children, or reset with
-` + "`plect down`" + ` + ` + "`plect up`" + ` instead, which keeps the state entry and its
-children intact.`,
+Whatever those safeguards protected — uncommitted changes, child sessions,
+an allocation nobody verified was released — can be lost.
+
+What a cleanup releases is decided when the session is created, through the
+effect's inputs; destroy takes no per-call plugin inputs. To change that
+choice for one session, rewrite the effect's mutable output with
+` + "`plect state set-output`" + ` before destroying it.`,
 	Args: cobra.ExactArgs(1),
 	RunE: func(cmd *cobra.Command, args []string) error {
-		cleanupInputs, err := parseKeyValues(destroyCleanupInputs)
-		if err != nil {
-			return err
+		if cmd.Flags().Changed("input") {
+			return fmt.Errorf("--input is retired: what a cleanup releases is decided when the session is created, and an effect's mutable output can be rewritten with `plect state set-output` before destroy; see %s", lang.WorkspaceProviderMigrationGuide)
 		}
 		cfg, err := config.Load()
 		if err != nil {
@@ -57,10 +64,9 @@ children intact.`,
 		}
 		store := state.NewStore("")
 		result, err := service.Destroy(cfg, store, service.DestroyParams{
-			Identifier:    args[0],
-			Force:         destroyForce,
-			CleanupInputs: cleanupInputs,
-			Observer:      newTaskObserver(cfg),
+			Identifier: args[0],
+			Force:      destroyForce,
+			Observer:   newTaskObserver(cfg),
 		})
 		if err != nil {
 			return err
@@ -69,15 +75,15 @@ children intact.`,
 		for _, w := range result.CleanupWarnings {
 			fmt.Fprintf(os.Stderr, "Warning: %s\n", w)
 		}
-		if result.RemovedWorkspaceDir {
-			fmt.Fprintln(os.Stderr, "Removed workspace directory")
-		}
 		return nil
 	},
 }
 
 func init() {
-	destroyCmd.Flags().BoolVarP(&destroyForce, "force", "f", false, "Demote cleanup errors to warnings (recorded in CleanupWarnings) so teardown continues through workspace provider cleanup and state deletion; also forwards the force intent to cleanup hooks, where it may discard unsaved local changes in the session's workspace directory to complete the release, and proceeds when the session has child sessions, orphaning them (reported as a warning) instead of aborting")
-	destroyCmd.Flags().StringArrayVar(&destroyCleanupInputs, "input", nil, "Cleanup input key=value forwarded to workspace provider cleanup, unexamined by core (repeatable)")
+	destroyCmd.Flags().BoolVarP(&destroyForce, "force", "f", false, "Ignore destroy's safeguards and errors and run it to the end: orphan child sessions, delete the state entry even when cleanup fails, and pass force = true to each effect's cleanup, which may discard uncommitted changes")
+	// The flag is kept, hidden, only so that a script still passing it is
+	// pointed at the migration guide instead of told the flag is unknown.
+	destroyCmd.Flags().StringArrayVar(&destroyRetiredInputs, "input", nil, "retired")
+	_ = destroyCmd.Flags().MarkHidden("input")
 	rootCmd.AddCommand(destroyCmd)
 }

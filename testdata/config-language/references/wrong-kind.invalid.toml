@@ -9,6 +9,12 @@ args    = [{ from = "event.type" }]
 
 [session]
 kind = "workflow"
+resource = "ticket"
 
 [[session.nodes]]
 uses = "delivery"
+
+[ticket]
+kind  = "resource"
+match = '^ticket:(?P<number>\d+)$'
+name  = { from = "match.number" }

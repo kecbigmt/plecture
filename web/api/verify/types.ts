@@ -16,7 +16,6 @@ const validDetail: SessionDetail = {
   sessionName: "team/workspace-a",
   createdAt: "2026-09-06T00:00:00Z",
   run: "up",
-  workspaceDirExists: true,
 };
 
 // Valid: the template-instantiated list envelope.
@@ -26,7 +25,6 @@ const validList: SessionListResponse = {
       sessionName: "team/workspace-a",
       displayStatus: "up",
       run: "up",
-      resourceId: "",
     },
   ],
   count: 1,
@@ -39,7 +37,6 @@ const validList: SessionListResponse = {
 const invalidDetail: SessionDetail = {
   sessionName: "team/workspace-a",
   createdAt: "2026-09-06T00:00:00Z",
-  workspaceDirExists: true,
 };
 
 // Invalid: the tagged union's discriminant fixes each leaf's `code` set —
@@ -58,7 +55,7 @@ const validConflict: ConflictError = {
   message: "session has children",
 };
 
-// Invalid: `branch` is typed `string | undefined`, not `string | null`, so
+// Invalid: `title` is typed `string | undefined`, not `string | null`, so
 // an explicit null (which verify/fixtures.mjs proves JSON.parse would
 // happily hand back at runtime) must be rejected here — the static type is
 // stricter than the untyped runtime value this contract's own fixture
@@ -69,9 +66,8 @@ const invalidExplicitNull: SessionDetail = {
   sessionName: "team/workspace-a",
   createdAt: "2026-09-06T00:00:00Z",
   run: "up",
-  workspaceDirExists: true,
-  // @ts-expect-error - "branch" does not accept null, only string | undefined
-  branch: null,
+  // @ts-expect-error - "title" does not accept null, only string | undefined
+  title: null,
 };
 
 // Valid: `type`/`source` are plain strings, so a value no producer constant

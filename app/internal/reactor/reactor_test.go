@@ -81,7 +81,7 @@ func pinRevision(t *testing.T, cfg *config.Config, session *domain.Session) {
 	if session.Workflow == "" {
 		return
 	}
-	revision, err := cfg.CaptureWorkflowRevision(session.WorkspaceDirPath, session.Workflow)
+	revision, err := cfg.CaptureWorkflowRevision("", session.Workflow)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -124,7 +124,7 @@ func newTestReactor(t *testing.T, tc config.TickConfig) (*sessionReactor, *state
 	}
 	r := &sessionReactor{
 		session: "o/r-1",
-		cfg:     &config.Config{WorkspaceDirsRoot: t.TempDir()},
+		cfg:     &config.Config{},
 		state:   st,
 		log:     log,
 		hub:     hub,
@@ -139,6 +139,7 @@ func TestCheckHealth_PassesCompletedReportToRepair(t *testing.T) {
 	writeFile(t, filepath.Join(pluginDir, "config", "workflows", "reactive.toml"), `
 [reactive]
 kind = "workflow"
+resource = "issue"
 [[reactive.nodes]]
 id = "claude"
 uses = "claude"
@@ -178,6 +179,7 @@ func TestSupervisor_RepairDownSweepRespectsWorkflowPeriod(t *testing.T) {
 	writeFile(t, filepath.Join(pluginDir, "config", "workflows", "reactive.toml"), `
 [reactive]
 kind = "workflow"
+resource = "issue"
 [[reactive.nodes]]
 id = "claude"
 uses = "claude"
@@ -257,7 +259,7 @@ func TestSupervisor_RepairDownSweepWarnsOncePerWorkflowFailureStreak(t *testing.
 		t.Fatalf("warning count = %d, want 1 during unresolved streak", got)
 	}
 	workflowPath := filepath.Join(pluginDir, "config", "workflows", "missing.toml")
-	writeFile(t, workflowPath, "[missing]\nkind = \"workflow\"\n")
+	writeFile(t, workflowPath, "[missing]\nkind = \"workflow\"\nresource = \"issue\"\n")
 	session := st.Get("o/r-1")
 	pinRevision(t, cfg, session)
 	if err := st.Update(session.Name, func(current *domain.Session) error {
@@ -621,6 +623,70 @@ func TestSessionReactor_ChannelHealthRunsWithoutTickOrHealthcheckDeclaration(t *
 	}
 }
 
+func TestSessionReactor_RetriesPendingSubscriptionWithoutTickDeclaration(t *testing.T) {
+	r, st, _ := newTestReactor(t, config.TickConfig{})
+	r.channelHealthEvery = 5 * time.Millisecond
+	r.channelHealthFn = func(*config.Config, *state.Store, string) (bool, error) { return false, nil }
+	pluginDir := t.TempDir()
+	ready := filepath.Join(t.TempDir(), "ready")
+	failed := filepath.Join(t.TempDir(), "failed")
+	registered := filepath.Join(t.TempDir(), "registered")
+	writeFile(t, filepath.Join(pluginDir, "config", "resources", "thread.toml"), `
+[thread]
+kind = "resource"
+name = "thread"
+match = '^thread://'
+[thread.observe]
+type = "exec"
+command = "printf"
+args = ['{}']
+[thread.state_schema]
+type = "object"
+[thread.subscribe]
+type = "shell"
+script = "if test -f '`+ready+`'; then touch '`+registered+`'; else touch '`+failed+`'; exit 3; fi"
+`)
+	r.cfg = &config.Config{PluginDirs: []string{pluginDir}}
+	if err := st.Update("o/r-1", func(s *domain.Session) error {
+		s.Resource = testResource("thread://one")
+		return nil
+	}); err != nil {
+		t.Fatal(err)
+	}
+	db, err := persistence.EnsureCurrentShared(context.Background(), persistence.PathIn(st.Dir()))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := db.QueueSubscriptionRetry(context.Background(), "o/r-1", "subscribe", *testResource("thread://one")); err != nil {
+		t.Fatal(err)
+	}
+	stop := startReactor(t, r)
+	defer stop()
+	deadline := time.Now().Add(2 * time.Second)
+	for {
+		if _, err := os.Stat(failed); err == nil {
+			break
+		}
+		if time.Now().After(deadline) {
+			t.Fatal("reactor did not attempt the pending subscription")
+		}
+		time.Sleep(5 * time.Millisecond)
+	}
+	if err := os.WriteFile(ready, nil, 0o644); err != nil {
+		t.Fatal(err)
+	}
+	deadline = time.Now().Add(2 * time.Second)
+	for {
+		if _, err := os.Stat(registered); err == nil {
+			break
+		}
+		if time.Now().After(deadline) {
+			t.Fatal("reactor did not retry the pending subscription")
+		}
+		time.Sleep(5 * time.Millisecond)
+	}
+}
+
 // TestSessionReactor_ReactiveTickResetsHeartbeatWindow proves that a reactive
 // tick resets the heartbeat clock, so a `heartbeat` sweep due to fire soon
 // after it must not fire an extra, redundant tick within
@@ -878,6 +944,7 @@ func TestSupervisor_ResolvesTickConfigFromPluginMountedAfterConstruction(t *test
 	writeFile(t, filepath.Join(pluginDir, "config", "workflows", "coding.toml"), `
 [coding]
 kind = "workflow"
+resource = "issue"
 [coding.tick]
 on = ["github.*"]
 `)
@@ -922,6 +989,7 @@ func TestSupervisor_ForwarderWaitsWhileTheOutgoingReactorIsStillMidTick(t *testi
 	writeFile(t, filepath.Join(pluginDir, "config", "workflows", "reactive.toml"), `
 [reactive]
 kind = "workflow"
+resource = "issue"
 [[reactive.nodes]]
 id   = "claude"
 uses = "claude"
@@ -1008,6 +1076,7 @@ func TestSupervisor_ReactorWaitsWhileTheOutgoingForwarderIsStillMidRelay(t *test
 	writeFile(t, filepath.Join(pluginDir, "config", "workflows", "reactive.toml"), `
 [reactive]
 kind = "workflow"
+resource = "issue"
 [[reactive.nodes]]
 id   = "claude"
 uses = "claude"

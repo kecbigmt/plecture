@@ -13,11 +13,10 @@ import (
 )
 
 var (
-	setOutputNode     string
-	setOutputWorkflow bool
-	setOutputTask     string
-	setStateInstance  string
-	setMessageTurnID  string
+	setOutputNode    string
+	setOutputTask    string
+	setStateInstance string
+	setMessageTurnID string
 )
 
 var stateCmd = &cobra.Command{
@@ -69,11 +68,10 @@ var setOutputCmd = &cobra.Command{
 	Short: "Merge values into a produced task's outputs",
 	Long: `Merge a JSON object into the persisted outputs of a produced task.
 
-Targets a workflow node (--node <id>), the workflow pseudo-node (--workflow),
-or a runtime task handle (--task <task-handle>, e.g. review#1).
-Merge-only: keys absent from the payload are left untouched. Only keys declared
-with ` + "`mutable = true`" + ` in the target's outputs schema are writable; the reserved
-"workdir" key is always immutable.
+Targets a workflow node (--node <id>) or a runtime task handle
+(--task <task-handle>, e.g. review#1). Merge-only: keys absent from the payload
+are left untouched. Only keys declared with ` + "`mutable = true`" + ` in the
+target's outputs schema are writable.
 
 Intended for external updaters (e.g. a watcher daemon refreshing observed
 values like pr_state) — resources created by setup stay immutable.
@@ -95,7 +93,6 @@ stops updating — check the watcher's logs if a done_when stalls.
 
 Example:
   plect state set-output session-1 --node watch '{"pr_state":"merged"}'
-  plect state set-output session-1 --workflow '{"title":"New title"}'
   plect state set-output session-1 --task review#1 '{"checks_status":"SUCCESS"}'`,
 	Args: cobra.ExactArgs(2),
 	RunE: func(cmd *cobra.Command, args []string) error {
@@ -114,7 +111,6 @@ Example:
 		result, err := service.SetOutput(cfg, store, service.SetOutputParams{
 			Identifier: args[0],
 			Node:       setOutputNode,
-			Workflow:   setOutputWorkflow,
 			Task:       setOutputTask,
 			Outputs:    payload,
 		})
@@ -175,10 +171,9 @@ func init() {
 	setMessageCmd.Flags().StringVar(&setMessageTurnID, "turn-id", "", "Runtime turn id for this status report")
 
 	setOutputCmd.Flags().StringVar(&setOutputNode, "node", "", "Target workflow node id")
-	setOutputCmd.Flags().BoolVar(&setOutputWorkflow, "workflow", false, "Target the workflow pseudo-node")
 	setOutputCmd.Flags().StringVar(&setOutputTask, "task", "", "Target a produced runtime task such as review#1")
-	setOutputCmd.MarkFlagsMutuallyExclusive("node", "workflow", "task")
-	setOutputCmd.MarkFlagsOneRequired("node", "workflow", "task")
+	setOutputCmd.MarkFlagsMutuallyExclusive("node", "task")
+	setOutputCmd.MarkFlagsOneRequired("node", "task")
 
 	setStateCmd.Flags().StringVar(&setStateInstance, "instance", "", "Target instance, such as review#1")
 	setStateCmd.MarkFlagRequired("instance")

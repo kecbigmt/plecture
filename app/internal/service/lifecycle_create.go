@@ -18,11 +18,15 @@ import (
 type CreateParams struct {
 	URL           string
 	Tag           string
-	Workflow      string         // workflow name from --workflow; empty = auto-select
+	Workflow      string         // workflow name from --workflow; empty selects the one workflow accepting the resource type
 	Inputs        map[string]any // frozen at create time; passing to an existing session returns ErrInvalidInput
 	ParentSession string         // parent session name; empty falls back to PLECT_SESSION_NAME when it exists and is not self.
 	Observer      task.Observer
 	Population    *contract.PopulationProvenance
+	// ProjectRoot is the configuration context the session is created in: a
+	// canonical project root the caller has already selected and trusted, or
+	// empty for the global-only context.
+	ProjectRoot string
 }
 
 func samePopulation(left, right *contract.PopulationProvenance) bool {
@@ -37,49 +41,43 @@ func populationCollision(session string, existing, requested *contract.Populatio
 	return &Error{Code: ErrInvalidInput, Message: fmt.Sprintf("session %q is owned by %s; workflow %q population %q cannot adopt it", session, owner, requested.Workflow, requested.Name)}
 }
 
-// ResolvePopulationSessionName runs the same static workflow/provider
-// resolver as Up without creating or mutating a session.
-func ResolvePopulationSessionName(cfg *config.Config, workflow, resource string) (string, error) {
-	dispatch, matched, err := dispatchResource(cfg, workflow, resource)
+// ResolvePopulationSessionName runs the same static workflow dispatch as Up
+// without creating or mutating a session.
+func ResolvePopulationSessionName(cfg *config.Config, projectRoot, workflow, resource string) (string, error) {
+	dispatch, matched, err := dispatchResource(cfg, projectRoot, workflow, resource)
 	if err != nil {
 		return "", err
 	}
 	if !matched {
-		return "", &Error{Code: ErrInvalidInput, Message: fmt.Sprintf("workflow %q does not resolve population resource %q", workflow, resource)}
+		return "", &Error{Code: ErrInvalidInput, Message: fmt.Sprintf("no resource declaration recognizes population resource %q", resource)}
 	}
-	tag, tagErr := effectiveTag("", dispatch.Workflow.ID)
-	if tagErr != nil {
-		return "", tagErr
+	name, nameErr := dispatch.sessionName("")
+	if nameErr != nil {
+		return "", nameErr
 	}
-	return dispatch.Name + "+" + tag, nil
+	return name, nil
+}
+
+// ResolvePopulationSession returns the session name a population member
+// takes and the live session under it. collision is set, with no session,
+// when the live session under that name was recorded for another entry.
+func ResolvePopulationSession(cfg *config.Config, store *state.Store, projectRoot, workflow, resource string) (name string, existing *domain.Session, collision *Error, err error) {
+	dispatch, matched, err := dispatchResource(cfg, projectRoot, workflow, resource)
+	if err != nil {
+		return "", nil, nil, err
+	}
+	if !matched {
+		return "", nil, nil, &Error{Code: ErrInvalidInput, Message: fmt.Sprintf("no resource declaration recognizes population resource %q", resource)}
+	}
+	return entrySession(store, &dispatch, "")
 }
 
 // CreateResult holds the outcome of Create.
 type CreateResult struct {
-	SessionName        string                         `json:"session_name"`
-	WorkspaceDirPath   string                         `json:"workspace_dir_path"`
-	Branch             string                         `json:"branch"`
-	ReusedWorkspaceDir bool                           `json:"reused_workspace_dir"`
-	Tasks              map[string]*contract.TaskState `json:"tasks,omitempty"`
+	SessionName string                         `json:"session_name"`
+	Tasks       map[string]*contract.TaskState `json:"tasks,omitempty"`
 }
 
-// Create establishes the session: state entry + workspace directory +
-// session-scoped tasks.
-//
-// Dispatch order for the resource identifier (any string):
-//
-//  1. Resolver dispatch — the workflow whose `[resolver]` matches (or the
-//     --workflow flag's resolver) derives the session id purely; the
-//     workspace provider's setup then acquires the workspace. The core
-//     performs no version-control or workspace-provider-API work of its own.
-//  2. Identity — an identifier no resolver matches, with an explicit
-//     --workflow whose workspace provider declares setup: the input string
-//     IS the session id.
-//
-// Create is idempotent: re-running it against an existing session reuses
-// the workspace directory + state entry and retries the workflow setup and
-// any session-scoped tasks that have not yet reached "produced". This is
-// the recovery path for a previous create that partially failed.
 // putBestEffort persists session after a step whose own error already takes
 // priority in the caller's return path (e.g. mid-lifecycle checkpoints, or
 // cleanup that reports via CleanupWarnings/Force). A failure here must not
@@ -90,6 +88,10 @@ func putBestEffort(store *state.Store, session *domain.Session, context string) 
 	}
 }
 
+// Create establishes the session: state entry, workflow revision and every
+// session-scoped node. It is idempotent: re-running it against an existing
+// session retries nodes that have not yet reached "produced", which is the
+// recovery path for a partially failed create.
 func Create(cfg *config.Config, store *state.Store, params CreateParams) (*CreateResult, error) {
 	resource := params.URL
 
@@ -107,52 +109,19 @@ func Create(cfg *config.Config, store *state.Store, params CreateParams) (*Creat
 		}
 	}
 
-	// 1. Resolver dispatch.
-	disp, matched, dispErr := dispatchResource(cfg, params.Workflow, resource)
+	disp, matched, dispErr := dispatchResource(cfg, params.ProjectRoot, params.Workflow, resource)
 	if dispErr != nil {
 		if svcErr, ok := dispErr.(*Error); ok {
 			return nil, svcErr
 		}
 		return nil, &Error{Code: ErrExecutionFailed, Message: dispErr.Error()}
 	}
-	if matched {
-		tag, tagErr := effectiveTag(params.Tag, disp.Workflow.ID)
-		if tagErr != nil {
-			return nil, tagErr
-		}
-		sessionName := disp.Name + "+" + tag
-		return createWithWorkflowSetup(cfg, store, params, disp.Workflow, disp.WorkspaceProvider, sessionName, resource, params.URL)
+	if !matched {
+		return nil, &Error{Code: ErrInvalidInput, Message: fmt.Sprintf("no resource declaration recognizes %q", resource)}
 	}
-
-	// 2. Identity: the resource identifier IS the session id. Requires an
-	// explicit workflow, since an identity dispatch on arbitrary input would
-	// otherwise shadow every resolver.
-	if params.Workflow == "" {
-		return nil, &Error{Code: ErrInvalidInput, Message: fmt.Sprintf("no workflow resolver matches %q; pass --workflow to create a session with this identifier", resource)}
+	sessionName, nameErr := disp.sessionName(params.Tag)
+	if nameErr != nil {
+		return nil, nameErr
 	}
-	workflows, err := cfg.LoadWorkflows("")
-	if err != nil {
-		return nil, &Error{Code: ErrExecutionFailed, Message: fmt.Sprintf("load workflows: %v", err)}
-	}
-	wf, ok := workflows[params.Workflow]
-	if !ok {
-		return nil, &Error{Code: ErrInvalidInput, Message: fmt.Sprintf("workflow %q not found; add .plect/workflows/%s.toml", params.Workflow, params.Workflow)}
-	}
-	workspaceProviders, err := cfg.LoadWorkspaceProviders()
-	if err != nil {
-		return nil, &Error{Code: ErrExecutionFailed, Message: fmt.Sprintf("load workspace providers: %v", err)}
-	}
-	prov, ok, provErr := workspaceProviderFor(wf, workspaceProviders)
-	if provErr != nil {
-		return nil, &Error{Code: ErrExecutionFailed, Message: provErr.Error()}
-	}
-	if !ok {
-		return nil, &Error{Code: ErrInvalidInput, Message: fmt.Sprintf("workflow %q declares no workspace provider; a session needs one to acquire its workspace", wf.ID)}
-	}
-	tag, tagErr := effectiveTag(params.Tag, wf.ID)
-	if tagErr != nil {
-		return nil, tagErr
-	}
-	sessionName := resource + "+" + tag
-	return createWithWorkflowSetup(cfg, store, params, wf, prov, sessionName, resource, params.URL)
+	return createWithWorkflowSetup(cfg, store, params, disp, sessionName, params.URL)
 }

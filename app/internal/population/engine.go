@@ -6,7 +6,6 @@ import (
 	"fmt"
 	"log/slog"
 	"reflect"
-	"regexp"
 	"sort"
 	"strings"
 	"time"
@@ -53,12 +52,22 @@ type Engine struct {
 	cache      *admitstatus.Cache
 	logger     *slog.Logger
 	hooks      Hooks
-	key        string
+	key        contract.PopulationProvenance
 	now        func() time.Time
 }
 
-func populationKey(def Definition) string {
-	return def.Workflow.Address + "/" + def.Population.Name
+func populationKey(def Definition) contract.PopulationProvenance {
+	return contract.PopulationProvenance{ProjectRoot: def.ProjectRoot, Workflow: def.Workflow.Address, Name: def.Population.Name}
+}
+
+// populationLabel names a population in a message, qualified by its project
+// root when it has one.
+func populationLabel(key contract.PopulationProvenance) string {
+	label := key.Workflow + "/" + key.Name
+	if key.ProjectRoot != "" {
+		label = key.ProjectRoot + ":" + label
+	}
+	return label
 }
 
 func NewEngine(def Definition, stateStore *state.Store, logStore *eventlog.Store, cache *admitstatus.Cache, hooks Hooks) *Engine {
@@ -70,18 +79,19 @@ func (e *Engine) ApplyPoll(ctx context.Context, items []map[string]any) error {
 	if err != nil {
 		return err
 	}
-	present := make(map[string]map[string]any, len(validated))
+	present := make(map[string]resolvedItem, len(validated))
 	for _, item := range validated {
-		present[item["resource"].(string)] = item
+		present[item.resource.Name] = item
 	}
 	if err := e.state.UpdatePopulation(e.key, func(population *state.PopulationState) error {
 		population.Workflow = e.definition.Workflow.Address
 		population.Name = e.definition.Population.Name
-		for resource, item := range present {
-			member := population.Members[resource]
+		for name, resolved := range present {
+			item := resolved.item
+			member := population.Members[name]
 			if member == nil {
-				member = &state.PopulationMember{ResourceID: resource, Generation: 1, PendingUp: true}
-				population.Members[resource] = member
+				member = &state.PopulationMember{Resource: resolved.resource, Generation: 1, PendingUp: true}
+				population.Members[name] = member
 			} else if member.Tombstoned {
 				member.Generation++
 				member.Tombstoned = false
@@ -98,8 +108,8 @@ func (e *Engine) ApplyPoll(ctx context.Context, items []map[string]any) error {
 				member.PendingUp = true
 			}
 		}
-		for resource, member := range population.Members {
-			if present[resource] != nil || member.Tombstoned {
+		for name, member := range population.Members {
+			if _, ok := present[name]; ok || member.Tombstoned {
 				continue
 			}
 			member.Tombstoned = true
@@ -120,14 +130,15 @@ func (e *Engine) ApplyAppearance(ctx context.Context, item map[string]any) error
 	if err != nil {
 		return err
 	}
-	item = validated[0]
-	resource := item["resource"].(string)
+	item = validated[0].item
+	resolved := validated[0].resource
+	resource := resolved.Locator
 	now := e.now()
 	suppressed := false
 	if err := e.state.UpdatePopulation(e.key, func(population *state.PopulationState) error {
 		population.Workflow = e.definition.Workflow.Address
 		population.Name = e.definition.Population.Name
-		member := population.Members[resource]
+		member := population.Members[resolved.Name]
 		if member != nil && member.Tombstoned && e.definition.Population.UsesPoll() {
 			suppressed = true
 			return nil
@@ -138,8 +149,8 @@ func (e *Engine) ApplyAppearance(ctx context.Context, item map[string]any) error
 			if member != nil {
 				generation = member.Generation + 1
 			}
-			member = &state.PopulationMember{ResourceID: resource, Generation: generation}
-			population.Members[resource] = member
+			member = &state.PopulationMember{Resource: resolved, Generation: generation}
+			population.Members[resolved.Name] = member
 		}
 		member.Item = item
 		member.LastAppearance = now
@@ -275,7 +286,7 @@ func (e *Engine) SweepExpiry(ctx context.Context) error {
 }
 
 func (e *Engine) admit(ctx context.Context, member *state.PopulationMember) error {
-	inputs, err := e.sessionInputs(member.ResourceID, member.Item)
+	inputs, err := e.sessionInputs(member.Resource.Locator, member.Item)
 	if err != nil {
 		return e.failAdmit(member, member.SessionName, "input", err)
 	}
@@ -294,7 +305,7 @@ func (e *Engine) admit(ctx context.Context, member *state.PopulationMember) erro
 			}
 			if reason != "" {
 				return e.state.UpdatePopulation(e.key, func(population *state.PopulationState) error {
-					current := population.Members[member.ResourceID]
+					current := population.Members[member.Resource.Name]
 					if current == nil || current.Generation != member.Generation || current.Tombstoned {
 						return nil
 					}
@@ -304,12 +315,12 @@ func (e *Engine) admit(ctx context.Context, member *state.PopulationMember) erro
 			}
 		}
 	}
-	outcome, err := e.hooks.Up(ctx, member.ResourceID, inputs)
+	outcome, err := e.hooks.Up(ctx, member.Resource.Locator, inputs)
 	if err != nil {
 		var serviceErr *service.Error
 		if errors.As(err, &serviceErr) && serviceErr.Code == service.ErrChildUpInProgress {
 			return e.state.UpdatePopulation(e.key, func(population *state.PopulationState) error {
-				current := population.Members[member.ResourceID]
+				current := population.Members[member.Resource.Name]
 				if current == nil || current.Generation != member.Generation || current.Tombstoned {
 					return nil
 				}
@@ -330,7 +341,7 @@ func (e *Engine) admit(ctx context.Context, member *state.PopulationMember) erro
 	session := outcome.SessionName
 	now := e.now()
 	if err := e.state.UpdatePopulation(e.key, func(population *state.PopulationState) error {
-		current := population.Members[member.ResourceID]
+		current := population.Members[member.Resource.Name]
 		if current == nil || current.Generation != member.Generation || current.Tombstoned {
 			return nil
 		}
@@ -344,7 +355,7 @@ func (e *Engine) admit(ctx context.Context, member *state.PopulationMember) erro
 	}
 	if outcome.Sleeping {
 		return e.state.UpdatePopulation(e.key, func(population *state.PopulationState) error {
-			current := population.Members[member.ResourceID]
+			current := population.Members[member.Resource.Name]
 			if current == nil || current.Generation != member.Generation || current.Tombstoned {
 				return nil
 			}
@@ -357,15 +368,15 @@ func (e *Engine) admit(ctx context.Context, member *state.PopulationMember) erro
 	// leaves a retry whose up hook reports no transition, so a record deferred
 	// past it would be lost for good instead of merely delayed.
 	if !outcome.AlreadyUp && !outcome.Woke {
-		e.record(session, event.TypeWorkflowPopulationUp, "up", "population member is up", member.ResourceID)
+		e.record(session, event.TypeWorkflowPopulationUp, "up", "population member is up", member.Resource.Locator)
 	}
 	if e.definition.Population.Session.Task != "" && e.hooks.EnsureInitial != nil {
-		if err := e.hooks.EnsureInitial(ctx, session, e.definition.Population.Session.Task, member.ResourceID); err != nil {
+		if err := e.hooks.EnsureInitial(ctx, session, e.definition.Population.Session.Task, member.Resource.Locator); err != nil {
 			return e.failAdmit(member, session, "task_setup", err)
 		}
 	}
 	if err := e.state.UpdatePopulation(e.key, func(population *state.PopulationState) error {
-		current := population.Members[member.ResourceID]
+		current := population.Members[member.Resource.Name]
 		if current == nil || current.Generation != member.Generation || current.Tombstoned {
 			return nil
 		}
@@ -377,20 +388,20 @@ func (e *Engine) admit(ctx context.Context, member *state.PopulationMember) erro
 		return err
 	}
 	// Unlike TypeWorkflowPopulationUp above, this fires even when AlreadyUp.
-	e.record(session, event.TypeWorkflowPopulationAdmitOK, "admit", "population member admission succeeded", member.ResourceID)
-	e.recordAdmit(session, member.ResourceID, true, "", "")
+	e.record(session, event.TypeWorkflowPopulationAdmitOK, "admit", "population member admission succeeded", member.Resource.Locator)
+	e.recordAdmit(session, member.Resource.Locator, true, "", "")
 	return nil
 }
 
 func (e *Engine) failAdmit(member *state.PopulationMember, session, reason string, failure error) error {
 	if reason == "provenance" {
-		e.record(session, event.TypeWorkflowPopulationConflict, reason, failure.Error(), member.ResourceID)
+		e.record(session, event.TypeWorkflowPopulationConflict, reason, failure.Error(), member.Resource.Locator)
 	} else {
-		e.record(session, event.TypeWorkflowPopulationFailure, reason, failure.Error(), member.ResourceID)
+		e.record(session, event.TypeWorkflowPopulationFailure, reason, failure.Error(), member.Resource.Locator)
 	}
-	e.recordAdmit(session, member.ResourceID, false, reason, failure.Error())
+	e.recordAdmit(session, member.Resource.Locator, false, reason, failure.Error())
 	if err := e.state.UpdatePopulation(e.key, func(population *state.PopulationState) error {
-		current := population.Members[member.ResourceID]
+		current := population.Members[member.Resource.Name]
 		if current == nil || current.Generation != member.Generation || current.Tombstoned {
 			return nil
 		}
@@ -451,10 +462,6 @@ func isPermanentAdmitFailure(reason string, failure error) bool {
 	if errors.As(failure, &conflict) {
 		return true
 	}
-	var initial *initialTaskCleanupRequiredError
-	if errors.As(failure, &initial) {
-		return true
-	}
 	var serviceErr *service.Error
 	if errors.As(failure, &serviceErr) && serviceErr.Code == service.ErrInvalidInput {
 		return true
@@ -489,19 +496,19 @@ func (e *Engine) decideDestroy(ctx context.Context, member *state.PopulationMemb
 	if e.hooks.Destroy == nil {
 		return fmt.Errorf("population destruction has no lifecycle hook")
 	}
-	if err := e.hooks.Destroy(ctx, member.SessionName, member.ResourceID, e.definition.Population.Session.Destroy.Force); err != nil {
+	if err := e.hooks.Destroy(ctx, member.SessionName, member.Resource.Locator, e.definition.Population.Session.Destroy.Force); err != nil {
 		var conflict *populationConflictError
 		if errors.As(err, &conflict) {
-			e.record(conflict.session, event.TypeWorkflowPopulationConflict, "provenance", err.Error(), member.ResourceID)
-			e.recordAdmit(conflict.session, member.ResourceID, false, "provenance", err.Error())
+			e.record(conflict.session, event.TypeWorkflowPopulationConflict, "provenance", err.Error(), member.Resource.Locator)
+			e.recordAdmit(conflict.session, member.Resource.Locator, false, "provenance", err.Error())
 			return err
 		}
-		e.record(member.SessionName, event.TypeWorkflowPopulationFailure, "destroy", err.Error(), member.ResourceID)
+		e.record(member.SessionName, event.TypeWorkflowPopulationFailure, "destroy", err.Error(), member.Resource.Locator)
 		return err
 	}
-	e.record(member.SessionName, event.TypeWorkflowPopulationDestroy, reason, "population member destroyed", member.ResourceID)
+	e.record(member.SessionName, event.TypeWorkflowPopulationDestroy, reason, "population member destroyed", member.Resource.Locator)
 	return e.state.UpdatePopulation(e.key, func(population *state.PopulationState) error {
-		current := population.Members[member.ResourceID]
+		current := population.Members[member.Resource.Name]
 		if current == nil || current.Generation != member.Generation {
 			return nil
 		}
@@ -518,10 +525,10 @@ func (e *Engine) recordDecision(member *state.PopulationMember, typ, reason stri
 	if member.LastDecision == typ+":"+reason && reflect.DeepEqual(member.LastBlockers, blockers) {
 		return nil
 	}
-	e.record(member.SessionName, typ, reason, strings.Join(blockers, ", "), member.ResourceID,
+	e.record(member.SessionName, typ, reason, strings.Join(blockers, ", "), member.Resource.Locator,
 		map[string]string{"blockers": strings.Join(blockers, ",")})
 	return e.state.UpdatePopulation(e.key, func(population *state.PopulationState) error {
-		current := population.Members[member.ResourceID]
+		current := population.Members[member.Resource.Name]
 		if current == nil || current.Generation != member.Generation {
 			return nil
 		}
@@ -539,7 +546,7 @@ func (e *Engine) RecordFailure(reason string, failure error) {
 	for _, resource := range sortedMembers(population.Members) {
 		member := population.Members[resource]
 		if member != nil && member.SessionName != "" {
-			e.record(member.SessionName, event.TypeWorkflowPopulationFailure, reason, failure.Error(), resource)
+			e.record(member.SessionName, event.TypeWorkflowPopulationFailure, reason, failure.Error(), member.Resource.Locator)
 		}
 	}
 }
@@ -569,33 +576,39 @@ func (e *Engine) record(session, typ, reason, summary, resource string, extra ..
 	})
 }
 
-func (e *Engine) validateItems(items []map[string]any, complete bool) ([]map[string]any, error) {
+type resolvedItem struct {
+	item     map[string]any
+	resource contract.Resource
+}
+
+// A query may name one resource in two spellings; the resource's name is its
+// identity, so the later spellings are the same member and are dropped.
+func (e *Engine) validateItems(items []map[string]any, complete bool) ([]resolvedItem, error) {
 	seen := make(map[string]bool, len(items))
-	out := make([]map[string]any, 0, len(items))
-	observerMatch := regexp.MustCompile(e.definition.Observer.Match)
-	providerMatch := regexp.MustCompile(e.definition.Provider.Match)
+	out := make([]resolvedItem, 0, len(items))
 	for i, item := range items {
 		if err := e.definition.ItemSchema.Validate(item); err != nil {
 			return nil, fmt.Errorf("query item %d: %w", i, err)
 		}
-		resource := item["resource"].(string)
-		if seen[resource] {
-			return nil, fmt.Errorf("query item %d duplicates resource %q", i, resource)
+		identifier := item["resource"].(string)
+		resource, matched, err := service.ResolveResource(e.state, e.definition.Workflow.Resource, e.definition.Entry, identifier)
+		if err != nil {
+			return nil, fmt.Errorf("query item %d: %w", i, err)
 		}
-		seen[resource] = true
-		if !observerMatch.MatchString(resource) {
-			return nil, fmt.Errorf("query item %d resource %q is not recognized by observer %q", i, resource, e.definition.Observer.ID)
+		if !matched {
+			return nil, fmt.Errorf("query item %d resource %q is not recognized by the workflow's entry resource %q", i, identifier, e.definition.Entry.ID)
 		}
-		if !providerMatch.MatchString(resource) {
-			return nil, fmt.Errorf("query item %d resource %q is not recognized by workspace provider %q", i, resource, e.definition.Provider.ID)
+		if seen[resource.Name] {
+			continue
 		}
-		if _, err := e.sessionInputs(resource, item); err != nil {
+		seen[resource.Name] = true
+		if _, err := e.sessionInputs(resource.Locator, item); err != nil {
 			if complete {
 				return nil, fmt.Errorf("query item %d: %w", i, err)
 			}
 			return nil, err
 		}
-		out = append(out, item)
+		out = append(out, resolvedItem{item: item, resource: resource})
 	}
 	return out, nil
 }

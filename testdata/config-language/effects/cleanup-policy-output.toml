@@ -1,0 +1,41 @@
+# plect-fixture: result=valid entry=definitions
+# reason: a release policy is a creation-time input that setup records as a mutable output, so cleanup reads it beside force and one session can rewrite it before destroy.
+
+[checkout_effect]
+kind  = "effect"
+scope = "session"
+
+[checkout_effect.setup]
+type   = "shell"
+script = '''
+checkout-tool create >&2
+printf '{"delete_branch":%s}\n' "$delete_branch"
+'''
+
+[checkout_effect.setup.bind]
+delete_branch = { from = "inputs.delete_branch", default = false }
+
+[checkout_effect.cleanup]
+type   = "shell"
+script = 'checkout-tool remove --force="$force" --delete-branch="$delete_branch"'
+
+[checkout_effect.cleanup.bind]
+force         = { from = "force" }
+delete_branch = { from = "self.outputs.delete_branch" }
+
+[checkout_effect.health.alive]
+type = "noop"
+
+[checkout_effect.inputs_schema]
+type = "object"
+
+[checkout_effect.inputs_schema.properties]
+delete_branch = { type = "boolean" }
+
+[checkout_effect.outputs_schema]
+type     = "object"
+required = ["delete_branch"]
+
+[checkout_effect.outputs_schema.properties.delete_branch]
+type    = "boolean"
+mutable = true

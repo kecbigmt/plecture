@@ -4,7 +4,7 @@
 [work]
 kind              = "task"
 description       = "A task whose instructions element names a sidecar that does not exist"
-resource_observer = "issue_pr"
+resource          = "issue_pr"
 instructions      = [{ file = "no-such-instruction.md" }]
 
 [work.done_when]

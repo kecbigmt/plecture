@@ -33,11 +33,14 @@ func TestRoundTrip_SessionListEnvelope(t *testing.T) {
 	if decoded.Count != 2 || len(decoded.Items) != 2 {
 		t.Fatalf("decoded = %+v, want 2 items", decoded)
 	}
-	if decoded.Items[1].ResourceId != "" {
-		t.Errorf("Items[1].ResourceId = %q, want empty (required field, empty value)", decoded.Items[1].ResourceId)
+	if decoded.Items[0].Resource == nil || decoded.Items[0].Resource.Locator != "https://example.com/team/workspace/issues/1" {
+		t.Errorf("Items[0].Resource = %+v, want the fixture's resource", decoded.Items[0].Resource)
 	}
-	if decoded.Items[1].Branch != nil {
-		t.Errorf("Items[1].Branch = %v, want nil (omitted, not present in fixture)", decoded.Items[1].Branch)
+	if decoded.Items[1].Resource != nil {
+		t.Errorf("Items[1].Resource = %+v, want nil (omitted, not present in fixture)", decoded.Items[1].Resource)
+	}
+	if decoded.Items[1].Title != nil {
+		t.Errorf("Items[1].Title = %v, want nil (omitted, not present in fixture)", decoded.Items[1].Title)
 	}
 
 	reencoded, err := json.Marshal(decoded)
@@ -71,7 +74,8 @@ func TestRoundTrip_SessionDetailComposition(t *testing.T) {
 		t.Errorf("identity fields missing after allOf flattening: %+v", got)
 	}
 	// From SessionRuntime:
-	if got.Run != webapiv1.Up || !got.WorkspaceDirExists {
+	if got.Run != webapiv1.Up || got.WorkdirExists == nil || !*got.WorkdirExists ||
+		got.Workdir == nil || *got.Workdir != "/work/team/workspace-a" {
 		t.Errorf("runtime fields missing after allOf flattening: %+v", got)
 	}
 }
@@ -150,11 +154,11 @@ func TestRoundTrip_ExplicitNullOptionalFieldsDecodeSameAsAbsent(t *testing.T) {
 	if err := json.Unmarshal(raw, &got); err != nil {
 		t.Fatalf("unmarshal explicit null: %v", err)
 	}
-	if got.ResourceId != nil {
-		t.Errorf("ResourceId = %v, want nil for an explicit null", got.ResourceId)
+	if got.Resource != nil {
+		t.Errorf("Resource = %v, want nil for an explicit null", got.Resource)
 	}
-	if got.Branch != nil {
-		t.Errorf("Branch = %v, want nil for an explicit null", got.Branch)
+	if got.Title != nil {
+		t.Errorf("Title = %v, want nil for an explicit null", got.Title)
 	}
 	if got.Children != nil {
 		t.Errorf("Children = %v, want nil for an explicit null", got.Children)

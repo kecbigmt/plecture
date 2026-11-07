@@ -110,10 +110,10 @@ receiving everything and relying on a later check to reject the rest.
 | Surface | Roots |
 |---|---|
 | Resource `name` | `match.<capture>` |
-| Resource `observe` | `resource.id`, `resource.inputs.<key>` |
-| Resource `finalize` | `resource.id`, `session.name`, `resource.revision`, `judges`, `resource.inputs.<key>` |
-| Resource `subscribe` | `session.name`, `session.branch`, `resource.id`, `resource.inputs.<key>` |
-| Resource `unsubscribe` | `session.name`, `session.branch`, `resource.id`, `resource.inputs.<key>` |
+| Resource `observe` | `resource.id` |
+| Resource `finalize` | `resource.id`, `session.name`, `resource.revision`, `judges` |
+| Resource `subscribe` | `session.name`, `resource.id`, `resource.inputs.<key>` |
+| Resource `unsubscribe` | `session.name`, `resource.id`, `resource.inputs.<key>` |
 | Resource query means | `inputs.<key>` |
 | Workflow public `outputs` | `nodes.<id>.outputs.<key>`, `session.inputs.<key>` |
 | Workflow population session `inputs` | `resource.id`, `item.<key>` |
@@ -123,7 +123,7 @@ receiving everything and relying on a later check to reject the rest.
 | Channel `args`, `path`, `body`, `bind` | `event.*`, `event.metadata.<key>`, `inputs.<key>`, and the terminal capability |
 | Channel `timeout` | `inputs.<key>` only |
 | Effect `setup` | `inputs.<key>`, `prev.<key>`, `nodes.<id>.outputs.<key>`, `workflow.outputs.<key>`, `session.*`, `session.inputs.<key>`, `resource.id` |
-| Effect `cleanup` | `self.outputs.<key>`, `self.process.identity`, `inputs.<key>`, `cleanup.inputs.<key>`, `force`, `nodes.<id>.outputs.<key>`, `workflow.outputs.<key>`, `session.*` |
+| Effect `cleanup` | `self.outputs.<key>`, `self.process.identity`, `inputs.<key>`, `force`, `nodes.<id>.outputs.<key>`, `workflow.outputs.<key>`, `session.*` |
 | Effect `health` probes | `self.outputs.<key>`, `inputs.<key>`, `session.*` |
 | Effect `terminal` verbs | `self.outputs.<key>`, `session.*` |
 | Effect `inner.inputs`, `inner.env` | `inputs.<key>`, `locals.<key>`, `nodes.<id>.outputs.<key>`, `workflow.outputs.<key>`, `session.*` |
@@ -131,6 +131,11 @@ receiving everything and relying on a later check to reject the rest.
 | Task `done_when`, chain `when` | `resource.state.<key>`, `self.state.<key>` |
 | Task instruction body | `resource.id`, `resource.state.<key>`, `self.state.<key>`, `inputs.<key>`, `session.*`, `workflow.outputs.<key>` |
 | Chain `inputs`, chain `resource` | `task.session`, `task.instance`, `task.workflow`, `task.done_when.pending_judge_ids`, `resource.state.<key>`, `self.state.<key>` |
+
+Where a surface observes `session.*`, `session.tag` is the tag the session was
+created with, and is absent for an untagged session. It is the recorded tag
+rather than a segment parsed out of `session.name`, because a resource name may
+itself contain `+`.
 
 A projection in a task document's instruction body is spelled `{{ <path> }}`
 rather than as a tagged value, because prose has no room for a table; it is the

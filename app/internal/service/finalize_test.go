@@ -39,7 +39,7 @@ func TestFinalizeTask_SatisfiedNoResourceLeavesInstanceForCleanup(t *testing.T) 
 	cfg := checkStatusOnlyConfig(t, 0)
 	// finalize re-observes before it reconfirms, so the observation has to
 	// report the facts the predicate reads rather than the seeded snapshot.
-	stubObservedFacts(t, cfg, ".", map[string]any{"checks_status": "SUCCESS"})
+	stubObservedFacts(t, cfg, map[string]any{"checks_status": "SUCCESS"})
 	store := testStore(t)
 	seedSession(t, store, "o/r-1", "o/r", 1, "default", map[string]*contract.TaskState{
 		"initial": {
@@ -89,7 +89,8 @@ func TestFinalizeTask_RunsResourceFinalizeAndLeavesInstance(t *testing.T) {
 	}
 	toml := fmt.Sprintf(`
 [local_okf]
-kind  = "resource_observer"
+kind  = "resource"
+name  = "fixture"
 match = '^local-okf://'
 
 [local_okf.observe]
@@ -107,7 +108,7 @@ args    = ["-c", 'echo "$1 $2" > %s', "finalize", { from = "resource.id" }, { fr
 
 	// Narrow enough to leave the local-okf resource to the observer this test
 	// declares for it, which is the one finalize has to run.
-	stubObservedFacts(t, cfg, "^https://", map[string]any{"checks_status": "SUCCESS", "revision": "sha1"})
+	stubObservedFacts(t, cfg, map[string]any{"checks_status": "SUCCESS", "revision": "sha1"})
 
 	store := testStore(t)
 	seedSession(t, store, "o/r-1", "o/r", 1, "default", map[string]*contract.TaskState{
@@ -115,7 +116,7 @@ args    = ["-c", 'echo "$1 $2" > %s', "finalize", { from = "resource.id" }, { fr
 			Scope:    contract.TaskScopeSession,
 			TaskID:   "work",
 			Status:   contract.TaskStatusProduced,
-			Resource: "local-okf://kec/goals/x.md",
+			Resource: testResource("local-okf://kec/goals/x.md"),
 		},
 	})
 
@@ -153,7 +154,8 @@ func TestFinalizeTask_ResourceFinalizeFailureAbortsBeforeCleanup(t *testing.T) {
 	}
 	if err := os.WriteFile(filepath.Join(resourcesDir, "local-okf.toml"), []byte(`
 [local_okf]
-kind  = "resource_observer"
+kind  = "resource"
+name  = "fixture"
 match = '^local-okf://'
 
 [local_okf.observe]
@@ -174,7 +176,7 @@ args    = ["-c", "echo boom >&2; exit 1"]
 			Scope:    contract.TaskScopeSession,
 			TaskID:   "work",
 			Status:   contract.TaskStatusProduced,
-			Resource: "local-okf://kec/goals/x.md",
+			Resource: testResource("local-okf://kec/goals/x.md"),
 			Observed: observedFacts(map[string]any{"checks_status": "SUCCESS"}),
 		},
 	})

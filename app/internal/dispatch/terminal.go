@@ -27,6 +27,11 @@ type terminalOwner struct {
 // one that actually consumes a terminal verb would then fail per-delivery
 // with a clear error, the same as a channel referencing an unwired input.
 func resolveTerminalOwner(logger *slog.Logger, cfg *config.Config, s *domain.Session, wf config.WorkflowFile) *terminalOwner {
+	if err := cfg.RequireProjectRoot(s.ProjectRoot); err != nil {
+		logger.Warn("event channel terminal capability unavailable; the session's project root is no longer usable",
+			"session", s.Name, "error", err)
+		return nil
+	}
 	defs, err := cfg.TaskDefinitionsForSession(s)
 	if err != nil {
 		logger.Warn("event channel terminal capability unavailable; load effect declarations failed",
@@ -53,7 +58,11 @@ func resolveTerminalOwner(logger *slog.Logger, cfg *config.Config, s *domain.Ses
 // channelInputs re-reads the session's outputs per drain instead of once.
 // Returns nil when the workflow declares no such effect, so a channel that
 // consumes no terminal verb is unaffected.
-func terminalResolver(s *domain.Session, owner *terminalOwner, session task.SessionVars) channel.TerminalResolver {
+//
+// current is the live configuration rather than the dispatcher's build-time
+// snapshot: a dispatcher outlives trust revocation and marker deletion, so
+// each terminal call re-checks the session's recorded root.
+func terminalResolver(s *domain.Session, owner *terminalOwner, session task.SessionVars, current func() *config.Config) channel.TerminalResolver {
 	if owner == nil {
 		return nil
 	}
@@ -65,6 +74,9 @@ func terminalResolver(s *domain.Session, owner *terminalOwner, session task.Sess
 	}
 	binding := &task.TerminalBinding{Ops: owner.Ops, Outputs: outputs, SourcePath: owner.SourcePath, From: owner.From}
 	return func(verb, dir string) (string, error) {
+		if err := current().RequireProjectRoot(s.ProjectRoot); err != nil {
+			return "", err
+		}
 		return task.TerminalCommand(binding, verb, session, dir)
 	}
 }

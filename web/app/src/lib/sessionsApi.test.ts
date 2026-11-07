@@ -19,7 +19,7 @@ afterEach(() => {
 
 describe("fetchSessionList", () => {
   it("returns the items array on success", async () => {
-    const items = [{ sessionName: "a", displayStatus: "up", run: "up", resourceId: "" }];
+    const items = [{ sessionName: "a", displayStatus: "up", run: "up" }];
     vi.mocked(fetch).mockResolvedValue(jsonResponse({ items, count: 1 }));
     await expect(fetchSessionList()).resolves.toEqual(items);
   });
@@ -45,14 +45,14 @@ describe("fetchSessionList", () => {
 
 describe("fetchSessionDetail", () => {
   it("returns the session detail on success", async () => {
-    const detail = { sessionName: "a", run: "up", workspaceDirExists: true, createdAt: "2026-01-01T00:00:00Z" };
+    const detail = { sessionName: "a", run: "up", createdAt: "2026-01-01T00:00:00Z" };
     vi.mocked(fetch).mockResolvedValue(jsonResponse(detail));
     await expect(fetchSessionDetail("a")).resolves.toEqual(detail);
   });
 
   it("percent-encodes a session name containing /", async () => {
     vi.mocked(fetch).mockResolvedValue(
-      jsonResponse({ sessionName: "team/a", run: "up", workspaceDirExists: true, createdAt: "2026-01-01T00:00:00Z" }),
+      jsonResponse({ sessionName: "team/a", run: "up", createdAt: "2026-01-01T00:00:00Z" }),
     );
     await fetchSessionDetail("team/a");
     const request = vi.mocked(fetch).mock.calls[0][0] as Request;

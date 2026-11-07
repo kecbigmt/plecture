@@ -35,7 +35,7 @@ const (
 // publish same-session events that drive the reviewer or work session. Against
 // that same refreshed fact set, it also fires [[chains]].
 func TickSession(cfg *config.Config, store *state.Store, params TickParams) (*CheckResult, error) {
-	resolvedName, _, computed, chainPlan, err := evaluateSessionActions(cfg, store, params.SessionName, !params.SkipRefresh, params.Trigger)
+	resolvedName, session, computed, chainPlan, err := evaluateSessionActions(cfg, store, params.SessionName, !params.SkipRefresh, params.Trigger)
 	if err != nil {
 		return nil, err
 	}
@@ -72,8 +72,10 @@ func TickSession(cfg *config.Config, store *state.Store, params TickParams) (*Ch
 				Tag:           sp.Tag,
 				Workflow:      sp.Workflow,
 				Inputs:        sp.Inputs,
+				InitialTask:   InitialTaskSelection(sp.InitialTask, ""),
 				ParentSession: sp.ParentSession,
 				Observer:      params.Observer,
+				ProjectRoot:   session.ProjectRoot,
 			})
 			// A spawn failure (e.g. a transient session/runtime error) must not
 			// discard the done_when actions already published/persisted above,

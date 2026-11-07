@@ -8,6 +8,7 @@ import (
 	"github.com/kecbigmt/plecture/app/internal/domain"
 	"github.com/kecbigmt/plecture/app/internal/effect"
 	"github.com/kecbigmt/plecture/app/internal/state"
+	contract "github.com/kecbigmt/plecture/contracts/state"
 )
 
 // wireDeliveryOnSetup is TaskSetup's/setupTaskDocument's/
@@ -23,15 +24,15 @@ import (
 // a retry gets queued. Never returns an error: every caller treats a wiring
 // failure as non-fatal to the instantiation that already succeeded,
 // reporting it via the returned message instead.
-func wireDeliveryOnSetup(cfg *config.Config, store *state.Store, sessionName, resource, branch string) (bool, string) {
-	if strings.TrimSpace(resource) == "" {
+func wireDeliveryOnSetup(cfg *config.Config, store *state.Store, sessionName string, resource *contract.Resource, reportInvalidInputs bool) (bool, string) {
+	if resource == nil || strings.TrimSpace(resource.Locator) == "" {
 		return false, ""
 	}
 	var subscribed bool
 	var errMsg string
 	if lockErr := withDeliveryLock(store, sessionName, func() {
 		var subErr error
-		subscribed, subErr = subscribeIfWired(cfg, sessionName, resource, branch)
+		subscribed, subErr = subscribeIfWiredWithPolicy(cfg, sessionName, resource.Locator, reportInvalidInputs)
 		if subErr != nil {
 			errMsg = subErr.Error()
 		}
@@ -39,7 +40,7 @@ func wireDeliveryOnSetup(cfg *config.Config, store *state.Store, sessionName, re
 		errMsg = fmt.Sprintf("could not acquire the delivery lock: %v", lockErr)
 	}
 	if errMsg != "" {
-		if queueErr := queuePendingSubscribe(store, sessionName, resource); queueErr != nil {
+		if queueErr := queuePendingSubscribe(store, sessionName, *resource); queueErr != nil {
 			errMsg = fmt.Sprintf("%s (and failed to durably queue a retry: %v)", errMsg, queueErr)
 		}
 	}
@@ -52,7 +53,11 @@ func wireDeliveryOnSetup(cfg *config.Config, store *state.Store, sessionName, re
 //
 // A bound resource can have no delivery hook. Ambiguous declarations still
 // report an error so the caller can queue a retry after configuration repair.
-func subscribeIfWired(cfg *config.Config, sessionName, resourceID, branch string) (bool, error) {
+func subscribeIfWired(cfg *config.Config, sessionName, resourceID string) (bool, error) {
+	return subscribeIfWiredWithPolicy(cfg, sessionName, resourceID, false)
+}
+
+func subscribeIfWiredWithPolicy(cfg *config.Config, sessionName, resourceID string, reportInvalidInputs bool) (bool, error) {
 	if strings.TrimSpace(resourceID) == "" {
 		return false, nil
 	}
@@ -68,7 +73,10 @@ func subscribeIfWired(cfg *config.Config, sessionName, resourceID, branch string
 		if def.Subscribe == nil {
 			return false, nil
 		}
-		if validateSubscriptionInputs(def, nil) != nil {
+		if err := validateSubscriptionInputs(def, nil); err != nil {
+			if reportInvalidInputs {
+				return false, &Error{Code: ErrInvalidInput, Message: fmt.Sprintf("resource %q subscription inputs: %v", def.ID, err)}
+			}
 			return false, nil
 		}
 		if hookErr := effect.RunResourceSubscribe(def, effect.SubscribeHookVars{
@@ -76,7 +84,6 @@ func subscribeIfWired(cfg *config.Config, sessionName, resourceID, branch string
 			SessionName: sessionName,
 			Plugins:     cfg.Plugins,
 			SourcePath:  def.SourcePath,
-			Branch:      branch,
 		}); hookErr != nil {
 			return false, &Error{Code: ErrExecutionFailed, Message: hookErr.Error()}
 		}
@@ -97,7 +104,7 @@ func subscribeIfWired(cfg *config.Config, sessionName, resourceID, branch string
 // an ambiguous match, which subscribeIfWired would itself have refused to
 // wire): both report (false, nil), so a caller cannot mistake silence for
 // having actually dropped a registration.
-func unsubscribeIfWired(cfg *config.Config, sessionName, resourceID, branch string) (bool, error) {
+func unsubscribeIfWired(cfg *config.Config, sessionName, resourceID string) (bool, error) {
 	if strings.TrimSpace(resourceID) == "" {
 		return false, nil
 	}
@@ -120,7 +127,6 @@ func unsubscribeIfWired(cfg *config.Config, sessionName, resourceID, branch stri
 		SessionName: sessionName,
 		Plugins:     cfg.Plugins,
 		SourcePath:  def.SourcePath,
-		Branch:      branch,
 	}); hookErr != nil {
 		return false, &Error{Code: ErrExecutionFailed, Message: hookErr.Error()}
 	}
@@ -140,8 +146,8 @@ func unsubscribeIfWired(cfg *config.Config, sessionName, resourceID, branch stri
 // as a failure inside it. Never returns an error: both callers treat a
 // wiring failure as non-fatal to the teardown that already succeeded,
 // reporting it via the returned message instead.
-func unwireDeliveryOnTeardown(cfg *config.Config, store *state.Store, sessionName, resource, sessionID, branch string) (bool, string) {
-	if strings.TrimSpace(resource) == "" {
+func unwireDeliveryOnTeardown(cfg *config.Config, store *state.Store, sessionName string, resource *contract.Resource, sessionID string) (bool, string) {
+	if resource == nil || strings.TrimSpace(resource.Locator) == "" {
 		return false, ""
 	}
 	var unsubscribed bool
@@ -150,10 +156,10 @@ func unwireDeliveryOnTeardown(cfg *config.Config, store *state.Store, sessionNam
 		fresh, freshErr := store.GetE(sessionName)
 		switch {
 		case freshErr != nil:
-			errMsg = fmt.Sprintf("could not verify whether %s is still needed: %v", resource, freshErr)
-		case shouldUnsubscribe(fresh, resource):
+			errMsg = fmt.Sprintf("could not verify whether %s is still needed: %v", resource.Locator, freshErr)
+		case shouldUnsubscribe(cfg, fresh, *resource):
 			var unsubErr error
-			unsubscribed, unsubErr = unsubscribeIfWired(cfg, sessionName, resource, branch)
+			unsubscribed, unsubErr = unsubscribeIfWired(cfg, sessionName, resource.Locator)
 			if unsubErr != nil {
 				errMsg = unsubErr.Error()
 			}
@@ -164,9 +170,9 @@ func unwireDeliveryOnTeardown(cfg *config.Config, store *state.Store, sessionNam
 	if errMsg != "" {
 		queueErr := error(nil)
 		if sessionID == "" {
-			queueErr = queuePendingUnsubscribe(store, sessionName, resource)
+			queueErr = queuePendingUnsubscribe(store, sessionName, *resource)
 		} else {
-			queueErr = queuePendingUnsubscribeForSessionID(store, sessionID, resource)
+			queueErr = queuePendingUnsubscribeForSessionID(store, sessionID, *resource)
 		}
 		if queueErr != nil {
 			errMsg = fmt.Sprintf("%s (and failed to durably queue a retry: %v)", errMsg, queueErr)
@@ -180,19 +186,28 @@ func unwireDeliveryOnTeardown(cfg *config.Config, store *state.Store, sessionNam
 // itself no longer exists — destroyed between resolveSession and this read
 // — which is handled the same as "not needed": nothing can need a resource
 // once its owning session is gone).
-func shouldUnsubscribe(fresh *domain.Session, resource string) bool {
-	return fresh == nil || !resourceStillNeededBySession(fresh, resource)
+func shouldUnsubscribe(cfg *config.Config, fresh *domain.Session, resource contract.Resource) bool {
+	return fresh == nil || !resourceStillNeededBySession(cfg, fresh, resource)
 }
 
-func resourceStillNeededBySession(s *domain.Session, resource string) bool {
-	if resource == "" {
+func resourceStillNeededBySession(cfg *config.Config, s *domain.Session, resource contract.Resource) bool {
+	if resource.Locator == "" {
 		return false
 	}
-	if s.ResourceID == resource {
+	if sameResource(s.Resource, &resource) {
 		return true
 	}
 	for _, other := range s.Tasks {
-		if other != nil && other.Resource == resource {
+		if other != nil && other.Resource != nil && sameResource(other.Resource, &resource) {
+			return true
+		}
+	}
+	return nodeSubscriptionNeededBySession(s, resource)
+}
+
+func nodeSubscriptionNeededBySession(s *domain.Session, resource contract.Resource) bool {
+	for _, node := range s.Nodes {
+		if node != nil && node.Status != contract.TaskStatusCleaned && sameResource(node.Subscription, &resource) {
 			return true
 		}
 	}

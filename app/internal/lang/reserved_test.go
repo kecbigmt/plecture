@@ -20,7 +20,6 @@ func writeTemp(t *testing.T, name, content string) string {
 func TestLoadConfigTomlValid(t *testing.T) {
 	path := writeTemp(t, "config.toml", `
 schema_version = 2
-workspace_dirs_root = "~/worktrees"
 resource_allowlist  = ["^https://github\\.com/kecbigmt/"]
 plugin_dirs         = ["~/.config/plect/plugins"]
 channels            = ["notify"]
@@ -32,7 +31,7 @@ type = "object"
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
-	if cfg.SchemaVersion != 2 || cfg.WorkspaceDirsRoot != "~/worktrees" {
+	if cfg.SchemaVersion != 2 {
 		t.Fatalf("unexpected decode: %+v", cfg)
 	}
 	if len(cfg.Channels) != 1 || cfg.Channels[0] != "notify" {
@@ -41,7 +40,7 @@ type = "object"
 }
 
 func TestLoadConfigTomlMissingSchemaVersion(t *testing.T) {
-	path := writeTemp(t, "config.toml", `workspace_dirs_root = "~/worktrees"`)
+	path := writeTemp(t, "config.toml", `resource_allowlist = ["^https://example\\.com/"]`)
 	_, err := LoadConfigToml(path)
 	assertDiagnostic(t, err, CodeFieldRequired, LayerStructural)
 }
@@ -76,7 +75,6 @@ kind = "effect"
 func TestLoadConfigTomlSchemaVersionOlder(t *testing.T) {
 	path := writeTemp(t, "config.toml", `
 schema_version = 1
-workspace_dirs_root = "~/worktrees"
 `)
 	_, err := LoadConfigToml(path)
 	assertDiagnostic(t, err, CodeSchemaVersionOlder, LayerSemantic)
@@ -85,7 +83,6 @@ workspace_dirs_root = "~/worktrees"
 func TestLoadConfigTomlSchemaVersionNewer(t *testing.T) {
 	path := writeTemp(t, "config.toml", `
 schema_version = 3
-workspace_dirs_root = "~/worktrees"
 `)
 	_, err := LoadConfigToml(path)
 	assertDiagnostic(t, err, CodeSchemaVersionNewer, LayerSemantic)
@@ -159,5 +156,32 @@ func assertDiagnostic(t *testing.T, err error, code Code, layer Layer) {
 	}
 	if d.Layer != layer {
 		t.Errorf("layer = %s, want %s", d.Layer, layer)
+	}
+}
+
+func TestLoadProjectMarker(t *testing.T) {
+	for _, tc := range []struct {
+		name  string
+		body  string
+		code  Code
+		layer Layer
+	}{
+		{name: "the known dialect alone is a valid marker", body: "schema_version = 2\n"},
+		{name: "a marker without a version is refused", body: "", code: CodeFieldRequired, layer: LayerStructural},
+		{name: "a field beside the version is refused", body: "schema_version = 2\nname = \"widgets\"\n", code: CodeFieldUnknown, layer: LayerStructural},
+		{name: "a definition table is refused", body: "schema_version = 2\n[build]\nkind = \"effect\"\n", code: CodeFieldUnknown, layer: LayerStructural},
+		{name: "an older dialect names the migration", body: "schema_version = 1\n", code: CodeSchemaVersionOlder, layer: LayerSemantic},
+		{name: "a newer dialect names the binary", body: "schema_version = 99\n", code: CodeSchemaVersionNewer, layer: LayerSemantic},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			err := LoadProjectMarker(writeTemp(t, ProjectMarkerFileName, tc.body))
+			if tc.code == "" {
+				if err != nil {
+					t.Fatalf("LoadProjectMarker: %v", err)
+				}
+				return
+			}
+			assertDiagnostic(t, err, tc.code, tc.layer)
+		})
 	}
 }

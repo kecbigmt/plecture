@@ -20,7 +20,7 @@ import (
 // The unsubscribe hook is deliberately slow, so a concurrent TaskSetup for
 // the same resource is guaranteed to still be waiting on the delivery lock
 // when it starts; if TaskSetup's own subscribe call could run at the same
-// time, it would race the unsubscribe hook to the workspace provider's
+// time, it would race the unsubscribe hook to the resource's
 // registry and could lose. With the lock, no such race is possible: the
 // concurrent TaskSetup's subscribe always runs strictly after the
 // unsubscribe hook completes, so the final registry state is always
@@ -29,13 +29,14 @@ func TestDeliveryLock_ConcurrentSetupWaitsOutACleanupsUnsubscribe(t *testing.T) 
 	dir := t.TempDir()
 	started := filepath.Join(dir, "unsubscribe-started")
 	state := filepath.Join(dir, "registry-state")
-	cfg := writeWorkflowFixture(t, t.TempDir(), "coding",
+	cfg := writeWorkflowFixture(t, "coding",
 		[]taskFixture{{id: "work", scope: "session", setup: `echo '{}'`, cleanup: "true"}},
 		[]nodeFixture{{id: "work"}},
 	)
 	body := `
 [fixture]
-kind  = "resource_observer"
+kind  = "resource"
+name  = "fixture"
 match = '` + fixtureResourceMatch + `'
 
 [fixture.observe]
@@ -114,13 +115,14 @@ args    = ["-c", 'touch "$1"; sleep 0.3; printf unsubscribed > "$2"', "provider"
 // be the transient SubscribeError.
 func TestTaskSetup_DeliveryLockAcquisitionFailureQueuesSubscribeRetry(t *testing.T) {
 	rec := filepath.Join(t.TempDir(), "rec")
-	cfg := writeWorkflowFixture(t, t.TempDir(), "coding",
+	cfg := writeWorkflowFixture(t, "coding",
 		[]taskFixture{{id: "work", scope: "session", setup: `echo '{}'`}},
 		[]nodeFixture{{id: "work"}},
 	)
 	body := `
 [fixture]
-kind  = "resource_observer"
+kind  = "resource"
+name  = "fixture"
 match = '` + fixtureResourceMatch + `'
 
 [fixture.observe]
@@ -173,13 +175,14 @@ args    = ["-c", 'printf done > "$1"', "provider", "` + rec + `"]
 // transiently — the reclaimed instance record is already gone, so the
 // queue is the only surviving trace.
 func TestTaskCleanup_DeliveryLockAcquisitionFailureQueuesUnsubscribeRetry(t *testing.T) {
-	cfg := writeWorkflowFixture(t, t.TempDir(), "coding",
+	cfg := writeWorkflowFixture(t, "coding",
 		[]taskFixture{{id: "work", scope: "session", setup: `echo '{}'`, cleanup: "true"}},
 		[]nodeFixture{{id: "work"}},
 	)
 	body := `
 [fixture]
-kind  = "resource_observer"
+kind  = "resource"
+name  = "fixture"
 match = '` + fixtureResourceMatch + `'
 
 [fixture.observe]

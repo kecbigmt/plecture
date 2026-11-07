@@ -16,9 +16,30 @@ import (
 	contract "github.com/kecbigmt/plecture/contracts/state"
 )
 
+func TestClassifyWorkflowRebaseSubscriptionOnlyChange(t *testing.T) {
+	for _, tc := range []struct {
+		scope string
+		want  RebaseClass
+	}{
+		{"session", RebaseRecreate},
+		{"run", RebaseRestart},
+	} {
+		t.Run(tc.scope, func(t *testing.T) {
+			def := config.TaskDefinition{ID: "thread", Scope: tc.scope, Setup: &lang.Action{Type: lang.ActionNoop}}
+			old := config.WorkflowRevision{Workflow: config.WorkflowFile{Address: "work", Nodes: []config.WorkflowNode{{ID: "thread", Uses: "thread"}}}, Effects: map[string]config.TaskDefinition{"thread": def}}
+			next := old
+			next.Workflow.Nodes = []config.WorkflowNode{{ID: "thread", Uses: "thread", Subscription: "permalink"}}
+			got, err := ClassifyWorkflowRebase(old, next, &domain.Session{Nodes: map[string]*contract.TaskState{"thread": {Scope: tc.scope, Status: contract.TaskStatusProduced}}})
+			if err != nil || got.Class != tc.want {
+				t.Fatalf("classification = %+v, %v; want %s", got, err, tc.want)
+			}
+		})
+	}
+}
+
 func TestWorkflowRebaseRestartPreservesSessionNodesAndRetriesNewRevision(t *testing.T) {
 	marker := filepath.Join(t.TempDir(), "retry")
-	cfg := writeWorkflowFixture(t, t.TempDir(), "work", []taskFixture{
+	cfg := writeWorkflowFixture(t, "work", []taskFixture{
 		{id: "workspace", scope: "session", setup: "echo '{\"key\":\"kept\"}'", cleanup: "true"},
 		{id: "runtime", scope: "run", setup: "echo '{\"version\":\"old\"}'", cleanup: "true"},
 	}, []nodeFixture{{id: "workspace"}, {id: "runtime"}})
@@ -68,7 +89,7 @@ func TestWorkflowRebaseRestartPreservesSessionNodesAndRetriesNewRevision(t *test
 }
 
 func TestWorkflowRebaseAutomaticallyAddsNode(t *testing.T) {
-	cfg := writeWorkflowFixture(t, t.TempDir(), "work", []taskFixture{{id: "runtime", scope: "run", setup: "echo '{}'"}}, []nodeFixture{{id: "runtime"}})
+	cfg := writeWorkflowFixture(t, "work", []taskFixture{{id: "runtime", scope: "run", setup: "echo '{}'"}}, []nodeFixture{{id: "runtime"}})
 	store := testStore(t)
 	now := time.Now()
 	session := &domain.Session{Name: "one", Workflow: "work", Status: contract.SessionStatusDown, CreatedAt: now, UpdatedAt: now}
@@ -121,7 +142,7 @@ func TestWorkflowRebasePreservesStoppedAndSleepingSessions(t *testing.T) {
 			name = "sleeping"
 		}
 		t.Run(name, func(t *testing.T) {
-			cfg := writeWorkflowFixture(t, t.TempDir(), "work", []taskFixture{{id: "runtime", scope: "run", setup: "echo '{}'", cleanup: "true"}}, []nodeFixture{{id: "runtime"}})
+			cfg := writeWorkflowFixture(t, "work", []taskFixture{{id: "runtime", scope: "run", setup: "echo '{}'", cleanup: "true"}}, []nodeFixture{{id: "runtime"}})
 			store := testStore(t)
 			now := time.Now()
 			session := &domain.Session{Name: "one", Workflow: "work", Status: contract.SessionStatusDown, CreatedAt: now, UpdatedAt: now}
@@ -151,7 +172,7 @@ func TestWorkflowRebasePreservesStoppedAndSleepingSessions(t *testing.T) {
 func TestWorkflowRebaseAliveProbeKeepsLiveSessionNode(t *testing.T) {
 	marker := filepath.Join(t.TempDir(), "cleaned")
 	oldTask := taskFixture{id: "workspace", scope: "session", setup: "echo '{}'", cleanup: "touch '" + marker + "'", alive: "true"}
-	cfg := writeWorkflowFixture(t, t.TempDir(), "work", []taskFixture{oldTask}, []nodeFixture{{id: "workspace"}})
+	cfg := writeWorkflowFixture(t, "work", []taskFixture{oldTask}, []nodeFixture{{id: "workspace"}})
 	store := testStore(t)
 	now := time.Now()
 	session := &domain.Session{Name: "one", Workflow: "work", Status: contract.SessionStatusDown, CreatedAt: now, UpdatedAt: now}
@@ -181,7 +202,7 @@ func TestWorkflowRebaseAliveProbeKeepsLiveSessionNode(t *testing.T) {
 
 func TestWorkflowRebaseRestartCleansRemovedSessionNodeWithOldDefinition(t *testing.T) {
 	marker := filepath.Join(t.TempDir(), "cleanup")
-	cfg := writeWorkflowFixture(t, t.TempDir(), "work", []taskFixture{
+	cfg := writeWorkflowFixture(t, "work", []taskFixture{
 		{id: "workspace", scope: "session", setup: "echo '{}'", cleanup: "echo old > '" + marker + "'"},
 		{id: "runtime", scope: "run", setup: "echo '{}'", cleanup: "true"},
 	}, []nodeFixture{{id: "workspace"}, {id: "runtime"}})
@@ -201,7 +222,7 @@ func TestWorkflowRebaseRestartCleansRemovedSessionNodeWithOldDefinition(t *testi
 	if err := os.Remove(filepath.Join(cfg.BaseDir, "tasks", "workspace.toml")); err != nil {
 		t.Fatal(err)
 	}
-	if err := os.WriteFile(filepath.Join(cfg.BaseDir, "workflows", "work.toml"), []byte("[work]\nkind = \"workflow\"\n[[work.nodes]]\nuses = \"runtime\"\n"), 0o644); err != nil {
+	if err := os.WriteFile(filepath.Join(cfg.BaseDir, "workflows", "work.toml"), []byte("[work]\nkind = \"workflow\"\nresource = \"issue\"\n[[work.nodes]]\nuses = \"runtime\"\n"), 0o644); err != nil {
 		t.Fatal(err)
 	}
 	if err := os.WriteFile(filepath.Join(cfg.BaseDir, "tasks", "runtime.toml"), []byte(effectFixtureDoc(taskFixture{id: "runtime", scope: "run", setup: "echo '{\"new\":true}'", cleanup: "true"})), 0o644); err != nil {
@@ -371,7 +392,7 @@ func TestClassifyWorkflowRebaseDynamicInstanceStatus(t *testing.T) {
 }
 
 func TestWorkflowRebaseRejectsSessionDeclarationChange(t *testing.T) {
-	cfg := writeWorkflowFixture(t, t.TempDir(), "work", []taskFixture{{id: "workspace", scope: "session", setup: "echo '{}'", cleanup: "true"}}, []nodeFixture{{id: "workspace"}})
+	cfg := writeWorkflowFixture(t, "work", []taskFixture{{id: "workspace", scope: "session", setup: "echo '{}'", cleanup: "true"}}, []nodeFixture{{id: "workspace"}})
 	store := testStore(t)
 	now := time.Now()
 	session := &domain.Session{Name: "one", Workflow: "work", Status: contract.SessionStatusDown, CreatedAt: now, UpdatedAt: now}
@@ -396,7 +417,7 @@ func TestWorkflowRebaseRejectsSessionDeclarationChange(t *testing.T) {
 }
 
 func TestWorkflowRebaseDryRunAndCompatibleApply(t *testing.T) {
-	cfg := writeWorkflowFixture(t, t.TempDir(), "work", []taskFixture{{id: "runtime", scope: "run", setup: "echo '{}'"}}, []nodeFixture{{id: "runtime"}})
+	cfg := writeWorkflowFixture(t, "work", []taskFixture{{id: "runtime", scope: "run", setup: "echo '{}'"}}, []nodeFixture{{id: "runtime"}})
 	store := testStore(t)
 	now := time.Now()
 	session := &domain.Session{Name: "one", Workflow: "work", Status: contract.SessionStatusDown, CreatedAt: now, UpdatedAt: now}
@@ -494,6 +515,69 @@ func TestClassifyWorkflowRebase(t *testing.T) {
 			}
 			if got.Class != tc.class || !reflect.DeepEqual(got.RecreateNodes, tc.recreate) {
 				t.Fatalf("class = %s, recreate = %v; want %s, %v", got.Class, got.RecreateNodes, tc.class, tc.recreate)
+			}
+		})
+	}
+}
+
+func TestClassifyWorkflowRebaseConsumerOfAChangedPublicOutput(t *testing.T) {
+	from := func(path string) *lang.Value { return &lang.Value{Form: lang.FormFrom, From: path} }
+	base := func(scope string) config.WorkflowRevision {
+		return config.WorkflowRevision{
+			Workflow: config.WorkflowFile{
+				Address: "work",
+				Outputs: map[string]*lang.Value{"endpoint": from("nodes.agent.outputs.endpoint")},
+				Nodes: []config.WorkflowNode{
+					{ID: "agent", Uses: "agent"},
+					{ID: "other", Uses: "agent"},
+					{ID: "relay", Uses: "relay", Inputs: map[string]*lang.Value{"peer": from("workflow.outputs.endpoint")}},
+					{ID: "bystander", Uses: "agent"},
+				},
+			},
+			Effects: map[string]config.TaskDefinition{
+				"agent": {ID: "agent", Scope: scope, Setup: &lang.Action{Type: lang.ActionNoop}},
+				"relay": {ID: "relay", Scope: scope, Setup: &lang.Action{Type: lang.ActionNoop}},
+			},
+		}
+	}
+	sessionFor := func(scope string) *domain.Session {
+		return &domain.Session{Inputs: map[string]any{}, Nodes: map[string]*contract.TaskState{
+			"agent":     {Status: contract.TaskStatusProduced, Scope: scope, Outputs: map[string]any{"endpoint": "e1"}},
+			"other":     {Status: contract.TaskStatusProduced, Scope: scope, Outputs: map[string]any{"endpoint": "e2"}},
+			"relay":     {Status: contract.TaskStatusProduced, Scope: scope},
+			"bystander": {Status: contract.TaskStatusProduced, Scope: scope},
+		}}
+	}
+	for _, tc := range []struct {
+		name          string
+		consumerScope string
+		edit          func(*config.WorkflowRevision)
+		class         RebaseClass
+		recreate      []string
+	}{
+		{"binding unchanged", "run", func(*config.WorkflowRevision) {}, RebaseCompatible, nil},
+		{"binding repointed", "run", func(r *config.WorkflowRevision) {
+			r.Workflow.Outputs["endpoint"] = from("nodes.other.outputs.endpoint")
+		}, RebaseRestart, []string{"agent", "bystander", "other", "relay"}},
+		{"binding removed", "run", func(r *config.WorkflowRevision) {
+			delete(r.Workflow.Outputs, "endpoint")
+		}, RebaseRecreate, nil},
+		{"unrelated binding changed", "run", func(r *config.WorkflowRevision) {
+			r.Workflow.Outputs["unread"] = from("nodes.other.outputs.endpoint")
+		}, RebaseCompatible, nil},
+		{"session-scoped consumer", "session", func(r *config.WorkflowRevision) {
+			r.Workflow.Outputs["endpoint"] = from("nodes.other.outputs.endpoint")
+		}, RebaseRecreate, nil},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			old, next := base(tc.consumerScope), base(tc.consumerScope)
+			tc.edit(&next)
+			got, err := ClassifyWorkflowRebase(old, next, sessionFor(tc.consumerScope))
+			if err != nil {
+				t.Fatal(err)
+			}
+			if got.Class != tc.class || !reflect.DeepEqual(got.RecreateNodes, tc.recreate) {
+				t.Fatalf("class = %s, recreate = %v (%v); want %s, %v", got.Class, got.RecreateNodes, got.Reasons, tc.class, tc.recreate)
 			}
 		})
 	}

@@ -93,7 +93,7 @@ func TestCharacterization_RunSetup_CancelledContext_GrandchildInAnotherProcessGr
 
 	errCh := make(chan error, 1)
 	go func() {
-		errCh <- RunSetup(goCtx, plan.Run, SessionVars{Name: "x", WorkspaceDirPath: dir}, tasks, nil)
+		errCh <- RunSetup(goCtx, plan.Run, SessionVars{Name: "x"}, tasks, nil)
 	}()
 
 	waitForFile(t, started)
@@ -126,7 +126,7 @@ func TestCharacterization_RunSetup_CancelledContextKillsHungChild(t *testing.T) 
 
 	errCh := make(chan error, 1)
 	go func() {
-		errCh <- RunSetup(goCtx, plan.Run, SessionVars{Name: "x", WorkspaceDirPath: dir}, tasks, nil)
+		errCh <- RunSetup(goCtx, plan.Run, SessionVars{Name: "x"}, tasks, nil)
 	}()
 
 	waitForFile(t, started)
@@ -163,7 +163,7 @@ func TestCharacterization_RunCleanup_CancelledContextKillsHungChild(t *testing.T
 
 	errCh := make(chan error, 1)
 	go func() {
-		errCh <- RunCleanup(goCtx, plan.Run, SessionVars{Name: "x", WorkspaceDirPath: dir}, tasks, nil)
+		errCh <- RunCleanup(goCtx, plan.Run, SessionVars{Name: "x"}, tasks, nil)
 	}()
 
 	waitForFile(t, started)
@@ -188,7 +188,7 @@ func TestCharacterization_RunAliveProbe_CancelledContextKillsHungChild(t *testin
 	dir := t.TempDir()
 	started := filepath.Join(dir, "started")
 	marker := filepath.Join(dir, "marker")
-	session := SessionVars{Name: "x", WorkspaceDirPath: dir}
+	session := SessionVars{Name: "x"}
 	goCtx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
@@ -219,7 +219,7 @@ func TestCharacterization_RunCapture_CancelledContextKillsHungChild(t *testing.T
 	dir := t.TempDir()
 	started := filepath.Join(dir, "started")
 	marker := filepath.Join(dir, "marker")
-	session := SessionVars{Name: "x", WorkspaceDirPath: dir}
+	session := SessionVars{Name: "x"}
 	goCtx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 

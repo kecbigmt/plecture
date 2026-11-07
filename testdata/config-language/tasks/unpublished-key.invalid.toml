@@ -4,7 +4,7 @@
 [broken_key]
 kind              = "task"
 description       = "A task document reading a key its observer never publishes"
-resource_observer = "issue_pr"
+resource          = "issue_pr"
 instructions      = [{ text = "Resolve the issue at {{ resource.id }}." }]
 
 [broken_key.done_when]

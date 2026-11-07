@@ -20,7 +20,7 @@ func withFakePlect(t *testing.T, workspaceDir string) {
 		t.Skip("fake plect script assumes a POSIX shell")
 	}
 	dir := t.TempDir()
-	script := fmt.Sprintf("#!/bin/sh\ncat <<EOF\n{\"runtime\":{\"workspace_dir_path\":%q,\"workspace_dir_exists\":true}}\nEOF\n", workspaceDir)
+	script := fmt.Sprintf("#!/bin/sh\ncat <<EOF\n{\"runtime\":{\"workdir\":%q,\"workdir_exists\":true}}\nEOF\n", workspaceDir)
 	path := filepath.Join(dir, "plect")
 	if err := os.WriteFile(path, []byte(script), 0o755); err != nil {
 		t.Fatal(err)

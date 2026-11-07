@@ -82,36 +82,37 @@ func TestCreate_ForwardsWorkflow(t *testing.T) {
 	}
 }
 
-// create: --task is shorthand for inputs.task, merged in like the CLI/MCP
-// surfaces.
-func TestCreate_ForwardsTaskAsInputsShorthand(t *testing.T) {
+// create: task selects the initial task; it is not a session input.
+func TestCreate_ForwardsTaskAsTheInitialTaskSelection(t *testing.T) {
 	svc := &fakeService{upResult: &service.UpResult{SessionName: "owner/repo-1"}}
 	postForm(t, New(svc).Routes(), "/sessions", url.Values{
-		"url":  {"https://github.com/owner/repo/issues/1"},
-		"task": {"review"},
-	})
-	if svc.gotUp == nil {
-		t.Fatal("Up was not called")
-	}
-	if svc.gotUp.Inputs["task"] != "review" {
-		t.Errorf("Inputs[task] = %v, want review", svc.gotUp.Inputs["task"])
-	}
-}
-
-// create: a task value conflicting with inputs.task is a 400, not a silent
-// pick of one value.
-func TestCreate_TaskConflictsWithInputs(t *testing.T) {
-	svc := &fakeService{upResult: &service.UpResult{SessionName: "owner/repo-1"}}
-	rec := postForm(t, New(svc).Routes(), "/sessions", url.Values{
 		"url":    {"https://github.com/owner/repo/issues/1"},
 		"task":   {"review"},
 		"inputs": {`{"task":"work"}`},
 	})
-	if rec.Code != http.StatusBadRequest {
-		t.Fatalf("status = %d, want 400", rec.Code)
+	if svc.gotUp == nil {
+		t.Fatal("Up was not called")
 	}
-	if svc.gotUp != nil {
-		t.Error("Up should not run when task conflicts with inputs")
+	if svc.gotUp.InitialTask == nil || svc.gotUp.InitialTask.TaskID != "review" {
+		t.Errorf("InitialTask = %+v, want review", svc.gotUp.InitialTask)
+	}
+	if svc.gotUp.Inputs["task"] != "work" {
+		t.Errorf("Inputs[task] = %v, want the ordinary input left as written", svc.gotUp.Inputs["task"])
+	}
+}
+
+// create: an empty task field selects no task.
+func TestCreate_EmptyTaskSelectsNothing(t *testing.T) {
+	svc := &fakeService{upResult: &service.UpResult{SessionName: "owner/repo-1"}}
+	postForm(t, New(svc).Routes(), "/sessions", url.Values{
+		"url":  {"https://github.com/owner/repo/issues/1"},
+		"task": {"  "},
+	})
+	if svc.gotUp == nil {
+		t.Fatal("Up was not called")
+	}
+	if svc.gotUp.InitialTask != nil {
+		t.Errorf("InitialTask = %+v, want none", svc.gotUp.InitialTask)
 	}
 }
 
@@ -193,6 +194,7 @@ func TestWebUIUpResetsSuspendedRepairStreak(t *testing.T) {
 	}
 	if err := os.WriteFile(filepath.Join(base, "workflows", "default.toml"), []byte(`[default]
 kind = "workflow"
+resource = "issue"
 [[default.nodes]]
 uses = "runner"
 `), 0o644); err != nil {
@@ -210,7 +212,7 @@ script = "true"
 `), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	cfg := &config.Config{BaseDir: base, WorkspaceDirsRoot: t.TempDir()}
+	cfg := &config.Config{BaseDir: base}
 	store := state.NewStore(t.TempDir())
 	const name = "owner/repo-1"
 	now := time.Now()

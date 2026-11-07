@@ -126,10 +126,10 @@ reinvent, per `app/internal/webapi/errors.go`'s classification table.
   round-trips a raw request line through URL parsing) for both forms.
 - **Absent, null, and empty values.** Every optional field this contract's
   Go source produces is omitted (never emitted as JSON `null`) when unset,
-  mirroring its `omitempty` struct tags. A *required* field (e.g.
-  `SessionSummary.resourceId`) can still legitimately be an empty string;
-  see `session_list.valid.json`'s second item and the round-trip tests that
-  assert on it. Nothing stops a non-conformant producer from sending an
+  mirroring its `omitempty` struct tags, and an unset optional object (e.g.
+  `SessionSummary.resource` for a session with no resource) is omitted as a
+  whole; see `session_list.valid.json`'s second item and the round-trip tests
+  that assert on it. Nothing stops a non-conformant producer from sending an
   explicit `null` anyway, so both consumers are tested against one:
   `session_detail.explicit_null.json`. Go's decoder unifies null and
   absence for every optional field here — both leave the pointer/slice/map

@@ -255,3 +255,11 @@ executable name. See [`actions.md`](actions.md).
   ownership segment.
 - A reference site's expected kind matches the resolved target's `kind`.
 - A `.plect/` directory is never read as configuration.
+- Spellings of the earlier dialect are load errors whose diagnostic names the
+  migration procedure: `kind = "resource_observer"` names
+  [`resource-kind-migration.md`](../migrations/resource-kind-migration.md);
+  `kind = "workspace_provider"`, a workflow's `workspace_provider` or
+  `workspace_provider_inputs`, a population's `resource_observer`, an effect
+  cleanup's `inputs_schema`, a population's `session.destroy.inputs`, a
+  `cleanup.*` value root, and `config.toml`'s `workspace_dirs_root` name
+  [`resource-and-workspace-effects-migration.md`](../migrations/resource-and-workspace-effects-migration.md).

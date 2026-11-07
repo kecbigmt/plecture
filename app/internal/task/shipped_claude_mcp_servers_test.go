@@ -146,9 +146,8 @@ func TestShippedClaude_McpServersStaysOffEveryCommandLine(t *testing.T) {
 			"mcp_servers": `[{"name":"` + marker + `","command":"` + marker + `-mcp"}]`,
 		},
 		Session: SessionVars{
-			Name:             "test-session",
-			WorkspaceDirPath: t.TempDir(),
-			Plugins:          mounted,
+			Name:    "test-session",
+			Plugins: mounted,
 			Terminal: &TerminalBinding{
 				Ops:     &config.TerminalConfig{Attach: shellStub("a"), Capture: shellStub("c"), SendText: shellStub("t"), SendKeys: shellStub("k"), PID: shellStub("p")},
 				Outputs: map[string]any{"session_name": "test-session"},

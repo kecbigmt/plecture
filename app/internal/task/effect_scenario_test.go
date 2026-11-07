@@ -24,7 +24,7 @@ type effectScenario struct {
 	NodeID string `toml:"node_id"`
 	// Inputs are the node inputs this effect is set up with, and Prev the
 	// outputs a prior run of it left behind.
-	Inputs map[string]string `toml:"inputs"`
+	Inputs map[string]any    `toml:"inputs"`
 	Prev   map[string]string `toml:"prev"`
 	// Self stands in for setup's outputs when cleanup and the probes must be
 	// exercised against an instance this scenario does not set up.
@@ -87,8 +87,8 @@ type effectScenario struct {
 	// and live processes a first attempt (using Inputs) left behind, so a
 	// retry-succeeds claim is checked against that exact state rather than
 	// a separately-started scenario that only shares on-disk paths.
-	RetryInputs  map[string]string `toml:"retry_inputs"`
-	RetryCapture string            `toml:"retry_capture"`
+	RetryInputs  map[string]any `toml:"retry_inputs"`
+	RetryCapture string         `toml:"retry_capture"`
 	// FailOutput makes each plugin's own jq stand-in fail the one call that
 	// assembles setup's final output line, once everything else — the
 	// launch, its detection, its readiness — has already succeeded. This is

@@ -23,41 +23,33 @@ type WorkflowSummary struct {
 // `plect_workflow_show`: identity, the merged inputs_schema (so callers can build
 // `--inputs`), and the DAG (so agents can reason about node ordering).
 type WorkflowDetail struct {
-	ID          string `json:"id"`
-	Name        string `json:"name,omitempty"`
-	Description string `json:"description,omitempty"`
-	// WorkspaceProvider is the referenced workspace provider's id; the
-	// resolved workspace provider (resolver + hooks) rides along so
-	// `workflow show` can present the whole picture without a second lookup.
-	WorkspaceProvider     string                          `json:"workspace_provider,omitempty"`
-	WorkspaceProviderInfo *config.WorkspaceProviderConfig `json:"workspace_provider_info,omitempty"`
-	// WorkspaceProviderError is set instead of WorkspaceProviderInfo, never
-	// both, so a load failure cannot make `workflow show` abort rendering
-	// the rest of an otherwise-loadable workflow.
-	WorkspaceProviderError string               `json:"workspace_provider_error,omitempty"`
-	Display                map[string]string    `json:"display,omitempty"`
-	AutoSelect             bool                 `json:"auto_select"`
-	InputsSchema           map[string]any       `json:"inputs_schema,omitempty"`
-	Nodes                  []WorkflowNode       `json:"nodes"`
-	Channels               []WorkflowChannel    `json:"channels,omitempty"`
-	Populations            []WorkflowPopulation `json:"populations,omitempty"`
+	ID           string               `json:"id"`
+	Name         string               `json:"name,omitempty"`
+	Description  string               `json:"description,omitempty"`
+	Resource     string               `json:"resource"`
+	Workdir      string               `json:"workdir,omitempty"`
+	Display      map[string]string    `json:"display,omitempty"`
+	AutoSelect   bool                 `json:"auto_select"`
+	InputsSchema map[string]any       `json:"inputs_schema,omitempty"`
+	Nodes        []WorkflowNode       `json:"nodes"`
+	Channels     []WorkflowChannel    `json:"channels,omitempty"`
+	Populations  []WorkflowPopulation `json:"populations,omitempty"`
 	// Tick is the workflow's declared [tick] table (docs/wiki/verification-gate.md),
 	// nil when undeclared.
 	Tick *config.TickConfig `json:"tick,omitempty"`
 }
 
 type WorkflowPopulation struct {
-	Name             string            `json:"name"`
-	ResourceObserver string            `json:"resource_observer"`
-	Query            map[string]any    `json:"query"`
-	Task             string            `json:"task,omitempty"`
-	Inputs           map[string]string `json:"inputs,omitempty"`
-	DestroyForce     bool              `json:"destroy_force"`
-	PollEvery        string            `json:"poll_every,omitempty"`
-	ExpireAfter      string            `json:"expire_after,omitempty"`
-	AutoDown         bool              `json:"auto_down"`
-	AutoDestroy      bool              `json:"auto_destroy"`
-	Uses             []string          `json:"uses"`
+	Name         string            `json:"name"`
+	Query        map[string]any    `json:"query"`
+	Task         string            `json:"task,omitempty"`
+	Inputs       map[string]string `json:"inputs,omitempty"`
+	DestroyForce bool              `json:"destroy_force"`
+	PollEvery    string            `json:"poll_every,omitempty"`
+	ExpireAfter  string            `json:"expire_after,omitempty"`
+	AutoDown     bool              `json:"auto_down"`
+	AutoDestroy  bool              `json:"auto_destroy"`
+	Uses         []string          `json:"uses"`
 }
 
 // WorkflowChannel is the show-time view of an [[event.channel]]: its name, the
@@ -81,11 +73,10 @@ type WorkflowNode struct {
 	Inputs    map[string]string `json:"inputs,omitempty"`
 }
 
-// WorkflowList returns all discoverable workflows merged from the cascade
-// rooted at workspaceDirPath, sorted by id for stable output. An empty
-// workspaceDirPath still surfaces the global layer.
-func WorkflowList(cfg *config.Config, workspaceDirPath string) ([]WorkflowSummary, error) {
-	workflows, err := cfg.LoadWorkflows(workspaceDirPath)
+// WorkflowList returns the workflows of projectRoot's context, sorted by id
+// for stable output.
+func WorkflowList(cfg *config.Config, projectRoot string) ([]WorkflowSummary, error) {
+	workflows, err := cfg.LoadWorkflows(projectRoot)
 	if err != nil {
 		return nil, fmt.Errorf("load workflows: %w", err)
 	}
@@ -104,13 +95,12 @@ func WorkflowList(cfg *config.Config, workspaceDirPath string) ([]WorkflowSummar
 
 // WorkflowShow resolves a single workflow and compiles it so the returned
 // DAG matches what `plect up` would actually execute. Returns an ErrInvalidInput
-// service error when the id isn't present in the cascade (mirrors the
-// "workflow not found" path in tasks.go's buildWorkflowPlan), or when a
+// service error when the id isn't present in the context, or when a
 // node's input wiring has drifted from its task's inputs_schema — the same
 // mismatch RunSetup would otherwise only catch once dispatch reaches that
 // node, by which point earlier nodes may already have run.
-func WorkflowShow(cfg *config.Config, workspaceDirPath, id string) (*WorkflowDetail, error) {
-	workflows, err := cfg.LoadWorkflows(workspaceDirPath)
+func WorkflowShow(cfg *config.Config, projectRoot, id string) (*WorkflowDetail, error) {
+	workflows, err := cfg.LoadWorkflows(projectRoot)
 	if err != nil {
 		return nil, fmt.Errorf("load workflows: %w", err)
 	}
@@ -118,7 +108,7 @@ func WorkflowShow(cfg *config.Config, workspaceDirPath, id string) (*WorkflowDet
 	if !ok {
 		return nil, &Error{Code: ErrInvalidInput, Message: fmt.Sprintf("workflow %q not found", id)}
 	}
-	defs, err := cfg.LoadTaskDefinitions(workspaceDirPath)
+	defs, err := cfg.LoadTaskDefinitions(projectRoot)
 	if err != nil {
 		return nil, fmt.Errorf("load task definitions: %w", err)
 	}
@@ -144,24 +134,19 @@ func WorkflowShow(cfg *config.Config, workspaceDirPath, id string) (*WorkflowDet
 		nodes = append(nodes, resolvedToNode(r, references[r.NodeID]))
 	}
 	detail := &WorkflowDetail{
-		ID:                wf.Address,
-		Name:              wf.Name,
-		Description:       wf.Description,
-		WorkspaceProvider: wf.WorkspaceProvider,
-		Display:           valueSources(wf.Display),
-		AutoSelect:        workflowAutoSelect(wf),
-		InputsSchema:      wf.InputsSchema,
-		Nodes:             nodes,
-		Populations:       workflowPopulationViews(wf.Populations),
-		Tick:              wf.Tick,
+		ID:           wf.Address,
+		Name:         wf.Name,
+		Description:  wf.Description,
+		Resource:     wf.Resource,
+		Display:      valueSources(wf.Display),
+		AutoSelect:   workflowAutoSelect(wf),
+		InputsSchema: wf.InputsSchema,
+		Nodes:        nodes,
+		Populations:  workflowPopulationViews(wf.Populations),
+		Tick:         wf.Tick,
 	}
-	if wf.WorkspaceProvider != "" {
-		workspaceProviders, err := cfg.LoadWorkspaceProviders()
-		if err != nil {
-			detail.WorkspaceProviderError = err.Error()
-		} else if prov, ok := workspaceProviders[wf.WorkspaceProvider]; ok {
-			detail.WorkspaceProviderInfo = &prov
-		}
+	if wf.Workdir != nil {
+		detail.Workdir = "nodes." + wf.Workdir.Node + ".outputs." + wf.Workdir.Key
 	}
 	if len(wf.Event.Channel) > 0 {
 		channels, err := cfg.LoadChannels()
@@ -194,17 +179,16 @@ func workflowPopulationViews(populations []config.WorkflowPopulation) []Workflow
 	out := make([]WorkflowPopulation, 0, len(populations))
 	for _, population := range populations {
 		out = append(out, WorkflowPopulation{
-			Name:             population.Name,
-			ResourceObserver: population.ResourceObserver,
-			Query:            population.Query,
-			Task:             population.Session.Task,
-			Inputs:           valueSources(population.Session.Inputs),
-			DestroyForce:     population.Session.Destroy.Force,
-			PollEvery:        durationSource(population.PollEvery),
-			ExpireAfter:      durationSource(population.ExpireAfter),
-			AutoDown:         population.AutoDown,
-			AutoDestroy:      population.AutoDestroy,
-			Uses:             population.Uses,
+			Name:         population.Name,
+			Query:        population.Query,
+			Task:         population.Session.Task,
+			Inputs:       valueSources(population.Session.Inputs),
+			DestroyForce: population.Session.Destroy.Force,
+			PollEvery:    durationSource(population.PollEvery),
+			ExpireAfter:  durationSource(population.ExpireAfter),
+			AutoDown:     population.AutoDown,
+			AutoDestroy:  population.AutoDestroy,
+			Uses:         population.Uses,
 		})
 	}
 	return out

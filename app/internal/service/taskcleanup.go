@@ -75,6 +75,9 @@ func TaskCleanup(cfg *config.Config, store *state.Store, params TaskCleanupParam
 	if err != nil {
 		return nil, err
 	}
+	if err := requireSessionRoot(cfg, session); err != nil {
+		return nil, err
+	}
 	params.Observer = withNodeResultRecording(store, resolvedName, params.Observer)
 	flushPendingDeliveryLogged(cfg, store, resolvedName)
 
@@ -125,17 +128,28 @@ func TaskCleanup(cfg *config.Config, store *state.Store, params TaskCleanupParam
 		return nil, &Error{Code: ErrExecutionFailed, Message: errors.Join(cleanupErr, persistErr).Error()}
 	}
 
-	if err := store.Update(resolvedName, func(s *domain.Session) error {
+	// The unsubscribe is queued in the write that removes the binding, so the
+	// retry holds the resource row before the removal could release it.
+	var pending []contract.Resource
+	if domain.Locator(st.Resource) != "" {
+		pending = append(pending, *st.Resource)
+	}
+	if err := store.UpdateWithSubscriptionRetries(resolvedName, func(s *domain.Session) error {
 		delete(s.Tasks, params.Instance)
 		s.UpdatedAt = time.Now()
 		return nil
-	}); err != nil {
+	}, retryUnsubscribe, pending); err != nil {
 		return nil, &Error{Code: ErrExecutionFailed, Message: fmt.Sprintf("failed to save session state: %v", err)}
 	}
 	recordLifecycle(store, resolvedName, "task_cleanup", fmt.Sprintf("reclaimed %s", params.Instance))
 
-	result := &TaskCleanupResult{SessionName: resolvedName, Instance: params.Instance, Found: true, Resource: st.Resource}
-	result.Unsubscribed, result.UnsubscribeError = unwireDeliveryOnTeardown(cfg, store, resolvedName, st.Resource, "", domain.SessionBranch(session))
+	result := &TaskCleanupResult{SessionName: resolvedName, Instance: params.Instance, Found: true, Resource: domain.Locator(st.Resource)}
+	result.Unsubscribed, result.UnsubscribeError = unwireDeliveryOnTeardown(cfg, store, resolvedName, st.Resource, "")
+	if len(pending) > 0 && result.UnsubscribeError == "" {
+		if err := dequeuePendingUnsubscribe(store, resolvedName, pending[0]); err != nil {
+			result.UnsubscribeError = fmt.Sprintf("could not clear the queued unsubscribe retry: %v", err)
+		}
+	}
 	return result, nil
 }
 

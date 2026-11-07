@@ -5,6 +5,7 @@ import (
 	"fmt"
 
 	"github.com/kecbigmt/plecture/app/internal/config"
+	"github.com/kecbigmt/plecture/app/internal/domain"
 	"github.com/kecbigmt/plecture/app/internal/service"
 	"github.com/kecbigmt/plecture/app/internal/state"
 	contract "github.com/kecbigmt/plecture/contracts/state"
@@ -17,15 +18,9 @@ type populationConflictError struct {
 
 func (e *populationConflictError) Error() string { return e.reason }
 
-type initialTaskCleanupRequiredError struct {
-	session string
-	reason  string
-}
-
-func (e *initialTaskCleanupRequiredError) Error() string { return e.reason }
-
 func serviceHooks(cfg func() *config.Config, store *state.Store, def Definition, coordinator *capacityCoordinator) Hooks {
-	provenance := &contract.PopulationProvenance{Workflow: def.Workflow.Address, Name: def.Population.Name}
+	key := populationKey(def)
+	provenance := &key
 	return Hooks{
 		Up: func(_ context.Context, resource string, inputs map[string]any) (UpOutcome, error) {
 			if coordinator != nil {
@@ -38,33 +33,14 @@ func serviceHooks(cfg func() *config.Config, store *state.Store, def Definition,
 			if err != nil {
 				return fmt.Errorf("read session %q state: %w", session, err)
 			}
-			if current == nil || current.Population == nil || *current.Population != *provenance || current.ResourceID != resource {
+			if current == nil || current.Population == nil || *current.Population != *provenance || domain.Locator(current.Resource) != resource {
 				return &populationConflictError{session: session, reason: fmt.Sprintf("session %q no longer has matching workflow-population provenance", session)}
 			}
 			_, err = service.Destroy(cfg(), store, service.DestroyParams{Identifier: session, Force: force})
 			return err
 		},
 		EnsureInitial: func(_ context.Context, session, taskID, resource string) error {
-			current, err := store.GetE(session)
-			if err != nil {
-				return fmt.Errorf("read session %q state: %w", session, err)
-			}
-			if current == nil {
-				return fmt.Errorf("session %q disappeared before initial task setup", session)
-			}
-			if existing := current.Tasks["initial"]; existing != nil {
-				if existing.Name != "initial" || existing.TaskID != taskID || existing.Resource != resource {
-					return &initialTaskCleanupRequiredError{session: session, reason: fmt.Sprintf("session %q already has a conflicting initial task instance", session)}
-				}
-				if existing.Status == contract.TaskStatusProduced {
-					return nil
-				}
-				return &initialTaskCleanupRequiredError{session: session, reason: fmt.Sprintf("session %q initial task is %q; clean it before population setup can retry", session, existing.Status)}
-			}
-			_, err = service.TaskSetup(cfg(), store, service.TaskSetupParams{
-				TaskID: taskID, SessionName: session, Name: "initial", Resource: resource,
-			})
-			return err
+			return service.EnsureInitialTask(cfg(), store, session, service.InitialTask{TaskID: taskID, Resource: resource})
 		},
 		Blockers: func(_ context.Context, session string) ([]string, error) {
 			return service.PopulationTaskBlockers(cfg(), store, session)
@@ -73,16 +49,15 @@ func serviceHooks(cfg func() *config.Config, store *state.Store, def Definition,
 }
 
 func upPopulation(cfg func() *config.Config, store *state.Store, def Definition, provenance *contract.PopulationProvenance, resource string, inputs map[string]any) (UpOutcome, error) {
-	name, err := service.ResolvePopulationSessionName(cfg(), def.Workflow.Address, resource)
+	name, current, collision, err := service.ResolvePopulationSession(cfg(), store, def.ProjectRoot, def.Workflow.Address, resource)
+	if collision != nil {
+		return UpOutcome{}, &populationConflictError{session: name, reason: collision.Message}
+	}
 	if err != nil {
 		return UpOutcome{}, err
 	}
-	current, err := store.GetE(name)
-	if err != nil {
-		return UpOutcome{}, fmt.Errorf("read session %q state: %w", name, err)
-	}
 	if current != nil {
-		if current.Population == nil || *current.Population != *provenance || current.ResourceID != resource {
+		if current.Population == nil || *current.Population != *provenance || domain.Locator(current.Resource) != resource {
 			return UpOutcome{}, &populationConflictError{session: name, reason: fmt.Sprintf("session %q is owned by another lifecycle authority", name)}
 		}
 		alreadyUp := cfg().RunScopeUp(current)
@@ -93,10 +68,11 @@ func upPopulation(cfg func() *config.Config, store *state.Store, def Definition,
 		return UpOutcome{SessionName: result.SessionName, AlreadyUp: alreadyUp, Sleeping: result.Result == "sleeping", Woke: result.Woke}, nil
 	}
 	result, err := service.Up(cfg(), store, service.UpParams{
-		Identifier: resource,
-		Workflow:   def.Workflow.Address,
-		Inputs:     inputs,
-		Population: provenance,
+		Identifier:  resource,
+		Workflow:    def.Workflow.Address,
+		Inputs:      inputs,
+		Population:  provenance,
+		ProjectRoot: def.ProjectRoot,
 	})
 	if err != nil {
 		return UpOutcome{}, err

@@ -32,15 +32,23 @@ model SessionTaskSummary {
   status: string;
 }
 
+/// The external resource a session was created for — `service.ResourceView`.
+/// `locator` is the identifier the resource's actions receive; `name` is the
+/// resource's identity, which another spelling of the identifier shares.
+model SessionResource {
+  type: string;
+  name: string;
+  locator: string;
+}
+
 /// What a session is, independent of whether it is running right now —
 /// `service.StatusIdentity`.
 model SessionIdentity {
   sessionName: string;
 
   @doc("Absent and empty are equivalent for every optional field on this model: the API omits an unset value rather than emitting it as `null` or `\"\"`, mirroring the Go source's `omitempty` struct tags.")
-  resourceId?: string;
+  resource?: SessionResource;
   title?: string;
-  branch?: string;
   workflow?: string;
   tag?: string;
   parentSession?: string;
@@ -63,8 +71,8 @@ model SessionRuntime {
   lastCheckedAt?: utcDateTime;
   lastActivityAt?: utcDateTime;
   tasks?: SessionTaskSummary[];
-  workspaceDirPath?: string;
-  workspaceDirExists: boolean;
+  workdir?: string;
+  workdirExists?: boolean;
   message?: SessionMessage;
 }
 
@@ -79,10 +87,9 @@ model SessionSummary {
   displayStatus: string;
   run: SessionRunState;
   health?: SessionHealthState;
-  resourceId: string;
+  resource?: SessionResource;
   lastActiveAt?: utcDateTime;
   message?: SessionMessage;
-  branch?: string;
   parentSession?: string;
   tasks?: SessionTaskSummary[];
 }

@@ -12,21 +12,35 @@ import (
 type Kind string
 
 const (
-	KindEffect            Kind = "effect"
-	KindTask              Kind = "task"
-	KindChannel           Kind = "channel"
-	KindWorkflow          Kind = "workflow"
-	KindWorkspaceProvider Kind = "workspace_provider"
-	KindResourceObserver  Kind = "resource_observer"
+	KindEffect   Kind = "effect"
+	KindTask     Kind = "task"
+	KindChannel  Kind = "channel"
+	KindWorkflow Kind = "workflow"
+	KindResource Kind = "resource"
 )
 
+// retiredKindResourceObserver is the kind name KindResource replaced. It is
+// refused with a pointer to the migration guide instead of the generic
+// outside-the-vocabulary message, because the author's declaration was valid
+// until the rename.
+const retiredKindResourceObserver = "resource_observer"
+
+// retiredKindWorkspaceProvider is the kind a session environment no longer
+// declares: its work is an ordinary session-scoped effect plus the workflow's
+// `workdir`. It is refused with a pointer to the migration guide for the same
+// reason retiredKindResourceObserver is.
+const retiredKindWorkspaceProvider = "workspace_provider"
+
+// WorkspaceProviderMigrationGuide is the migration procedure every retired
+// workspace-provider spelling points to.
+const WorkspaceProviderMigrationGuide = "docs/migrations/resource-and-workspace-effects-migration.md"
+
 var validKinds = map[Kind]bool{
-	KindEffect:            true,
-	KindTask:              true,
-	KindChannel:           true,
-	KindWorkflow:          true,
-	KindWorkspaceProvider: true,
-	KindResourceObserver:  true,
+	KindEffect:   true,
+	KindTask:     true,
+	KindChannel:  true,
+	KindWorkflow: true,
+	KindResource: true,
 }
 
 // idPattern is the definition id grammar: a TOML bare-key segment excluding
@@ -42,8 +56,8 @@ func isValidID(id string) bool {
 
 // asTableArray normalizes an array-of-tables field to []map[string]any.
 // BurntSushi/toml decodes such a field as []map[string]interface{} when
-// decoding into a generic map, but a value built by hand (as in a test, or
-// after mergeCascade's own append) may already be a plain []interface{}
+// decoding into a generic map, but a value built by hand (as in a test) may
+// already be a plain []interface{}
 // holding map[string]any elements; this accepts either.
 func asTableArray(v any) ([]map[string]any, bool) {
 	switch arr := v.(type) {
@@ -117,6 +131,14 @@ func parseDefinitionTable(path, id string, tbl map[string]any) (*Definition, err
 			fmt.Sprintf("definition %q declares no kind", id))
 	}
 	kindStr, ok := kindVal.(string)
+	if kindStr == retiredKindResourceObserver {
+		return nil, newDiag(CodeKindUnknown, LayerStructural, Position{File: path, Path: id + ".kind"},
+			fmt.Sprintf("definition %q declares kind %q, which is now %q; see docs/migrations/resource-kind-migration.md", id, retiredKindResourceObserver, KindResource))
+	}
+	if kindStr == retiredKindWorkspaceProvider {
+		return nil, newDiag(CodeKindUnknown, LayerStructural, Position{File: path, Path: id + ".kind"},
+			fmt.Sprintf("definition %q declares kind %q, which is retired: declare a session-scoped effect and a workflow `workdir` instead; see %s", id, retiredKindWorkspaceProvider, WorkspaceProviderMigrationGuide))
+	}
 	if !ok || !validKinds[Kind(kindStr)] {
 		return nil, newDiag(CodeKindUnknown, LayerStructural, Position{File: path, Path: id + ".kind"},
 			fmt.Sprintf("definition %q declares kind %v, outside the vocabulary", id, kindVal))

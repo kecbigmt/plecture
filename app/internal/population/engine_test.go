@@ -21,7 +21,7 @@ import (
 
 type hookRecorder struct {
 	store         *state.Store
-	key           string
+	key           contract.PopulationProvenance
 	ups           []string
 	destroys      []string
 	blockers      []string
@@ -33,7 +33,7 @@ func (h *hookRecorder) hooks() Hooks {
 	return Hooks{
 		Up: func(_ context.Context, resource string, _ map[string]any) (UpOutcome, error) {
 			persisted, _ := h.store.Population(h.key)
-			h.admissionSeen = persisted != nil && persisted.Members[resource] != nil
+			h.admissionSeen = persisted != nil && persisted.Members[memberName(resource)] != nil
 			h.ups = append(h.ups, resource)
 			return UpOutcome{SessionName: "session-" + resource, AlreadyUp: h.sessionUp}, nil
 		},
@@ -59,7 +59,7 @@ command = "true"
 type = "exec"
 command = "true"
 `, "uses = [\"poll\", \"subscribe\"]\npoll_every = \"1m\"", `resource = { from = "resource.id" }`)
-	defs, err := Load(cfg)
+	defs, err := Load(cfg, "")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -128,7 +128,7 @@ func TestFullStopMemberIsNotReadmittedAfterEarlierAdmitFailure(t *testing.T) {
 	}
 	cache.Record(name, "urn:case:a", false, "task_setup", "earlier failure")
 	if err := engine.state.UpdatePopulation(engine.key, func(population *state.PopulationState) error {
-		population.Members["urn:case:a"].PendingUp = true
+		population.Members["a"].PendingUp = true
 		return nil
 	}); err != nil {
 		t.Fatal(err)
@@ -154,7 +154,7 @@ func TestMalformedPollSnapshotChangesNoMembership(t *testing.T) {
 		t.Fatalf("mutations after invalid snapshot: ups=%v destroys=%v", hooks.ups, hooks.destroys)
 	}
 	state, _ := engine.state.Population(engine.key)
-	if state.Members["urn:case:a"].Tombstoned || state.Members["urn:case:b"] != nil {
+	if state.Members["a"].Tombstoned || state.Members["b"] != nil {
 		t.Fatalf("membership changed: %+v", state.Members)
 	}
 }
@@ -190,8 +190,8 @@ func TestPollAbsenceTombstonesBeforeDryRunAndSuppressesSubscribe(t *testing.T) {
 		t.Fatal(err)
 	}
 	state, _ := engine.state.Population(engine.key)
-	if !state.Members["urn:case:a"].Tombstoned || len(hooks.destroys) != 0 {
-		t.Fatalf("state=%+v destroys=%v", state.Members["urn:case:a"], hooks.destroys)
+	if !state.Members["a"].Tombstoned || len(hooks.destroys) != 0 {
+		t.Fatalf("state=%+v destroys=%v", state.Members["a"], hooks.destroys)
 	}
 	if err := engine.ApplyAppearance(ctx, map[string]any{"resource": "urn:case:a"}); err != nil {
 		t.Fatal(err)
@@ -223,8 +223,8 @@ func TestUsesSwitchLiftsPollTombstoneSuppression(t *testing.T) {
 		t.Fatal(err)
 	}
 	state, _ := engine.state.Population(engine.key)
-	if !state.Members["urn:case:a"].Tombstoned {
-		t.Fatalf("resource not tombstoned by poll absence: %+v", state.Members["urn:case:a"])
+	if !state.Members["a"].Tombstoned {
+		t.Fatalf("resource not tombstoned by poll absence: %+v", state.Members["a"])
 	}
 
 	// Simulates the supervisor recreating the evaluator after a config
@@ -239,7 +239,7 @@ func TestUsesSwitchLiftsPollTombstoneSuppression(t *testing.T) {
 		t.Fatalf("switching away from poll did not admit the previously tombstoned resource: %v", hooks.ups)
 	}
 	state, _ = engine.state.Population(engine.key)
-	if state.Members["urn:case:a"].Tombstoned {
+	if state.Members["a"].Tombstoned {
 		t.Fatal("resource still tombstoned after admission under the new selection")
 	}
 }
@@ -281,11 +281,11 @@ func TestUpFailureLeavesAcceptedAppearancePending(t *testing.T) {
 		t.Fatal("expected admission failure")
 	}
 	state, _ := engine.state.Population(engine.key)
-	if !state.Members["urn:case:a"].PendingUp {
-		t.Fatalf("member = %+v, want pending", state.Members["urn:case:a"])
+	if !state.Members["a"].PendingUp {
+		t.Fatalf("member = %+v, want pending", state.Members["a"])
 	}
-	if !state.Members["urn:case:a"].AcceptedAt.IsZero() {
-		t.Fatalf("AcceptedAt = %v, want zero while admission is pending", state.Members["urn:case:a"].AcceptedAt)
+	if !state.Members["a"].AcceptedAt.IsZero() {
+		t.Fatalf("AcceptedAt = %v, want zero while admission is pending", state.Members["a"].AcceptedAt)
 	}
 
 	created := accepted.Add(30 * time.Minute)
@@ -297,8 +297,8 @@ func TestUpFailureLeavesAcceptedAppearancePending(t *testing.T) {
 		t.Fatal(err)
 	}
 	state, _ = engine.state.Population(engine.key)
-	if !state.Members["urn:case:a"].AcceptedAt.Equal(created) {
-		t.Fatalf("AcceptedAt = %v, want successful creation time %v", state.Members["urn:case:a"].AcceptedAt, created)
+	if !state.Members["a"].AcceptedAt.Equal(created) {
+		t.Fatalf("AcceptedAt = %v, want successful creation time %v", state.Members["a"].AcceptedAt, created)
 	}
 }
 
@@ -321,11 +321,11 @@ func TestTransientAdmitFailureBacksOffWithoutBlockingOtherMembers(t *testing.T) 
 	if err != nil {
 		t.Fatal(err)
 	}
-	failed := population.Members["urn:case:a"]
+	failed := population.Members["a"]
 	if failed.ConsecutiveAdmitFailures != 1 || !failed.AdmitRetryAt.Equal(now.Add(5*time.Second)) || failed.AdmitSuspended {
 		t.Fatalf("failed member = %+v, want first failure with a five-second retry gate", failed)
 	}
-	if member := population.Members["urn:case:b"]; member.PendingUp || attempts["urn:case:b"] != 1 {
+	if member := population.Members["b"]; member.PendingUp || attempts["urn:case:b"] != 1 {
 		t.Fatalf("healthy member = %+v, attempts = %v, want it admitted despite a's failure", member, attempts)
 	}
 
@@ -360,7 +360,7 @@ func TestTransientAdmitRecoveryClearsDurableRetryState(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	member := population.Members["urn:case:a"]
+	member := population.Members["a"]
 	if member.PendingUp || member.ConsecutiveAdmitFailures != 0 || member.LastAdmitReason != "" || member.LastAdmitError != "" || !member.AdmitRetryAt.IsZero() || member.AdmitSuspended {
 		t.Fatalf("recovered member = %+v, want all retry state cleared", member)
 	}
@@ -412,7 +412,7 @@ func TestPermanentAdmitFailureSuspendsImmediately(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	member := population.Members["urn:case:a"]
+	member := population.Members["a"]
 	if !member.AdmitSuspended || member.ConsecutiveAdmitFailures != 1 || !member.AdmitRetryAt.IsZero() {
 		t.Fatalf("member = %+v, want an immediately suspended permanent failure", member)
 	}
@@ -433,7 +433,7 @@ func TestFifthUnknownAdmitFailureSuspends(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		now = population.Members["urn:case:a"].AdmitRetryAt
+		now = population.Members["a"].AdmitRetryAt
 		if err := engine.Reconcile(ctx); err == nil {
 			t.Fatalf("attempt %d unexpectedly succeeded", attempt)
 		}
@@ -442,7 +442,7 @@ func TestFifthUnknownAdmitFailureSuspends(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	member := population.Members["urn:case:a"]
+	member := population.Members["a"]
 	if !member.AdmitSuspended || member.ConsecutiveAdmitFailures != 5 || !member.AdmitRetryAt.IsZero() {
 		t.Fatalf("member = %+v, want suspension after fifth unknown failure", member)
 	}
@@ -464,7 +464,7 @@ func TestPollTombstoneCancelsAdmitRetry(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	member := population.Members["urn:case:a"]
+	member := population.Members["a"]
 	if !member.Tombstoned || member.ConsecutiveAdmitFailures != 0 || member.LastAdmitReason != "" || member.LastAdmitError != "" || !member.AdmitRetryAt.IsZero() || member.AdmitSuspended {
 		t.Fatalf("tombstoned member = %+v, want retry state cancelled", member)
 	}
@@ -473,7 +473,7 @@ func TestPollTombstoneCancelsAdmitRetry(t *testing.T) {
 func TestPopulationRetryAllowsProducedInitialTask(t *testing.T) {
 	engine, _, _ := engineFixture(t, false)
 	member := &state.PopulationMember{
-		ResourceID:               "urn:case:a",
+		Resource:                 sourceResource("urn:case:a"),
 		SessionName:              "session-urn:case:a",
 		PendingUp:                true,
 		ConsecutiveAdmitFailures: 5,
@@ -481,7 +481,7 @@ func TestPopulationRetryAllowsProducedInitialTask(t *testing.T) {
 		LastAdmitReason:          "task_setup",
 	}
 	if err := engine.state.UpdatePopulation(engine.key, func(population *state.PopulationState) error {
-		population.Members[member.ResourceID] = member
+		population.Members[member.Resource.Name] = member
 		return nil
 	}); err != nil {
 		t.Fatal(err)
@@ -489,21 +489,21 @@ func TestPopulationRetryAllowsProducedInitialTask(t *testing.T) {
 	if err := engine.state.Put(&domain.Session{
 		Name: "session-urn:case:a",
 		Tasks: map[string]*contract.TaskState{
-			"initial": {Name: "initial", Scope: "session", TaskID: "work", Resource: member.ResourceID, Status: contract.TaskStatusFailed},
+			"initial": {Name: "initial", Scope: "session", TaskID: "work", Resource: sourceRef(member.Resource.Locator), Status: contract.TaskStatusFailed},
 		},
 	}); err != nil {
 		t.Fatal(err)
 	}
 
 	initialTaskID := func() (string, error) { return "work", nil }
-	if err := RetryPopulationMember(engine.state, engine.log, engine.definition.Workflow.Address, engine.definition.Population.Name, member.ResourceID, initialTaskID); err == nil {
+	if err := RetryPopulationMember(engine.state, engine.log, engine.key, member.Resource.Locator, initialTaskID); err == nil {
 		t.Fatal("retry succeeded before initial task cleanup")
 	}
 	population, err := engine.state.Population(engine.key)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !population.Members[member.ResourceID].AdmitSuspended {
+	if !population.Members[member.Resource.Name].AdmitSuspended {
 		t.Fatal("failed cleanup check cleared the suspension")
 	}
 	if err := engine.state.Update(member.SessionName, func(session *domain.Session) error {
@@ -513,7 +513,7 @@ func TestPopulationRetryAllowsProducedInitialTask(t *testing.T) {
 	}); err != nil {
 		t.Fatal(err)
 	}
-	if err := RetryPopulationMember(engine.state, engine.log, engine.definition.Workflow.Address, engine.definition.Population.Name, member.ResourceID, initialTaskID); err == nil {
+	if err := RetryPopulationMember(engine.state, engine.log, engine.key, member.Resource.Locator, initialTaskID); err == nil {
 		t.Fatal("retry succeeded with a conflicting initial task")
 	}
 	if err := engine.state.Update(member.SessionName, func(session *domain.Session) error {
@@ -522,14 +522,14 @@ func TestPopulationRetryAllowsProducedInitialTask(t *testing.T) {
 	}); err != nil {
 		t.Fatal(err)
 	}
-	if err := RetryPopulationMember(engine.state, engine.log, engine.definition.Workflow.Address, engine.definition.Population.Name, member.ResourceID, initialTaskID); err != nil {
+	if err := RetryPopulationMember(engine.state, engine.log, engine.key, member.Resource.Locator, initialTaskID); err != nil {
 		t.Fatalf("retry with produced initial task: %v", err)
 	}
 	population, err = engine.state.Population(engine.key)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if got := population.Members[member.ResourceID]; got.AdmitSuspended || got.ConsecutiveAdmitFailures != 0 || got.LastAdmitReason != "" {
+	if got := population.Members[member.Resource.Name]; got.AdmitSuspended || got.ConsecutiveAdmitFailures != 0 || got.LastAdmitReason != "" {
 		t.Fatalf("member after explicit retry = %+v, want retry state cleared", got)
 	}
 	events, _, _, err := engine.log.List(member.SessionName, 0, event.Filter{Types: []string{event.TypeWorkflowPopulationRetry}})
@@ -558,7 +558,7 @@ func TestFailedInitialTaskDoesNotRunSetupAgainBeforeCleanup(t *testing.T) {
 	}
 	engine.hooks.EnsureInitial = func(context.Context, string, string, string) error {
 		setupCalls++
-		return &initialTaskCleanupRequiredError{session: "session-urn:case:a", reason: "initial task needs cleanup"}
+		return &service.Error{Code: service.ErrInvalidInput, Message: "initial task needs cleanup"}
 	}
 	ctx := context.Background()
 	if err := engine.ApplyAppearance(ctx, map[string]any{"resource": "urn:case:a"}); err == nil {
@@ -570,7 +570,7 @@ func TestFailedInitialTaskDoesNotRunSetupAgainBeforeCleanup(t *testing.T) {
 	if setupCalls != 1 {
 		t.Fatalf("initial setup calls before cleanup = %d, want 1", setupCalls)
 	}
-	if err := RetryPopulationMember(engine.state, engine.log, engine.definition.Workflow.Address, engine.definition.Population.Name, "urn:case:a", func() (string, error) { return "work", nil }); err == nil {
+	if err := RetryPopulationMember(engine.state, engine.log, engine.key, "urn:case:a", func() (string, error) { return "work", nil }); err == nil {
 		t.Fatal("retry succeeded before initial task cleanup")
 	}
 	if setupCalls != 1 {
@@ -605,10 +605,10 @@ func TestAdmitFailureReasonsDrivePriorityClassification(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if member := population.Members["urn:case:a"]; member.ConsecutiveAdmitFailures != 0 || member.AdmitRetryAt.IsZero() {
+	if member := population.Members["a"]; member.ConsecutiveAdmitFailures != 0 || member.AdmitRetryAt.IsZero() {
 		t.Fatalf("capacity-refused member = %+v, want a retry gate without consuming its failure budget", member)
 	}
-	engine.now = func() time.Time { return population.Members["urn:case:a"].AdmitRetryAt }
+	engine.now = func() time.Time { return population.Members["a"].AdmitRetryAt }
 
 	engine.hooks.Up = func(context.Context, string, map[string]any) (UpOutcome, error) {
 		return UpOutcome{}, errors.New("boom")
@@ -634,7 +634,7 @@ func TestAdmitFailureReasonsDrivePriorityClassification(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	engine.now = func() time.Time { return population.Members["urn:case:a"].AdmitRetryAt }
+	engine.now = func() time.Time { return population.Members["a"].AdmitRetryAt }
 	if err := engine.Reconcile(ctx); err == nil {
 		t.Fatal("expected session-input resolution failure")
 	}
@@ -678,7 +678,7 @@ func TestAdmitUpdatesTheSharedCacheInPlace(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	engine.now = func() time.Time { return population.Members["urn:case:a"].AdmitRetryAt }
+	engine.now = func() time.Time { return population.Members["a"].AdmitRetryAt }
 	if err := engine.ApplyAppearance(ctx, map[string]any{"resource": "urn:case:a"}); err == nil {
 		t.Fatal("expected a second failure")
 	}
@@ -693,7 +693,7 @@ func TestAdmitUpdatesTheSharedCacheInPlace(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	engine.now = func() time.Time { return population.Members["urn:case:a"].AdmitRetryAt }
+	engine.now = func() time.Time { return population.Members["a"].AdmitRetryAt }
 	if err := engine.ApplyAppearance(ctx, map[string]any{"resource": "urn:case:a"}); err != nil {
 		t.Fatal(err)
 	}
@@ -729,7 +729,7 @@ func TestInitialTaskFailureRetainsOwnedSessionForRetry(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	member := population.Members["urn:case:a"]
+	member := population.Members["a"]
 	if member.SessionName != "session-urn:case:a" || !member.PendingUp || member.AcceptedAt.IsZero() {
 		t.Fatalf("member = %+v, want persisted owned session pending task retry", member)
 	}
@@ -740,7 +740,7 @@ func TestSubscribeExpiryUsesAppearanceAndInboundClock(t *testing.T) {
 type = "exec"
 command = "true"
 `, "uses = [\"subscribe\"]\nexpire_after = \"1h\"", `resource = { from = "resource.id" }`)
-	defs, err := Load(cfg)
+	defs, err := Load(cfg, "")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -869,7 +869,7 @@ func TestAppearanceDuringRepairRetriesAdmissionWithoutFailureBudget(t *testing.T
 		if err != nil {
 			t.Fatal(err)
 		}
-		member := population.Members[resource]
+		member := population.Members[memberName(resource)]
 		if !member.PendingUp || member.ConsecutiveAdmitFailures != 0 || member.AdmitSuspended {
 			t.Fatalf("member after busy admission = %+v", member)
 		}
@@ -888,7 +888,7 @@ func TestAppearanceDuringRepairRetriesAdmissionWithoutFailureBudget(t *testing.T
 	if err != nil {
 		t.Fatal(err)
 	}
-	member := population.Members[resource]
+	member := population.Members[memberName(resource)]
 	if member.PendingUp || member.ConsecutiveAdmitFailures != 0 || member.AdmitSuspended {
 		t.Fatalf("member after repair completes = %+v", member)
 	}
@@ -918,7 +918,7 @@ func TestUpSurvivesAnInitialTaskFailureAndItsRetry(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	engine.now = func() time.Time { return population.Members["urn:case:a"].AdmitRetryAt }
+	engine.now = func() time.Time { return population.Members["a"].AdmitRetryAt }
 	if err := engine.Reconcile(ctx); err != nil {
 		t.Fatal(err)
 	}
@@ -926,10 +926,66 @@ func TestUpSurvivesAnInitialTaskFailureAndItsRetry(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if population.Members["urn:case:a"].PendingUp {
+	if population.Members["a"].PendingUp {
 		t.Fatal("retry did not complete the admission")
 	}
 	if got := upEventCount(t, engine, "session-urn:case:a"); got != 1 {
 		t.Fatalf("up events = %d, want exactly one across the failure and its retry", got)
+	}
+}
+
+func TestTwoSpellingsOfOneResourceInOnePollAreOneMember(t *testing.T) {
+	engine, hooks, _ := engineFixture(t, true)
+	if err := engine.ApplyPoll(context.Background(), []map[string]any{{"resource": "urn:case:a"}, {"resource": "urn:case:a#reply"}}); err != nil {
+		t.Fatal(err)
+	}
+	population, err := engine.state.Population(engine.key)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(population.Members) != 1 || population.Members["a"] == nil {
+		t.Fatalf("members = %+v, want the one resource a", population.Members)
+	}
+	if len(hooks.ups) != 1 || hooks.ups[0] != "urn:case:a" {
+		t.Errorf("ups = %v, want one admission through the first spelling", hooks.ups)
+	}
+}
+
+func TestAnotherSpellingInALaterPollKeepsTheMember(t *testing.T) {
+	engine, hooks, _ := engineFixture(t, true)
+	if err := engine.ApplyPoll(context.Background(), []map[string]any{{"resource": "urn:case:a"}}); err != nil {
+		t.Fatal(err)
+	}
+	if err := engine.ApplyPoll(context.Background(), []map[string]any{{"resource": "urn:case:a#reply"}}); err != nil {
+		t.Fatal(err)
+	}
+	population, err := engine.state.Population(engine.key)
+	if err != nil {
+		t.Fatal(err)
+	}
+	member := population.Members["a"]
+	if len(population.Members) != 1 || member == nil || member.Tombstoned {
+		t.Fatalf("members = %+v, want resource a still present", population.Members)
+	}
+	if member.Resource.Locator != "urn:case:a" {
+		t.Errorf("locator = %q, want the first spelling", member.Resource.Locator)
+	}
+	if len(hooks.destroys) != 0 {
+		t.Errorf("destroys = %v, want none for a resource still returned", hooks.destroys)
+	}
+}
+
+func TestAPollItemWhoseNameAnotherTypeHoldsRejectsTheSnapshot(t *testing.T) {
+	engine, hooks, _ := engineFixture(t, true)
+	now := time.Now()
+	if err := engine.state.Put(&domain.Session{Name: "other", Workflow: "wf", Resource: &contract.Resource{Type: "elsewhere", Name: "a", Locator: "elsewhere://a"}, CreatedAt: now, UpdatedAt: now}); err != nil {
+		t.Fatal(err)
+	}
+	err := engine.ApplyPoll(context.Background(), []map[string]any{{"resource": "urn:case:a"}})
+	if err == nil || !strings.Contains(err.Error(), "already holds") {
+		t.Fatalf("err = %v, want the type conflict", err)
+	}
+	if len(hooks.ups) != 0 {
+		t.Errorf("ups = %v, want none", hooks.ups)
 	}
 }

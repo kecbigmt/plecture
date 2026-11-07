@@ -63,9 +63,8 @@ describe("DetailPane", () => {
         sessionName: "team/a",
         run: "up",
         health: "stalled",
-        resourceId: "https://example.com/issues/1",
+        resource: { type: "issue", name: "res", locator: "https://example.com/issues/1" },
         message: { text: "Reviewing changes", updatedAt: "2026-01-02T03:04:00Z" },
-        workspaceDirExists: true,
         createdAt: "2026-01-01T00:00:00Z",
       }),
     );
@@ -83,8 +82,6 @@ describe("DetailPane", () => {
         sessionName: "team/a",
         title: "Review the release",
         run: "down",
-        resourceId: "",
-        workspaceDirExists: false,
         createdAt: "2026-01-01T00:00:00Z",
       }),
     );
@@ -92,13 +89,39 @@ describe("DetailPane", () => {
     expect(await screen.findByText("Review the release")).toBeInTheDocument();
   });
 
+  it("shows the workdir and whether it is present only when the workflow declares one", async () => {
+    vi.mocked(fetch).mockResolvedValue(
+      jsonResponse({
+        sessionName: "team/a",
+        run: "up",
+        workdir: "/work/team/a",
+        workdirExists: false,
+        createdAt: "2026-01-01T00:00:00Z",
+      }),
+    );
+    renderDetail("team/a");
+    expect(await screen.findByText("workdir")).toBeInTheDocument();
+    expect(screen.getByText("absent (/work/team/a)")).toBeInTheDocument();
+  });
+
+  it("omits the workdir row when the API sends no workdir", async () => {
+    vi.mocked(fetch).mockResolvedValue(
+      jsonResponse({
+        sessionName: "team/a",
+        run: "up",
+        createdAt: "2026-01-01T00:00:00Z",
+      }),
+    );
+    renderDetail("team/a");
+    await screen.findByText("team/a");
+    expect(screen.queryByText("workdir")).not.toBeInTheDocument();
+  });
+
   it("does not show a previous session's detail while a newly selected session's request is in flight", async () => {
     vi.mocked(fetch).mockResolvedValue(
       jsonResponse({
         sessionName: "team/a",
         run: "up",
-        resourceId: "",
-        workspaceDirExists: true,
         createdAt: "2026-01-01T00:00:00Z",
       }),
     );
@@ -127,8 +150,6 @@ describe("DetailPane", () => {
       jsonResponse({
         sessionName: "team/b",
         run: "down",
-        resourceId: "",
-        workspaceDirExists: false,
         createdAt: "2026-01-01T00:00:00Z",
       }),
     );
@@ -143,8 +164,6 @@ describe("DetailPane", () => {
       jsonResponse({
         sessionName: "team/a",
         run: "up",
-        resourceId: "",
-        workspaceDirExists: true,
         createdAt: "2026-01-01T00:00:00Z",
       }),
     );

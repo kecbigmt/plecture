@@ -27,6 +27,7 @@ scope = "run"
 	mustWrite(t, dir, "workflows/review.toml", `
 [review_session]
 kind = "workflow"
+resource = "issue"
 
 [[review_session.nodes]]
 uses = "runtime"
@@ -78,6 +79,7 @@ kind = "effect"
 	mustWrite(t, dir, "b.toml", `
 [goal_review]
 kind = "workflow"
+resource = "issue"
 `)
 	_, err := DiscoverRoot(dir, nil)
 	assertDiagnostic(t, err, CodeIDDuplicate, LayerSemantic)

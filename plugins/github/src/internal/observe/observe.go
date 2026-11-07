@@ -4,8 +4,8 @@
 // declares — check rollup, revision, mergeability, review verdict, and, for
 // an issue, its completion plus the pull request that closes it.
 //
-// This is independent of the workspace provider's Setup/Cleanup (package
-// worktree): that owns *session* workspace acquisition, this owns the
+// This is independent of the worktree effect's Setup/Cleanup (package
+// worktree): that owns *session* checkout acquisition, this owns the
 // resource's observable state, callable standalone via `plect resource
 // status` outside any one session.
 package observe
@@ -14,15 +14,12 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"net/url"
-	"os"
 	"regexp"
 	"strconv"
 	"strings"
 
 	"github.com/kecbigmt/plecture/plugins/github/src/internal/ghapi"
 	"github.com/kecbigmt/plecture/plugins/github/src/internal/github"
-	"github.com/kecbigmt/plecture/plugins/github/src/internal/procexec"
 )
 
 // Result is one observation. Its fields are the union of what the two
@@ -65,17 +62,9 @@ func (r Result) Document() map[string]any {
 type Options struct {
 	// ResourceID is the GitHub issue or pull request URL being observed.
 	ResourceID string
-	// WorkspaceDirPath is the observing task instance's session workspace
-	// directory, when one exists. Empty for a standalone `plect resource
-	// status` call, which has no owning session.
-	WorkspaceDirPath string
 	// GHClient fetches from the GitHub REST/GraphQL API. Defaults to
 	// ghapi.Direct().
 	GHClient github.GHClient
-	// WorkspaceDirBranch returns the branch checked out at a workspace
-	// directory, or "" when it cannot be determined. Defaults to `git
-	// symbolic-ref --short HEAD`.
-	WorkspaceDirBranch func(ctx context.Context, workspaceDirPath string) string
 }
 
 // Observe fetches and classifies a GitHub resource's current state.
@@ -97,7 +86,7 @@ func Observe(ctx context.Context, opts Options) (*Result, error) {
 	if parsed.Type == github.URLTypePR {
 		return observePull(ctx, client, parsed)
 	}
-	return observeIssue(ctx, client, parsed, opts)
+	return observeIssue(ctx, client, parsed)
 }
 
 func observePull(ctx context.Context, client github.GHClient, parsed *github.ParsedURL) (*Result, error) {
@@ -124,7 +113,7 @@ func observePull(ctx context.Context, client github.GHClient, parsed *github.Par
 // linked PR once one exists, so checks_status becomes the PR's rollup and
 // revision its head SHA — a chain gated on checks SUCCESS can never fire
 // before the linked PR is up and green.
-func observeIssue(ctx context.Context, client github.GHClient, parsed *github.ParsedURL, opts Options) (*Result, error) {
+func observeIssue(ctx context.Context, client github.GHClient, parsed *github.ParsedURL) (*Result, error) {
 	raw, err := client.JSON(ctx, fmt.Sprintf("repos/%s/%s/issues/%d", parsed.Owner, parsed.Repo, parsed.Number))
 	if err != nil {
 		return nil, fmt.Errorf("fetch issue: %w", err)
@@ -150,10 +139,7 @@ func observeIssue(ctx context.Context, client github.GHClient, parsed *github.Pa
 		ReviewDecision: "NULL",
 	}
 
-	prURL, err := discoverLinkedPR(ctx, client, parsed, opts)
-	if err != nil {
-		return nil, err
-	}
+	prURL := discoverLinkedPR(ctx, client, parsed)
 	if prURL == "" {
 		return result, nil
 	}
@@ -221,74 +207,18 @@ func fetchReviewDecision(ctx context.Context, client github.GHClient, owner, rep
 	return resp.Data.Repository.PullRequest.ReviewDecision
 }
 
-// discoverLinkedPR finds the PR that closes an issue. The issue's own
-// closing-PR references bound the answer, and the session's checked out
-// branch picks among them: a session that builds several branches in one
-// worktree (the stacked-PR pattern) leaves HEAD on a later branch whose PR
-// closes a different issue, so the branch alone would report that PR's head
-// as this issue's revision and make every judge recorded on the real PR read
-// as stale. The branch still decides when the issue has no closing reference
-// at all — a PR whose body never named the issue is invisible to GitHub's
-// relation — and when several references compete.
-//
-// A reference lookup that fails is therefore not the same as one that
-// returns nothing: with a branch pull request in hand and no way to check it
-// against the issue, reporting it would resurrect exactly the wrong-revision
-// failure above, and degrading to the issue-only state would move the
-// revision off the reviewed head just as destructively, so the observation
-// fails and the last observed values stand. With no branch pull request
-// there is nothing the references could contradict, and the failure still
-// degrades to "no linked PR yet".
-func discoverLinkedPR(ctx context.Context, client github.GHClient, parsed *github.ParsedURL, opts Options) (string, error) {
-	refs, refsErr := closingPRRefs(ctx, client, parsed)
-	branchPR := branchPullRequest(ctx, client, parsed, opts)
-	if refsErr != nil {
-		if branchPR == "" {
-			return "", nil
-		}
-		return "", fmt.Errorf("fetch closing pull request references: %w", refsErr)
-	}
-	if branchPR != "" && (len(refs) == 0 || containsPR(refs, branchPR)) {
-		return branchPR, nil
-	}
-	return preferOpenPR(refs), nil
-}
-
-func branchPullRequest(ctx context.Context, client github.GHClient, parsed *github.ParsedURL, opts Options) string {
-	branchOf := opts.WorkspaceDirBranch
-	if branchOf == nil {
-		branchOf = defaultWorkspaceDirBranch
-	}
-	branch := branchOf(ctx, opts.WorkspaceDirPath)
-	if branch == "" {
-		return ""
-	}
-	// The branch name reaches the query string verbatim, unlike a path
-	// segment: a devbox-style name like "issue/2243+claude" has GitHub decode
-	// the '+' as a space unless it is percent-encoded, which turns the head
-	// filter into a lookup for a branch that does not exist.
-	query := url.Values{"head": {parsed.Owner + ":" + branch}, "state": {"all"}}
-	path := fmt.Sprintf("repos/%s/%s/pulls?%s", parsed.Owner, parsed.Repo, query.Encode())
-	raw, err := client.JSON(ctx, path)
+// discoverLinkedPR finds the PR that closes an issue from the issue's own
+// closing-PR references. A PR whose body never named the issue is invisible
+// to GitHub's relation, so it is not reported. A failed lookup degrades to
+// "no linked PR yet" rather than failing the observation: with no other
+// source to contradict, the issue-only state is the honest answer, and
+// issue_status still gates.
+func discoverLinkedPR(ctx context.Context, client github.GHClient, parsed *github.ParsedURL) string {
+	refs, err := closingPRRefs(ctx, client, parsed)
 	if err != nil {
 		return ""
 	}
-	var prs []struct {
-		HTMLURL string `json:"html_url"`
-	}
-	if json.Unmarshal(raw, &prs) != nil || len(prs) == 0 {
-		return ""
-	}
-	return prs[0].HTMLURL
-}
-
-func containsPR(refs []closingPRRef, url string) bool {
-	for _, r := range refs {
-		if r.URL == url {
-			return true
-		}
-	}
-	return false
+	return preferOpenPR(refs)
 }
 
 const closingPRsQuery = `query($owner:String!,$repo:String!,$number:Int!){
@@ -362,20 +292,6 @@ func prNumberFromURL(prURL string) (int, bool) {
 	}
 	n, err := strconv.Atoi(m[1])
 	return n, err == nil
-}
-
-func defaultWorkspaceDirBranch(ctx context.Context, workspaceDirPath string) string {
-	if workspaceDirPath == "" {
-		return ""
-	}
-	if _, err := os.Stat(workspaceDirPath); err != nil {
-		return ""
-	}
-	out, _, err := procexec.Default.Run(ctx, workspaceDirPath, false, "git", "symbolic-ref", "--quiet", "--short", "HEAD")
-	if err != nil {
-		return ""
-	}
-	return strings.TrimSpace(string(out))
 }
 
 type prHeadMergeable struct {

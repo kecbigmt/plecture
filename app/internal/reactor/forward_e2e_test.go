@@ -64,6 +64,7 @@ scope = "run"
 	writeFile(t, filepath.Join(pluginDir, "config", "workflows", "reactive.toml"), `
 [reactive]
 kind = "workflow"
+resource = "issue"
 [[reactive.nodes]]
 id   = "runner"
 uses = "runner"
@@ -84,7 +85,7 @@ on = ["resource.*"]
 	}
 	// Child: down (no produced run-scoped node) but not destroyed.
 	child := &domain.Session{
-		Name: "child", Workflow: "reactive", ParentSession: "parent", ResourceID: "https://example.test/resource/1",
+		Name: "child", Workflow: "reactive", ParentSession: "parent", Resource: testResource("https://example.test/resource/1"),
 	}
 	pinRevision(t, cfg, child)
 	if err := st.Put(child); err != nil {

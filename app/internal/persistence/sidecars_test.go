@@ -12,7 +12,7 @@ func TestTombstoneReadsRetainedDestroyedIncarnation(t *testing.T) {
 	ctx := context.Background()
 	db := migratedTestDB(t)
 	now := time.Now().UTC()
-	if err := db.PutSession(ctx, &domain.Session{Name: "same-name", ResourceID: "resource://old", CreatedAt: now, UpdatedAt: now}); err != nil {
+	if err := db.PutSession(ctx, &domain.Session{Name: "same-name", Resource: testResource("old", "resource://old"), CreatedAt: now, UpdatedAt: now}); err != nil {
 		t.Fatal(err)
 	}
 	oldID, err := db.EventStreamID(ctx, "same-name")
@@ -22,7 +22,7 @@ func TestTombstoneReadsRetainedDestroyedIncarnation(t *testing.T) {
 	if err := db.DestroySession(ctx, "same-name", now); err != nil {
 		t.Fatal(err)
 	}
-	if err := db.PutSession(ctx, &domain.Session{Name: "same-name", ResourceID: "resource://new", CreatedAt: now, UpdatedAt: now}); err != nil {
+	if err := db.PutSession(ctx, &domain.Session{Name: "same-name", Resource: testResource("new", "resource://new"), CreatedAt: now, UpdatedAt: now}); err != nil {
 		t.Fatal(err)
 	}
 
@@ -30,7 +30,7 @@ func TestTombstoneReadsRetainedDestroyedIncarnation(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if tombstone == nil || tombstone.ID != oldID || tombstone.ResourceID != "resource://old" || tombstone.DestroyedAt.IsZero() {
+	if tombstone == nil || tombstone.ID != oldID || tombstone.Resource == nil || tombstone.Resource.Locator != "resource://old" || tombstone.DestroyedAt.IsZero() {
 		t.Fatalf("tombstone = %+v, want retained destroyed incarnation", tombstone)
 	}
 }
@@ -49,7 +49,7 @@ func TestSubscriptionRetryForDestroyedIncarnationDoesNotAttachToNameReuse(t *tes
 	if err := db.DestroySession(ctx, "same-name", now); err != nil {
 		t.Fatal(err)
 	}
-	if err := db.QueueSubscriptionRetryByID(ctx, oldID, subscriptionRetryUnsubscribe, "resource://old"); err != nil {
+	if err := db.QueueSubscriptionRetryByID(ctx, oldID, subscriptionRetryUnsubscribe, *testResource("old", "resource://old")); err != nil {
 		t.Fatal(err)
 	}
 	if err := db.PutSession(ctx, &domain.Session{Name: "same-name", CreatedAt: now, UpdatedAt: now}); err != nil {

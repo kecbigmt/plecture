@@ -14,21 +14,21 @@ import (
 // sampleShow returns a StatusResult exercising every optional section so the
 // detail template is rendered against realistic data.
 func sampleShow() *service.StatusResult {
+	workdirExists := true
 	return &service.StatusResult{
 		Identity: service.StatusIdentity{
 			SessionName: "owner/repo-7",
-			ResourceID:  "https://github.com/owner/repo/issues/7",
+			Resource:    testView("https://github.com/owner/repo/issues/7"),
 			Title:       "make the thing work",
-			Branch:      "issue/7",
 			CreatedAt:   time.Now(),
 		},
 		Runtime: service.StatusRuntime{
-			Run:                domain.RunUp,
-			Health:             domain.HealthHealthy,
-			WorkspaceDirPath:   "/home/dev/workdirs/owner/repo/issue-7",
-			WorkspaceDirExists: true,
-			Message:            &domain.Message{Text: "running tests", UpdatedAt: time.Now()},
-			AttachCommand:      "some-runtime attach owner/repo-7",
+			Run:           domain.RunUp,
+			Health:        domain.HealthHealthy,
+			Workdir:       "/home/dev/workdirs/owner/repo/issue-7",
+			WorkdirExists: &workdirExists,
+			Message:       &domain.Message{Text: "running tests", UpdatedAt: time.Now()},
+			AttachCommand: "some-runtime attach owner/repo-7",
 		},
 	}
 }
@@ -41,7 +41,7 @@ func TestDetail_ShowsSession(t *testing.T) {
 	}
 	body := rec.Body.String()
 	for _, want := range []string{
-		"owner/repo-7", "issue/7", "make the thing work", "running tests",
+		"owner/repo-7", "make the thing work", "running tests",
 		"/home/dev/workdirs/owner/repo/issue-7",
 	} {
 		if !strings.Contains(body, want) {
@@ -53,10 +53,40 @@ func TestDetail_ShowsSession(t *testing.T) {
 	}
 }
 
+// detail: the workdir is shown only when the workflow declares one, and is
+// flagged only when it is known to be absent on disk.
+func TestDetail_WorkdirRendering(t *testing.T) {
+	missing, present := false, true
+	tests := []struct {
+		name        string
+		workdir     string
+		exists      *bool
+		wantWorkdir bool
+		wantMissing bool
+	}{
+		{"present", "/work/a", &present, true, false},
+		{"missing", "/work/a", &missing, true, true},
+		{"undeclared", "", nil, false, false},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			status := sampleShow()
+			status.Runtime.Workdir, status.Runtime.WorkdirExists = tc.workdir, tc.exists
+			body := get(t, &fakeService{status: status}, "/sessions/owner/repo-7").Body.String()
+			if got := strings.Contains(body, ">workdir<"); got != tc.wantWorkdir {
+				t.Errorf("workdir row shown = %v, want %v", got, tc.wantWorkdir)
+			}
+			if got := strings.Contains(body, "(missing)"); got != tc.wantMissing {
+				t.Errorf("missing marker shown = %v, want %v", got, tc.wantMissing)
+			}
+		})
+	}
+}
+
 // detail: a non-URL resource id renders as plain text, not a broken anchor.
 func TestDetail_NonURLResourceIsPlainText(t *testing.T) {
 	status := sampleShow()
-	status.Identity.ResourceID = "my-experiment"
+	status.Identity.Resource = testView("my-experiment")
 	body := get(t, &fakeService{status: status}, "/sessions/owner/repo-7").Body.String()
 	if !strings.Contains(body, "my-experiment") {
 		t.Error("resource id missing from detail")

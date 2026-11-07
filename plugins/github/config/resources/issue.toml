@@ -1,26 +1,18 @@
-# The generic Resource contract applied to a GitHub issue. Independent of the
-# GitHub workspace provider (workspaces/worktree.toml, which resolves a
-# *session's* resource identifier to a worktree) — this consolidates the same
-# observation into a standalone contract callable via `plect resource status`
-# outside any one task instance.
+# The generic Resource contract applied to a GitHub issue, callable standalone
+# via `plect resource status` outside any one task instance.
 #
 # An issue-keyed session tracks its LINKED pull request once one exists
-# (closing reference first, session branch as fallback), so checks_status
+# (found through the issue's closing references), so checks_status
 # becomes that pull request's rollup and revision its head SHA. Judges thus
 # re-pend on code changes rather than on issue-metadata edits, and a chain
 # gated on checks SUCCESS can never fire before the pull request is up and
 # green. Discovery failures degrade to the no-pull-request shape rather than
 # failing the observation; issue_status still gates.
-#
-# workspace.dir is the observing task instance's session workspace directory
-# when one exists, and absent for a standalone `plect resource status` call —
-# linked-pull-request discovery then skips straight to the GraphQL
-# closing-reference lookup, which is why the projection defaults to empty
-# rather than requiring the root.
 
 [issue]
-kind  = "resource_observer"
+kind  = "resource"
 match = '^https://github\.com/(?P<owner>[^/]+)/(?P<repo>[^/]+)/issues/(?P<number>\d+)'
+name  = { expr = "match.owner + '/' + match.repo + '-' + match.number" }
 
 [issue.observe]
 type = "exec"
@@ -29,8 +21,6 @@ args = [
   "observe",
   "--resource",
   { from = "resource.id" },
-  "--workspace-dir-path",
-  { from = "workspace.dir", default = "" },
   "--watcher-bin",
   { bin = "github-watcher" },
 ]
@@ -38,7 +28,7 @@ args = [
 [issue.subscribe]
 type = "exec"
 bin = "github-watcher"
-args = ["subscribe", "--session", { from = "session.name" }, "--resource", { from = "resource.id" }, "--branch", { from = "session.branch", default = "" }]
+args = ["subscribe", "--session", { from = "session.name" }, "--resource", { from = "resource.id" }]
 
 [issue.unsubscribe]
 type = "exec"

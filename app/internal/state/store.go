@@ -124,6 +124,15 @@ func (s *Store) GetE(name string) (*domain.Session, error) {
 	return db.GetSession(context.Background(), name)
 }
 
+// ResourceByName returns the resource recorded under name, or nil.
+func (s *Store) ResourceByName(name string) (*contract.Resource, error) {
+	db, err := s.dbHandle()
+	if err != nil {
+		return nil, err
+	}
+	return db.ResourceByName(context.Background(), name)
+}
+
 // Put saves or updates a session.
 func (s *Store) Put(session *domain.Session) error {
 	db, err := s.dbHandle()
@@ -151,6 +160,14 @@ func (s *Store) Update(name string, fn func(*domain.Session) error) error {
 	// *Error), and this is the read-modify-write primitive they call
 	// through, so this seam must not obscure that type.
 	return db.UpdateSession(context.Background(), name, fn)
+}
+
+func (s *Store) UpdateWithSubscriptionRetries(name string, fn func(*domain.Session) error, action string, resources []contract.Resource) error {
+	db, err := s.dbHandle()
+	if err != nil {
+		return fmt.Errorf("state: update %q: %w", name, err)
+	}
+	return db.UpdateSessionWithSubscriptionRetries(context.Background(), name, fn, action, resources)
 }
 
 // PruneReleasedNode reports whether name's node_id row was pruned; see
@@ -183,7 +200,7 @@ func (s *Store) ResetNodes(name string) error {
 
 // Population returns one population's durable state, or nil if key has
 // never been recorded.
-func (s *Store) Population(key string) (*PopulationState, error) {
+func (s *Store) Population(key contract.PopulationProvenance) (*PopulationState, error) {
 	db, err := s.dbHandle()
 	if err != nil {
 		return nil, err
@@ -193,10 +210,10 @@ func (s *Store) Population(key string) (*PopulationState, error) {
 
 // UpdatePopulation atomically applies fn to the named population (creating
 // it, and its Members map, if absent) and persists the result.
-func (s *Store) UpdatePopulation(key string, fn func(*PopulationState) error) error {
+func (s *Store) UpdatePopulation(key contract.PopulationProvenance, fn func(*PopulationState) error) error {
 	db, err := s.dbHandle()
 	if err != nil {
-		return fmt.Errorf("state: update population %q: %w", key, err)
+		return fmt.Errorf("state: update population %+v: %w", key, err)
 	}
 	// fn's own error is returned verbatim; see Update's identical rationale.
 	return db.UpdatePopulation(context.Background(), key, fn)

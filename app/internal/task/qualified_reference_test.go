@@ -44,18 +44,20 @@ kind    = "channel"
 type    = "exec"
 command = "true"
 `)
-	write(filepath.Join(pluginDir, "config", "workspaces", "worktree.toml"), `
-[worktree]
-kind = "workspace_provider"
+	write(filepath.Join(pluginDir, "config", "resources", "issue.toml"), `
+[issue]
+kind  = "resource"
+match = '^acme://issue/(?P<id>\d+)$'
+name  = { expr = "'issue-' + match.id" }
 
-[worktree.setup]
+[issue.observe]
 type    = "exec"
 command = "true"
 `)
 	write(filepath.Join(base, "workflows", "review.toml"), `
 [review]
-kind               = "workflow"
-workspace_provider = "official.acme.worktree"
+kind     = "workflow"
+resource = "official.acme.issue"
 
 [[review.nodes]]
 uses = "official.acme.runtime"
@@ -118,20 +120,19 @@ func TestValidateWorkflowChannels_QualifiedUsesResolves(t *testing.T) {
 	}
 }
 
-// A workflow's qualified `workspace_provider` resolves against the loaded
-// providers.
-func TestLoadWorkspaceProviders_QualifiedWorkspaceProviderResolves(t *testing.T) {
+// A workflow's qualified `resource` resolves against the loaded resources.
+func TestLoadResourceDefs_QualifiedWorkflowResourceResolves(t *testing.T) {
 	cfg := qualifiedReferenceConfig(t)
 	workflows, err := cfg.LoadWorkflows("")
 	if err != nil {
 		t.Fatalf("LoadWorkflows: %v", err)
 	}
-	providers, err := cfg.LoadWorkspaceProviders()
+	resources, err := cfg.LoadResourceDefs()
 	if err != nil {
-		t.Fatalf("LoadWorkspaceProviders: %v", err)
+		t.Fatalf("LoadResourceDefs: %v", err)
 	}
-	if _, ok := providers[workflows["review"].WorkspaceProvider]; !ok {
-		t.Fatalf("workspace provider %q not found among %v", workflows["review"].WorkspaceProvider, config.Addresses(providers))
+	if _, ok := resources[workflows["review"].Resource]; !ok {
+		t.Fatalf("workflow resource %q not found among %v", workflows["review"].Resource, config.Addresses(resources))
 	}
 }
 
@@ -142,6 +143,7 @@ func TestCompileWorkflow_BareReferenceToPluginContentIsNamed(t *testing.T) {
 	if err := os.WriteFile(filepath.Join(cfg.BaseDir, "workflows", "review.toml"), []byte(`
 [review]
 kind = "workflow"
+resource = "issue"
 
 [[review.nodes]]
 uses = "runtime"

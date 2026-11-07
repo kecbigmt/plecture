@@ -3,6 +3,8 @@ package domain
 import (
 	"errors"
 	"time"
+
+	contract "github.com/kecbigmt/plecture/contracts/state"
 )
 
 // UpReservation has no TTL field: RunSetup has no deadline, so only a
@@ -26,29 +28,32 @@ const VirtualRootReservationParent = "@virtual-root"
 // PopulationState holds durable source generations independently of session
 // state, so a successful absence can suppress stale appearances even after a
 // session has been destroyed.
+// Members are keyed by their resource's name, the resource's identity, so a
+// query naming one resource in two spellings yields one member.
 type PopulationState struct {
-	Workflow string                       `json:"workflow"`
-	Name     string                       `json:"name"`
-	Members  map[string]*PopulationMember `json:"members,omitempty"`
+	ProjectRoot string                       `json:"project_root,omitempty"`
+	Workflow    string                       `json:"workflow"`
+	Name        string                       `json:"name"`
+	Members     map[string]*PopulationMember `json:"members,omitempty"`
 }
 
 type PopulationMember struct {
-	ResourceID               string         `json:"resource_id"`
-	Item                     map[string]any `json:"item,omitempty"`
-	SessionName              string         `json:"session_name,omitempty"`
-	Generation               uint64         `json:"generation"`
-	AcceptedAt               time.Time      `json:"accepted_at,omitzero"`
-	LastAppearance           time.Time      `json:"last_appearance,omitzero"`
-	LastInbound              time.Time      `json:"last_inbound,omitzero"`
-	Tombstoned               bool           `json:"tombstoned,omitempty"`
-	PendingUp                bool           `json:"pending_up,omitempty"`
-	ConsecutiveAdmitFailures uint           `json:"consecutive_admit_failures,omitempty"`
-	LastAdmitReason          string         `json:"last_admit_reason,omitempty"`
-	LastAdmitError           string         `json:"last_admit_error,omitempty"`
-	AdmitRetryAt             time.Time      `json:"admit_retry_at,omitzero"`
-	AdmitSuspended           bool           `json:"admit_suspended,omitempty"`
-	LastDecision             string         `json:"last_decision,omitempty"`
-	LastBlockers             []string       `json:"last_blockers,omitempty"`
+	Resource                 contract.Resource `json:"resource"`
+	Item                     map[string]any    `json:"item,omitempty"`
+	SessionName              string            `json:"session_name,omitempty"`
+	Generation               uint64            `json:"generation"`
+	AcceptedAt               time.Time         `json:"accepted_at,omitzero"`
+	LastAppearance           time.Time         `json:"last_appearance,omitzero"`
+	LastInbound              time.Time         `json:"last_inbound,omitzero"`
+	Tombstoned               bool              `json:"tombstoned,omitempty"`
+	PendingUp                bool              `json:"pending_up,omitempty"`
+	ConsecutiveAdmitFailures uint              `json:"consecutive_admit_failures,omitempty"`
+	LastAdmitReason          string            `json:"last_admit_reason,omitempty"`
+	LastAdmitError           string            `json:"last_admit_error,omitempty"`
+	AdmitRetryAt             time.Time         `json:"admit_retry_at,omitzero"`
+	AdmitSuspended           bool              `json:"admit_suspended,omitempty"`
+	LastDecision             string            `json:"last_decision,omitempty"`
+	LastBlockers             []string          `json:"last_blockers,omitempty"`
 }
 
 // ErrUpAlreadyReserved: childName's reservation is held by another live

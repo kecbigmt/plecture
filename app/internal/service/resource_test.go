@@ -23,7 +23,8 @@ func TestResourceStatus_ObservesMatchingDefinition(t *testing.T) {
 	cfg := &config.Config{BaseDir: t.TempDir()}
 	writeResourceDefFixture(t, cfg.BaseDir, "github", `
 [github]
-kind  = "resource_observer"
+kind  = "resource"
+name  = "fixture"
 match = '^https://github\.com/'
 
 [github.observe]

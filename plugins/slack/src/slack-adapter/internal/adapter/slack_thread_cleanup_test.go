@@ -10,42 +10,38 @@ import (
 	"github.com/BurntSushi/toml"
 )
 
-func TestSlackThreadCleanupHandlesCurlFailures(t *testing.T) {
+func TestSlackThreadCreatesThreadWithoutSubscribing(t *testing.T) {
+	if _, err := exec.LookPath("jq"); err != nil {
+		t.Skip("jq is unavailable")
+	}
 	var task struct {
 		SlackThread struct {
-			Cleanup struct {
-				Script string
-			} `toml:"cleanup"`
+			Setup   struct{ Script string } `toml:"setup"`
+			Cleanup *struct{}               `toml:"cleanup"`
 		} `toml:"slack_thread"`
 	}
 	path := filepath.Join("..", "..", "..", "..", "config", "tasks", "slack_thread.toml")
 	if _, err := toml.DecodeFile(path, &task); err != nil {
 		t.Fatal(err)
 	}
-	if task.SlackThread.Cleanup.Script == "" {
-		t.Fatal("slack_thread cleanup script is empty")
+	binDir := t.TempDir()
+	if err := os.WriteFile(filepath.Join(binDir, "curl"), []byte("#!/bin/sh\nprintf '%s' '{\"thread_ts\":\"1234.5678\",\"channel_id\":\"C123\",\"permalink\":\"https://example.slack.com/archives/C123/p12345678\"}'\n"), 0o755); err != nil {
+		t.Fatal(err)
 	}
-	for _, tc := range []struct {
-		name, exitCode string
-		wantSuccess    bool
-	}{
-		{name: "adapter unreachable", exitCode: "7", wantSuccess: true},
-		{name: "request rejected", exitCode: "22", wantSuccess: false},
-	} {
-		t.Run(tc.name, func(t *testing.T) {
-			binDir := t.TempDir()
-			if err := os.WriteFile(filepath.Join(binDir, "curl"), []byte("#!/bin/sh\nexit "+tc.exitCode+"\n"), 0o755); err != nil {
-				t.Fatal(err)
-			}
-			cmd := exec.Command("sh", "-c", task.SlackThread.Cleanup.Script)
-			cmd.Env = append(os.Environ(), "PATH="+binDir+":"+os.Getenv("PATH"), "base_url=http://127.0.0.1:1", "session_name=one", "thread_ts=1700000000.000001")
-			out, err := cmd.CombinedOutput()
-			if (err == nil) != tc.wantSuccess {
-				t.Fatalf("cleanup error = %v, want success %v; output: %s", err, tc.wantSuccess, out)
-			}
-			if tc.wantSuccess && !strings.Contains(string(out), "unsubscribe failed") {
-				t.Fatalf("cleanup did not log the failed unsubscribe: %s", out)
-			}
-		})
+	called := filepath.Join(t.TempDir(), "plect-called")
+	if err := os.WriteFile(filepath.Join(binDir, "plect"), []byte("#!/bin/sh\ntouch '"+called+"'\nexit 3\n"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	cmd := exec.Command("sh", "-c", task.SlackThread.Setup.Script)
+	cmd.Env = append(os.Environ(), "PATH="+binDir+":"+os.Getenv("PATH"), "base_url=http://127.0.0.1:1", "channel_id=C123", "root_text=Review", "session_name=one")
+	out, err := cmd.CombinedOutput()
+	if err != nil || !strings.Contains(string(out), `"permalink":"https://example.slack.com/archives/C123/p12345678"`) {
+		t.Fatalf("setup output = %q, error = %v", out, err)
+	}
+	if _, err := os.Stat(called); !os.IsNotExist(err) {
+		t.Fatalf("setup invoked plect: %v", err)
+	}
+	if task.SlackThread.Cleanup != nil {
+		t.Fatal("thread creation must not own subscription cleanup")
 	}
 }

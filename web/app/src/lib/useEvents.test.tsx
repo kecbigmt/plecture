@@ -120,9 +120,7 @@ describe("useLiveEvents", () => {
     queryClient.setQueryData(sessionDetailQueryKey("team/a"), {
       sessionName: "team/a",
       run: "up",
-      resourceId: "",
       createdAt: "2026-01-01T00:00:00Z",
-      workspaceDirExists: false,
     });
     const invalidateSpy = vi.spyOn(queryClient, "invalidateQueries");
     renderHook(() => useLiveEvents("team/a", true, ""), { wrapper });
@@ -156,9 +154,7 @@ describe("useLiveEvents", () => {
           JSON.stringify({
             sessionName: "team/a",
             run: "up",
-            resourceId: "",
             createdAt: "2026-01-01T00:00:00Z",
-            workspaceDirExists: false,
           }),
           { status: 200 },
         ),
@@ -196,9 +192,7 @@ describe("useLiveEvents", () => {
     const baseBody = {
       sessionName: "team/a",
       run: "up",
-      resourceId: "",
       createdAt: "2026-01-01T00:00:00Z",
-      workspaceDirExists: false,
     };
     const staleBody = baseBody;
     const freshBody = { ...baseBody, message: { text: "hi", updatedAt: "2026-01-01T00:00:01Z" } };
@@ -245,9 +239,7 @@ describe("useLiveEvents", () => {
     queryClient.setQueryData(sessionDetailQueryKey("team/a"), {
       sessionName: "team/a",
       run: "up",
-      resourceId: "",
       createdAt: "2026-01-01T00:00:00Z",
-      workspaceDirExists: false,
     });
     vi.stubGlobal("fetch", vi.fn());
     vi.mocked(fetch).mockImplementation(() =>

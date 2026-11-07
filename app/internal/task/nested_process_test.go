@@ -209,7 +209,7 @@ func TestVerifyLiveness_NestedChainFailsForADeadProcessAndPassesForTheRecordedOn
 func TestExecuteTaskSetup_NestedChainRecordsProcessIdentity(t *testing.T) {
 	requireBash(t)
 	plan := guardedRuntimeChain(t, spawnWorkerSetup, "true", "true")
-	got, err := ExecuteTaskSetup(context.Background(), plan[0], nil, SessionVars{Name: "s"}, nil)
+	got, err := ExecuteTaskSetup(context.Background(), plan[0], nil, SessionVars{Name: "s"}, nil, "")
 	if err != nil {
 		t.Fatalf("ExecuteTaskSetup: %v", err)
 	}
@@ -223,7 +223,7 @@ func TestExecuteTaskSetup_NestedChainRecordsProcessIdentity(t *testing.T) {
 func TestExecuteTaskSetup_NestedChainWhoseProcessIsGoneFailsAndKeepsLayers(t *testing.T) {
 	requireBash(t)
 	plan := guardedRuntimeChain(t, `echo '{"pid":2147483000}'`, "true", "true")
-	got, err := ExecuteTaskSetup(context.Background(), plan[0], nil, SessionVars{Name: "s"}, nil)
+	got, err := ExecuteTaskSetup(context.Background(), plan[0], nil, SessionVars{Name: "s"}, nil, "")
 	if err == nil || !strings.Contains(err.Error(), "not running") {
 		t.Fatalf("ExecuteTaskSetup error = %v, want a not-running failure", err)
 	}

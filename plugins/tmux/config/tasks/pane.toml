@@ -2,23 +2,23 @@
 kind  = "effect"
 scope = "run"
 
-# Session name / workspace directory come from the session itself, not from
-# upstream nodes — tmux has no node-level inputs. A workflow wires this
+# The session name comes from the session itself, not from upstream nodes —
+# tmux has no node-level inputs, and the session starts in this node's own
+# working directory. A workflow wires this
 # effect's `session_name` output into downstream nodes that send keys into
 # the pane it creates.
 [pane.setup]
 type   = "shell"
 script = '''
 tmux has-session -t "$session_name" 2>/dev/null \
-  || tmux new-session -d -s "$session_name" -c "$workspace_dir"
+  || tmux new-session -d -s "$session_name"
 tmux has-session -t "$session_name" \
   || { echo "failed to ensure tmux session $session_name" >&2; exit 1; }
 jq -nc --arg name "$session_name" '{session_name:$name}'
 '''
 
 [pane.setup.bind]
-session_name  = { from = "session.name" }
-workspace_dir = { from = "workspace.dir" }
+session_name = { from = "session.name" }
 
 [pane.cleanup]
 type   = "shell"

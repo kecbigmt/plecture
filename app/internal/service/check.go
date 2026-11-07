@@ -194,7 +194,7 @@ func evaluateSessionActions(cfg *config.Config, store *state.Store, sessionName 
 	var chainPlan []ChainSpawn
 	for _, key := range sortedTaskKeys(merged) {
 		st := merged[key]
-		if st == nil || st.Status != contract.TaskStatusProduced || key == contract.WorkflowPseudoNodeID {
+		if st == nil || st.Status != contract.TaskStatusProduced {
 			continue
 		}
 		// A declaration-less instance is evaluated only when it was set up
@@ -236,10 +236,10 @@ func CheckSession(cfg *config.Config, store *state.Store, params CheckParams) (*
 }
 
 func sessionResourceForCheck(session *domain.Session, st *contract.TaskState) string {
-	if st.Resource != "" {
-		return st.Resource
+	if st.Resource != nil {
+		return st.Resource.Locator
 	}
-	return session.ResourceID
+	return domain.Locator(session.Resource)
 }
 
 func sortedTaskKeys(tasks map[string]*contract.TaskState) []string {

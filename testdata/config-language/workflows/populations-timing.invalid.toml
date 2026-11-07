@@ -2,12 +2,11 @@
 # reason: a poll-backed population declares a positive poll_every and no subscribe-only expiry.
 
 [bad_timing]
-kind               = "workflow"
-workspace_provider = "query_provider"
+kind     = "workflow"
+resource = "query_source"
 
 [[bad_timing.populations]]
 name              = "dispatch"
-resource_observer = "query_source"
 uses              = ["poll"]
 
 [bad_timing.populations.query]

@@ -68,7 +68,7 @@ func RunActivityProbe(goCtx context.Context, p Probe, session SessionVars) (*Act
 		return nil, err
 	}
 	defer resolved.Close()
-	stdout, stderr, err := resolved.Run(goCtx, session.WorkspaceDirPath, p.Env...)
+	stdout, stderr, err := resolved.Run(goCtx, p.Dir, p.Env...)
 	if err != nil {
 		return nil, &ActivityProbeExecError{ExitCode: probeExitCode(err), Stderr: strings.TrimSpace(string(stderr))}
 	}

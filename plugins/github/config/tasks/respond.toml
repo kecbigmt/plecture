@@ -5,7 +5,7 @@
 [respond]
 kind              = "task"
 description       = "Address review comments on a PR and push fixes"
-resource_observer = "pull_request"
+resource          = "pull_request"
 instructions      = [{ text = """
 Address the review comments on PR at {{ resource.id }}.
 

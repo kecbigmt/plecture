@@ -101,6 +101,16 @@ restart, within one refresh interval.`,
 		if err != nil {
 			return err
 		}
+		// A daemon has no one at a terminal, so an untrusted root stops it
+		// rather than prompting.
+		dir, err := os.Getwd()
+		if err != nil {
+			return fmt.Errorf("getwd: %w", err)
+		}
+		projectRoot, err := live.Get().SelectProjectRoot(dir)
+		if err != nil {
+			return err
+		}
 		stateStore := state.NewStore("")
 
 		// Session dispatchers share this process's event log and session state:
@@ -117,7 +127,7 @@ restart, within one refresh interval.`,
 		var reactWG sync.WaitGroup
 		reactWG.Go(func() { react.Run(ctx) })
 
-		populations := population.NewSupervisor(live.Get, stateStore, store)
+		populations := population.NewSupervisor(live.Get, projectRoot, stateStore, store)
 		var populationWG sync.WaitGroup
 		populationWG.Go(func() { populations.Run(ctx) })
 

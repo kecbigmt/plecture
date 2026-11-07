@@ -4,7 +4,7 @@
 [pursue_goal]
 kind              = "task"
 description       = "A task document choosing its reviewer workflow at run time"
-resource_observer = "goal"
+resource          = "goal"
 instructions      = [{ text = "Pursue the goal at {{ resource.id }}." }]
 
 [[pursue_goal.chains]]

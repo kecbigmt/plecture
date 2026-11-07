@@ -30,8 +30,7 @@
             "task",
             "channel",
             "workflow",
-            "workspace_provider",
-            "resource_observer"
+            "resource"
           ]
         }
       },
@@ -49,10 +48,7 @@
           "$ref": "#/$defs/workflowDefinition"
         },
         {
-          "$ref": "#/$defs/workspaceProviderDefinition"
-        },
-        {
-          "$ref": "#/$defs/resourceObserverDefinition"
+          "$ref": "#/$defs/resourceDefinition"
         }
       ],
       "description": "A definition block in a TOML definition document. Every kind is declared the same way \u2014 a table named by the definition id, carrying kind."
@@ -803,6 +799,10 @@
         "resource": {
           "$ref": "#/$defs/dataValue"
         },
+        "task": {
+          "$ref": "#/$defs/staticReference",
+          "description": "The task document the spawned session starts with, bound to its entry resource. Its resource type must be the target workflow's."
+        },
         "when": {
           "type": "object",
           "additionalProperties": false,
@@ -906,7 +906,8 @@
       "type": "object",
       "additionalProperties": false,
       "required": [
-        "kind"
+        "kind",
+        "resource"
       ],
       "properties": {
         "kind": {
@@ -918,15 +919,23 @@
         "description": {
           "type": "string"
         },
-        "workspace_provider": {
-          "$ref": "#/$defs/staticReference"
+        "resource": {
+          "$ref": "#/$defs/staticReference",
+          "description": "The one entry resource type this workflow accepts."
         },
-        "workspace_provider_inputs": {
+        "workdir": {
           "type": "object",
-          "additionalProperties": {
-            "$ref": "#/$defs/literalScalar"
+          "additionalProperties": false,
+          "required": ["from"],
+          "properties": {
+            "from": {
+              "type": "string",
+              "pattern": "^nodes\\.[A-Za-z_][A-Za-z0-9_]*\\.outputs\\.[A-Za-z_][A-Za-z0-9_]*$",
+              "$comment": "PLECTURE-CFG-FROM-ROOT: a node-output projection is nodes.<id>.outputs.<key>; that the output is an absolute directory is checked when the workflow runs."
+            }
           },
-          "description": "Literal data only: a workspace provider's hooks run before any node output exists."
+          "description": "Exactly one projection from a node output, resolving to an absolute local directory. The producer node and its transitive prerequisites are preparation nodes; every other node runs in this directory.",
+          "$comment": "PLECTURE-CFG-FROM-ROOT when it is anything other than a single node-output projection."
         },
         "display": {
           "type": "object",
@@ -948,6 +957,16 @@
         "inputs_schema_file": {
           "type": "string"
         },
+        "outputs": {
+          "type": "object",
+          "additionalProperties": {
+            "$ref": "#/$defs/dataValue"
+          },
+          "description": "The workflow's public outputs: each value is evaluated from node outputs and session inputs once its sources exist, and `workflow.outputs.<key>` reads the result."
+        },
+        "outputs_schema": {
+          "$ref": "#/$defs/schemaDocument"
+        },
         "nodes": {
           "type": "array",
           "items": {
@@ -968,6 +987,17 @@
                 "type": "object",
                 "additionalProperties": {
                   "$ref": "#/$defs/dataValue"
+                }
+              },
+              "subscription": {
+                "type": "object",
+                "additionalProperties": false,
+                "required": ["from"],
+                "properties": {
+                  "from": {
+                    "type": "string",
+                    "pattern": "^self\\.outputs\\.[A-Za-z_][A-Za-z0-9_]*$"
+                  }
                 }
               },
               "blocks": {
@@ -1086,17 +1116,14 @@
       "additionalProperties": false,
       "required": [
         "name",
-        "resource_observer",
         "query",
         "uses"
       ],
+      "$comment": "PLECTURE-CFG-FIELD-UNKNOWN for a retired `resource_observer`: a population's resource is its workflow's entry `resource`, and `query` is validated by that resource's query inputs_schema.",
       "properties": {
         "name": {
           "type": "string",
           "pattern": "^[A-Za-z_][A-Za-z0-9_]*$"
-        },
-        "resource_observer": {
-          "$ref": "#/$defs/staticReference"
         },
         "query": {
           "type": "object",
@@ -1430,7 +1457,7 @@
         }
       ]
     },
-    "workspaceProviderDefinition": {
+    "resourceDefinition": {
       "type": "object",
       "additionalProperties": false,
       "required": [
@@ -1438,46 +1465,13 @@
       ],
       "properties": {
         "kind": {
-          "const": "workspace_provider"
+          "const": "resource"
         },
         "match": {
           "type": "string"
         },
         "name": {
           "$ref": "#/$defs/dataValue"
-        },
-        "setup": {
-          "$ref": "#/$defs/action"
-        },
-        "cleanup": {
-          "$ref": "#/$defs/action"
-        },
-        "inputs_schema": {
-          "$ref": "#/$defs/schemaDocument"
-        },
-        "inputs_schema_file": {
-          "type": "string"
-        },
-        "outputs_schema": {
-          "$ref": "#/$defs/schemaDocument"
-        },
-        "outputs_schema_file": {
-          "type": "string"
-        }
-      }
-    },
-    "resourceObserverDefinition": {
-      "type": "object",
-      "additionalProperties": false,
-      "required": [
-        "kind"
-      ],
-      "properties": {
-        "kind": {
-          "const": "resource_observer"
-        },
-        "match": {
-          "type": "string"
         },
         "observe": {
           "$ref": "#/$defs/action"
@@ -1593,9 +1587,6 @@
           "description": "The dialect this user config tree is written in. It governs the whole tree \u2014 every definition document, split across any number of files, inherits it \u2014 and is orthogonal to plect_min_version, which is binary compatibility rather than language dialect.",
           "$comment": "PLECTURE-CFG-SCHEMA-VERSION-OLDER, PLECTURE-CFG-SCHEMA-VERSION-NEWER: which dialects are accepted is the loader's three-way comparison, not a structural bound, so no range is asserted here."
         },
-        "workspace_dirs_root": {
-          "type": "string"
-        },
         "max_up_children": {
           "type": "integer",
           "minimum": 1,
@@ -1625,6 +1616,15 @@
         },
         "inputs_schema_file": {
           "type": "string"
+        },
+        "trusted_project_roots": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "pattern": "^/"
+          },
+          "description": "Absolute directories whose `.plect/` definitions may layer over an invocation made below them.",
+          "$comment": "PLECTURE-CFG-FIELD-TYPE: a trusted project root is an absolute path."
         }
       },
       "required": [
@@ -1941,7 +1941,7 @@
       }
     },
     "taskDefinition": {
-      "$comment": "PLECTURE-CFG-FIELD-UNKNOWN, PLECTURE-CFG-FIELD-REQUIRED, PLECTURE-CFG-KIND-MISSING, PLECTURE-CFG-EXTENDS-INHERITED-FIELD when both extends and resource_observer are set.",
+      "$comment": "PLECTURE-CFG-FIELD-UNKNOWN, PLECTURE-CFG-FIELD-REQUIRED, PLECTURE-CFG-KIND-MISSING, PLECTURE-CFG-EXTENDS-INHERITED-FIELD when both extends and resource are set.",
       "type": "object",
       "additionalProperties": false,
       "required": [
@@ -1955,7 +1955,7 @@
       "then": {
         "not": {
           "required": [
-            "resource_observer"
+            "resource"
           ]
         },
         "properties": {
@@ -1969,10 +1969,10 @@
       },
       "else": {
         "required": [
-          "resource_observer"
+          "resource"
         ]
       },
-      "description": "A task declaration. It is an ordinary definition block, declared the same way every other kind is. Its instruction is the resolved texts of its `instructions` array, joined by a blank line in declaration order. A document is authored and referenced by its id; an instance is created from it by dynamic instantiation and identified by its resource and instance name. A declaration carrying `extends` is an extension: it specializes the base it names, inheriting the base's resource_observer rather than restating it.",
+      "description": "A task declaration. It is an ordinary definition block, declared the same way every other kind is. Its instruction is the resolved texts of its `instructions` array, joined by a blank line in declaration order. A document is authored and referenced by its id; an instance is created from it by dynamic instantiation and identified by its resource and instance name. A declaration carrying `extends` is an extension: it specializes the base it names, inheriting the base's resource rather than restating it.",
       "properties": {
         "kind": {
           "const": "task"
@@ -1984,9 +1984,9 @@
           "$ref": "#/$defs/staticReference",
           "description": "The base task this declaration specializes: an ordinary task reference, restrained to a closed set of additive operations (appended instructions, appended chains, appended done_when leaves, and new or default-completing schema keys). The base is untouched and remains independently referable."
         },
-        "resource_observer": {
+        "resource": {
           "$ref": "#/$defs/staticReference",
-          "description": "The resource observer this task is written for. Named after the kind it references, the same way a workflow's workspace_provider field is. Declaring it is what lets every key a check or a chain input reads be resolved against that observer's published state at load time, and what lets instantiation reject an incompatible resource up front. An extension does not declare this: it inherits the base's."
+          "description": "The resource this task is written for. Named after the kind it references, the same way a workflow's resource field is. Declaring it is what lets every key a check or a chain input reads be resolved against that resource's published state at load time, and what lets instantiation reject an incompatible resource up front. An extension does not declare this: it inherits the base's."
         },
         "instructions": {
           "type": "array",

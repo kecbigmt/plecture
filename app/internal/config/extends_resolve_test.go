@@ -13,7 +13,7 @@ func TestValidateTaskDocuments_ComposesInstructionsChainsAndDoneWhen(t *testing.
 [work]
 kind              = "task"
 description       = "Implement a fix and hand it to review"
-resource_observer = "issue_pr"
+resource          = "issue_pr"
 instructions      = [{ text = "Resolve the issue." }]
 
 [work.done_when]
@@ -34,6 +34,7 @@ all = [{ judge_pending = "ac-met" }]
 	writeFile(t, filepath.Join(base, "workflows", "claude_reviewer.toml"), `
 [claude_reviewer]
 kind = "workflow"
+resource = "issue"
 `)
 	cfg := &Config{BaseDir: base}
 	docs, observers := loadDocsAndObservers(t, cfg)
@@ -60,8 +61,8 @@ kind = "workflow"
 	if ext.Instruction != "Resolve the issue." {
 		t.Errorf("an extension with no instructions of its own inherits the base's: Instruction = %q", ext.Instruction)
 	}
-	if ext.ResourceObserver != "issue_pr" {
-		t.Errorf("ResourceObserver = %q, want it inherited from the base", ext.ResourceObserver)
+	if ext.Resource != "issue_pr" {
+		t.Errorf("Resource = %q, want it inherited from the base", ext.Resource)
 	}
 	if len(ext.Chains) != 1 || ext.Chains[0].ID != "review" {
 		t.Fatalf("Chains = %+v, want the extension's own chain composed in", ext.Chains)
@@ -77,7 +78,7 @@ func TestValidateTaskDocuments_ComposesThreeLayersDeep(t *testing.T) {
 	writeFile(t, filepath.Join(base, "tasks", "review.toml"), `
 [official_review]
 kind              = "task"
-resource_observer = "issue_pr"
+resource          = "issue_pr"
 instructions      = [{ text = "Review the change." }]
 
 [official_review.done_when]
@@ -129,7 +130,7 @@ func TestLoadTaskDocuments_ComposesExtendsWithoutValidateTaskDocuments(t *testin
 	writeFile(t, filepath.Join(base, "tasks", "work.toml"), `
 [work]
 kind              = "task"
-resource_observer = "issue_pr"
+resource          = "issue_pr"
 instructions      = [{ text = "Resolve the issue." }]
 
 [work.done_when]
@@ -166,7 +167,7 @@ func TestLoadTaskDocuments_RejectsInvalidExtendsWithoutValidateTaskDocuments(t *
 			body: `
 [work]
 kind              = "task"
-resource_observer = "issue_pr"
+resource          = "issue_pr"
 instructions      = [{ text = "Resolve the issue." }]
 
 [work.done_when]
@@ -186,7 +187,7 @@ all = [{ judge = "a different question", id = "ac-met" }]
 			body: `
 [work]
 kind              = "task"
-resource_observer = "issue_pr"
+resource          = "issue_pr"
 instructions      = [{ text = "Resolve the issue." }]
 
 [[work.chains]]
@@ -216,7 +217,7 @@ all = [{ check = "resource.state.revision", eq = "" }]
 			body: `
 [work]
 kind              = "task"
-resource_observer = "issue_pr"
+resource          = "issue_pr"
 instructions      = [{ text = "Resolve the issue." }]
 
 [work.state_schema]
@@ -245,6 +246,7 @@ priority = { type = "string", default = "high" }
 			writeFile(t, filepath.Join(base, "workflows", "claude_reviewer.toml"), `
 [claude_reviewer]
 kind = "workflow"
+resource = "issue"
 `)
 			writeFile(t, filepath.Join(base, "tasks", "work.toml"), tc.body)
 			_, err := (&Config{BaseDir: base}).LoadTaskDocuments("")
@@ -264,7 +266,7 @@ func TestValidateTaskDocuments_ComposedSchemaKeepsBaseConstraintsClosed(t *testi
 	writeFile(t, filepath.Join(base, "tasks", "work.toml"), `
 [work]
 kind              = "task"
-resource_observer = "issue_pr"
+resource          = "issue_pr"
 instructions      = [{ text = "Resolve the issue." }]
 
 [work.state_schema]
@@ -314,7 +316,7 @@ func TestLoadTaskDocuments_RejectsSchemaFileInExtendsChain(t *testing.T) {
 	writeFile(t, filepath.Join(base, "tasks", "work.toml"), `
 [work]
 kind              = "task"
-resource_observer = "issue_pr"
+resource          = "issue_pr"
 instructions      = [{ text = "Resolve the issue." }]
 state_schema_file = "state.schema.json"
 
@@ -337,7 +339,7 @@ func TestValidateTaskDocuments_ComposedSchemaPreservesSchemaValuedAdditionalProp
 	writeFile(t, filepath.Join(base, "tasks", "work.toml"), `
 [work]
 kind              = "task"
-resource_observer = "issue_pr"
+resource          = "issue_pr"
 instructions      = [{ text = "Resolve the issue." }]
 
 [work.state_schema]
@@ -382,7 +384,7 @@ func TestLoadTaskDocuments_RejectsSchemaShapeViolationsWithoutValidateTaskDocume
 			body: `
 [work]
 kind              = "task"
-resource_observer = "issue_pr"
+resource          = "issue_pr"
 instructions      = [{ text = "Resolve the issue." }]
 
 [work.state_schema]
@@ -406,7 +408,7 @@ required = ["priority"]
 			body: `
 [work]
 kind              = "task"
-resource_observer = "issue_pr"
+resource          = "issue_pr"
 instructions      = [{ text = "Resolve the issue." }]
 state_schema_file = "state.schema.json"
 
@@ -421,7 +423,7 @@ extends = "work"
 			body: `
 [work]
 kind              = "task"
-resource_observer = "issue_pr"
+resource          = "issue_pr"
 instructions      = [{ text = "Resolve the issue." }]
 
 [work.state_schema]
@@ -462,7 +464,7 @@ func TestValidateTaskDocuments_ComposesSchemaProperties(t *testing.T) {
 	writeFile(t, filepath.Join(base, "tasks", "work.toml"), `
 [work]
 kind              = "task"
-resource_observer = "issue_pr"
+resource          = "issue_pr"
 instructions      = [{ text = "Resolve the issue." }]
 
 [work.state_schema]
@@ -507,7 +509,7 @@ func TestLoadTaskDocuments_ComposedSchemaKeepsATypeIntroducedByALaterLayer(t *te
 	writeFile(t, filepath.Join(base, "tasks", "work.toml"), `
 [work]
 kind              = "task"
-resource_observer = "issue_pr"
+resource          = "issue_pr"
 instructions      = [{ text = "Resolve the issue." }]
 
 [work.state_schema.properties]

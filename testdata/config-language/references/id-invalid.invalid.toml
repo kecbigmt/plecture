@@ -2,7 +2,7 @@
 # reason: a hyphen is not valid in a definition id, because task ids are also workflow node ids.
 
 [local-okf]
-kind = "workspace_provider"
+kind = "effect"
 
 [local-okf.setup]
 type = "exec"

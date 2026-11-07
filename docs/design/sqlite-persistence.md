@@ -64,11 +64,11 @@ Process fan-out that shares the parent's own store (`plect serve` spawning a
 `app/internal/effect.ExecHook` (a task's setup/cleanup/health/capture,
 including a terminal-multiplexer pane's long-lived shell) and
 `app/internal/channel` (a channel delivery) use `IsolatedEnv`.
-`app/internal/effect.RunHook` (workspace-provider setup/cleanup/subscribe,
-resource observe/finalize), `app/internal/population`'s resource-observer
+`app/internal/effect.RunHook` (resource subscribe/unsubscribe, resource
+observe/finalize), `app/internal/population`'s resource-observer
 poll/subscribe query, and `app/internal/pluginservice` (a supervised
-service) use `InheritableEnv`: a workspace-provider hook, resource-observer
-query, or service may read `XDG_DATA_HOME` for on-disk state of its own,
+service) use `InheritableEnv`: a resource-observer
+query, resource subscription hook, or service may read `XDG_DATA_HOME` for on-disk state of its own,
 unrelated to plect's store.
 
 An `IsolatedEnv` child still needs to run `plect` against the daemon's own
@@ -143,7 +143,7 @@ variable-width fractional part, so lexical order equals time order; see
 
 A text column holding JSON carries the `_json` suffix. Every `_json` column
 is declaration-owned: its shape comes from a configuration-language or
-provider schema, and the database stores it opaquely, enforcing only
+plugin schema, and the database stores it opaquely, enforcing only
 well-formedness (`CHECK (col IS NULL OR json_valid(col))`, or `CHECK
 (json_valid(col))` for a `NOT NULL` one like `events.metadata_json`), never
 its internal structure. Core-owned structure is never stored as JSON — it
@@ -168,24 +168,25 @@ classifies every `_json` column by its owning declaration:
 | `node_executions.done_when_json` | core-owned shape, embedded as a narrow, documented exception (see above) rather than declaration-owned |
 | `node_execution_layers`/`task_instance_layers`.`inputs_json`, `.locals_json`, `.outputs_json` | the nesting layer's own effect declaration |
 | `node_execution_layers`/`task_instance_layers`.`env_json` | the workflow/effect's declared process environment for that layer |
-| `population_members.item_json` | the workspace provider's own resource-item map |
+| `population_members.item_json` | the resource observer's own item map |
 | `events.metadata_json` | the event producer's own map (a provider's change-type payload, a channel's delivery detail, ...) |
 
 | Table | Key and relational columns | JSON or scalar payload | Source |
 | --- | --- | --- | --- |
-| `sessions` | `id` (ULID) primary key; `name` (unique only among live rows — see "Session identity and lifecycle"); `status`, nullable `destroyed_at`; nullable `parent_session_id` and `root_session_id`, each referencing `sessions(id)`; nullable `resource_id`, `alias`, `workspace_dir`, `population_workflow`, `population_name` (the pair also references `populations(workflow, name)`); nullable lifecycle-configuration digest baseline; `workflow`, `created_at`, `updated_at` | inputs, health, tick backoff | `state.json` `sessions` entries |
+| `resources` | `id` primary key (opaque; see "Resources"); `type`; `name` unique across types; `locator`; `created_at` | none | each distinct resource a session, task, node, population member or delivery retry refers to |
+| `sessions` | `id` (ULID) primary key; `name` (unique only among live rows — see "Session identity and lifecycle"); `status`, nullable `destroyed_at`; nullable `parent_session_id` and `root_session_id`, each referencing `sessions(id)`; `project_root` (the configuration context, `''` for global only); nullable `resource_id` referencing `resources(id)`; nullable `tag`, `alias`, `population_workflow`, `population_name` (with `project_root` they reference `populations(project_root, workflow, name)`); nullable lifecycle-configuration digest baseline; `workflow`, `created_at`, `updated_at` | inputs, health, tick backoff | `state.json` `sessions` entries |
 | `node_instances` | `(session_id, node_id)` primary key; session foreign key; no other columns | none — purely the logical node's identity | `state.json` `sessions.*.tasks` entries with `dynamic` unset (keys only) |
-| `node_executions` | `id` (ULID, minted per setup attempt) primary key; `(session_id, node_id)` foreign key to `node_instances`; `sequence`; nullable `task_id`, `name`, `resource`; `scope`, `status`, nullable `finalized_at`; release outcome and unavailable reason; at most one unreleased row per `(session_id, node_id)` — see "Node execution identity" | inputs, outputs, state, observed value, `done_when` (rare, not relationally queried), setup-time cleanup facts, error, lifecycle timestamps | `state.json` `sessions.*.tasks` entries with `dynamic` unset (per-attempt facts) |
+| `node_executions` | `id` (ULID, minted per setup attempt) primary key; `(session_id, node_id)` foreign key to `node_instances`; `sequence`; nullable `task_id`, `name`, `resource_id` and `subscription_id` (each referencing `resources(id)`; `subscription_id` is the resource the node's subscription output bound); `scope`, `status`, nullable `finalized_at`; release outcome and unavailable reason; at most one unreleased row per `(session_id, node_id)` — see "Node execution identity" | inputs, outputs, state, observed value, `done_when` (rare, not relationally queried), setup-time cleanup facts, nullable `directory` (the directory the setup ran in; `NULL` when setup ran with no explicit directory), error, lifecycle timestamps | `state.json` `sessions.*.tasks` entries with `dynamic` unset (per-attempt facts) |
 | `node_execution_layers` | `(execution_id, position)` primary key; execution foreign key (`ON DELETE CASCADE`) | inputs, locals, outputs, env, heartbeat counters, lifecycle timestamps, error | `TaskState.Layers` (static node instances) |
 | `node_execution_dependencies` | `(execution_id, depends_on_execution_id)` primary key; both reference `node_executions(id)` (`ON DELETE CASCADE`) | none — the edge itself is the payload | snapshotted from `task.Resolved.DependsOn` at the dependent's own setup time — see "Node execution identity" |
-| `task_instances` | `id` (ULID, stable across every write that still names the same `(session_id, instance_name)`; re-minted only when a cleanup removes the row before a later setup recreates it) primary key; `(session_id, instance_name)` unique; session foreign key; `task_id`, `scope`, `status`, `sequence`, nullable `resource`, `named`, nullable `finalized_at` | inputs, outputs, state, observed value, extra completion data, error, lifecycle timestamps | `state.json` `sessions.*.tasks` entries with `dynamic: true` |
+| `task_instances` | `id` (ULID, stable across every write that still names the same `(session_id, instance_name)`; re-minted only when a cleanup removes the row before a later setup recreates it) primary key; `(session_id, instance_name)` unique; session foreign key; `task_id`, `scope`, `status`, `sequence`, nullable `resource_id` (referencing `resources(id)`), `named`, nullable `finalized_at` | inputs, outputs, state, observed value, extra completion data, nullable `directory` (the directory the setup ran in; `NULL` when setup ran with no explicit directory), error, lifecycle timestamps | `state.json` `sessions.*.tasks` entries with `dynamic: true` |
 | `task_instance_layers` | `(task_instance_id, position)` primary key; task-instance foreign key | inputs, locals, outputs, env, heartbeat counters, lifecycle timestamps, error | `TaskState.Layers` (dynamic instances) |
 | `task_done_when_states` | `task_instance_id` primary key and foreign key | counters, fingerprints, reason/body, escalation data | `TaskState.DoneWhen` (dynamic instances only) |
 | `task_done_when_unsatisfied_items` | `(task_instance_id, position)` primary key; task-instance foreign key | one unsatisfied-leaf id per row | `DoneWhenState.LastUnsatisfied` |
 | `task_done_when_judges` | `(task_instance_id, leaf_id)` primary key and task-instance foreign key; `judge_session`/nullable `judge_workflow` remain stored facts | action, reason, revision, relation, and creation time | `DoneWhenState.Judges` (dynamic instances only) |
-| `populations` | `(workflow, name)` primary key | none | `state.json` `populations` map key and value |
-| `population_members` | `(workflow, name, resource_id)` primary key and `populations(workflow, name)` foreign key; nullable `session_name` | item, generation, timestamps, flags, `decision_kind`/`decision_reason` | `PopulationState.Members` |
-| `population_member_blockers` | `(workflow, name, resource_id, position)` primary key; foreign key to `population_members` | one blocker reason per row | `PopulationMember.LastBlockers` |
+| `populations` | `(project_root, workflow, name)` primary key | none | `state.json` `populations` map key and value |
+| `population_members` | `(project_root, workflow, name, resource_id)` primary key, `populations(project_root, workflow, name)` foreign key, and `resource_id` referencing `resources(id)`; nullable `session_name` | item, generation, timestamps, flags, `decision_kind`/`decision_reason` | `PopulationState.Members` |
+| `population_member_blockers` | `(project_root, workflow, name, resource_id, position)` primary key; foreign key to `population_members` | one blocker reason per row | `PopulationMember.LastBlockers` |
 | `session_channel_health` | `(session_id, kind)` primary key; session foreign key; `kind` CHECK IN `validation`/`delivery` | consecutive failures, first/last failure time, last channel/error, escalation time | `Session.ChannelValidationHealth`/`ChannelDeliveryHealth` |
 | `up_reservations` | `child_session_name` primary key; nullable `parent_session_name`, `virtual_root`, `pid`, `reserved_at` | none | `state.json` `up_reservations` |
 | `events` | `id` primary key; `(session_id, sequence)` unique and references `sessions(id)`; `direction` CHECK IN `inbound`/`outbound`/`internal`; `metadata_json` CHECK `json_valid` | type, source, direction, summary, body, metadata, and recorded time | each `log.jsonl` record |
@@ -210,7 +211,8 @@ second tombstone marker exists. `chain_attempts` stores one non-empty cap
 refusal fingerprint per `(session_id, instance, chain_id)`, so
 compare-and-set and conditional revert run in an immediate transaction.
 `subscription_retries` stores deduplicated failed `subscribe` and
-`unsubscribe` intents by `(session_id, action, resource_id)`. A teardown retry
+`unsubscribe` intents by `(session_id, action, resource_id)`, `resource_id`
+referencing `resources(id)`. A teardown retry
 uses the destroyed incarnation id, and a sweep drops its stale subscribe
 intent or retries its unsubscribe intent without involving a same-name live
 replacement.
@@ -219,11 +221,15 @@ replacement.
 self-reported status line is derived from the most recent
 `plect.status_message` event on its live row (an ordinary `events` row, no
 special table), read via one indexed query — see "Status message" below.
-`Session.Branch` is likewise not a stored field: a checked-out branch is git
-vocabulary, and core stays version-control-agnostic by identity, so the fact
-lives only in the `@workflow` pseudo-node's own `node_executions.outputs_json`
-(a git-backed workspace provider's own setup output), read through
-`domain.SessionBranch` by the handful of call sites that want it.
+A session's working directory is likewise not a stored field: the workflow's
+`workdir` projection is evaluated on read from the producing node's
+`node_executions.outputs_json`, so no second copy can disagree with the node
+output. The directory a node's setup actually ran in is a separate fact,
+recorded per execution in `node_executions.directory` (and per dynamic
+instance in `task_instances.directory`), because cleanup and liveness probes
+must run in that directory even after the workflow changes. Core stays
+version-control-agnostic: a checked-out branch is an ordinary node output, not
+a session field.
 
 `population_members.session_name` is a recorded fact, not an enforced foreign
 key: admission can record a member's intended session name before that
@@ -238,9 +244,12 @@ path that sets it (`population/engine.go`'s admission, via
 population's own hook *before* it records the member row, so a read between
 those two steps would see a session with no population yet if the field were
 derived by join instead of stored on the session itself.
-`sessions.population_workflow`/`population_name` are that stored reference,
-with a composite foreign key to `populations(workflow, name)` and `ON DELETE
-SET NULL`. The foreign key is satisfiable at every write: `admit` only runs
+`sessions.population_workflow`/`population_name`, with the session's own
+`project_root`, are that stored reference, with a composite foreign key to
+`populations(project_root, workflow, name)` and `ON DELETE NO ACTION`: a
+population-owned session shares its population's configuration context, so
+one column answers both, and no code path deletes a population row. The
+foreign key is satisfiable at every write: `admit` only runs
 from `Reconcile`, which only runs once `e.state.Population` already found a
 row, and that row is upserted by `ApplyPoll`/`ApplyAppearance` before
 `Reconcile` is ever called — so a population always exists before any session
@@ -250,12 +259,11 @@ session that has not yet been destroyed or updated); the promoted columns are
 the authority for what a session was created under, which does not change for
 that session's lifetime once admission succeeds.
 
-`(workflow, name)` is a population's own domain identity — a workflow's
-declared population, its config address plus population name — not the
-`"workflow/name"` string built for JSON map keys and in-memory lookups
-elsewhere in `internal/population`; the persistence boundary parses that
-concatenation back into its two parts on every population read or write
-rather than storing it as an identity.
+`(project_root, workflow, name)` is a population's own domain identity — the
+configuration context that declares it, its workflow's config address, and
+its population name — so one name declared in two project roots is two
+populations. Callers address a population by `PopulationProvenance`, the same
+three fields, rather than by a joined string.
 
 `task_instances.named` replaces what would otherwise be a duplicated
 instance-identity string: a `--name` a caller gave the instance is always
@@ -276,8 +284,7 @@ enforces that exactly one of the two holds. The sentinel itself
 the `state.Store`/`ReserveUpSlot` call-site boundary, translated to and
 from these two columns only inside the persistence package.
 
-`Session.Nodes` (static workflow-DAG nodes, including the `@workflow`
-pseudo-node) and `Session.Tasks` (dynamic instances created at runtime via
+`Session.Nodes` (static workflow-DAG nodes) and `Session.Tasks` (dynamic instances created at runtime via
 `plect task setup`) map onto `node_instances`/`node_executions` and
 `task_instances` respectively — one domain collection per identity table
 (plus, for nodes, the per-attempt `node_executions` child it now owns; see
@@ -429,7 +436,7 @@ which has nothing to say about a node it no longer declares. It resolves each
 cleanup layer from the current trusted configuration tree by the execution's
 retained declaration and layer position. A changed lifecycle-configuration
 baseline warns but does not prevent current trusted cleanup from running. A
-missing definition, trust, cwd, or required cleanup input is a precondition
+missing definition, trust, or cwd is a precondition
 failure that leaves the obligation outstanding; it never falls back or infers
 release.
 
@@ -484,7 +491,7 @@ prerequisite's row already exists by the time the dependent looks up its
 current execution id.
 
 The migration from the prior single-row `node_instances` shape
-(`app/internal/persistence/migrations/20260907085032_add_node_execution_identity.sql`)
+(`app/db/migrations/20260907085032_add_node_execution_identity.sql`)
 carries its own reasoning for how it preserves existing rows.
 
 ## Session identity and lifecycle
@@ -502,6 +509,14 @@ key off it directly).
 create to reuse, minting a new row (new `id`) rather than reviving the old
 one; reads by name always resolve the live row, and a superseded
 incarnation stays reachable only by its own `id`.
+
+A name composed from a resource is not, by itself, an entry identity.
+`resource_id` and `tag` record the entry resource the row was created for, and
+`name` stores the name composed from them at creation. A resource-addressed
+`plect up` reuses a live row only when its `resource_id` is the `resources` row
+the identifier resolves to and its `tag` is the requested one, and reports a
+collision otherwise. A row whose `resource_id` is NULL records no entry, so it
+never matches and is reachable only by name.
 
 `status TEXT CHECK (status IN ('down', 'up', 'destroyed'))` is a lifecycle
 phase, not liveness or health — `domain.HealthState` (a derived runtime
@@ -540,6 +555,41 @@ onto the new incarnation just because the child itself is written again.
 of them onto the referenced row's current name (with a `root:` prefix for
 `RootSessionID`) — not itself the identity a write resolves against.
 
+## Resources
+
+Every `resource_id` column stores a `resources.id`, never an identifier
+string: the identifier a resource's actions receive is the row's `locator`.
+`resources.id` is opaque. Core mints a ULID for a row it records, while a row
+the resources migration recorded has a 32-digit hexadecimal id; nothing reads
+the shape.
+
+`type` is the address of the resource declaration that resolved the
+identifier, and `name` is the slug that declaration's `name` derived. `name` is
+the resource's identity and is unique across types, because a session takes
+its name from it: an identifier whose derived name is already recorded resolves
+to that row, and a different type deriving a recorded name is refused. A
+derived name outside the session-name rule is refused where it is derived.
+`locator` is the identifier first resolved to the row; a later spelling that
+derives the same name never replaces it.
+
+An empty `type` marks an identifier no declaration resolved: an identifier a
+task binds that no declaration, or more than one, recognizes, and every
+identifier the resources migration recorded. Such a row is named by its own
+`id`, so it never holds a name a declaration derives, and one identifier has
+one such row, found by its `locator`.
+
+A row is recorded in the same write transaction as the first row that refers
+to it, and deleted in the write that removes the last reference from
+`sessions`, `task_instances`, `node_executions` (`resource_id` or
+`subscription_id`), `population_members` or `subscription_retries`. A pending
+retry counts, because an `unsubscribe` retry still names its resource after the
+binding that subscribed it is gone; a task cleanup queues that retry in the
+write that removes the binding, so the row is never released in between. A
+destroyed session's retained row keeps its resource. The observation a node or
+task recorded (`resource_observation_json`) stays on that node or task row: it
+is what was observed when that row was evaluated, not a property of the
+resource.
+
 ## Status message
 
 `Session.Message` is not a stored field: the fact lives entirely in the
@@ -558,11 +608,21 @@ appending a new one; a no-op call appends nothing.
 
 ## Schema excerpts
 
-`app/internal/persistence/schema.sql` declares the application-owned tables.
-The following excerpt shows the session relationship and event ordering shape;
+`app/db/schema.sql` declares the application-owned tables.
+The following excerpt shows the resource, session relationship and event ordering shapes;
 the remaining tables follow the keys in the inventory above.
 
 ```sql
+CREATE TABLE resources (
+    id TEXT PRIMARY KEY,
+    type TEXT NOT NULL,
+    name TEXT NOT NULL,
+    locator TEXT NOT NULL,
+    created_at TEXT NOT NULL
+);
+
+CREATE UNIQUE INDEX resources_name ON resources(name);
+
 CREATE TABLE sessions (
     id TEXT PRIMARY KEY,
     name TEXT NOT NULL,
@@ -570,10 +630,11 @@ CREATE TABLE sessions (
     destroyed_at TEXT,
     parent_session_id TEXT REFERENCES sessions(id) ON DELETE NO ACTION,
     root_session_id TEXT REFERENCES sessions(id) ON DELETE NO ACTION,
-    resource_id TEXT,
+    resource_id TEXT REFERENCES resources(id),
+    tag TEXT,
     alias TEXT,
     workflow TEXT NOT NULL,
-    workspace_dir TEXT,
+    project_root TEXT NOT NULL DEFAULT '',
     population_workflow TEXT,
     population_name TEXT,
     created_at TEXT NOT NULL,
@@ -582,12 +643,13 @@ CREATE TABLE sessions (
     CHECK (NOT (parent_session_id IS NOT NULL AND root_session_id IS NOT NULL)),
     CHECK (root_session_id IS NULL OR root_session_id <> id),
     CHECK ((population_workflow IS NULL) = (population_name IS NULL)),
-    FOREIGN KEY (population_workflow, population_name) REFERENCES populations(workflow, name) ON DELETE SET NULL
+    FOREIGN KEY (project_root, population_workflow, population_name) REFERENCES populations(project_root, workflow, name) ON DELETE NO ACTION
 );
 
 CREATE UNIQUE INDEX sessions_live_name ON sessions(name) WHERE status <> 'destroyed';
 CREATE INDEX sessions_alias_idx ON sessions(alias);
 CREATE INDEX sessions_parent_idx ON sessions(parent_session_id);
+CREATE INDEX sessions_resource_idx ON sessions(resource_id);
 
 CREATE TABLE events (
     id TEXT PRIMARY KEY,
@@ -614,19 +676,10 @@ CREATE TABLE event_cursors (
 );
 ```
 
-The migration history begins with a transaction-only goose migration. Goose
-records the migration version in its ledger in the same transaction as the
-schema changes; migration files do not use a `NO TRANSACTION` directive.
-Migrations are Atlas-generated from `schema.sql` (see
-`app/internal/persistence/doc.go`) wherever Atlas's own diff is usable
-as-is; a structural change Atlas cannot safely diff against a database
-already holding rows (see `app/internal/persistence/migrations/`'s own
-`20260907002408_...` migration for the case this design's own session-id
-rework hit, and its `20260907085032_...` migration for the node execution
-identity split) is hand-written instead, reaching the identical structural
-end state `schema.sql` declares. Either way the migration file's exact SQL
-text — quoting, per-index `CREATE` statements — is authoritative over any
-excerpt here.
+The migration history (see "Migration history" below) reaches the structural
+end state `schema.sql` declares; each migration file's exact SQL text —
+quoting, per-index `CREATE` statements — is authoritative over any excerpt
+here.
 
 The append query obtains the next sequence inside the caller's write
 transaction. The persistence append method resolves the session's live row
@@ -654,7 +707,7 @@ The existing state store serializes `Put`, `Update`, `UpdatePopulation`,
 whole `state.json` file under `state.json.lock`
 (`app/internal/state/store.go`). SQLite replaces each callback with the
 following short transaction. No transaction contains an agent invocation,
-hook, workspace action, network call, terminal operation, or channel delivery.
+hook, effect action, network call, terminal operation, or channel delivery.
 Every write transaction opens with `BEGIN IMMEDIATE` before reading rows. This
 reserves a write-capable SQLite snapshot for read-then-write callbacks;
 `busy_timeout` does not retry a deferred transaction's `SQLITE_BUSY_SNAPSHOT`
@@ -684,6 +737,112 @@ state transition produces an event.
 Destroy preserves its checkpoint order: external cleanup, session checkpoint,
 lifecycle append, then the session's `Destroy` status transition. The retained
 destroyed row remains available to post-teardown status and retry handling.
+
+## Migration history
+
+`app/db/schema.sql` is the declarative source of truth for the database
+structure, and `app/db/query.sql` holds the queries sqlc compiles into
+`app/internal/persistence/sqlcgen`. The migration history is hand-written
+goose SQL in `app/db/migrations/`, embedded in the core binary and
+applied by goose, whose `goose_db_version` ledger is the only record of which
+migrations have run. A migration runs in goose's transaction, so its ledger
+entry commits with its schema change. A migration that rebuilds a table that
+other tables reference declares `-- +goose NO TRANSACTION` and opens its own
+`BEGIN IMMEDIATE` after `PRAGMA foreign_keys = off`: SQLite ignores that
+pragma inside a transaction, and dropping a referenced table with enforcement
+on deletes the referencing rows in cascade.
+
+Migrations are forward-only. A migration file has a `-- +goose Up` section
+and no `-- +goose Down` section. A migration that has shipped in a release
+never changes; a problem found after an upgrade is fixed with a new
+migration.
+
+Three Go tests keep the history and `schema.sql` in agreement. The first two
+are `app/db`'s own tests and do not depend on `app/internal/persistence`, so
+the contract files and the checks that guard them change under one owner
+gate. The third tests the runtime's migration path. CI runs all three as the
+`storage-contract` job's named steps, with the sqlc regeneration check; the
+first two also run under a plain `go test`.
+
+- `TestSchemaSQL_MatchesMigrationHistory` applies every embedded migration
+  with goose to an empty database and compares the result with `schema.sql` applied
+  directly. Tables are compared through SQLite introspection: columns,
+  secondary indexes including a partial index's predicate, foreign keys, and
+  CHECK constraints. Triggers and views are compared by `(type, name)`, their
+  table, and their normalized `CREATE` text: comments outside string literals
+  are stripped, identifier quoting is dropped, whitespace is collapsed, and
+  case is folded outside string literals. String-literal contents compare
+  byte for byte. goose's ledger table is excluded.
+- `TestMigrationsMatchTheirManifest` compares every migration file with
+  `app/db/migrations.sum`. The
+  manifest is in `sha256sum` format: one `<sha256 hex>  <file name>` line
+  per migration over its raw bytes, sorted by name, with no aggregate line.
+  The test fails on a changed hash, an unlisted file, a listed file that no
+  longer exists, and a migration with a `+goose Down` annotation.
+  `go test ./db -update` rewrites the manifest after an intended edit of an
+  unreleased migration, and refuses while any migration has a Down section.
+  The author of a migration change runs it and commits the manifest with the
+  change; CI and reviewers only verify, never rewrite. `cd migrations && sha256sum -c ../migrations.sum`
+  checks it without Go.
+- `TestMigrate_UpgradesEveryReleasedSchema` (`app/internal/persistence`,
+  `-tags integration`) loads one fixture per released schema version,
+  `app/internal/persistence/testdata/upgrade/<version>.sql`: a `sqlite3` dump
+  of a store built from that release tag's own migration files, its goose
+  ledger, and representative rows. It runs the current migrations through
+  `persistence.Migrate` with foreign keys enforced, and asserts the resulting
+  version and the rows that survive. A release with a new schema version adds
+  its fixture.
+- `TestMigrate_RefusedUpgradeLeavesTheReleasedSchemaOpenable` (same package
+  and tag) loads each `testdata/upgrade/refused/<version>.sql`, a released
+  schema holding rows the current migrations refuse, built the same way. It
+  asserts that `persistence.Migrate` fails, that the ledger version is still
+  `<version>`, and that a binary whose migrations end at `<version>` opens the
+  store.
+
+### Changing the schema
+
+1. Edit `app/db/schema.sql`, and `app/db/query.sql` when a query changes.
+2. Add a migration under `app/db/migrations/` that reaches the same
+   structure, with an Up section only. Never edit a migration that has
+   shipped in a release.
+3. In `app/`, run `go generate ./internal/persistence/...` to regenerate
+   `app/internal/persistence/sqlcgen`, and `go test ./db -update` to rewrite
+   `app/db/migrations.sum`. Commit both with the change.
+4. Run `go test ./db ./internal/persistence/...`. The drift test fails until
+   the migration history reproduces `schema.sql`.
+
+### Adding an upgrade fixture
+
+A release whose schema version is new adds
+`app/internal/persistence/testdata/upgrade/<version>.sql` and lists the rows
+its upgrade must leave in the test's `upgradeFixtures` table. The fixture is
+built from the release tag's own migration files. `<migrations>` is the tag's
+migrations directory: `app/db/migrations`, or
+`app/internal/persistence/migrations` in a tag older than `app/db`.
+`<goose version>` is the `github.com/pressly/goose/v3` version in
+`app/go.mod`.
+
+```bash
+git archive <tag> <migrations> | tar -x -C <dir>
+cd <dir>
+go run github.com/pressly/goose/v3/cmd/goose@<goose version> \
+  -dir <migrations> sqlite3 store.db up
+sqlite3 store.db < rows.sql   # representative rows, adapted from the previous fixture
+sqlite3 store.db .dump > <repo>/app/internal/persistence/testdata/upgrade/<version>.sql
+```
+
+### Rollback
+
+A problem found after an upgrade is fixed forward, with a new migration.
+Restoring the backup taken before the upgrade is allowed only right after the
+upgrade, before anything has been written to the new schema: that is the one
+case in which a restore loses nothing. There is no other rollback path.
+
+`plect` has no command that reverses a migration. Running the goose CLI's
+`down` against `storage.db` must never be done: goose treats a missing Down
+section as an empty migration, so it deletes the ledger entry and leaves the
+schema unchanged, and the ledger then describes a schema the store does not
+have. A development reset uses a scratch `PLECT_DATA_HOME` instead.
 
 ## Migration access gate
 
@@ -728,6 +887,16 @@ bounded period and otherwise refuses without accessing data. A database whose
 goose ledger contains a version newer than the binary embeds always refuses
 normal and migration access with an upgrade instruction and makes no change.
 
+goose commits each migration in its own transaction, so a migration that
+refuses because of the rows it finds does so only after every earlier pending
+migration is committed, and the previous release then refuses the database as
+newer than it supports. The workdir-directory migration refuses while a
+session that has not been destroyed holds an unreleased `@workflow` execution;
+the runner evaluates that same condition under migration exclusion before
+applying any pending migration, and refuses with the migration's message
+without changing the database. The migration keeps its own refusal as the last
+line of defense.
+
 A development build — one `app/internal/version.IsDevelopmentBuild` reports
 true for, because the release pipeline never stamped it — additionally
 refuses to advance a database it did not create: a ledger already holding an
@@ -757,7 +926,7 @@ routes answer an unavailable/retryable response while a migration blocks an
 operation. `plect-web` performs the same startup check and its handlers use
 the same facade. Plugin executables never open core's database; a plugin that
 invokes `plect` or the local event service receives the same wait-or-refuse
-result. This keeps provider code outside migration coordination and prevents a
+result. This keeps plugin code outside migration coordination and prevents a
 second storage authority.
 
 ## Event positions and cursors
@@ -916,8 +1085,8 @@ The database path resolution, connection settings, schema, query generation,
 transactions, migration gate, importer, and cursor validation are core
 responsibilities in `app/`. They provide durable identity, lifecycle,
 relationships, observation, and handoff without naming a provider. The schema
-contains no configuration syntax and adds no configuration key. Workspace
-providers, channel adapters, and other plugins continue to provide external
+contains no configuration syntax and adds no configuration key. Effect
+plugins, channel adapters, and other plugins continue to provide external
 effects and their own private persistence; they do not import the SQLite driver
 through `contracts/`.
 
