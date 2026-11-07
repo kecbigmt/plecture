@@ -440,7 +440,7 @@ jobs:
   # a release tag, without paying for a macOS runner on every PR.
   build-test-darwin:
     name: build-test-darwin
-    if: (github.event_name == 'push' && github.ref == 'refs/heads/main') || github.event_name == 'pull_request'
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
     runs-on: macos-15
     steps:
       - uses: actions/checkout@v4
