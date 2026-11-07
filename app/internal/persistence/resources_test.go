@@ -379,3 +379,35 @@ func TestResources_ARawSQLWriteDroppingTheLastReferenceRemovesTheRow(t *testing.
 		})
 	}
 }
+
+func TestUpdateSessionWithSubscriptionRetries_TheQueuedUnsubscribeHoldsTheRowItsWriteUnbinds(t *testing.T) {
+	db := migratedTestDB(t)
+	ctx := context.Background()
+	s := sessionWithResource("s1", nil)
+	s.Tasks = map[string]*contract.TaskState{"t#1": {Scope: "run", Status: contract.TaskStatusProduced, TaskID: "t", Resource: caseResource("case://1")}}
+	mustPut(t, db, s)
+	const recordedAt = "2000-01-01T00:00:00Z"
+	if _, err := db.write.Exec(`UPDATE resources SET created_at = ?`, recordedAt); err != nil {
+		t.Fatal(err)
+	}
+	var id string
+	if err := db.write.QueryRow(`SELECT id FROM resources`).Scan(&id); err != nil {
+		t.Fatal(err)
+	}
+
+	err := db.UpdateSessionWithSubscriptionRetries(ctx, "s1", func(s *domain.Session) error {
+		s.Tasks = nil
+		return nil
+	}, subscriptionRetryUnsubscribe, []contract.Resource{*caseResource("case://1")})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	var gotID, gotCreatedAt string
+	if err := db.write.QueryRow(`SELECT id, created_at FROM resources`).Scan(&gotID, &gotCreatedAt); err != nil {
+		t.Fatal(err)
+	}
+	if gotID != id || gotCreatedAt != recordedAt {
+		t.Errorf("resource row = (%s, %s), want the original (%s, %s) never released and recorded again", gotID, gotCreatedAt, id, recordedAt)
+	}
+}

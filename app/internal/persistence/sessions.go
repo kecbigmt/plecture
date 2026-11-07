@@ -144,15 +144,12 @@ func (db *DB) UpdateSessionWithSubscriptionRetries(ctx context.Context, name str
 			return err
 		}
 
-		if err := db.writeSessionTx(ctx, tx, s); err != nil {
-			return err
-		}
 		for i := range resources {
 			if err := queueSubscriptionRetryTx(ctx, tx, s.ID, action, &resources[i]); err != nil {
 				return err
 			}
 		}
-		return nil
+		return db.writeSessionTx(ctx, tx, s)
 	})
 }
 
