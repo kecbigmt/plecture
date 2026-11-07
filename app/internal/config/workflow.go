@@ -558,7 +558,7 @@ func (c *Config) LoadWorkflows(projectRoot string) (map[string]WorkflowFile, err
 	if !workflowsHavePopulations(out) {
 		return out, nil
 	}
-	observers, err := c.LoadResourceDefs()
+	observers, err := c.LoadResourceDefs(projectRoot)
 	if err != nil {
 		return nil, err
 	}

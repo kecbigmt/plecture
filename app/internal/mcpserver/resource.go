@@ -27,7 +27,11 @@ func handleResourceStatus(ctx context.Context, request mcp.CallToolRequest) (*mc
 	if err != nil {
 		return errorResult(err), nil
 	}
-	result, err := service.ResourceStatus(cfg, service.ResourceStatusParams{ResourceID: resourceID})
+	root, err := callerProjectRoot(cfg)
+	if err != nil {
+		return errorResult(err), nil
+	}
+	result, err := service.ResourceStatus(cfg, service.ResourceStatusParams{ResourceID: resourceID, ProjectRoot: root})
 	if err != nil {
 		return errorResult(err), nil
 	}

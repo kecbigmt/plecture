@@ -36,8 +36,8 @@ type ChannelInputSpec struct {
 }
 
 // ChannelDefinition binds a workflow's [[event.channel]] to one delivery
-// primitive. It loads from the plugin and global layers alone: an exec or
-// shell channel runs a process, and event data must never choose what runs.
+// primitive. It loads from trusted layers alone: an exec or shell channel runs
+// a process, and event data must never choose what runs.
 type ChannelDefinition struct {
 	ID          string
 	Type        string
@@ -85,14 +85,8 @@ func (d ChannelDefinition) ApplyInputDefaults(inputs map[string]any) map[string]
 	return out
 }
 
-// LoadChannels loads every channel the trusted base layers declare: plugin
-// roots first, then the global config dir.
-func (c *Config) LoadChannels() (map[string]ChannelDefinition, error) {
-	resolved, err := c.trustedKind(lang.KindChannel)
-	if err != nil {
-		return nil, err
-	}
-	return loadTrustedKind(resolved, c.channelFromDefinition)
+func (c *Config) LoadChannels(projectRoot string) (map[string]ChannelDefinition, error) {
+	return loadKind(c, projectRoot, lang.KindChannel, c.channelFromDefinition)
 }
 
 func (c *Config) channelFromDefinition(def *lang.Definition, fromPlugin bool) (ChannelDefinition, error) {

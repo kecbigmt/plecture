@@ -60,7 +60,7 @@ func observeResources(cfg *config.Config, store *state.Store, sessionName, only 
 	if len(docs) == 0 {
 		return nil, nil
 	}
-	observers, err := cfg.LoadResourceDefs()
+	observers, err := cfg.LoadResourceDefs(session.ProjectRoot)
 	if err != nil {
 		return nil, &Error{Code: ErrExecutionFailed, Message: fmt.Sprintf("load resources: %v", err)}
 	}

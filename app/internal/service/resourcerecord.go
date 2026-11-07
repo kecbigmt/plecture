@@ -59,11 +59,11 @@ func ResolveResource(store *state.Store, address string, def config.ResourceDef,
 
 // An identifier that no declaration, or more than one, recognizes is still
 // bound, so it is recorded without a type.
-func boundResource(cfg *config.Config, store *state.Store, identifier string) (*contract.Resource, *Error) {
+func boundResource(cfg *config.Config, store *state.Store, projectRoot, identifier string) (*contract.Resource, *Error) {
 	if identifier == "" {
 		return nil, nil
 	}
-	defs, err := cfg.LoadResourceDefs()
+	defs, err := cfg.LoadResourceDefs(projectRoot)
 	if err != nil {
 		return nil, &Error{Code: ErrExecutionFailed, Message: fmt.Sprintf("load resources: %v", err)}
 	}

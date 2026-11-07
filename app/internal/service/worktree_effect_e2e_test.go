@@ -203,7 +203,7 @@ func TestE2E_GithubResourceWiresAndDropsEventDelivery(t *testing.T) {
 	const session = "testowner/testrepo-42+review"
 	const resource = "https://github.com/testowner/testrepo/pull/42"
 
-	wired, err := subscribeIfWired(cfg, session, resource)
+	wired, err := subscribeIfWired(cfg, session, "", resource)
 	if err != nil {
 		t.Fatalf("subscribeIfWired: %v", err)
 	}
@@ -215,7 +215,7 @@ func TestE2E_GithubResourceWiresAndDropsEventDelivery(t *testing.T) {
 		t.Fatalf("subscriptions after subscribeIfWired = %v, want exactly one", subs)
 	}
 
-	unsubscribed, err := unsubscribeIfWired(cfg, session, resource)
+	unsubscribed, err := unsubscribeIfWired(cfg, session, "", resource)
 	if err != nil {
 		t.Fatalf("unsubscribeIfWired: %v", err)
 	}
@@ -265,7 +265,7 @@ func TestIntegration_RetryCallsGithubWatcherAfterHookFailure(t *testing.T) {
 	if err := os.Rename(watcher, watcher+".held"); err != nil {
 		t.Fatal(err)
 	}
-	wired, msg := wireDeliveryOnSetup(cfg, store, name, testResource(resource), false)
+	wired, msg := wireDeliveryOnSetup(cfg, store, name, "", testResource(resource), false)
 	if wired || msg == "" {
 		t.Fatalf("first attempt wired=%v error=%q", wired, msg)
 	}

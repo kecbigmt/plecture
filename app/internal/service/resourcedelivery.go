@@ -24,7 +24,7 @@ import (
 // a retry gets queued. Never returns an error: every caller treats a wiring
 // failure as non-fatal to the instantiation that already succeeded,
 // reporting it via the returned message instead.
-func wireDeliveryOnSetup(cfg *config.Config, store *state.Store, sessionName string, resource *contract.Resource, reportInvalidInputs bool) (bool, string) {
+func wireDeliveryOnSetup(cfg *config.Config, store *state.Store, sessionName, projectRoot string, resource *contract.Resource, reportInvalidInputs bool) (bool, string) {
 	if resource == nil || strings.TrimSpace(resource.Locator) == "" {
 		return false, ""
 	}
@@ -32,7 +32,7 @@ func wireDeliveryOnSetup(cfg *config.Config, store *state.Store, sessionName str
 	var errMsg string
 	if lockErr := withDeliveryLock(store, sessionName, func() {
 		var subErr error
-		subscribed, subErr = subscribeIfWiredWithPolicy(cfg, sessionName, resource.Locator, reportInvalidInputs)
+		subscribed, subErr = subscribeIfWiredWithPolicy(cfg, sessionName, projectRoot, resource.Locator, reportInvalidInputs)
 		if subErr != nil {
 			errMsg = subErr.Error()
 		}
@@ -53,15 +53,15 @@ func wireDeliveryOnSetup(cfg *config.Config, store *state.Store, sessionName str
 //
 // A bound resource can have no delivery hook. Ambiguous declarations still
 // report an error so the caller can queue a retry after configuration repair.
-func subscribeIfWired(cfg *config.Config, sessionName, resourceID string) (bool, error) {
-	return subscribeIfWiredWithPolicy(cfg, sessionName, resourceID, false)
+func subscribeIfWired(cfg *config.Config, sessionName, projectRoot, resourceID string) (bool, error) {
+	return subscribeIfWiredWithPolicy(cfg, sessionName, projectRoot, resourceID, false)
 }
 
-func subscribeIfWiredWithPolicy(cfg *config.Config, sessionName, resourceID string, reportInvalidInputs bool) (bool, error) {
+func subscribeIfWiredWithPolicy(cfg *config.Config, sessionName, projectRoot, resourceID string, reportInvalidInputs bool) (bool, error) {
 	if strings.TrimSpace(resourceID) == "" {
 		return false, nil
 	}
-	matched, err := matchResourceDefs(cfg, resourceID)
+	matched, err := matchResourceDefs(cfg, projectRoot, resourceID)
 	if err != nil {
 		return false, err
 	}
@@ -104,11 +104,11 @@ func subscribeIfWiredWithPolicy(cfg *config.Config, sessionName, resourceID stri
 // an ambiguous match, which subscribeIfWired would itself have refused to
 // wire): both report (false, nil), so a caller cannot mistake silence for
 // having actually dropped a registration.
-func unsubscribeIfWired(cfg *config.Config, sessionName, resourceID string) (bool, error) {
+func unsubscribeIfWired(cfg *config.Config, sessionName, projectRoot, resourceID string) (bool, error) {
 	if strings.TrimSpace(resourceID) == "" {
 		return false, nil
 	}
-	matched, err := matchResourceDefs(cfg, resourceID)
+	matched, err := matchResourceDefs(cfg, projectRoot, resourceID)
 	if err != nil {
 		return false, err
 	}
@@ -146,7 +146,7 @@ func unsubscribeIfWired(cfg *config.Config, sessionName, resourceID string) (boo
 // as a failure inside it. Never returns an error: both callers treat a
 // wiring failure as non-fatal to the teardown that already succeeded,
 // reporting it via the returned message instead.
-func unwireDeliveryOnTeardown(cfg *config.Config, store *state.Store, sessionName string, resource *contract.Resource, sessionID string) (bool, string) {
+func unwireDeliveryOnTeardown(cfg *config.Config, store *state.Store, sessionName, projectRoot string, resource *contract.Resource, sessionID string) (bool, string) {
 	if resource == nil || strings.TrimSpace(resource.Locator) == "" {
 		return false, ""
 	}
@@ -159,7 +159,7 @@ func unwireDeliveryOnTeardown(cfg *config.Config, store *state.Store, sessionNam
 			errMsg = fmt.Sprintf("could not verify whether %s is still needed: %v", resource.Locator, freshErr)
 		case shouldUnsubscribe(cfg, fresh, *resource):
 			var unsubErr error
-			unsubscribed, unsubErr = unsubscribeIfWired(cfg, sessionName, resource.Locator)
+			unsubscribed, unsubErr = unsubscribeIfWired(cfg, sessionName, projectRoot, resource.Locator)
 			if unsubErr != nil {
 				errMsg = unsubErr.Error()
 			}

@@ -241,7 +241,7 @@ func (c *Config) ChannelsForSession(s *domain.Session) (map[string]ChannelDefini
 	if r, ok, err := RevisionForSession(s); ok || err != nil {
 		return r.Channels, err
 	}
-	return c.LoadChannels()
+	return c.LoadChannels(s.ProjectRoot)
 }
 
 func (c *Config) CaptureWorkflowRevision(projectRoot, name string) (WorkflowRevision, error) {
@@ -273,7 +273,7 @@ func (c *Config) CaptureWorkflowRevision(projectRoot, name string) (WorkflowRevi
 		}
 		effects[key] = def
 	}
-	if err := c.validateKnownNodeSubscriptions(wf, effects); err != nil {
+	if err := c.validateKnownNodeSubscriptions(projectRoot, wf, effects); err != nil {
 		return WorkflowRevision{}, err
 	}
 	tasks, err := c.LoadTaskDocuments(projectRoot)
@@ -281,7 +281,7 @@ func (c *Config) CaptureWorkflowRevision(projectRoot, name string) (WorkflowRevi
 		return WorkflowRevision{}, err
 	}
 	if len(tasks) > 0 {
-		observers, err := c.LoadResourceDefs()
+		observers, err := c.LoadResourceDefs(projectRoot)
 		if err != nil {
 			return WorkflowRevision{}, err
 		}
@@ -299,7 +299,7 @@ func (c *Config) CaptureWorkflowRevision(projectRoot, name string) (WorkflowRevi
 	}
 	revision := WorkflowRevision{Workflow: wf, Effects: effects, Tasks: tasks}
 	if len(wf.Event.Channel) > 0 {
-		channels, err := c.LoadChannels()
+		channels, err := c.LoadChannels(projectRoot)
 		if err != nil {
 			return WorkflowRevision{}, err
 		}
@@ -318,7 +318,7 @@ func (c *Config) CaptureWorkflowRevision(projectRoot, name string) (WorkflowRevi
 	return revision, nil
 }
 
-func (c *Config) validateKnownNodeSubscriptions(wf WorkflowFile, effects map[string]TaskDefinition) error {
+func (c *Config) validateKnownNodeSubscriptions(projectRoot string, wf WorkflowFile, effects map[string]TaskDefinition) error {
 	var resources map[string]ResourceDef
 	for _, node := range wf.Nodes {
 		if node.Subscription == "" {
@@ -336,7 +336,7 @@ func (c *Config) validateKnownNodeSubscriptions(wf WorkflowFile, effects map[str
 		}
 		if resources == nil {
 			var err error
-			resources, err = c.LoadResourceDefs()
+			resources, err = c.LoadResourceDefs(projectRoot)
 			if err != nil {
 				return err
 			}

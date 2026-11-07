@@ -22,7 +22,7 @@ func observers(t *testing.T, body string) map[string]config.ResourceDef {
 	if err := os.WriteFile(path, []byte(body), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	defs, err := (&config.Config{BaseDir: dir}).LoadResourceDefs()
+	defs, err := (&config.Config{BaseDir: dir}).LoadResourceDefs("")
 	if err != nil {
 		t.Fatalf("load observers: %v", err)
 	}

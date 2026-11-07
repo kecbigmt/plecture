@@ -41,7 +41,7 @@ func validateTaskDocuments(cfg *config.Config, session *domain.Session, docs map
 	if session.WorkflowRevision != "" {
 		return nil
 	}
-	observers, err := cfg.LoadResourceDefs()
+	observers, err := cfg.LoadResourceDefs(session.ProjectRoot)
 	if err != nil {
 		return &Error{Code: ErrExecutionFailed, Message: fmt.Sprintf("load resources: %v", err)}
 	}
@@ -162,7 +162,7 @@ func SetTaskState(cfg *config.Config, store *state.Store, params SetTaskStatePar
 // document to a resource, observing that resource once, and recording the
 // instruction the session is asked to carry out.
 func setupTaskDocument(cfg *config.Config, store *state.Store, resolvedName string, session *domain.Session, doc config.TaskDocument, params TaskSetupParams) (*TaskSetupResult, error) {
-	observers, err := cfg.LoadResourceDefs()
+	observers, err := cfg.LoadResourceDefs(session.ProjectRoot)
 	if err != nil {
 		return nil, &Error{Code: ErrExecutionFailed, Message: fmt.Sprintf("load resources: %v", err)}
 	}
@@ -243,7 +243,7 @@ func setupTaskDocument(cfg *config.Config, store *state.Store, resolvedName stri
 	recordLifecycle(store, resolvedName, "task_setup", fmt.Sprintf("instantiated %s", key))
 	appendInstruction(store, resolvedName, key, params.Resource, instruction)
 
-	subscribed, subscribeErrMsg := wireDeliveryOnSetup(cfg, store, resolvedName, bound, false)
+	subscribed, subscribeErrMsg := wireDeliveryOnSetup(cfg, store, resolvedName, session.ProjectRoot, bound, false)
 
 	return &TaskSetupResult{
 		SessionName: resolvedName,

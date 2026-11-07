@@ -82,13 +82,17 @@ queue position. --json reports result and queue_position for scripts.`,
 		if err != nil {
 			return err
 		}
+		store := state.NewStore("")
 		root := ""
-		if recognized, _ := service.RecognizesResource(cfg, args[0]); recognized {
+		needsContext, err := service.NeedsProjectContext(store, args[0])
+		if err != nil {
+			return err
+		}
+		if needsContext {
 			if root, err = selectProjectRoot(cmd, cfg); err != nil {
 				return err
 			}
 		}
-		store := state.NewStore("")
 		result, err := service.Up(cfg, store, service.UpParams{
 			Identifier:     args[0],
 			Tag:            upTag,

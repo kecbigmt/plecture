@@ -207,6 +207,7 @@ func (d *sessionDispatcher) processEvent(ctx context.Context, s *domain.Session,
 			delivered[name] = true
 		}
 	}
+	rootErr := d.projectRootErr(s)
 	for i, ch := range d.channels {
 		if !channelMatches(ch, ev) {
 			continue
@@ -220,6 +221,10 @@ func (d *sessionDispatcher) processEvent(ctx context.Context, s *domain.Session,
 		}
 		matched = true // set on the main goroutine, before any worker starts — no lock needed
 		if delivered[ch.Name] {
+			continue
+		}
+		if rootErr != nil {
+			failures[i] = deliveryFailure{channel: ch.Name, cause: rootErr}
 			continue
 		}
 		wg.Go(func() {
@@ -282,6 +287,16 @@ func (d *sessionDispatcher) processEvent(ctx context.Context, s *domain.Session,
 	first := failures[ordered[0]]
 	recordDeliveryFailure(d.state, d.session, first.channel, first.cause, time.Now())
 	return false
+}
+
+// projectRootErr gates every channel of a session in a project root, not only
+// the ones that root declared: a frozen revision does not record which layer a
+// channel came from.
+func (d *sessionDispatcher) projectRootErr(s *domain.Session) error {
+	if s.ProjectRoot == "" {
+		return nil
+	}
+	return d.currentConfig().RequireProjectRoot(s.ProjectRoot)
 }
 
 type deliveryFailure struct {

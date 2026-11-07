@@ -115,7 +115,7 @@ func sweepOrphanedPendingDeliveries(cfg *config.Config, store *state.Store) {
 				sweepErr = dequeuePendingDelivery(store, retry)
 				return
 			}
-			unsubscribed, err := unsubscribeIfWired(cfg, retry.Session, retry.Resource.Locator)
+			unsubscribed, err := unsubscribeIfWired(cfg, retry.Session, retry.ProjectRoot, retry.Resource.Locator)
 			if err != nil || !unsubscribed {
 				sweepErr = err
 				return
@@ -165,7 +165,7 @@ func flushOnePendingDelivery(cfg *config.Config, store *state.Store, retry persi
 		if fresh == nil || !resourceStillNeededBySession(cfg, fresh, retry.Resource) {
 			return dequeuePendingDelivery(store, retry)
 		}
-		subscribed, err := subscribeIfWiredWithPolicy(cfg, retry.Session, retry.Resource.Locator, nodeSubscriptionNeededBySession(fresh, retry.Resource))
+		subscribed, err := subscribeIfWiredWithPolicy(cfg, retry.Session, retry.ProjectRoot, retry.Resource.Locator, nodeSubscriptionNeededBySession(fresh, retry.Resource))
 		if err != nil || !subscribed {
 			return err
 		}
@@ -174,7 +174,7 @@ func flushOnePendingDelivery(cfg *config.Config, store *state.Store, retry persi
 		if fresh != nil && resourceStillNeededBySession(cfg, fresh, retry.Resource) {
 			return dequeuePendingDelivery(store, retry)
 		}
-		unsubscribed, err := unsubscribeIfWired(cfg, retry.Session, retry.Resource.Locator)
+		unsubscribed, err := unsubscribeIfWired(cfg, retry.Session, retry.ProjectRoot, retry.Resource.Locator)
 		if err != nil || !unsubscribed {
 			return err
 		}

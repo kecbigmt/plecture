@@ -43,7 +43,7 @@ func runNodeSetup(ctx context.Context, cfg *config.Config, store *state.Store, o
 	if observer == nil {
 		observer = noopTaskObserver{}
 	}
-	err := task.RunSetup(ctx, nodesOnly, vars, merged, nodeSubscriptionReleaseObserver{Observer: observer, cfg: cfg, store: store, sessionName: session.Name})
+	err := task.RunSetup(ctx, nodesOnly, vars, merged, nodeSubscriptionReleaseObserver{Observer: observer, cfg: cfg, store: store, sessionName: session.Name, projectRoot: session.ProjectRoot})
 	if session.Nodes == nil {
 		session.Nodes = make(map[string]*contract.TaskState)
 	}
@@ -66,7 +66,7 @@ func runNodeSetup(ctx context.Context, cfg *config.Config, store *state.Store, o
 				errs = append(errs, fmt.Errorf("node %q subscription output %q must be a non-empty resource ID", r.NodeID, r.Subscription))
 				continue
 			}
-			resource, boundErr := boundResource(cfg, store, identifier)
+			resource, boundErr := boundResource(cfg, store, session.ProjectRoot, identifier)
 			if boundErr != nil {
 				errs = append(errs, fmt.Errorf("node %q subscription: %w", r.NodeID, boundErr))
 				continue
@@ -96,7 +96,7 @@ func runTaskCleanup(ctx context.Context, cfg *config.Config, store *state.Store,
 			released[id] = st
 		}
 	}
-	if releaseErr := releaseNodeSubscriptions(cfg, store, session.Name, released); releaseErr != nil && err == nil {
+	if releaseErr := releaseNodeSubscriptions(cfg, store, session.Name, session.ProjectRoot, released); releaseErr != nil && err == nil {
 		err = releaseErr
 	}
 	return err

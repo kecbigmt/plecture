@@ -18,6 +18,7 @@ type nodeSubscriptionReleaseObserver struct {
 	cfg         *config.Config
 	store       *state.Store
 	sessionName string
+	projectRoot string
 }
 
 func (o nodeSubscriptionReleaseObserver) OnResult(scope, node, effectID, action, result string, elapsed time.Duration, body string) {
@@ -32,10 +33,10 @@ func (o nodeSubscriptionReleaseObserver) OnRelease(released map[string]*contract
 			return err
 		}
 	}
-	return releaseNodeSubscriptions(o.cfg, o.store, o.sessionName, released)
+	return releaseNodeSubscriptions(o.cfg, o.store, o.sessionName, o.projectRoot, released)
 }
 
-func releaseNodeSubscriptions(cfg *config.Config, store *state.Store, sessionName string, released map[string]*contract.TaskState) error {
+func releaseNodeSubscriptions(cfg *config.Config, store *state.Store, sessionName, projectRoot string, released map[string]*contract.TaskState) error {
 	if len(released) == 0 {
 		return nil
 	}
@@ -57,16 +58,16 @@ func releaseNodeSubscriptions(cfg *config.Config, store *state.Store, sessionNam
 		}
 	}
 	for _, resource := range distinctResources(subscribed) {
-		if _, msg := unwireDeliveryOnTeardown(cfg, store, sessionName, resource, ""); msg != "" {
+		if _, msg := unwireDeliveryOnTeardown(cfg, store, sessionName, projectRoot, resource, ""); msg != "" {
 			slog.Warn("node subscription teardown failed", "session", sessionName, "resource", resource.Locator, "error", msg)
 		}
 	}
 	return nil
 }
 
-func wireProducedNodeSubscriptions(cfg *config.Config, store *state.Store, sessionName string, nodes map[string]*contract.Resource) {
+func wireProducedNodeSubscriptions(cfg *config.Config, store *state.Store, sessionName, projectRoot string, nodes map[string]*contract.Resource) {
 	for _, resource := range distinctResources(nodes) {
-		if _, msg := wireDeliveryOnSetup(cfg, store, sessionName, resource, true); msg != "" {
+		if _, msg := wireDeliveryOnSetup(cfg, store, sessionName, projectRoot, resource, true); msg != "" {
 			slog.Warn("node subscription setup failed", "session", sessionName, "resource", resource.Locator, "error", msg)
 		} else if err := dequeuePendingSubscribe(store, sessionName, *resource); err != nil {
 			slog.Warn("node subscription retry cleanup failed", "session", sessionName, "resource", resource.Locator, "error", err)
