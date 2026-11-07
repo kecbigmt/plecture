@@ -85,6 +85,12 @@ func (db *DB) Migrate(ctx context.Context) error {
 		// process speculatively wrote is removed rather than left behind.
 		return removeMarker(gate.markerPath)
 	}
+	if err := db.refuseUnreleasedWorkflowNodes(ctx, current, target); err != nil {
+		if removeErr := removeMarker(gate.markerPath); removeErr != nil {
+			return fmt.Errorf("%w (also failed to remove the marker recorded on intent: %v)", err, removeErr)
+		}
+		return err
+	}
 
 	if migrateErr := db.migrateLocked(ctx); migrateErr != nil {
 		marker.Stage = "failed"
@@ -101,6 +107,40 @@ func (db *DB) Migrate(ctx context.Context) error {
 func removeMarker(path string) error {
 	if err := os.Remove(path); err != nil && !errors.Is(err, os.ErrNotExist) {
 		return fmt.Errorf("persistence: remove migration marker: %w", err)
+	}
+	return nil
+}
+
+const (
+	firstReleasedVersion    = 20260907002408
+	nodeExecutionsVersion   = 20260907085032
+	workdirDirectoryVersion = 20261106000000
+)
+
+const workdirDirectoryRefusal = "destroy live sessions that still hold a workspace provider with the previous release, then upgrade; see docs/migrations/resource-and-workspace-effects-migration.md"
+
+// The workdir-directory migration's own guard fires only after goose has
+// committed every earlier pending migration, leaving a store the previous
+// release refuses as too new. A ledger below the first release is left to
+// that guard: no released binary wrote one.
+func (db *DB) refuseUnreleasedWorkflowNodes(ctx context.Context, current, target int64) error {
+	if current < firstReleasedVersion || current >= workdirDirectoryVersion || target < workdirDirectoryVersion {
+		return nil
+	}
+	nodes := "node_executions"
+	if current < nodeExecutionsVersion {
+		nodes = "node_instances"
+	}
+	var held bool
+	if err := db.write.QueryRowContext(ctx, `SELECT EXISTS (
+		SELECT 1 FROM `+nodes+` n
+		JOIN sessions s ON s.id = n.session_id
+		WHERE n.node_id = '@workflow' AND n.status <> 'cleaned' AND s.status <> 'destroyed'
+	)`).Scan(&held); err != nil {
+		return fmt.Errorf("persistence: check for live sessions holding a workspace provider: %w", err)
+	}
+	if held {
+		return fmt.Errorf("persistence: upgrade refused, no migration applied: %s", workdirDirectoryRefusal)
 	}
 	return nil
 }

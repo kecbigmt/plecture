@@ -792,6 +792,12 @@ first two also run under a plain `go test`.
   `persistence.Migrate` with foreign keys enforced, and asserts the resulting
   version and the rows that survive. A release with a new schema version adds
   its fixture.
+- `TestMigrate_RefusedUpgradeLeavesTheReleasedSchemaOpenable` (same package
+  and tag) loads each `testdata/upgrade/refused/<version>.sql`, a released
+  schema holding rows the current migrations refuse, built the same way. It
+  asserts that `persistence.Migrate` fails, that the ledger version is still
+  `<version>`, and that a binary whose migrations end at `<version>` opens the
+  store.
 
 ### Changing the schema
 
@@ -880,6 +886,16 @@ first obtains migration exclusion; concurrent startup waits only for the
 bounded period and otherwise refuses without accessing data. A database whose
 goose ledger contains a version newer than the binary embeds always refuses
 normal and migration access with an upgrade instruction and makes no change.
+
+goose commits each migration in its own transaction, so a migration that
+refuses because of the rows it finds does so only after every earlier pending
+migration is committed, and the previous release then refuses the database as
+newer than it supports. The workdir-directory migration refuses while a
+session that has not been destroyed holds an unreleased `@workflow` execution;
+the runner evaluates that same condition under migration exclusion before
+applying any pending migration, and refuses with the migration's message
+without changing the database. The migration keeps its own refusal as the last
+line of defense.
 
 A development build — one `app/internal/version.IsDevelopmentBuild` reports
 true for, because the release pipeline never stamped it — additionally

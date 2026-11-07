@@ -219,8 +219,8 @@ func TestMigrate_RefusedUpgradeLeavesTheReleasedSchemaOpenable(t *testing.T) {
 			if err == nil {
 				t.Fatal("Migrate succeeded, want a refusal")
 			}
-			if !strings.Contains(err.Error(), workdirMigrationInstruction) {
-				t.Errorf("error = %q, want it to name %s", err, workdirMigrationInstruction)
+			if !strings.Contains(err.Error(), workdirDirectoryRefusal) {
+				t.Errorf("error = %q, want the workdir-directory refusal %q", err, workdirDirectoryRefusal)
 			}
 			if current, err := db.Version(ctx); err != nil || current != released {
 				t.Errorf("version after a refused Migrate = (%d, %v), want %d", current, err, released)

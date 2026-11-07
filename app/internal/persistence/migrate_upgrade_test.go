@@ -254,8 +254,6 @@ func TestMigrate_AddNodeExecutionIdentityPreservesExistingNodeRows(t *testing.T)
 // is dropped and the @workflow rows are deleted.
 const preWorkdirDirectoryVersion = 20261104140000
 
-const workdirMigrationInstruction = "docs/migrations/resource-and-workspace-effects-migration.md"
-
 // workdirMigrationFixture opens a database at the version before the
 // workdir migration and seeds one session with a workspace_dir, a retired
 // @workflow node execution of the given status, and an ordinary node.
@@ -330,8 +328,8 @@ func TestMigrate_WorkdirDirectoryRefusesWhileALiveSessionHoldsAnUnreleasedWorkfl
 			if err == nil {
 				t.Fatal("migration succeeded, want a refusal while a live session holds an unreleased @workflow node")
 			}
-			if !strings.Contains(err.Error(), workdirMigrationInstruction) {
-				t.Errorf("error = %q, want it to name %s", err, workdirMigrationInstruction)
+			if !strings.Contains(err.Error(), workdirDirectoryRefusal) {
+				t.Errorf("error = %q, want the workdir-directory refusal %q", err, workdirDirectoryRefusal)
 			}
 			if !sessionsHasColumn(t, db, "workspace_dir") {
 				t.Error("sessions.workspace_dir was dropped by a refused migration")
@@ -617,13 +615,6 @@ func TestMigrate_PopulationIdentityGainsTheProjectRootWithoutLosingRows(t *testi
 	}
 }
 
-// firstReleasedVersion is the schema of the first release; before
-// nodeExecutionsVersion a node's status lived on node_instances itself.
-const (
-	firstReleasedVersion  = 20260907002408
-	nodeExecutionsVersion = 20260907085032
-)
-
 // seedWorkflowNodeAt migrates a fresh database to version and seeds one
 // session holding a retired @workflow node in that schema's own shape.
 func seedWorkflowNodeAt(t *testing.T, version int64, sessionStatus, workflowNodeStatus string) *DB {
@@ -680,8 +671,8 @@ func TestMigrate_RefusesBeforeApplyingAnyMigrationWhileALiveSessionHoldsAnUnrele
 				if err == nil {
 					t.Fatal("Migrate succeeded, want a refusal while a live session holds an unreleased @workflow node")
 				}
-				if !strings.Contains(err.Error(), workdirMigrationInstruction) {
-					t.Errorf("error = %q, want it to name %s", err, workdirMigrationInstruction)
+				if !strings.Contains(err.Error(), workdirDirectoryRefusal) {
+					t.Errorf("error = %q, want the workdir-directory refusal %q", err, workdirDirectoryRefusal)
 				}
 				if current, err := db.Version(ctx); err != nil || current != version {
 					t.Errorf("version after the refusal = (%d, %v), want %d unchanged", current, err, version)
