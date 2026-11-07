@@ -177,8 +177,7 @@ func RequestWake(store *state.Store, name string, at time.Time) (bool, error) {
 		if err != nil || !woken || s.Population == nil {
 			return err
 		}
-		key := s.Population.Workflow + "/" + s.Population.Name
-		return store.UpdatePopulation(key, func(population *state.PopulationState) error {
+		return store.UpdatePopulation(*s.Population, func(population *state.PopulationState) error {
 			if s.Resource == nil {
 				return nil
 			}

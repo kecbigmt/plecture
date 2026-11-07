@@ -3,6 +3,7 @@
 
 [session]
 kind = "workflow"
+resource = "issue_pr"
 
 [session.outputs]
 endpoint = { from = "nodes.agent.outputs.endpoint" }

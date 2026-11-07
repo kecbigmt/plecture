@@ -137,7 +137,7 @@ var listTool = mcp.NewTool("plect_list",
 )
 
 var workflowListTool = mcp.NewTool("plect_workflow_list",
-	mcp.WithDescription("List workflows discoverable via the .plect/workflows cascade. Each entry surfaces id/name/description so an agent can pick the right workflow before calling plect_workflow_show or plect_up."),
+	mcp.WithDescription("List the workflows of the server's configuration context: plugin and global workflows, then those of the trusted project root its working directory selects. Each entry surfaces id/name/description so an agent can pick the right workflow before calling plect_workflow_show or plect_up."),
 	mcp.WithToolAnnotation(mcp.ToolAnnotation{ReadOnlyHint: boolPtr(true)}),
 )
 
@@ -175,15 +175,15 @@ func handleWorkflowRebase(ctx context.Context, request mcp.CallToolRequest) (*mc
 	return jsonResult(map[string]any{"ok": true, "session_name": result.SessionName, "from": result.From, "to": result.To, "class": result.Class, "recreate_nodes": result.RecreateNodes, "reasons": result.Reasons})
 }
 
-// callerDir is the MCP server's own working directory, which with its trusted
-// ancestors contributes the `.plect/` overlays a direct invocation reads; an
-// unreadable one selects none.
-func callerDir() string {
+// callerProjectRoot selects the configuration context of the MCP server's own
+// working directory. The server has no one to ask, so an untrusted root is an
+// error rather than a prompt.
+func callerProjectRoot(cfg *config.Config) (string, error) {
 	dir, err := os.Getwd()
 	if err != nil {
-		return ""
+		return "", err
 	}
-	return dir
+	return cfg.SelectProjectRoot(dir)
 }
 
 func handleWorkflowList(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
@@ -191,11 +191,11 @@ func handleWorkflowList(ctx context.Context, request mcp.CallToolRequest) (*mcp.
 	if err != nil {
 		return errorResult(err), nil
 	}
-	cwd, err := os.Getwd()
+	root, err := callerProjectRoot(cfg)
 	if err != nil {
 		return errorResult(err), nil
 	}
-	workflows, err := service.WorkflowList(cfg, cwd)
+	workflows, err := service.WorkflowList(cfg, root)
 	if err != nil {
 		return errorResult(err), nil
 	}
@@ -214,11 +214,11 @@ func handleWorkflowShow(ctx context.Context, request mcp.CallToolRequest) (*mcp.
 	if id == "" {
 		return mcp.NewToolResultError("id is required"), nil
 	}
-	cwd, err := os.Getwd()
+	root, err := callerProjectRoot(cfg)
 	if err != nil {
 		return errorResult(err), nil
 	}
-	detail, err := service.WorkflowShow(cfg, cwd, id)
+	detail, err := service.WorkflowShow(cfg, root, id)
 	if err != nil {
 		return errorResult(err), nil
 	}
@@ -240,6 +240,13 @@ func handleUp(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallToolRe
 		return mcp.NewToolResultError("session is required"), nil
 	}
 
+	root := ""
+	if recognized, _ := service.RecognizesResource(cfg, identifier); recognized {
+		if root, err = callerProjectRoot(cfg); err != nil {
+			return errorResult(err), nil
+		}
+	}
+
 	result, err := service.Up(cfg, store, service.UpParams{
 		Identifier:    identifier,
 		Tag:           request.GetString("tag", ""),
@@ -248,7 +255,7 @@ func handleUp(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallToolRe
 		Inputs:        getObjectArg(request, "inputs"),
 		InitialTask:   service.InitialTaskSelection(request.GetString("task", ""), request.GetString("task_resource", "")),
 		ForceRecreate: request.GetBool("force_recreate", false),
-		InvocationDir: callerDir(),
+		ProjectRoot:   root,
 	})
 	if err != nil {
 		return errorResult(err), nil

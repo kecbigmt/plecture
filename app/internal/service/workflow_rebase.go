@@ -81,7 +81,7 @@ func workflowRebaseUnlocked(cfg *config.Config, store *state.Store, name string,
 	if err != nil {
 		return nil, err
 	}
-	next, err := cfg.CaptureWorkflowRevision(session.InvocationDir, session.Workflow)
+	next, err := cfg.CaptureWorkflowRevision(session.ProjectRoot, session.Workflow)
 	if err != nil {
 		return nil, err
 	}

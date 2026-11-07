@@ -382,7 +382,7 @@ all = [
 		"revision":      "sha1",
 		"instruction":   "a very long unreferenced instruction blob",
 	})
-	if err := store.UpdatePopulation("wf/dispatch", func(population *state.PopulationState) error {
+	if err := store.UpdatePopulation(contract.PopulationProvenance{Workflow: "wf", Name: "dispatch"}, func(population *state.PopulationState) error {
 		population.Workflow = "wf"
 		population.Name = "dispatch"
 		return nil

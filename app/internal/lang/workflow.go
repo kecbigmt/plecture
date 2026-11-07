@@ -9,9 +9,9 @@ import (
 // topology its wiring declares rather than for the effect it selects.
 //
 // Reads holds the node ids this node's input values project from, in
-// first-appearance order, whether or not this definition declares them: a
-// cascade layer may add a node whose inputs read a base layer's node, so
-// which ids resolve is a question only the merged definition answers.
+// first-appearance order, whether or not this definition declares them:
+// rejecting an undeclared id is the compiled plan's job, which reports it
+// with the node that reads it.
 type WorkflowNode struct {
 	ID           string
 	Uses         string

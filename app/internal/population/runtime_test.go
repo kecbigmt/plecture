@@ -55,7 +55,7 @@ func TestPopulationCannotAdoptSameProvenanceSessionForAnotherResource(t *testing
 type = "exec"
 command = "true"
 `, "uses = [\"poll\"]\npoll_every = \"1m\"", `resource = { from = "resource.id" }`)
-	definitions, err := Load(cfg)
+	definitions, err := Load(cfg, "")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -63,7 +63,7 @@ command = "true"
 	store := state.NewStore(t.TempDir())
 	seedPopulationRow(t, store, definition)
 	provenance := &contract.PopulationProvenance{Workflow: definition.Workflow.Address, Name: definition.Population.Name}
-	name, err := service.ResolvePopulationSessionName(cfg, definition.Workflow.Address, "urn:case:a")
+	name, err := service.ResolvePopulationSessionName(cfg, definition.ProjectRoot, definition.Workflow.Address, "urn:case:a")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -86,7 +86,7 @@ func TestUpPopulationReportsRunStateFromBeforeTheIdempotentUpCall(t *testing.T) 
 type = "exec"
 command = "true"
 `, "uses = [\"poll\"]\npoll_every = \"1m\"", `resource = { from = "resource.id" }`)
-	definitions, err := Load(cfg)
+	definitions, err := Load(cfg, "")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -125,13 +125,13 @@ func TestPopulationCannotAdoptSameProvenanceSessionRecordedForAnotherEntry(t *te
 type = "exec"
 command = "true"
 `, "uses = [\"poll\"]\npoll_every = \"1m\"", `resource = { from = "resource.id" }`)
-	definitions, err := Load(cfg)
+	definitions, err := Load(cfg, "")
 	if err != nil {
 		t.Fatal(err)
 	}
 	definition := definitions[0]
 	provenance := &contract.PopulationProvenance{Workflow: definition.Workflow.Address, Name: definition.Population.Name}
-	name, err := service.ResolvePopulationSessionName(cfg, definition.Workflow.Address, "urn:case:a")
+	name, err := service.ResolvePopulationSessionName(cfg, definition.ProjectRoot, definition.Workflow.Address, "urn:case:a")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -237,7 +237,7 @@ args = ["{}"]
 type = "noop"
 `)
 	cfg := &config.Config{BaseDir: dir}
-	definitions, err := Load(cfg)
+	definitions, err := Load(cfg, "")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -264,5 +264,42 @@ type = "noop"
 	want := []string{"poll scope=all", "subscribe scope=absent"}
 	if strings.Join(got, "|") != strings.Join(want, "|") {
 		t.Errorf("action log = %q, want the query to see its own inputs and subscribe only the empty action object %q", got, want)
+	}
+}
+
+func TestUpPopulationRecordsThePopulationsProjectRootOnItsMember(t *testing.T) {
+	t.Setenv("PLECT_SESSION_NAME", "")
+	cfg := populationConfig(t, `[source.query.poll]
+type = "exec"
+command = "true"
+`, "uses = [\"poll\"]\npoll_every = \"1m\"", `resource = { from = "resource.id" }`)
+	root := filepath.Join(t.TempDir(), "widgets")
+	if err := os.MkdirAll(filepath.Join(root, ".plect"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	writeDefinition(t, filepath.Join(root, ".plect"), "project", "schema_version = 2\n")
+	if err := os.Rename(filepath.Join(cfg.BaseDir, "workflow.toml"), filepath.Join(root, ".plect", "workflow.toml")); err != nil {
+		t.Fatal(err)
+	}
+	cfg.TrustedProjectRoots = []string{root}
+	definitions, err := Load(cfg, root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	definition := definitions[0]
+	store := state.NewStore(t.TempDir())
+	seedPopulationRow(t, store, definition)
+	provenance := populationKey(definition)
+
+	outcome, err := upPopulation(func() *config.Config { return cfg }, store, definition, &provenance, "urn:case:a", map[string]any{"resource": "urn:case:a"})
+	if err != nil {
+		t.Fatalf("upPopulation: %v", err)
+	}
+	session, err := store.GetE(outcome.SessionName)
+	if err != nil || session == nil {
+		t.Fatalf("member session: %v, %v", session, err)
+	}
+	if session.ProjectRoot != root || session.Population == nil || *session.Population != provenance {
+		t.Fatalf("member root %q provenance %+v, want both in %q", session.ProjectRoot, session.Population, root)
 	}
 }

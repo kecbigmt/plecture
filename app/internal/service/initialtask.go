@@ -35,7 +35,7 @@ type initialTaskBinding struct {
 
 // checkInitialTask runs before anything is created, so a selection that can
 // never instantiate leaves no session behind.
-func checkInitialTask(cfg *config.Config, invocationDir, entry string, existing *domain.Session, sel *InitialTask) (*initialTaskBinding, error) {
+func checkInitialTask(cfg *config.Config, projectRoot, entry string, existing *domain.Session, sel *InitialTask) (*initialTaskBinding, error) {
 	if sel == nil {
 		return nil, nil
 	}
@@ -50,7 +50,7 @@ func checkInitialTask(cfg *config.Config, invocationDir, entry string, existing 
 	if existing != nil {
 		docs, effects, err = cfg.TaskDeclarationsForSession(existing)
 	} else {
-		docs, effects, err = cfg.LoadTaskDeclarations(invocationDir)
+		docs, effects, err = cfg.LoadTaskDeclarations(projectRoot)
 	}
 	if err != nil {
 		return nil, &Error{Code: ErrExecutionFailed, Message: fmt.Sprintf("load task declarations: %v", err)}

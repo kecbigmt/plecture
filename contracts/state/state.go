@@ -287,14 +287,14 @@ type Session struct {
 	Workflow             string   `json:"workflow,omitempty"`
 	WorkflowRevision     string   `json:"workflow_revision,omitempty"`
 	WorkflowRevisionBody string   `json:"-"`
-	// InvocationDir is the directory whose trusted ancestor `.plect/` overlays
-	// were layered when the session was created, and empty when none were.
-	// Later operations expand configuration from it rather than from their
-	// caller's cwd, so where an operator happens to stand cannot change which
-	// nodes a session has.
-	InvocationDir string                `json:"-"`
-	Population    *PopulationProvenance `json:"population,omitempty"`
-	Inputs        map[string]any        `json:"inputs,omitempty"`
+	// ProjectRoot is the canonical project root whose definitions configured
+	// the session, and empty for the global-only context. Later operations
+	// load configuration from it rather than from their caller's cwd, so
+	// where an operator happens to stand cannot change which nodes a session
+	// has.
+	ProjectRoot string                `json:"-"`
+	Population  *PopulationProvenance `json:"population,omitempty"`
+	Inputs      map[string]any        `json:"inputs,omitempty"`
 	// Nodes holds workflow DAG node production records, keyed by node id.
 	// Tasks holds
 	// `plect task setup` instances, keyed by instance handle (a `--name` or
@@ -332,10 +332,14 @@ type Session struct {
 }
 
 // PopulationProvenance is the sole lifecycle authority an automatic
-// workflow-population evaluator may use to mutate or destroy a session.
+// workflow-population evaluator may use to mutate or destroy a session, and
+// the identity of that population. ProjectRoot is the configuration context
+// that declares it, empty for the global-only context, so one name in two
+// project roots is two populations.
 type PopulationProvenance struct {
-	Workflow string `json:"workflow"`
-	Name     string `json:"name"`
+	ProjectRoot string `json:"project_root,omitempty"`
+	Workflow    string `json:"workflow"`
+	Name        string `json:"name"`
 }
 
 // HealthState is core's own record of the last opaque activity fingerprint,

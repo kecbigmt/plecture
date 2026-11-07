@@ -200,7 +200,7 @@ func TestUp_PopulationMemberRepairRecordsNodeResultWithoutUpTransition(t *testin
 	seedSessionWithNodes(t, store, sessionName, "acct", 1, "default", map[string]*contract.TaskState{
 		"pane": {Scope: contract.TaskScopeRun, Status: contract.TaskStatusProduced, Outputs: map[string]any{}},
 	})
-	if err := store.UpdatePopulation("default/pop", func(population *state.PopulationState) error {
+	if err := store.UpdatePopulation(contract.PopulationProvenance{Workflow: "default", Name: "pop"}, func(population *state.PopulationState) error {
 		population.Workflow = "default"
 		population.Name = "pop"
 		return nil

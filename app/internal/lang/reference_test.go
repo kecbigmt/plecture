@@ -235,3 +235,7 @@ func TestResolveConfigChannelsWrongKind(t *testing.T) {
 	err := ResolveConfigChannels(cfg, reg)
 	assertDiagnostic(t, err, CodeKindMismatch, LayerSemantic)
 }
+
+func defOf(id string, kind Kind, body map[string]any) *Definition {
+	return &Definition{ID: id, Kind: kind, Body: body, File: id + ".toml"}
+}

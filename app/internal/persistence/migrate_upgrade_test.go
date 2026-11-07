@@ -762,3 +762,106 @@ func TestMigrate_ResourcesDownRestoresTheIdentifierStrings(t *testing.T) {
 		}
 	}
 }
+
+const preSessionProjectRootVersion = 20261107200000
+
+func TestMigrate_SessionProjectRootReplacesTheInvocationDirWithTheGlobalOnlyContext(t *testing.T) {
+	db := openTestDB(t)
+	ctx := context.Background()
+	now := formatTime(time.Now().UTC())
+	provider, err := goose.NewProvider(goose.DialectSQLite3, db.write, db.migrations)
+	if err != nil {
+		t.Fatalf("NewProvider: %v", err)
+	}
+	if _, err := provider.UpTo(ctx, preSessionProjectRootVersion); err != nil {
+		t.Fatalf("UpTo(%d): %v", preSessionProjectRootVersion, err)
+	}
+	if _, err := db.write.ExecContext(ctx,
+		`INSERT INTO sessions (id, name, status, workflow, invocation_dir, created_at, updated_at) VALUES ('s1', 'review-1', 'up', 'review', '/projects/widgets/src', ?, ?)`,
+		now, now,
+	); err != nil {
+		t.Fatalf("seed session: %v", err)
+	}
+
+	if _, err := provider.UpByOne(ctx); err != nil {
+		t.Fatalf("UpByOne: %v", err)
+	}
+	if sessionsHasColumn(t, db, "invocation_dir") {
+		t.Error("invocation_dir survived the migration")
+	}
+	var root string
+	if err := db.write.QueryRow(`SELECT project_root FROM sessions WHERE id = 's1'`).Scan(&root); err != nil {
+		t.Fatalf("read project_root: %v", err)
+	}
+	if root != "" {
+		t.Errorf("project_root = %q, want the global-only context: an invocation directory does not say which root it selected", root)
+	}
+
+	if _, err := provider.Down(ctx); err != nil {
+		t.Fatalf("Down: %v", err)
+	}
+	if sessionsHasColumn(t, db, "project_root") || !sessionsHasColumn(t, db, "invocation_dir") {
+		t.Error("Down did not restore invocation_dir in place of project_root")
+	}
+}
+
+const prePopulationProjectRootVersion = 20261107210000
+
+func TestMigrate_PopulationIdentityGainsTheProjectRootWithoutLosingRows(t *testing.T) {
+	db := openTestDB(t)
+	ctx := context.Background()
+	now := formatTime(time.Now().UTC())
+	provider, err := goose.NewProvider(goose.DialectSQLite3, db.write, db.migrations)
+	if err != nil {
+		t.Fatalf("NewProvider: %v", err)
+	}
+	if _, err := provider.UpTo(ctx, prePopulationProjectRootVersion); err != nil {
+		t.Fatalf("UpTo(%d): %v", prePopulationProjectRootVersion, err)
+	}
+	for _, stmt := range []string{
+		`INSERT INTO resources (id, type, name, locator, created_at) VALUES ('res-1', 'issue', 'issue-1', 'https://forge.example/issues/1', '` + now + `')`,
+		`INSERT INTO populations (workflow, name) VALUES ('review', 'standing')`,
+		`INSERT INTO population_members (workflow, name, resource_id, session_name) VALUES ('review', 'standing', 'res-1', 'issue-1')`,
+		`INSERT INTO population_member_blockers (workflow, name, resource_id, position, reason) VALUES ('review', 'standing', 'res-1', 0, 'waiting')`,
+		`INSERT INTO sessions (id, name, status, workflow, population_workflow, population_name, created_at, updated_at) VALUES ('s1', 'issue-1', 'up', 'review', 'review', 'standing', '` + now + `', '` + now + `')`,
+		`INSERT INTO node_instances (session_id, node_id) VALUES ('s1', 'pane')`,
+	} {
+		if _, err := db.write.ExecContext(ctx, stmt); err != nil {
+			t.Fatalf("seed %q: %v", stmt, err)
+		}
+	}
+
+	if _, err := provider.UpByOne(ctx); err != nil {
+		t.Fatalf("UpByOne: %v", err)
+	}
+
+	for table, query := range map[string]string{
+		"populations":                `SELECT count(*) FROM populations WHERE project_root = '' AND workflow = 'review' AND name = 'standing'`,
+		"population_members":         `SELECT count(*) FROM population_members WHERE project_root = '' AND session_name = 'issue-1'`,
+		"population_member_blockers": `SELECT count(*) FROM population_member_blockers WHERE project_root = '' AND reason = 'waiting'`,
+		"sessions":                   `SELECT count(*) FROM sessions WHERE id = 's1' AND project_root = '' AND population_name = 'standing'`,
+		"node_instances":             `SELECT count(*) FROM node_instances WHERE session_id = 's1'`,
+	} {
+		var n int
+		if err := db.write.QueryRow(query).Scan(&n); err != nil || n != 1 {
+			t.Errorf("%s rows = %d (%v), want the row carried over in the global-only context", table, n, err)
+		}
+	}
+	if _, err := db.write.ExecContext(ctx, `INSERT INTO populations (project_root, workflow, name) VALUES ('/projects/widgets', 'review', 'standing')`); err != nil {
+		t.Errorf("a same-named population in another context collided: %v", err)
+	}
+	if _, err := db.write.ExecContext(ctx, `UPDATE sessions SET project_root = '/projects/gadgets' WHERE id = 's1'`); err == nil {
+		t.Error("a session named a population of a context that declares none")
+	}
+
+	if _, err := provider.Down(ctx); err != nil {
+		t.Fatalf("Down: %v", err)
+	}
+	var n int
+	if err := db.write.QueryRow(`SELECT count(*) FROM population_members WHERE session_name = 'issue-1'`).Scan(&n); err != nil || n != 1 {
+		t.Errorf("Down population_members = %d (%v), want the global-only member kept", n, err)
+	}
+	if err := db.write.QueryRow(`SELECT count(*) FROM node_instances WHERE session_id = 's1'`).Scan(&n); err != nil || n != 1 {
+		t.Errorf("Down node_instances = %d (%v), want the session's children kept", n, err)
+	}
+}

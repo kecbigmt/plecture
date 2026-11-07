@@ -52,12 +52,22 @@ type Engine struct {
 	cache      *admitstatus.Cache
 	logger     *slog.Logger
 	hooks      Hooks
-	key        string
+	key        contract.PopulationProvenance
 	now        func() time.Time
 }
 
-func populationKey(def Definition) string {
-	return def.Workflow.Address + "/" + def.Population.Name
+func populationKey(def Definition) contract.PopulationProvenance {
+	return contract.PopulationProvenance{ProjectRoot: def.ProjectRoot, Workflow: def.Workflow.Address, Name: def.Population.Name}
+}
+
+// populationLabel names a population in a message, qualified by its project
+// root when it has one.
+func populationLabel(key contract.PopulationProvenance) string {
+	label := key.Workflow + "/" + key.Name
+	if key.ProjectRoot != "" {
+		label = key.ProjectRoot + ":" + label
+	}
+	return label
 }
 
 func NewEngine(def Definition, stateStore *state.Store, logStore *eventlog.Store, cache *admitstatus.Cache, hooks Hooks) *Engine {

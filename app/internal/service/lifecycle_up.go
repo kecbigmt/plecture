@@ -34,8 +34,9 @@ type UpParams struct {
 	// preserving durable identity and event log state.
 	ForceRecreate  bool
 	HumanInitiated bool
-	// InvocationDir is forwarded to auto-create; see CreateParams.
-	InvocationDir string
+	// ProjectRoot selects the workflows a resource dispatches to and is
+	// forwarded to auto-create; see CreateParams.
+	ProjectRoot string
 	// InitialTask is the caller's task selection, instantiated as the
 	// session's initial instance. Only valid with a resource identifier.
 	InitialTask *InitialTask
@@ -88,7 +89,7 @@ func Up(cfg *config.Config, store *state.Store, params UpParams) (*UpResult, err
 }
 
 func upLifecycleLockName(cfg *config.Config, store *state.Store, params UpParams) (string, error) {
-	disp, matched, err := dispatchResource(cfg, params.InvocationDir, params.Workflow, params.Identifier)
+	disp, matched, err := dispatchResource(cfg, params.ProjectRoot, params.Workflow, params.Identifier)
 	if err == nil && matched {
 		name, nameErr := disp.sessionName(params.Tag)
 		if nameErr != nil {
@@ -103,7 +104,7 @@ func upUnlocked(cfg *config.Config, store *state.Store, params UpParams) (*UpRes
 	identifier := params.Identifier
 	forceRecreateExisting := false
 	var initialTask *initialTaskBinding
-	disp, matched, dispErr := dispatchResource(cfg, params.InvocationDir, params.Workflow, params.Identifier)
+	disp, matched, dispErr := dispatchResource(cfg, params.ProjectRoot, params.Workflow, params.Identifier)
 	if dispErr != nil {
 		if params.Tag == "" {
 			if _, existing, lookupErr := resolveSession(cfg, store, params.Identifier); lookupErr == nil && existing != nil {
@@ -146,7 +147,7 @@ func upUnlocked(cfg *config.Config, store *state.Store, params UpParams) (*UpRes
 			return nil, &Error{Code: ErrInvalidInput, Message: fmt.Sprintf("--workflow %q does not match the session's frozen workflow %q", params.Workflow, existing.Workflow)}
 		}
 		var taskErr error
-		initialTask, taskErr = checkInitialTask(cfg, params.InvocationDir, params.Identifier, existing, params.InitialTask)
+		initialTask, taskErr = checkInitialTask(cfg, params.ProjectRoot, params.Identifier, existing, params.InitialTask)
 		if taskErr != nil {
 			return nil, taskErr
 		}
@@ -184,7 +185,7 @@ func upUnlocked(cfg *config.Config, store *state.Store, params UpParams) (*UpRes
 				ParentSession: params.ParentSession,
 				Observer:      params.Observer,
 				Population:    params.Population,
-				InvocationDir: params.InvocationDir,
+				ProjectRoot:   params.ProjectRoot,
 			}); err != nil {
 				return nil, err
 			}
@@ -214,6 +215,9 @@ func upUnlocked(cfg *config.Config, store *state.Store, params UpParams) (*UpRes
 
 	sessionName, session, err := resolveSession(cfg, store, identifier)
 	if err != nil {
+		return nil, err
+	}
+	if err := requireSessionRoot(cfg, session); err != nil {
 		return nil, err
 	}
 	wasSleeping := !session.SleepSince.IsZero()

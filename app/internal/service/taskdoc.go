@@ -45,7 +45,7 @@ func validateTaskDocuments(cfg *config.Config, session *domain.Session, docs map
 	if err != nil {
 		return &Error{Code: ErrExecutionFailed, Message: fmt.Sprintf("load resources: %v", err)}
 	}
-	workflows, err := cfg.LoadWorkflows("")
+	workflows, err := cfg.LoadWorkflows(session.ProjectRoot)
 	if err != nil {
 		return &Error{Code: ErrExecutionFailed, Message: fmt.Sprintf("load workflows: %v", err)}
 	}

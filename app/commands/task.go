@@ -196,10 +196,11 @@ Example:
 var taskShowCmd = &cobra.Command{
 	Use:   "show <task-id>",
 	Short: "Show a task definition, including its nesting or extends chain",
-	Long: `Print one task definition as the cascade resolves it: its id, the scope its
-instances take, the file it was loaded from, and — when the task is nested —
-every layer of the chain from the outermost task inward to the innermost one,
-with each layer's 'inner' reference and the file it resolved to.
+	Long: `Print one task definition as the current directory's configuration context
+resolves it: its id, the scope its instances take, the file it was loaded
+from, and — when the task is nested — every layer of the chain from the
+outermost task inward to the innermost one, with each layer's 'inner'
+reference and the file it resolved to.
 
 For a task document that declares 'extends', prints the composed extends
 chain instead, outermost (this declaration) first, naming for every layer the
@@ -213,11 +214,11 @@ Use --json for the same picture as a structured document.`,
 		if err != nil {
 			return err
 		}
-		cwd, err := os.Getwd()
+		root, err := selectProjectRoot(cmd, cfg)
 		if err != nil {
-			return fmt.Errorf("getwd: %w", err)
+			return err
 		}
-		detail, err := service.TaskShow(cfg, cwd, args[0])
+		detail, err := service.TaskShow(cfg, root, args[0])
 		if err != nil {
 			return err
 		}

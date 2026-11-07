@@ -20,42 +20,23 @@ type discoveredLayer struct {
 	defs  []*lang.Definition
 }
 
-// A resource or a channel in an ancestor overlay is skipped, not refused: a
-// project directory holding one is not a mistake.
-var loadedKinds = map[layerScope]map[lang.Kind]bool{
-	layerScopeTrusted: {
-		lang.KindResource: true,
-		lang.KindChannel:  true,
-		lang.KindEffect:   true,
-		lang.KindTask:     true,
-		lang.KindWorkflow: true,
-	},
-	layerScopeOverlay: {
-		lang.KindEffect:   true,
-		lang.KindTask:     true,
-		lang.KindWorkflow: true,
-	},
-}
-
-type layerScope int
-
-const (
-	layerScopeTrusted layerScope = iota
-	layerScopeOverlay
-)
-
-func (l layerDir) scope() layerScope {
-	if l.plugin || l.global {
-		return layerScopeTrusted
-	}
-	return layerScopeOverlay
+// A resource or channel in a project root is refused rather than skipped: a
+// declaration that silently does nothing reads as one that took effect.
+var projectKinds = map[lang.Kind]bool{
+	lang.KindEffect:   true,
+	lang.KindTask:     true,
+	lang.KindWorkflow: true,
 }
 
 // discoverLayers reads every cascade layer's definition root once, in
-// shallowest-first order. An empty invocationDir reads the base layers alone.
-func (c *Config) discoverLayers(invocationDir string) ([]discoveredLayer, error) {
-	out := make([]discoveredLayer, 0, len(c.PluginDirs)+2)
-	for _, layer := range c.definitionRoots(invocationDir) {
+// shallowest-first order. An empty projectRoot reads the base layers alone.
+func (c *Config) discoverLayers(projectRoot string) ([]discoveredLayer, error) {
+	roots, err := c.definitionRoots(projectRoot)
+	if err != nil {
+		return nil, err
+	}
+	out := make([]discoveredLayer, 0, len(roots))
+	for _, layer := range roots {
 		defs, err := discoverLayer(layer)
 		if err != nil {
 			return nil, err
@@ -78,15 +59,19 @@ func discoverLayer(layer layerDir) ([]*lang.Definition, error) {
 	if err := checkRetiredChainsDir(layer.dir); err != nil {
 		return nil, err
 	}
-	discovered, err := lang.DiscoverRoot(layer.dir, lang.ReservedFileNames)
+	reserved := lang.ReservedFileNames
+	if layer.project {
+		reserved = lang.ProjectReservedFileNames
+	}
+	defs, err := lang.DiscoverRoot(layer.dir, reserved)
 	if err != nil {
 		return nil, err
 	}
-	loaded := loadedKinds[layer.scope()]
-	var defs []*lang.Definition
-	for _, def := range discovered {
-		if loaded[def.Kind] {
-			defs = append(defs, def)
+	if layer.project {
+		for _, def := range defs {
+			if !projectKinds[def.Kind] {
+				return nil, fmt.Errorf("%s: %s %q cannot be declared in a project root; declare it in the global config", def.File, def.Kind, def.ID)
+			}
 		}
 	}
 	sort.SliceStable(defs, func(i, j int) bool { return defs[i].ID < defs[j].ID })
@@ -138,9 +123,6 @@ type resolvedDefinition struct {
 	// prefix is what a relative reference written inside this declaration
 	// resolves against, empty for a declaration the user owns.
 	prefix string
-	// source is the shallowest layer that declared the id, which is the file
-	// a relative schema path resolves against and the layer a reference
-	// written in the declaration resolves in.
 	source string
 }
 
@@ -190,8 +172,7 @@ func referenceAddress(prefix, ref string) (string, error) {
 
 // resolveNamespace folds one kind's declarations across the cascade, grouped
 // by the address each declaration answers to. Within one address a deeper
-// user-owned layer replaces what a shallower one declared, except a workflow,
-// which merges by the cascade rules.
+// user-owned layer replaces what a shallower one declared as a whole.
 //
 // Two mounted plugins declaring one id land on different addresses and both
 // stay reachable, and a user-owned declaration sharing an id with a plugin's
@@ -209,11 +190,10 @@ func referenceAddress(prefix, ref string) (string, error) {
 // and an instantiation wants the document.
 func (c *Config) resolveNamespace(layers []discoveredLayer, kind lang.Kind) ([]resolvedDefinition, error) {
 	type group struct {
-		defs       []*lang.Definition
+		def        *lang.Definition
 		fromPlugin bool
 		pluginID   string
 		prefix     string
-		source     string
 		// unaliased names the file of the identity-less plugin layer that
 		// already claimed this address, which is what the second one collides
 		// with.
@@ -226,10 +206,7 @@ func (c *Config) resolveNamespace(layers []discoveredLayer, kind lang.Kind) ([]r
 			address := definitionAddress(discovered.layer, def.ID)
 			g, seen := groups[address]
 			if !seen {
-				// The shallowest declarer keeps source, so a deeper layer
-				// extending a workflow does not move what its relative paths
-				// resolve against.
-				g = &group{source: def.File, prefix: addressPrefix(discovered.layer)}
+				g = &group{prefix: addressPrefix(discovered.layer)}
 				groups[address] = g
 				order = append(order, address)
 			}
@@ -239,7 +216,7 @@ func (c *Config) resolveNamespace(layers []discoveredLayer, kind lang.Kind) ([]r
 				}
 				g.unaliased = def.File
 			}
-			g.defs = append(g.defs, def)
+			g.def = def
 			g.fromPlugin = discovered.layer.plugin
 			g.pluginID = discovered.layer.pluginID
 		}
@@ -248,21 +225,13 @@ func (c *Config) resolveNamespace(layers []discoveredLayer, kind lang.Kind) ([]r
 	out := make([]resolvedDefinition, 0, len(order))
 	for _, address := range order {
 		g := groups[address]
-		var merged []*lang.Definition
-		for _, def := range g.defs {
-			combined, err := lang.MergeLayer(merged, []*lang.Definition{def})
-			if err != nil {
-				return nil, err
-			}
-			merged = combined
-		}
 		out = append(out, resolvedDefinition{
-			def:        merged[0],
+			def:        g.def,
 			fromPlugin: g.fromPlugin,
 			pluginID:   g.pluginID,
 			address:    address,
 			prefix:     g.prefix,
-			source:     g.source,
+			source:     g.def.File,
 		})
 	}
 	return out, nil

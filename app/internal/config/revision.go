@@ -226,14 +226,14 @@ func (c *Config) TaskDefinitionsForSession(s *domain.Session) (map[string]TaskDe
 	if r, ok, err := RevisionForSession(s); ok || err != nil {
 		return r.Effects, err
 	}
-	return c.LoadTaskDefinitions("")
+	return c.LoadTaskDefinitions(s.ProjectRoot)
 }
 
 func (c *Config) TaskDeclarationsForSession(s *domain.Session) (map[string]TaskDocument, map[string]TaskDefinition, error) {
 	if r, ok, err := RevisionForSession(s); ok || err != nil {
 		return r.Tasks, r.Effects, err
 	}
-	return c.LoadTaskDeclarations("")
+	return c.LoadTaskDeclarations(s.ProjectRoot)
 }
 
 func (c *Config) ChannelsForSession(s *domain.Session) (map[string]ChannelDefinition, error) {
@@ -243,8 +243,8 @@ func (c *Config) ChannelsForSession(s *domain.Session) (map[string]ChannelDefini
 	return c.LoadChannels()
 }
 
-func (c *Config) CaptureWorkflowRevision(invocationDir, name string) (WorkflowRevision, error) {
-	workflows, err := c.LoadWorkflows(invocationDir)
+func (c *Config) CaptureWorkflowRevision(projectRoot, name string) (WorkflowRevision, error) {
+	workflows, err := c.LoadWorkflows(projectRoot)
 	if err != nil {
 		return WorkflowRevision{}, err
 	}
@@ -261,7 +261,7 @@ func (c *Config) CaptureWorkflowRevision(invocationDir, name string) (WorkflowRe
 		}
 		wf.InputsSchemaFile = ""
 	}
-	effects, err := c.LoadTaskDefinitions(invocationDir)
+	effects, err := c.LoadTaskDefinitions(projectRoot)
 	if err != nil {
 		return WorkflowRevision{}, err
 	}
@@ -275,7 +275,7 @@ func (c *Config) CaptureWorkflowRevision(invocationDir, name string) (WorkflowRe
 	if err := c.validateKnownNodeSubscriptions(wf, effects); err != nil {
 		return WorkflowRevision{}, err
 	}
-	tasks, err := c.LoadTaskDocuments(invocationDir)
+	tasks, err := c.LoadTaskDocuments(projectRoot)
 	if err != nil {
 		return WorkflowRevision{}, err
 	}

@@ -14,6 +14,7 @@ import (
 	"github.com/kecbigmt/plecture/app/internal/domain"
 	"github.com/kecbigmt/plecture/app/internal/lang"
 	"github.com/kecbigmt/plecture/app/internal/persistence"
+	"github.com/kecbigmt/plecture/app/internal/service"
 	"github.com/kecbigmt/plecture/app/internal/state"
 	contract "github.com/kecbigmt/plecture/contracts/state"
 )
@@ -137,5 +138,69 @@ func writeDatabaseNewerThanBinarySupports(t *testing.T, dir string) {
 		return err
 	}); err != nil {
 		t.Fatalf("plant future version row: %v", err)
+	}
+}
+
+// liveProjectFixture runs the web entry point from below a project root that
+// declares the only workflow accepting the global resource.
+func liveProjectFixture(t *testing.T, trusted bool) string {
+	t.Helper()
+	dataHome := t.TempDir()
+	t.Setenv("PLECT_DATA_HOME", dataHome)
+	t.Setenv("XDG_DATA_HOME", dataHome)
+	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
+	configHome := t.TempDir()
+	t.Setenv("PLECT_CONFIG_HOME", configHome)
+	root, err := filepath.EvalSymlinks(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	config := fmt.Sprintf("schema_version = %d\n", lang.KnownSchemaVersion)
+	if trusted {
+		config += fmt.Sprintf("trusted_project_roots = [%q]\n", root)
+	}
+	for path, body := range map[string]string{
+		filepath.Join(configHome, "config.toml"):                 config,
+		filepath.Join(configHome, "resources", "issue.toml"):     "[issue]\nkind = \"resource\"\nmatch = '^https://forge\\.example/issues/(?P<number>\\d+)$'\nname = { expr = \"'issue-' + match.number\" }\n[issue.observe]\ntype = \"exec\"\ncommand = \"true\"\n",
+		filepath.Join(root, ".plect", "project.toml"):            fmt.Sprintf("schema_version = %d\n", lang.KnownSchemaVersion),
+		filepath.Join(root, ".plect", "workflows", "local.toml"): "[local]\nkind = \"workflow\"\nresource = \"issue\"\n[[local.nodes]]\nuses = \"runtime\"\n",
+		filepath.Join(root, ".plect", "tasks", "runtime.toml"):   "[runtime]\nkind = \"effect\"\nscope = \"session\"\n[runtime.setup]\ntype = \"shell\"\nscript = \"echo '{}'\"\n[runtime.health.alive]\ntype = \"noop\"\n",
+	} {
+		if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(path, []byte(body), 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
+	sub := filepath.Join(root, "src")
+	if err := os.MkdirAll(sub, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	t.Chdir(sub)
+	return root
+}
+
+func TestNewLiveService_CreatesInTheTrustedProjectRootItStartsIn(t *testing.T) {
+	root := liveProjectFixture(t, true)
+	live, err := NewLiveService()
+	if err != nil {
+		t.Fatalf("NewLiveService: %v", err)
+	}
+
+	result, err := live.Create(service.CreateParams{URL: "https://forge.example/issues/1"})
+	if err != nil {
+		t.Fatalf("Create: %v", err)
+	}
+	if got := state.NewStore("").Get(result.SessionName); got == nil || got.ProjectRoot != root {
+		t.Fatalf("session = %+v, want it created in %s", got, root)
+	}
+}
+
+func TestNewLiveService_RefusesToStartInAnUntrustedProjectRoot(t *testing.T) {
+	root := liveProjectFixture(t, false)
+	_, err := NewLiveService()
+	if err == nil || !strings.Contains(err.Error(), root) || !strings.Contains(err.Error(), "trusted_project_roots") {
+		t.Fatalf("NewLiveService = %v, want it stopped naming %s and trusted_project_roots", err, root)
 	}
 }

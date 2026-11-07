@@ -245,6 +245,10 @@ func (v Validation) validateResource(def *Definition, pos Position) error {
 }
 
 func (v Validation) validateWorkflow(def *Definition, pos Position) error {
+	if _, ok := def.Body["resource"]; !ok {
+		return newDiag(CodeFieldRequired, LayerStructural, childPos(pos, "resource"),
+			"`resource` is required: a workflow declares the one entry resource type it accepts")
+	}
 	if err := v.valueTable(def.Body, "outputs", ClassData, surfaceWorkflowOutputs, pos); err != nil {
 		return err
 	}

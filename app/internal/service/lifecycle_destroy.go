@@ -61,6 +61,9 @@ func destroyUnlocked(cfg *config.Config, store *state.Store, params DestroyParam
 	if err != nil {
 		return nil, err
 	}
+	if err := requireSessionRoot(cfg, session); err != nil {
+		return nil, err
+	}
 	params.Observer = withNodeResultRecording(store, sessionName, params.Observer)
 	flushPendingDeliveryLogged(cfg, store, sessionName)
 	// Tearing down an existing session is a per-session write; clamp it to the

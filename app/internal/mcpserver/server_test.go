@@ -10,6 +10,8 @@ import (
 
 	"github.com/mark3labs/mcp-go/mcp"
 
+	"github.com/kecbigmt/plecture/app/internal/config"
+	"github.com/kecbigmt/plecture/app/internal/service"
 	"github.com/kecbigmt/plecture/app/internal/state"
 )
 
@@ -134,5 +136,49 @@ func TestHandleUp_TaskSelectsAnInitialTaskCoreChecks(t *testing.T) {
 	}
 	if text := extractErrorText(result); !strings.Contains(text, "review") || !strings.Contains(text, "not found") {
 		t.Errorf("error = %q, want it to report the task selection", text)
+	}
+}
+
+func TestHandleUp_BySessionNameIgnoresTheServersUntrustedRoot(t *testing.T) {
+	t.Setenv("PLECT_SESSION_NAME", "")
+	setUpConfigHome(t)
+	projects, err := filepath.EvalSymlinks(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	trusted := filepath.Join(projects, "trusted")
+	untrusted := filepath.Join(projects, "untrusted")
+	for _, root := range []string{trusted, untrusted} {
+		if err := os.MkdirAll(filepath.Join(root, ".plect"), 0o755); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(filepath.Join(root, ".plect", "project.toml"), []byte("schema_version = 2\n"), 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
+	configPath := filepath.Join(os.Getenv("HOME"), ".config", "plect", "config.toml")
+	trustedConfig := []byte("schema_version = 2\ntrusted_project_roots = [\"" + trusted + "\"]\n")
+	if err := os.WriteFile(configPath, trustedConfig, 0o644); err != nil {
+		t.Fatal(err)
+	}
+	cfg, err := config.Load()
+	if err != nil {
+		t.Fatal(err)
+	}
+	created, err := service.Create(cfg, state.NewStore(""), service.CreateParams{URL: "widget", Workflow: "plain", Tag: "work", ProjectRoot: trusted})
+	if err != nil {
+		t.Fatalf("Create in the trusted root: %v", err)
+	}
+	t.Chdir(untrusted)
+
+	result, err := handleUp(context.Background(), reqWith(map[string]any{"session": created.SessionName}))
+	if err != nil {
+		t.Fatalf("handleUp: %v", err)
+	}
+	if out := decodeJSONResult(t, result); out["session_name"] != created.SessionName {
+		t.Fatalf("session_name = %v, want %s", out["session_name"], created.SessionName)
+	}
+	if after, _ := os.ReadFile(configPath); string(after) != string(trustedConfig) {
+		t.Errorf("config.toml changed:\n%s", after)
 	}
 }

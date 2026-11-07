@@ -44,7 +44,7 @@ command = "true"
 `, "uses = [\"poll\"]\npoll_every = \"1m\"", `resource = { from = "resource.id" }`)
 			limit := 1
 			cfg.MaxUpChildren = &limit
-			definitions, err := Load(cfg)
+			definitions, err := Load(cfg, "")
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -106,7 +106,7 @@ command = "true"
 `, "uses = [\"poll\"]\npoll_every = \"1m\"", `resource = { from = "resource.id" }`)
 	limit := 2
 	cfg.MaxUpChildren = &limit
-	definitions, err := Load(cfg)
+	definitions, err := Load(cfg, "")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -284,7 +284,7 @@ command = "true"
 `, "uses = [\"poll\"]\npoll_every = \"1m\"", `resource = { from = "resource.id" }`)
 	limit := 1
 	cfg.MaxUpChildren = &limit
-	definitions, err := Load(cfg)
+	definitions, err := Load(cfg, "")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -332,7 +332,7 @@ type = "noop"
 `)
 	limit := 1
 	cfg.MaxUpChildren = &limit
-	definitions, err := Load(cfg)
+	definitions, err := Load(cfg, "")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -434,7 +434,7 @@ type = "noop"
 `)
 	limit := 1
 	cfg.MaxUpChildren = &limit
-	definitions, err := Load(cfg)
+	definitions, err := Load(cfg, "")
 	if err != nil {
 		t.Fatal(err)
 	}

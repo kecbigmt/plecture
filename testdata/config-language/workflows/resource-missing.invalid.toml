@@ -1,0 +1,9 @@
+# plect-fixture: result=invalid layer=structural diagnostic=PLECTURE-CFG-FIELD-REQUIRED entry=definitions
+# reason: every workflow document is a whole definition, so each one names the entry resource type it accepts.
+
+[session]
+kind = "workflow"
+
+[[session.nodes]]
+id   = "pane"
+uses = "tmux_pane"

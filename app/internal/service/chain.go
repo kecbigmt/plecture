@@ -128,8 +128,8 @@ func sanitizeTag(s string) string {
 // resolveSpawnSessionName derives, offline, the session name a fire's spawn
 // would resolve to — mirroring Up's name derivation so the idempotency check
 // sees the same name Up will.
-func resolveSpawnSessionName(cfg *config.Config, store *state.Store, resource, workflow, tag string) (name string, existing *domain.Session, collision *Error, err error) {
-	disp, matched, err := dispatchResource(cfg, "", workflow, resource)
+func resolveSpawnSessionName(cfg *config.Config, store *state.Store, projectRoot, resource, workflow, tag string) (name string, existing *domain.Session, collision *Error, err error) {
+	disp, matched, err := dispatchResource(cfg, projectRoot, workflow, resource)
 	if err != nil {
 		return "", nil, nil, err
 	}

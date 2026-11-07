@@ -89,11 +89,13 @@ type NodeInstance struct {
 }
 
 type Population struct {
-	Workflow string
-	Name     string
+	ProjectRoot string
+	Workflow    string
+	Name        string
 }
 
 type PopulationMember struct {
+	ProjectRoot              string
 	Workflow                 string
 	Name                     string
 	ResourceID               string
@@ -115,11 +117,12 @@ type PopulationMember struct {
 }
 
 type PopulationMemberBlocker struct {
-	Workflow   string
-	Name       string
-	ResourceID string
-	Position   int64
-	Reason     string
+	ProjectRoot string
+	Workflow    string
+	Name        string
+	ResourceID  string
+	Position    int64
+	Reason      string
 }
 
 type Resource struct {
@@ -143,7 +146,7 @@ type Session struct {
 	Alias                    sql.NullString
 	Workflow                 string
 	WorkflowRevision         sql.NullString
-	InvocationDir            sql.NullString
+	ProjectRoot              string
 	PopulationWorkflow       sql.NullString
 	PopulationName           sql.NullString
 	InputsJson               sql.NullString

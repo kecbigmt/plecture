@@ -13,8 +13,11 @@ import (
 
 // Definition is one fully resolved workflow population ready to evaluate.
 type Definition struct {
-	Workflow   config.WorkflowFile
-	Population config.WorkflowPopulation
+	// ProjectRoot is the configuration context that declares the
+	// population, empty for the global-only context.
+	ProjectRoot string
+	Workflow    config.WorkflowFile
+	Population  config.WorkflowPopulation
 	// Entry is the workflow's entry resource. It is both the query the
 	// population runs and the type every admitted item must resolve to, so the
 	// two can never name different resources.
@@ -24,11 +27,11 @@ type Definition struct {
 	SessionSchema *jsonschema.Schema
 }
 
-// Load resolves every active population from the workspace-independent user
-// workflow layer and validates every cross-definition contract before a
-// resident evaluator starts.
-func Load(cfg *config.Config) ([]Definition, error) {
-	workflows, err := cfg.LoadWorkflows("")
+// Load resolves every active population of one configuration context and
+// validates every cross-definition contract before a resident evaluator
+// starts.
+func Load(cfg *config.Config, projectRoot string) ([]Definition, error) {
+	workflows, err := cfg.LoadWorkflows(projectRoot)
 	if err != nil {
 		return nil, err
 	}
@@ -36,7 +39,7 @@ func Load(cfg *config.Config) ([]Definition, error) {
 	if err != nil {
 		return nil, err
 	}
-	docs, err := cfg.LoadTaskDocuments("")
+	docs, err := cfg.LoadTaskDocuments(projectRoot)
 	if err != nil {
 		return nil, err
 	}
@@ -50,7 +53,7 @@ func Load(cfg *config.Config) ([]Definition, error) {
 	for _, address := range addresses {
 		wf := workflows[address]
 		for _, p := range wf.Populations {
-			def, err := resolveDefinition(wf, p, observers, docs)
+			def, err := resolveDefinition(projectRoot, wf, p, observers, docs)
 			if err != nil {
 				return nil, fmt.Errorf("workflow %q population %q: %w", address, p.Name, err)
 			}
@@ -60,8 +63,8 @@ func Load(cfg *config.Config) ([]Definition, error) {
 	return out, nil
 }
 
-func resolveDefinition(wf config.WorkflowFile, p config.WorkflowPopulation, observers map[string]config.ResourceDef, docs map[string]config.TaskDocument) (Definition, error) {
-	def := Definition{Workflow: wf, Population: p}
+func resolveDefinition(projectRoot string, wf config.WorkflowFile, p config.WorkflowPopulation, observers map[string]config.ResourceDef, docs map[string]config.TaskDocument) (Definition, error) {
+	def := Definition{ProjectRoot: projectRoot, Workflow: wf, Population: p}
 	entry, ok := observers[wf.Resource]
 	if !ok {
 		return def, fmt.Errorf("workflow resource names unknown definition %q", wf.Resource)

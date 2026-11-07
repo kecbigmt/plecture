@@ -108,12 +108,25 @@ func workflowAutoSelect(wf config.WorkflowFile) bool {
 	return wf.AutoSelect == nil || *wf.AutoSelect
 }
 
+// RecognizesResource reports whether identifier is a resource identifier
+// rather than a session name, which is what decides whether a caller needs a
+// configuration context at all: a session runs from its recorded root. A
+// caller may ignore its error, which Up reports again when it dispatches.
+func RecognizesResource(cfg *config.Config, identifier string) (bool, error) {
+	resources, err := cfg.LoadResourceDefs()
+	if err != nil {
+		return false, err
+	}
+	_, _, recognized, err := resolveResource(resources, identifier)
+	return recognized, err
+}
+
 // dispatchResource selects the workflow for a resource identifier by its entry
 // resource type. matched is false, with no error, for an identifier no resource
 // recognizes, so a caller may treat it as a session name. Workflows come from
-// the same layers revision capture reads for invocationDir.
-func dispatchResource(cfg *config.Config, invocationDir, flag, resource string) (result dispatchResult, matched bool, err error) {
-	workflows, err := cfg.LoadWorkflows(invocationDir)
+// the same layers revision capture reads for projectRoot.
+func dispatchResource(cfg *config.Config, projectRoot, flag, resource string) (result dispatchResult, matched bool, err error) {
+	workflows, err := cfg.LoadWorkflows(projectRoot)
 	if err != nil {
 		return dispatchResult{}, false, &Error{Code: ErrExecutionFailed, Message: fmt.Sprintf("load workflows: %v", err)}
 	}

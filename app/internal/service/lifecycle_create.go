@@ -23,9 +23,10 @@ type CreateParams struct {
 	ParentSession string         // parent session name; empty falls back to PLECT_SESSION_NAME when it exists and is not self.
 	Observer      task.Observer
 	Population    *contract.PopulationProvenance
-	// InvocationDir is the caller's directory for a direct invocation, empty
-	// for a chain or a population, which read only plugin and global layers.
-	InvocationDir string
+	// ProjectRoot is the configuration context the session is created in: a
+	// canonical project root the caller has already selected and trusted, or
+	// empty for the global-only context.
+	ProjectRoot string
 }
 
 func samePopulation(left, right *contract.PopulationProvenance) bool {
@@ -42,8 +43,8 @@ func populationCollision(session string, existing, requested *contract.Populatio
 
 // ResolvePopulationSessionName runs the same static workflow dispatch as Up
 // without creating or mutating a session.
-func ResolvePopulationSessionName(cfg *config.Config, workflow, resource string) (string, error) {
-	dispatch, matched, err := dispatchResource(cfg, "", workflow, resource)
+func ResolvePopulationSessionName(cfg *config.Config, projectRoot, workflow, resource string) (string, error) {
+	dispatch, matched, err := dispatchResource(cfg, projectRoot, workflow, resource)
 	if err != nil {
 		return "", err
 	}
@@ -60,8 +61,8 @@ func ResolvePopulationSessionName(cfg *config.Config, workflow, resource string)
 // ResolvePopulationSession returns the session name a population member
 // takes and the live session under it. collision is set, with no session,
 // when the live session under that name was recorded for another entry.
-func ResolvePopulationSession(cfg *config.Config, store *state.Store, workflow, resource string) (name string, existing *domain.Session, collision *Error, err error) {
-	dispatch, matched, err := dispatchResource(cfg, "", workflow, resource)
+func ResolvePopulationSession(cfg *config.Config, store *state.Store, projectRoot, workflow, resource string) (name string, existing *domain.Session, collision *Error, err error) {
+	dispatch, matched, err := dispatchResource(cfg, projectRoot, workflow, resource)
 	if err != nil {
 		return "", nil, nil, err
 	}
@@ -108,7 +109,7 @@ func Create(cfg *config.Config, store *state.Store, params CreateParams) (*Creat
 		}
 	}
 
-	disp, matched, dispErr := dispatchResource(cfg, params.InvocationDir, params.Workflow, resource)
+	disp, matched, dispErr := dispatchResource(cfg, params.ProjectRoot, params.Workflow, resource)
 	if dispErr != nil {
 		if svcErr, ok := dispErr.(*Error); ok {
 			return nil, svcErr

@@ -355,50 +355,6 @@ include        = ["github.*"]
 	}
 }
 
-// The ratified cascade appends only `nodes`; every other field a shallower
-// layer set is closed, so a deeper layer wanting a different channel set
-// declares its own workflow rather than adding to one it cannot see.
-func TestLoadWorkflows_CascadeRejectsARedeclaredEventTable(t *testing.T) {
-	tmpHome := t.TempDir()
-	t.Setenv("HOME", tmpHome)
-	globalDir := filepath.Join(tmpHome, ".config", "plect")
-	if err := os.MkdirAll(globalDir, 0o755); err != nil {
-		t.Fatal(err)
-	}
-	if err := os.WriteFile(filepath.Join(globalDir, "config.toml"), []byte("schema_version = 2\n"), 0o644); err != nil {
-		t.Fatal(err)
-	}
-	writeFile(t, filepath.Join(globalDir, "workflows", "shared.toml"), `
-[shared]
-kind = "workflow"
-resource = "issue"
-[[shared.event.channel]]
-name = "runtime"
-uses = "claude_channel"
-include = ["github.*"]
-`)
-	// A channel may only come from a trusted layer; use an ancestor above the
-	// workdir (not the workdir itself, which the workdir guard forbids).
-	orgDir := filepath.Join(tmpHome, "workdirs", "org")
-	workdirDir := filepath.Join(orgDir, "repo", "session")
-	writeFile(t, filepath.Join(orgDir, ".plect", "workflows", "shared.toml"), `
-[shared]
-kind = "workflow"
-[[shared.event.channel]]
-name = "slack"
-uses = "slack_thread"
-include = ["github.*"]
-`)
-	cfg, err := Load()
-	if err != nil {
-		t.Fatal(err)
-	}
-	_, err = trustAncestors(cfg, filepath.Join(workdirDir, "cwd")).LoadWorkflows(filepath.Join(workdirDir, "cwd"))
-	if err == nil || !strings.Contains(err.Error(), `field "event" is set by a shallower layer`) {
-		t.Fatalf("LoadWorkflows = %v, want a redeclaration error naming `event`", err)
-	}
-}
-
 func TestLoadWorkflows_RejectsDuplicateChannelNameInFile(t *testing.T) {
 	repoDir := t.TempDir()
 	writeFile(t, filepath.Join(repoDir, ".config", "plect", "workflows", "coding.toml"), `

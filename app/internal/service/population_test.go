@@ -18,7 +18,7 @@ import (
 // population before admitting a session into it.
 func seedPopulationRowForTest(t *testing.T, store *state.Store, p *contract.PopulationProvenance) {
 	t.Helper()
-	if err := store.UpdatePopulation(p.Workflow+"/"+p.Name, func(population *state.PopulationState) error {
+	if err := store.UpdatePopulation(*p, func(population *state.PopulationState) error {
 		population.Workflow = p.Workflow
 		population.Name = p.Name
 		return nil

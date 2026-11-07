@@ -158,3 +158,30 @@ func assertDiagnostic(t *testing.T, err error, code Code, layer Layer) {
 		t.Errorf("layer = %s, want %s", d.Layer, layer)
 	}
 }
+
+func TestLoadProjectMarker(t *testing.T) {
+	for _, tc := range []struct {
+		name  string
+		body  string
+		code  Code
+		layer Layer
+	}{
+		{name: "the known dialect alone is a valid marker", body: "schema_version = 2\n"},
+		{name: "a marker without a version is refused", body: "", code: CodeFieldRequired, layer: LayerStructural},
+		{name: "a field beside the version is refused", body: "schema_version = 2\nname = \"widgets\"\n", code: CodeFieldUnknown, layer: LayerStructural},
+		{name: "a definition table is refused", body: "schema_version = 2\n[build]\nkind = \"effect\"\n", code: CodeFieldUnknown, layer: LayerStructural},
+		{name: "an older dialect names the migration", body: "schema_version = 1\n", code: CodeSchemaVersionOlder, layer: LayerSemantic},
+		{name: "a newer dialect names the binary", body: "schema_version = 99\n", code: CodeSchemaVersionNewer, layer: LayerSemantic},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			err := LoadProjectMarker(writeTemp(t, ProjectMarkerFileName, tc.body))
+			if tc.code == "" {
+				if err != nil {
+					t.Fatalf("LoadProjectMarker: %v", err)
+				}
+				return
+			}
+			assertDiagnostic(t, err, tc.code, tc.layer)
+		})
+	}
+}

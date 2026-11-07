@@ -78,7 +78,7 @@ type = "exec"
 command = "printf"
 `, "uses = [\"poll\"]\npoll_every = \"1m\"", `resource = { from = "resource.id" }`)
 
-	defs, err := Load(cfg)
+	defs, err := Load(cfg, "")
 	if err != nil {
 		t.Fatalf("Load: %v", err)
 	}
@@ -101,7 +101,7 @@ func TestLoadRequiresTimingForTheUsesSelection(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			_, err := Load(populationConfig(t, tt.means, tt.timing, `resource = { from = "resource.id" }`))
+			_, err := Load(populationConfig(t, tt.means, tt.timing, `resource = { from = "resource.id" }`), "")
 			if err == nil || !strings.Contains(err.Error(), tt.want) {
 				t.Fatalf("error = %v, want %q", err, tt.want)
 			}
@@ -114,7 +114,7 @@ func TestLoadRejectsAUsesSelectionTheObserverDoesNotDeclare(t *testing.T) {
 type = "exec"
 command = "true"
 `, `uses = ["subscribe"]`, `resource = { from = "resource.id" }`)
-	_, err := Load(cfg)
+	_, err := Load(cfg, "")
 	if err == nil || !strings.Contains(err.Error(), "subscribe") {
 		t.Fatalf("error = %v, want a diagnostic naming the undeclared subscribe means", err)
 	}
@@ -126,8 +126,36 @@ type = "exec"
 command = "true"
 `, "uses = [\"poll\"]\npoll_every = \"1m\"", `resource = { from = "item.missing" }`)
 
-	_, err := Load(cfg)
+	_, err := Load(cfg, "")
 	if err == nil || !strings.Contains(err.Error(), "item.missing") {
 		t.Fatalf("error = %v, want unknown item projection", err)
+	}
+}
+
+func TestLoadReadsThePopulationsOfTheSelectedProjectRoot(t *testing.T) {
+	cfg := populationConfig(t, `[source.query.poll]
+type = "exec"
+command = "printf"
+`, "uses = [\"poll\"]\npoll_every = \"1m\"", `resource = { from = "resource.id" }`)
+	root := filepath.Join(t.TempDir(), "widgets")
+	if err := os.MkdirAll(filepath.Join(root, ".plect"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	writeDefinition(t, filepath.Join(root, ".plect"), "project", "schema_version = 2\n")
+	if err := os.Rename(filepath.Join(cfg.BaseDir, "workflow.toml"), filepath.Join(root, ".plect", "workflow.toml")); err != nil {
+		t.Fatal(err)
+	}
+	cfg.TrustedProjectRoots = []string{root}
+
+	defs, err := Load(cfg, root)
+	if err != nil {
+		t.Fatalf("Load: %v", err)
+	}
+	if len(defs) != 1 || defs[0].ProjectRoot != root || populationKey(defs[0]).ProjectRoot != root {
+		t.Fatalf("defs = %+v, want the project's population keyed by its root", defs)
+	}
+	global, err := Load(cfg, "")
+	if err != nil || len(global) != 0 {
+		t.Fatalf("Load(global-only) = %d defs, %v; want none", len(global), err)
 	}
 }

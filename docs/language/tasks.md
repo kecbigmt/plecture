@@ -423,9 +423,11 @@ all = [{ judge_pending = "ac-met" }]
 
 [claude_reviewer]
 kind = "workflow"
+resource = "issue_pr"
 
 [codex_reviewer]
 kind = "workflow"
+resource = "issue_pr"
 ```
 
 A gate variant appends one instruction segment and the judge that records it —

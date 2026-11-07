@@ -21,7 +21,7 @@ import (
 
 type hookRecorder struct {
 	store         *state.Store
-	key           string
+	key           contract.PopulationProvenance
 	ups           []string
 	destroys      []string
 	blockers      []string
@@ -59,7 +59,7 @@ command = "true"
 type = "exec"
 command = "true"
 `, "uses = [\"poll\", \"subscribe\"]\npoll_every = \"1m\"", `resource = { from = "resource.id" }`)
-	defs, err := Load(cfg)
+	defs, err := Load(cfg, "")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -496,7 +496,7 @@ func TestPopulationRetryAllowsProducedInitialTask(t *testing.T) {
 	}
 
 	initialTaskID := func() (string, error) { return "work", nil }
-	if err := RetryPopulationMember(engine.state, engine.log, engine.definition.Workflow.Address, engine.definition.Population.Name, member.Resource.Locator, initialTaskID); err == nil {
+	if err := RetryPopulationMember(engine.state, engine.log, engine.key, member.Resource.Locator, initialTaskID); err == nil {
 		t.Fatal("retry succeeded before initial task cleanup")
 	}
 	population, err := engine.state.Population(engine.key)
@@ -513,7 +513,7 @@ func TestPopulationRetryAllowsProducedInitialTask(t *testing.T) {
 	}); err != nil {
 		t.Fatal(err)
 	}
-	if err := RetryPopulationMember(engine.state, engine.log, engine.definition.Workflow.Address, engine.definition.Population.Name, member.Resource.Locator, initialTaskID); err == nil {
+	if err := RetryPopulationMember(engine.state, engine.log, engine.key, member.Resource.Locator, initialTaskID); err == nil {
 		t.Fatal("retry succeeded with a conflicting initial task")
 	}
 	if err := engine.state.Update(member.SessionName, func(session *domain.Session) error {
@@ -522,7 +522,7 @@ func TestPopulationRetryAllowsProducedInitialTask(t *testing.T) {
 	}); err != nil {
 		t.Fatal(err)
 	}
-	if err := RetryPopulationMember(engine.state, engine.log, engine.definition.Workflow.Address, engine.definition.Population.Name, member.Resource.Locator, initialTaskID); err != nil {
+	if err := RetryPopulationMember(engine.state, engine.log, engine.key, member.Resource.Locator, initialTaskID); err != nil {
 		t.Fatalf("retry with produced initial task: %v", err)
 	}
 	population, err = engine.state.Population(engine.key)
@@ -570,7 +570,7 @@ func TestFailedInitialTaskDoesNotRunSetupAgainBeforeCleanup(t *testing.T) {
 	if setupCalls != 1 {
 		t.Fatalf("initial setup calls before cleanup = %d, want 1", setupCalls)
 	}
-	if err := RetryPopulationMember(engine.state, engine.log, engine.definition.Workflow.Address, engine.definition.Population.Name, "urn:case:a", func() (string, error) { return "work", nil }); err == nil {
+	if err := RetryPopulationMember(engine.state, engine.log, engine.key, "urn:case:a", func() (string, error) { return "work", nil }); err == nil {
 		t.Fatal("retry succeeded before initial task cleanup")
 	}
 	if setupCalls != 1 {
@@ -740,7 +740,7 @@ func TestSubscribeExpiryUsesAppearanceAndInboundClock(t *testing.T) {
 type = "exec"
 command = "true"
 `, "uses = [\"subscribe\"]\nexpire_after = \"1h\"", `resource = { from = "resource.id" }`)
-	defs, err := Load(cfg)
+	defs, err := Load(cfg, "")
 	if err != nil {
 		t.Fatal(err)
 	}

@@ -3,6 +3,12 @@
 
 [review_session]
 kind = "workflow"
+resource = "ticket"
 
 [[review_session.nodes]]
 uses = "review"
+
+[ticket]
+kind  = "resource"
+match = '^ticket:(?P<number>\d+)$'
+name  = { from = "match.number" }

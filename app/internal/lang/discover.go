@@ -56,8 +56,8 @@ func isValidID(id string) bool {
 
 // asTableArray normalizes an array-of-tables field to []map[string]any.
 // BurntSushi/toml decodes such a field as []map[string]interface{} when
-// decoding into a generic map, but a value built by hand (as in a test, or
-// after mergeCascade's own append) may already be a plain []interface{}
+// decoding into a generic map, but a value built by hand (as in a test) may
+// already be a plain []interface{}
 // holding map[string]any elements; this accepts either.
 func asTableArray(v any) ([]map[string]any, bool) {
 	switch arr := v.(type) {

@@ -126,32 +126,44 @@ func (q *Queries) DeleteNodeInstancesForSession(ctx context.Context, sessionID s
 }
 
 const deletePopulationMember = `-- name: DeletePopulationMember :exec
-DELETE FROM population_members WHERE workflow = ? AND name = ? AND resource_id = ?
+DELETE FROM population_members WHERE project_root = ? AND workflow = ? AND name = ? AND resource_id = ?
 `
 
 type DeletePopulationMemberParams struct {
-	Workflow   string
-	Name       string
-	ResourceID string
+	ProjectRoot string
+	Workflow    string
+	Name        string
+	ResourceID  string
 }
 
 func (q *Queries) DeletePopulationMember(ctx context.Context, arg DeletePopulationMemberParams) error {
-	_, err := q.db.ExecContext(ctx, deletePopulationMember, arg.Workflow, arg.Name, arg.ResourceID)
+	_, err := q.db.ExecContext(ctx, deletePopulationMember,
+		arg.ProjectRoot,
+		arg.Workflow,
+		arg.Name,
+		arg.ResourceID,
+	)
 	return err
 }
 
 const deletePopulationMemberBlockers = `-- name: DeletePopulationMemberBlockers :exec
-DELETE FROM population_member_blockers WHERE workflow = ? AND name = ? AND resource_id = ?
+DELETE FROM population_member_blockers WHERE project_root = ? AND workflow = ? AND name = ? AND resource_id = ?
 `
 
 type DeletePopulationMemberBlockersParams struct {
-	Workflow   string
-	Name       string
-	ResourceID string
+	ProjectRoot string
+	Workflow    string
+	Name        string
+	ResourceID  string
 }
 
 func (q *Queries) DeletePopulationMemberBlockers(ctx context.Context, arg DeletePopulationMemberBlockersParams) error {
-	_, err := q.db.ExecContext(ctx, deletePopulationMemberBlockers, arg.Workflow, arg.Name, arg.ResourceID)
+	_, err := q.db.ExecContext(ctx, deletePopulationMemberBlockers,
+		arg.ProjectRoot,
+		arg.Workflow,
+		arg.Name,
+		arg.ResourceID,
+	)
 	return err
 }
 
@@ -315,7 +327,7 @@ func (q *Queries) GetEventCursor(ctx context.Context, arg GetEventCursorParams) 
 
 const getLatestDestroyedSession = `-- name: GetLatestDestroyedSession :one
 SELECT id, name, status, sleep_since, destroyed_at, parent_session_id, root_session_id,
-       resource_id, tag, alias, workflow, workflow_revision, invocation_dir,
+       resource_id, tag, alias, workflow, workflow_revision, project_root,
        population_workflow, population_name, inputs_json,
        health_last_checked_at, health_last_activity_at, health_last_fingerprint,
        health_last_state, health_last_reason, health_last_notified_at, health_notify_count,
@@ -344,7 +356,7 @@ func (q *Queries) GetLatestDestroyedSession(ctx context.Context, name string) (S
 		&i.Alias,
 		&i.Workflow,
 		&i.WorkflowRevision,
-		&i.InvocationDir,
+		&i.ProjectRoot,
 		&i.PopulationWorkflow,
 		&i.PopulationName,
 		&i.InputsJson,
@@ -367,7 +379,7 @@ func (q *Queries) GetLatestDestroyedSession(ctx context.Context, name string) (S
 
 const getLiveSession = `-- name: GetLiveSession :one
 SELECT id, name, status, sleep_since, destroyed_at, parent_session_id, root_session_id,
-       resource_id, tag, alias, workflow, workflow_revision, invocation_dir,
+       resource_id, tag, alias, workflow, workflow_revision, project_root,
        population_workflow, population_name, inputs_json,
        health_last_checked_at, health_last_activity_at, health_last_fingerprint,
        health_last_state, health_last_reason, health_last_notified_at, health_notify_count,
@@ -393,7 +405,7 @@ func (q *Queries) GetLiveSession(ctx context.Context, name string) (Session, err
 		&i.Alias,
 		&i.Workflow,
 		&i.WorkflowRevision,
-		&i.InvocationDir,
+		&i.ProjectRoot,
 		&i.PopulationWorkflow,
 		&i.PopulationName,
 		&i.InputsJson,
@@ -416,19 +428,20 @@ func (q *Queries) GetLiveSession(ctx context.Context, name string) (Session, err
 
 const getPopulation = `-- name: GetPopulation :one
 
-SELECT workflow, name FROM populations WHERE workflow = ? AND name = ?
+SELECT project_root, workflow, name FROM populations WHERE project_root = ? AND workflow = ? AND name = ?
 `
 
 type GetPopulationParams struct {
-	Workflow string
-	Name     string
+	ProjectRoot string
+	Workflow    string
+	Name        string
 }
 
 // Populations
 func (q *Queries) GetPopulation(ctx context.Context, arg GetPopulationParams) (Population, error) {
-	row := q.db.QueryRowContext(ctx, getPopulation, arg.Workflow, arg.Name)
+	row := q.db.QueryRowContext(ctx, getPopulation, arg.ProjectRoot, arg.Workflow, arg.Name)
 	var i Population
-	err := row.Scan(&i.Workflow, &i.Name)
+	err := row.Scan(&i.ProjectRoot, &i.Workflow, &i.Name)
 	return i, err
 }
 
@@ -648,20 +661,22 @@ func (q *Queries) InsertNodeExecutionLayer(ctx context.Context, arg InsertNodeEx
 }
 
 const insertPopulationMemberBlocker = `-- name: InsertPopulationMemberBlocker :exec
-INSERT INTO population_member_blockers (workflow, name, resource_id, position, reason)
-VALUES (?, ?, ?, ?, ?)
+INSERT INTO population_member_blockers (project_root, workflow, name, resource_id, position, reason)
+VALUES (?, ?, ?, ?, ?, ?)
 `
 
 type InsertPopulationMemberBlockerParams struct {
-	Workflow   string
-	Name       string
-	ResourceID string
-	Position   int64
-	Reason     string
+	ProjectRoot string
+	Workflow    string
+	Name        string
+	ResourceID  string
+	Position    int64
+	Reason      string
 }
 
 func (q *Queries) InsertPopulationMemberBlocker(ctx context.Context, arg InsertPopulationMemberBlockerParams) error {
 	_, err := q.db.ExecContext(ctx, insertPopulationMemberBlocker,
+		arg.ProjectRoot,
 		arg.Workflow,
 		arg.Name,
 		arg.ResourceID,
@@ -699,7 +714,7 @@ const insertSession = `-- name: InsertSession :exec
 
 INSERT INTO sessions (
     id, name, status, sleep_since, destroyed_at, parent_session_id, root_session_id,
-    resource_id, tag, alias, workflow, workflow_revision, invocation_dir,
+    resource_id, tag, alias, workflow, workflow_revision, project_root,
     population_workflow, population_name, inputs_json,
     health_last_checked_at, health_last_activity_at, health_last_fingerprint,
     health_last_state, health_last_reason, health_last_notified_at, health_notify_count,
@@ -722,7 +737,7 @@ type InsertSessionParams struct {
 	Alias                    sql.NullString
 	Workflow                 string
 	WorkflowRevision         sql.NullString
-	InvocationDir            sql.NullString
+	ProjectRoot              string
 	PopulationWorkflow       sql.NullString
 	PopulationName           sql.NullString
 	InputsJson               sql.NullString
@@ -756,7 +771,7 @@ func (q *Queries) InsertSession(ctx context.Context, arg InsertSessionParams) er
 		arg.Alias,
 		arg.Workflow,
 		arg.WorkflowRevision,
-		arg.InvocationDir,
+		arg.ProjectRoot,
 		arg.PopulationWorkflow,
 		arg.PopulationName,
 		arg.InputsJson,
@@ -1296,7 +1311,7 @@ func (q *Queries) ListLiveChildSessionNamesForSessions(ctx context.Context, pare
 
 const listLiveSessions = `-- name: ListLiveSessions :many
 SELECT id, name, status, sleep_since, destroyed_at, parent_session_id, root_session_id,
-       resource_id, tag, alias, workflow, workflow_revision, invocation_dir,
+       resource_id, tag, alias, workflow, workflow_revision, project_root,
        population_workflow, population_name, inputs_json,
        health_last_checked_at, health_last_activity_at, health_last_fingerprint,
        health_last_state, health_last_reason, health_last_notified_at, health_notify_count,
@@ -1328,7 +1343,7 @@ func (q *Queries) ListLiveSessions(ctx context.Context) ([]Session, error) {
 			&i.Alias,
 			&i.Workflow,
 			&i.WorkflowRevision,
-			&i.InvocationDir,
+			&i.ProjectRoot,
 			&i.PopulationWorkflow,
 			&i.PopulationName,
 			&i.InputsJson,
@@ -1361,7 +1376,7 @@ func (q *Queries) ListLiveSessions(ctx context.Context) ([]Session, error) {
 
 const listLiveSessionsByAlias = `-- name: ListLiveSessionsByAlias :many
 SELECT id, name, status, sleep_since, destroyed_at, parent_session_id, root_session_id,
-       resource_id, tag, alias, workflow, workflow_revision, invocation_dir,
+       resource_id, tag, alias, workflow, workflow_revision, project_root,
        population_workflow, population_name, inputs_json,
        health_last_checked_at, health_last_activity_at, health_last_fingerprint,
        health_last_state, health_last_reason, health_last_notified_at, health_notify_count,
@@ -1393,7 +1408,7 @@ func (q *Queries) ListLiveSessionsByAlias(ctx context.Context, alias sql.NullStr
 			&i.Alias,
 			&i.Workflow,
 			&i.WorkflowRevision,
-			&i.InvocationDir,
+			&i.ProjectRoot,
 			&i.PopulationWorkflow,
 			&i.PopulationName,
 			&i.InputsJson,
@@ -1617,19 +1632,20 @@ func (q *Queries) ListNodeExecutionLayersForSessions(ctx context.Context, sessio
 }
 
 const listPopulationMemberBlockersForPopulation = `-- name: ListPopulationMemberBlockersForPopulation :many
-SELECT b.workflow, b.name, b.resource_id, b.position, b.reason
+SELECT b.project_root, b.workflow, b.name, b.resource_id, b.position, b.reason
 FROM population_member_blockers b
-WHERE b.workflow = ? AND b.name = ?
+WHERE b.project_root = ? AND b.workflow = ? AND b.name = ?
 ORDER BY b.resource_id, b.position
 `
 
 type ListPopulationMemberBlockersForPopulationParams struct {
-	Workflow string
-	Name     string
+	ProjectRoot string
+	Workflow    string
+	Name        string
 }
 
 func (q *Queries) ListPopulationMemberBlockersForPopulation(ctx context.Context, arg ListPopulationMemberBlockersForPopulationParams) ([]PopulationMemberBlocker, error) {
-	rows, err := q.db.QueryContext(ctx, listPopulationMemberBlockersForPopulation, arg.Workflow, arg.Name)
+	rows, err := q.db.QueryContext(ctx, listPopulationMemberBlockersForPopulation, arg.ProjectRoot, arg.Workflow, arg.Name)
 	if err != nil {
 		return nil, err
 	}
@@ -1638,6 +1654,7 @@ func (q *Queries) ListPopulationMemberBlockersForPopulation(ctx context.Context,
 	for rows.Next() {
 		var i PopulationMemberBlocker
 		if err := rows.Scan(
+			&i.ProjectRoot,
 			&i.Workflow,
 			&i.Name,
 			&i.ResourceID,
@@ -1658,20 +1675,21 @@ func (q *Queries) ListPopulationMemberBlockersForPopulation(ctx context.Context,
 }
 
 const listPopulationMembers = `-- name: ListPopulationMembers :many
-SELECT workflow, name, resource_id, session_name, generation, accepted_at,
+SELECT project_root, workflow, name, resource_id, session_name, generation, accepted_at,
        last_appearance, last_inbound, tombstoned, pending_up,
        consecutive_admit_failures, last_admit_reason, last_admit_error,
        admit_retry_at, admit_suspended, decision_kind, decision_reason, item_json
-FROM population_members WHERE workflow = ? AND name = ? ORDER BY resource_id
+FROM population_members WHERE project_root = ? AND workflow = ? AND name = ? ORDER BY resource_id
 `
 
 type ListPopulationMembersParams struct {
-	Workflow string
-	Name     string
+	ProjectRoot string
+	Workflow    string
+	Name        string
 }
 
 func (q *Queries) ListPopulationMembers(ctx context.Context, arg ListPopulationMembersParams) ([]PopulationMember, error) {
-	rows, err := q.db.QueryContext(ctx, listPopulationMembers, arg.Workflow, arg.Name)
+	rows, err := q.db.QueryContext(ctx, listPopulationMembers, arg.ProjectRoot, arg.Workflow, arg.Name)
 	if err != nil {
 		return nil, err
 	}
@@ -1680,6 +1698,7 @@ func (q *Queries) ListPopulationMembers(ctx context.Context, arg ListPopulationM
 	for rows.Next() {
 		var i PopulationMember
 		if err := rows.Scan(
+			&i.ProjectRoot,
 			&i.Workflow,
 			&i.Name,
 			&i.ResourceID,
@@ -2648,7 +2667,7 @@ UPDATE sessions SET
     alias = ?,
     workflow = ?,
     workflow_revision = ?,
-    invocation_dir = ?,
+    project_root = ?,
     population_workflow = ?,
     population_name = ?,
     inputs_json = ?,
@@ -2679,7 +2698,7 @@ type UpdateSessionByIDParams struct {
 	Alias                    sql.NullString
 	Workflow                 string
 	WorkflowRevision         sql.NullString
-	InvocationDir            sql.NullString
+	ProjectRoot              string
 	PopulationWorkflow       sql.NullString
 	PopulationName           sql.NullString
 	InputsJson               sql.NullString
@@ -2711,7 +2730,7 @@ func (q *Queries) UpdateSessionByID(ctx context.Context, arg UpdateSessionByIDPa
 		arg.Alias,
 		arg.Workflow,
 		arg.WorkflowRevision,
-		arg.InvocationDir,
+		arg.ProjectRoot,
 		arg.PopulationWorkflow,
 		arg.PopulationName,
 		arg.InputsJson,
@@ -2749,28 +2768,29 @@ func (q *Queries) UpsertEventCursor(ctx context.Context, arg UpsertEventCursorPa
 }
 
 const upsertPopulation = `-- name: UpsertPopulation :exec
-INSERT INTO populations (workflow, name) VALUES (?, ?)
-ON CONFLICT(workflow, name) DO NOTHING
+INSERT INTO populations (project_root, workflow, name) VALUES (?, ?, ?)
+ON CONFLICT(project_root, workflow, name) DO NOTHING
 `
 
 type UpsertPopulationParams struct {
-	Workflow string
-	Name     string
+	ProjectRoot string
+	Workflow    string
+	Name        string
 }
 
 func (q *Queries) UpsertPopulation(ctx context.Context, arg UpsertPopulationParams) error {
-	_, err := q.db.ExecContext(ctx, upsertPopulation, arg.Workflow, arg.Name)
+	_, err := q.db.ExecContext(ctx, upsertPopulation, arg.ProjectRoot, arg.Workflow, arg.Name)
 	return err
 }
 
 const upsertPopulationMember = `-- name: UpsertPopulationMember :exec
 INSERT INTO population_members (
-    workflow, name, resource_id, session_name, generation, accepted_at,
+    project_root, workflow, name, resource_id, session_name, generation, accepted_at,
     last_appearance, last_inbound, tombstoned, pending_up,
     consecutive_admit_failures, last_admit_reason, last_admit_error,
     admit_retry_at, admit_suspended, decision_kind, decision_reason, item_json
-) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-ON CONFLICT(workflow, name, resource_id) DO UPDATE SET
+) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+ON CONFLICT(project_root, workflow, name, resource_id) DO UPDATE SET
     session_name = excluded.session_name,
     generation = excluded.generation,
     accepted_at = excluded.accepted_at,
@@ -2789,6 +2809,7 @@ ON CONFLICT(workflow, name, resource_id) DO UPDATE SET
 `
 
 type UpsertPopulationMemberParams struct {
+	ProjectRoot              string
 	Workflow                 string
 	Name                     string
 	ResourceID               string
@@ -2811,6 +2832,7 @@ type UpsertPopulationMemberParams struct {
 
 func (q *Queries) UpsertPopulationMember(ctx context.Context, arg UpsertPopulationMemberParams) error {
 	_, err := q.db.ExecContext(ctx, upsertPopulationMember,
+		arg.ProjectRoot,
 		arg.Workflow,
 		arg.Name,
 		arg.ResourceID,
