@@ -338,9 +338,10 @@ Returns the active subscription list as a JSON array.
 
 A nonmention human reply in a subscribed thread becomes `slack.message`.
 A mention of the app becomes `user.emit`, carrying the root and replies
-since that session's previous mention delivery. The `message` and
-`app_mention` Slack events for one bot mention do not create both event
-types. Both event types carry `channel_id` and `thread_ts` metadata.
+since that session's previous mention delivery. A `message` event can deliver
+a mention in a subscribed thread even if no separate `app_mention` arrives.
+When both Slack event types arrive, each subscriber receives the mention once.
+Both event types carry `channel_id` and `thread_ts` metadata.
 `slack.message` does not advance the transcript watermark.
 
 ## Persistence
