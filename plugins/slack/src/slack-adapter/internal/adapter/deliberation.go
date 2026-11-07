@@ -8,6 +8,7 @@ import (
 	"strconv"
 	"strings"
 	"time"
+	"unicode/utf8"
 
 	"github.com/slack-go/slack"
 	"github.com/slack-go/slack/slackevents"
@@ -29,13 +30,113 @@ type threadFetcher interface {
 	userDisplayName(userID string) string
 }
 
+// cachedNames memoizes display names for one transcript only: a long thread
+// otherwise costs one Slack API call per message while the Socket Mode event
+// loop waits, and a cache that outlived the event would serve renamed users'
+// stale names.
+type cachedNames struct {
+	threadFetcher
+	names map[string]string
+}
+
+func withCachedNames(fetcher threadFetcher) *cachedNames {
+	return &cachedNames{threadFetcher: fetcher, names: make(map[string]string)}
+}
+
+func (c *cachedNames) userDisplayName(userID string) string {
+	if name, ok := c.names[userID]; ok {
+		return name
+	}
+	name := c.threadFetcher.userDisplayName(userID)
+	c.names[userID] = name
+	return name
+}
+
+// maxTranscriptBytes bounds a published transcript because it travels as a
+// single argument to the plect CLI, and Linux refuses to exec any argument
+// over 128 KiB; half of that leaves room for the remaining arguments.
+const maxTranscriptBytes = 64 << 10
+
+// fitTranscript drops the oldest replies rather than the root or the
+// mention, because those carry the thread's subject and the request itself.
+// When those alone still exceed the budget, they share it evenly instead of
+// the first one cut losing its text entirely.
+func fitTranscript(lines []string, keepHead, keepTail int) (string, int) {
+	size := transcriptSize(lines)
+	if size <= maxTranscriptBytes {
+		return strings.Join(lines, "\n"), 0
+	}
+	middle := len(lines) - keepHead - keepTail
+	omitted := 0
+	for omitted < middle && size+len(omissionMarker(omitted))+1 > maxTranscriptBytes {
+		size -= len(lines[keepHead+omitted]) + 1
+		omitted++
+	}
+	kept := make([]string, 0, len(lines)-omitted+1)
+	kept = append(kept, lines[:keepHead]...)
+	if omitted > 0 {
+		kept = append(kept, omissionMarker(omitted))
+	}
+	kept = append(kept, lines[keepHead+omitted:]...)
+	if transcriptSize(kept) > maxTranscriptBytes {
+		shareBudget(kept, keepHead, keepTail)
+	}
+	return strings.Join(kept, "\n"), omitted
+}
+
+// shareBudget truncates the first keepHead and last keepTail lines in place,
+// shortest first, so a line under its share leaves the rest to longer ones.
+func shareBudget(kept []string, keepHead, keepTail int) {
+	retained := make([]int, 0, keepHead+keepTail)
+	for i := 0; i < keepHead; i++ {
+		retained = append(retained, i)
+	}
+	for i := len(kept) - keepTail; i < len(kept); i++ {
+		retained = append(retained, i)
+	}
+	sort.SliceStable(retained, func(x, y int) bool { return len(kept[retained[x]]) < len(kept[retained[y]]) })
+	remaining := maxTranscriptBytes - transcriptSize(kept)
+	for _, i := range retained {
+		remaining += len(kept[i])
+	}
+	for n, i := range retained {
+		kept[i] = truncateLine(kept[i], remaining/(len(retained)-n))
+		remaining -= len(kept[i])
+	}
+}
+
+func transcriptSize(lines []string) int {
+	size := max(len(lines)-1, 0)
+	for _, line := range lines {
+		size += len(line)
+	}
+	return size
+}
+
+const truncationMarker = " [truncated]"
+
+func truncateLine(line string, maxBytes int) string {
+	if len(line) <= maxBytes {
+		return line
+	}
+	cut := max(maxBytes-len(truncationMarker), 0)
+	for cut > 0 && !utf8.RuneStart(line[cut]) {
+		cut--
+	}
+	return line[:cut] + truncationMarker
+}
+
+func omissionMarker(omitted int) string {
+	return fmt.Sprintf("[%d earlier messages omitted]", omitted)
+}
+
 func (a *Adapter) handleAppMention(ev *slackevents.AppMentionEvent) {
 	if ev.BotID != "" {
-		a.logger.Debug("dropping app mention", "reason", "bot_message", "bot_id", ev.BotID)
+		a.logger.Info("app mention skipped", "reason", "bot_message", "bot_id", ev.BotID, "ts", ev.TimeStamp, "channel_id", ev.Channel)
 		return
 	}
 	if !a.cfg.IsMentionUserAllowed(ev.User) {
-		a.logger.Debug("dropping app mention", "reason", "user_not_allowed", "user", ev.User)
+		a.logger.Info("app mention skipped", "reason", "user_not_allowed", "user", ev.User, "ts", ev.TimeStamp, "channel_id", ev.Channel)
 		return
 	}
 
@@ -44,7 +145,7 @@ func (a *Adapter) handleAppMention(ev *slackevents.AppMentionEvent) {
 		threadTS = ev.TimeStamp
 	}
 	if threadTS == "" {
-		a.logger.Debug("dropping app mention", "reason", "missing_thread_ts")
+		a.logger.Info("app mention skipped", "reason", "missing_thread_ts", "channel_id", ev.Channel)
 		return
 	}
 
@@ -62,6 +163,7 @@ func (a *Adapter) handleAppMention(ev *slackevents.AppMentionEvent) {
 		}
 	}
 	mentions := a.broker.ListMentions()
+	mentionSubscribers := len(mentions)
 	pendingMentions := mentions[:0]
 	for _, sub := range mentions {
 		if through := a.broker.MentionWatermark(sub.SessionName, threadTS); through == "" || compareSlackTS(through, ev.TimeStamp) < 0 {
@@ -70,13 +172,19 @@ func (a *Adapter) handleAppMention(ev *slackevents.AppMentionEvent) {
 	}
 	mentions = pendingMentions
 	if len(valid) == 0 && len(mentions) == 0 {
+		if len(threadSubs) > 0 || mentionSubscribers > 0 {
+			a.logger.Info("app mention skipped", "reason", "no_pending_subscriber",
+				"thread_subscribers", len(threadSubs), "mention_subscribers", mentionSubscribers,
+				"thread_ts", threadTS, "ts", ev.TimeStamp, "channel_id", ev.Channel)
+		}
 		return
 	}
 	channelID := ev.Channel
-	fetcher := a.threadFetcher
-	if fetcher == nil {
-		fetcher = a
+	var source threadFetcher = a
+	if a.threadFetcher != nil {
+		source = a.threadFetcher
 	}
+	fetcher := withCachedNames(source)
 	replies, err := fetcher.fetchThreadReplies(channelID, threadTS)
 	if err != nil {
 		a.logger.Warn("app mention skipped: failed to fetch thread replies", "thread_ts", threadTS, "channel_id", channelID, "error", err)
@@ -88,35 +196,38 @@ func (a *Adapter) handleAppMention(ev *slackevents.AppMentionEvent) {
 	}
 	delivered := false
 	for _, sub := range valid {
-		body, through := buildDeliberationTranscript(fetcher, replies, *ev, sub, a.cfg.DeliverFullThread)
-		if body == "" {
-			continue
-		}
+		body, through, omitted := buildDeliberationTranscript(fetcher, replies, *ev, sub, a.cfg.DeliverFullThread)
 		if err := a.publishEvent(sub.SessionName, "user.emit", "slack", "inbound",
 			"Slack deliberation from "+mentionUser, body,
 			map[string]string{"thread_ts": threadTS, "channel_id": channelID, "mention_ts": ev.TimeStamp, "user_id": ev.User, "user": mentionUser}); err != nil {
 			continue
 		}
 		a.broker.MarkDelivered(sub.SessionName, threadTS, through)
+		a.logMentionDelivered(sub.SessionName, threadTS, ev.TimeStamp, len(body), omitted)
 		delivered = true
 	}
 	for _, sub := range mentions {
 		sub.ThreadTS = threadTS
 		sub.ChannelID = channelID
 		sub.DeliveredThrough = a.broker.MentionWatermark(sub.SessionName, threadTS)
-		body, through := buildDeliberationTranscript(fetcher, replies, *ev, sub, false)
+		body, through, omitted := buildDeliberationTranscript(fetcher, replies, *ev, sub, false)
 		if err := a.publishEvent(sub.SessionName, "user.emit", "slack", "inbound",
 			"Slack deliberation from "+mentionUser, body,
 			map[string]string{"thread_ts": threadTS, "channel_id": channelID, "mention_ts": ev.TimeStamp, "user_id": ev.User, "user": mentionUser}); err != nil {
 			continue
 		}
 		a.broker.MarkMentionDelivered(sub.SessionName, threadTS, through)
+		a.logMentionDelivered(sub.SessionName, threadTS, ev.TimeStamp, len(body), omitted)
 		delivered = true
 	}
 	if delivered {
 		a.recordStreamRecipient(channelID, threadTS, ev.User, ev.UserTeam)
 	}
+}
 
+func (a *Adapter) logMentionDelivered(session, threadTS, mentionTS string, bodyBytes, omitted int) {
+	a.logger.Info("app mention delivered", "session_name", session, "thread_ts", threadTS, "ts", mentionTS,
+		"body_bytes", bodyBytes, "omitted_messages", omitted)
 }
 
 func (a *Adapter) fetchThreadReplies(channelID, threadTS string) ([]slack.Message, error) {
@@ -169,7 +280,7 @@ func (a *Adapter) userDisplayName(userID string) string {
 	return userID
 }
 
-func buildDeliberationTranscript(fetcher threadFetcher, replies []slack.Message, mention slackevents.AppMentionEvent, sub Subscriber, fullThread bool) (string, string) {
+func buildDeliberationTranscript(fetcher threadFetcher, replies []slack.Message, mention slackevents.AppMentionEvent, sub Subscriber, fullThread bool) (string, string, int) {
 	messages := selectDeliberationMessages(replies, sub.ThreadTS, mention.TimeStamp, sub.DeliveredThrough, fullThread)
 	lines := make([]string, 0, len(messages)+1)
 	deliveredThrough := mention.TimeStamp
@@ -184,7 +295,15 @@ func buildDeliberationTranscript(fetcher threadFetcher, replies []slack.Message,
 		mentionUser = mention.User
 	}
 	lines = append(lines, formatTranscriptLine(mention.TimeStamp, mentionUser, mention.Text))
-	return strings.Join(lines, "\n"), deliveredThrough
+	body, omitted := fitTranscript(lines, rootLines(messages, sub.ThreadTS), 1)
+	return body, deliveredThrough, omitted
+}
+
+func rootLines(messages []slack.Message, threadTS string) int {
+	if len(messages) > 0 && messages[0].Timestamp == threadTS {
+		return 1
+	}
+	return 0
 }
 
 // A failed catch-up keeps its watermark so a later registration can retry.
@@ -200,10 +319,11 @@ func (a *Adapter) catchUpThread(sub Subscriber, through string) Subscriber {
 		return sub
 	}
 
-	fetcher := a.threadFetcher
-	if fetcher == nil {
-		fetcher = a
+	var source threadFetcher = a
+	if a.threadFetcher != nil {
+		source = a.threadFetcher
 	}
+	fetcher := withCachedNames(source)
 	replies, err := fetcher.fetchThreadReplies(sub.ChannelID, sub.ThreadTS)
 	if err != nil {
 		a.logger.Warn("catch-up skipped: failed to fetch thread replies",
@@ -217,7 +337,7 @@ func (a *Adapter) catchUpThread(sub Subscriber, through string) Subscriber {
 		return sub
 	}
 
-	body := buildCatchUpTranscript(fetcher, messages)
+	body := buildCatchUpTranscript(fetcher, messages, sub.ThreadTS)
 	if err := a.publishEvent(sub.SessionName, "user.emit", "slack", "inbound",
 		"Slack thread history", body,
 		map[string]string{
@@ -256,12 +376,13 @@ func selectCatchUpMessages(replies []slack.Message, threadTS, through, watermark
 	return out
 }
 
-func buildCatchUpTranscript(fetcher threadFetcher, messages []slack.Message) string {
+func buildCatchUpTranscript(fetcher threadFetcher, messages []slack.Message, threadTS string) string {
 	lines := make([]string, 0, len(messages))
 	for _, msg := range messages {
 		lines = append(lines, formatTranscriptLine(msg.Timestamp, displayNameForMessage(fetcher, msg), msg.Text))
 	}
-	return strings.Join(lines, "\n")
+	body, _ := fitTranscript(lines, rootLines(messages, threadTS), 0)
+	return body
 }
 
 func sortedReplies(replies []slack.Message) []slack.Message {
