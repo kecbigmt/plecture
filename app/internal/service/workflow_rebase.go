@@ -77,6 +77,9 @@ func workflowRebaseUnlocked(cfg *config.Config, store *state.Store, name string,
 	if session.Status == contract.SessionStatusDestroyed {
 		return nil, fmt.Errorf("session %q is destroyed", name)
 	}
+	if refusal := retiredRevisionRefusal(session, "rebase"); refusal != nil {
+		return nil, refusal
+	}
 	old, _, err := config.RevisionForSession(session)
 	if err != nil {
 		return nil, err

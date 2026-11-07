@@ -131,6 +131,9 @@ func upUnlocked(cfg *config.Config, store *state.Store, params UpParams) (*UpRes
 		if entryErr != nil {
 			return nil, entryErr
 		}
+		if refusal := retiredRevisionRefusal(existing, "bring up"); refusal != nil {
+			return nil, refusal
+		}
 		if existing != nil {
 			switch {
 			case params.Population != nil && !samePopulation(existing.Population, params.Population):
@@ -219,6 +222,9 @@ func upUnlocked(cfg *config.Config, store *state.Store, params UpParams) (*UpRes
 	}
 	if err := requireSessionRoot(cfg, session); err != nil {
 		return nil, err
+	}
+	if refusal := retiredRevisionRefusal(session, "bring up"); refusal != nil {
+		return nil, refusal
 	}
 	wasSleeping := !session.SleepSince.IsZero()
 	// This covers every path below, including callers that pass no

@@ -12,6 +12,7 @@ import (
 
 	"github.com/kecbigmt/plecture/app/internal/config"
 	"github.com/kecbigmt/plecture/app/internal/domain"
+	"github.com/kecbigmt/plecture/app/internal/lang"
 	"github.com/kecbigmt/plecture/app/internal/service"
 	"github.com/kecbigmt/plecture/app/internal/state"
 	"github.com/kecbigmt/plecture/app/internal/task"
@@ -122,7 +123,10 @@ func renderStatus(cmd *cobra.Command, result *service.StatusResult) {
 	case id.Tag != "":
 		fmt.Fprintf(w, "Tag:\t%s\n", id.Tag)
 	}
-	if id.Revision != "" {
+	switch {
+	case id.Revision != "" && len(id.RetiredSpellings) > 0:
+		fmt.Fprintf(w, "Revision:\t%s (retired dialect: %s; destroy with the previous release — see %s)\n", id.Revision, strings.Join(id.RetiredSpellings, ", "), lang.WorkspaceProviderMigrationGuide)
+	case id.Revision != "":
 		fmt.Fprintf(w, "Revision:\t%s\n", id.Revision)
 	}
 	if id.ParentSession != "" {
