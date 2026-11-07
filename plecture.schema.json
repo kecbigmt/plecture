@@ -933,7 +933,9 @@
           "required": ["from"],
           "properties": {
             "from": {
-              "type": "string"
+              "type": "string",
+              "pattern": "^nodes\\.[A-Za-z_][A-Za-z0-9_]*\\.outputs\\.[A-Za-z_][A-Za-z0-9_]*$",
+              "$comment": "PLECTURE-CFG-FROM-ROOT: a node-output projection is nodes.<id>.outputs.<key>; that the output is an absolute directory is checked when the workflow runs."
             }
           },
           "description": "Exactly one projection from a node output, resolving to an absolute local directory. The producer node and its transitive prerequisites are preparation nodes; every other node runs in this directory.",

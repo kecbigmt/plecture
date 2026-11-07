@@ -160,12 +160,12 @@ func WorkflowWorkdir(def *Definition) (*WorkdirRef, error) {
 	}
 	path, isString := tbl["from"].(string)
 	if !isString {
-		return nil, newDiag(CodeFromRoot, LayerSemantic, at, shape)
+		return nil, newDiag(CodeFromRoot, LayerStructural, at, shape)
 	}
 	segments := strings.Split(path, ".")
 	if len(segments) != 4 || segments[0] != "nodes" || segments[2] != "outputs" ||
 		!isValidID(segments[1]) || !isValidID(segments[3]) {
-		return nil, newDiag(CodeFromRoot, LayerSemantic, at, shape)
+		return nil, newDiag(CodeFromRoot, LayerStructural, at, shape)
 	}
 	return &WorkdirRef{Node: segments[1], Key: segments[3]}, nil
 }
