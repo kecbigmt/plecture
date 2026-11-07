@@ -156,6 +156,7 @@ type migrationMarker struct {
 	StartedAt     time.Time `json:"started_at"`
 	Stage         string    `json:"stage"`
 	Error         string    `json:"error,omitempty"`
+	Backup        string    `json:"backup,omitempty"`
 }
 
 func writeMarker(path string, m migrationMarker) error {

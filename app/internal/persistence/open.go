@@ -4,6 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"fmt"
+	"io"
 	"io/fs"
 	"os"
 	"strings"
@@ -62,6 +63,8 @@ type DB struct {
 	// direct field assignment (same package) to exercise interrupted and
 	// concurrent migrations without touching the real migrations/ tree.
 	migrations fs.FS
+
+	diagnostics io.Writer
 }
 
 // Open sets its journal mode (JournalModeEnvVar), a bounded busy timeout, and foreign-key
