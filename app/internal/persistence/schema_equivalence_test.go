@@ -85,6 +85,36 @@ func TestSchemaDrift_ComparesTriggersAndViews(t *testing.T) {
 	}
 }
 
+func TestSchemaDrift_ReadsCommentMarkersInsideQuotedIdentifiersAsNames(t *testing.T) {
+	const table = "CREATE TABLE notes (id INTEGER PRIMARY KEY, \"body--a\" TEXT, \"body--b\" TEXT);\n"
+	const view = "CREATE VIEW body_view AS SELECT \"body--a\" FROM notes;\n"
+	migration := func(sql string) fstest.MapFS {
+		return fstest.MapFS{"1_notes.sql": {Data: []byte("-- +goose Up\n" + sql)}}
+	}
+
+	cases := map[string]struct {
+		history  fstest.MapFS
+		wantDiff bool
+	}{
+		"double-quoted name differs after --":   {migration(table + strings.Replace(view, "body--a", "body--b", 1)), true},
+		"backtick-quoted name differs after --": {migration(table + "CREATE VIEW body_view AS SELECT `body--b` FROM notes;\n"), true},
+		"bracket-quoted name differs after --":  {migration(table + "CREATE VIEW body_view AS SELECT [body--b] FROM notes;\n"), true},
+		"same name in backtick quoting":         {migration(table + "CREATE VIEW body_view AS SELECT `body--a` FROM notes;\n"), false},
+		"same name in bracket quoting":          {migration(table + "CREATE VIEW body_view AS SELECT [body--a] FROM notes;\n"), false},
+	}
+	for name, tc := range cases {
+		t.Run(name, func(t *testing.T) {
+			diff := schemaDrift(t, table+view, tc.history)
+			if tc.wantDiff && diff == "" {
+				t.Fatal("schemaDrift reported no difference")
+			}
+			if !tc.wantDiff && diff != "" {
+				t.Fatalf("schemaDrift reported a difference:\n%s", diff)
+			}
+		})
+	}
+}
+
 // schemaDrift excludes goose_db_version, the table goose owns for its own
 // bookkeeping. It compares SQLite's own introspection rather than raw
 // CREATE TABLE text, because ALTER TABLE rewrites a table's stored text in
@@ -170,18 +200,23 @@ func diffObjectSets(declared, migrated map[string]schemaObject) string {
 	return strings.Join(lines, "\n") + "\n"
 }
 
-// stripSQLComments replaces each comment outside a string literal with a
-// space rather than removing it, so the tokens on either side of it stay
-// separate words once normalizeSQLFragment collapses whitespace.
+// stripSQLComments replaces each comment outside a string literal or quoted
+// identifier with a space rather than removing it, so the tokens on either
+// side of it stay separate words once normalizeSQLFragment collapses
+// whitespace. A comment marker inside quotes is part of a value or a name.
 func stripSQLComments(s string) string {
+	closers := map[byte]byte{'\'': '\'', '"': '"', '`': '`', '[': ']'}
 	var b strings.Builder
 	for i := 0; i < len(s); i++ {
+		closer, quoted := closers[s[i]]
 		switch {
-		case s[i] == '\'':
+		case quoted:
 			end := i + 1
 			for end < len(s) {
-				if s[end] == '\'' {
-					if end+1 < len(s) && s[end+1] == '\'' {
+				if s[end] == closer {
+					// A doubled closing quote is an escaped quote, except
+					// for a bracket-quoted identifier, which has no escape.
+					if closer != ']' && end+1 < len(s) && s[end+1] == closer {
 						end += 2
 						continue
 					}
@@ -640,9 +675,26 @@ func normalizeSQLFragment(s string) string {
 			}
 			inString = true
 			b.WriteByte(c)
-		case c == '`' || c == '"' || c == '[' || c == ']':
-			// Identifier-quoting punctuation outside a string literal;
-			// dropping it lets `col` and col compare equal.
+		case c == '`' || c == '"' || c == '[':
+			// Dropping the quotes lets `col` and col compare equal, but the
+			// name inside keeps its own whitespace: "a  b" and "a b" are
+			// two different columns.
+			closer := map[byte]byte{'`': '`', '"': '"', '[': ']'}[c]
+			if pendingSpace {
+				b.WriteByte(' ')
+				pendingSpace = false
+			}
+			for i++; i < len(s); i++ {
+				if s[i] == closer {
+					if closer != ']' && i+1 < len(s) && s[i+1] == closer {
+						b.WriteByte(closer)
+						i++
+						continue
+					}
+					break
+				}
+				b.WriteByte(byte(unicode.ToLower(rune(s[i]))))
+			}
 		case unicode.IsSpace(rune(c)):
 			pendingSpace = b.Len() > 0
 		default:
@@ -918,6 +970,15 @@ func TestNormalizeSQLFragment_PreservesStringLiteralCaseAndWhitespace(t *testing
 // TestExtractChecks_DistinguishesLiteralCase is the same regression as
 // above, exercised through the full CHECK-extraction path rather than
 // normalizeSQLFragment in isolation.
+func TestNormalizeSQLFragment_KeepsWhitespaceInsideQuotedIdentifiers(t *testing.T) {
+	if a, b := normalizeSQLFragment(`SELECT "a  b" FROM t`), normalizeSQLFragment(`SELECT "a b" FROM t`); a == b {
+		t.Errorf("two names that differ only in inner whitespace both normalized to %q", a)
+	}
+	if a, b := normalizeSQLFragment(`SELECT "Note" FROM t`), normalizeSQLFragment("SELECT [note] FROM `t`"); a != b {
+		t.Errorf("the same names in different quoting normalized to %q and %q", a, b)
+	}
+}
+
 func TestExtractChecks_DistinguishesLiteralCase(t *testing.T) {
 	upper := extractChecks("CREATE TABLE t (status TEXT, CHECK (status = 'Active'))")
 	lower := extractChecks("CREATE TABLE t (status TEXT, CHECK (status = 'active'))")
@@ -954,6 +1015,14 @@ func TestExtractChecks_IgnoresSyntaxInsideStringLiterals(t *testing.T) {
 	want := "(note <> 'contains a ) paren and the word check')"
 	if len(got) != 1 || got[0] != want {
 		t.Fatalf("extractChecks(...) = %v, want exactly [%q]", got, want)
+	}
+}
+
+func TestStripSQLComments_KeepsCommentMarkersInsideQuotedIdentifiers(t *testing.T) {
+	got := stripSQLComments("SELECT \"a--b\", `c--d`, [e--f], \"g/*h*/\" FROM t -- gone\n")
+	want := "SELECT \"a--b\", `c--d`, [e--f], \"g/*h*/\" FROM t  "
+	if got != want {
+		t.Errorf("stripSQLComments(...) = %q, want %q", got, want)
 	}
 }
 
