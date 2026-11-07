@@ -189,7 +189,8 @@ func upUnlocked(cfg *config.Config, store *state.Store, params UpParams) (*UpRes
 				return nil, err
 			}
 		}
-		if !(params.ForceRecreate && existing != nil) {
+		// A queued up runs no recreate, so only one that proceeds defers this.
+		if !(params.ForceRecreate && existing != nil) || capped {
 			if err := ensureInitialTask(cfg, store, sessionName, initialTask); err != nil {
 				return nil, err
 			}
