@@ -405,6 +405,37 @@ all = [ { judge_pending = "ac-met" } ]
 	}
 }
 
+func TestTickSession_ChainDoesNotKickAnotherEntrysSession(t *testing.T) {
+	store := testStore(t)
+	cfg := writeWorkflowFixture(t, "wf",
+		[]taskFixture{workTaskWithChain(`
+[[chains]]
+id       = "review"
+workflow = "codex"
+[chains.when]
+all = [ { judge_pending = "ac-met" } ]
+`)},
+		[]nodeFixture{{id: "work"}})
+	writeWorkflowFile(t, cfg, "codex", "")
+	seedReviewWork(t, store, "owner/repo-1", map[string]any{"checks_status": "SUCCESS", "revision": "sha1"})
+	seedSessionWithNodes(t, store, "owner/repo-1+review-work", "owner/repo", 1, "codex", nil)
+	if err := store.Update("owner/repo-1+review-work", func(session *domain.Session) error {
+		session.ResourceType = "alt"
+		return nil
+	}); err != nil {
+		t.Fatal(err)
+	}
+
+	res, err := TickSession(cfg, store, TickParams{SessionName: "owner/repo-1", SkipRefresh: true})
+	if err != nil {
+		t.Fatalf("TickSession: %v", err)
+	}
+	sp, _ := findSpawn(res.Chains, "review")
+	if sp.AlreadyActive || sp.KickDelivered || sp.Spawned || len(sp.Warnings) != 1 || !strings.Contains(sp.Warnings[0], "collides") {
+		t.Fatalf("chain spawn = %+v, want a collision warning with no kick and no spawn", sp)
+	}
+}
+
 // A chain's spawn (Up) failing must not discard the done_when actions this
 // same tick already published/persisted, nor abort the whole tick result —
 // only that chain's own entry reports the failure, so the next tick can

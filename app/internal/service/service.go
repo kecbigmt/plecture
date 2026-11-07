@@ -69,6 +69,38 @@ func checkEntryCollision(existing *domain.Session, d dispatchResult, tag string)
 	return &Error{Code: ErrInvalidInput, Message: fmt.Sprintf("session %q collides with %s: it was created for %s; pass a different --tag", existing.Name, requested, recorded)}
 }
 
+// Every resource-addressed reuse reads through entrySession, so none can reach
+// a session recorded for another entry. A collision is returned apart from err
+// because a chain and a population handle it differently from a read failure.
+func entrySession(store *state.Store, d dispatchResult, tag string) (name string, session *domain.Session, collision *Error, err error) {
+	name, nameErr := d.sessionName(tag)
+	if nameErr != nil {
+		return "", nil, nil, nameErr
+	}
+	existing, err := store.GetE(name)
+	if err != nil {
+		return "", nil, nil, fmt.Errorf("read session %q state: %w", name, err)
+	}
+	if existing == nil {
+		return name, nil, nil, nil
+	}
+	if collision := checkEntryCollision(existing, d, tag); collision != nil {
+		return name, nil, collision, nil
+	}
+	return name, existing, nil, nil
+}
+
+func reusableEntrySession(store *state.Store, d dispatchResult, tag string) (string, *domain.Session, *Error) {
+	name, session, collision, err := entrySession(store, d, tag)
+	if collision != nil {
+		return "", nil, collision
+	}
+	if err != nil {
+		return "", nil, asServiceError(err)
+	}
+	return name, session, nil
+}
+
 func describeTag(tag string) string {
 	if tag == "" {
 		return "no tag"
@@ -107,12 +139,14 @@ func resolveSession(cfg *config.Config, store *state.Store, identifier string) (
 	sessionName := identifier
 	if cfg != nil {
 		if disp, matched, err := dispatchResource(cfg, "", "", identifier); err == nil && matched {
-			if session, err := store.GetE(disp.Name); err != nil {
+			name, session, err := reusableEntrySession(store, disp, "")
+			if err != nil {
 				return "", nil, err
-			} else if session != nil && checkEntryCollision(session, disp, "") == nil {
-				return disp.Name, session, nil
 			}
-			sessionName = disp.Name
+			if session != nil {
+				return name, session, nil
+			}
+			sessionName = name
 		}
 	}
 

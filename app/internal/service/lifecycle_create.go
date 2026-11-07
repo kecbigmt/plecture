@@ -57,6 +57,20 @@ func ResolvePopulationSessionName(cfg *config.Config, workflow, resource string)
 	return name, nil
 }
 
+// ResolvePopulationSession returns the session name a population member
+// takes and the live session under it. collision is set, with no session,
+// when the live session under that name was recorded for another entry.
+func ResolvePopulationSession(cfg *config.Config, store *state.Store, workflow, resource string) (name string, existing *domain.Session, collision *Error, err error) {
+	dispatch, matched, err := dispatchResource(cfg, "", workflow, resource)
+	if err != nil {
+		return "", nil, nil, err
+	}
+	if !matched {
+		return "", nil, nil, &Error{Code: ErrInvalidInput, Message: fmt.Sprintf("no resource declaration recognizes population resource %q", resource)}
+	}
+	return entrySession(store, dispatch, "")
+}
+
 // CreateResult holds the outcome of Create.
 type CreateResult struct {
 	SessionName string                         `json:"session_name"`

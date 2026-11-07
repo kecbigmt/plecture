@@ -122,18 +122,11 @@ func upUnlocked(cfg *config.Config, store *state.Store, params UpParams) (*UpRes
 	}
 	if matched {
 		tag := params.Tag
-		sessionName, nameErr := disp.sessionName(tag)
-		if nameErr != nil {
-			return nil, nameErr
-		}
-		existing, err := store.GetE(sessionName)
-		if err != nil {
-			return nil, &Error{Code: ErrExecutionFailed, Message: fmt.Sprintf("read session %q state: %v", sessionName, err)}
+		sessionName, existing, entryErr := reusableEntrySession(store, disp, tag)
+		if entryErr != nil {
+			return nil, entryErr
 		}
 		if existing != nil {
-			if collision := checkEntryCollision(existing, disp, tag); collision != nil {
-				return nil, collision
-			}
 			switch {
 			case params.Population != nil && !samePopulation(existing.Population, params.Population):
 				return nil, populationCollision(sessionName, existing.Population, params.Population)

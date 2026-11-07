@@ -36,14 +36,11 @@ func createWithWorkflowSetup(cfg *config.Config, store *state.Store, params Crea
 
 	now := time.Now()
 	var session *domain.Session
-	existing, err := store.GetE(sessionName)
-	if err != nil {
-		return nil, &Error{Code: ErrExecutionFailed, Message: fmt.Sprintf("failed to check for an existing session %q: %v", sessionName, err)}
+	_, existing, entryErr := reusableEntrySession(store, disp, params.Tag)
+	if entryErr != nil {
+		return nil, entryErr
 	}
 	if existing != nil {
-		if collision := checkEntryCollision(existing, disp, params.Tag); collision != nil {
-			return nil, collision
-		}
 		if params.Population != nil && !samePopulation(existing.Population, params.Population) {
 			return nil, populationCollision(sessionName, existing.Population, params.Population)
 		}

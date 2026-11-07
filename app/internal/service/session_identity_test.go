@@ -236,3 +236,17 @@ func TestResolveSession_ResourceIdentifierDoesNotReachAnotherEntrysSession(t *te
 		t.Fatal("a case identifier resolved to a session recorded for another resource type")
 	}
 }
+
+func TestResolveSessionName_ResourceIdentifierDoesNotNameAnotherEntrysSession(t *testing.T) {
+	store := testStore(t)
+	cfg := identityFixture(t)
+	now := time.Now()
+	if err := store.Put(&domain.Session{Name: "case-1", Workflow: "flow", ResourceType: "alt", InstanceName: "case-1", CreatedAt: now, UpdatedAt: now}); err != nil {
+		t.Fatal(err)
+	}
+
+	name, err := resolveSessionName(cfg, store, identityCaseID)
+	if err == nil || !strings.Contains(err.Error(), "collides") {
+		t.Fatalf("resolveSessionName = (%q, %v), want a collision instead of naming another entry's session", name, err)
+	}
+}

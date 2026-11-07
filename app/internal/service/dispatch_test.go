@@ -178,8 +178,6 @@ func TestCreate_ResolverPath(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Create: %v", err)
 	}
-	// No --tag: the workflow id ("gh") is the default session-identity tag,
-	// so cross-tool sessions on one resource never share a session.
 	if result.SessionName != "org/repo-42" {
 		t.Errorf("SessionName = %q, want org/repo-42", result.SessionName)
 	}

@@ -78,16 +78,19 @@ func evalDocumentChain(cfg *config.Config, store *state.Store, def config.Docume
 		sp.Inputs = resolved
 	}
 	sp.Fired = true
-	if name, err := resolveSpawnSessionName(cfg, resource, def.Workflow, sp.Tag); err == nil && name != "" {
+	if name, existing, collision, getErr := resolveSpawnSessionName(cfg, store, resource, def.Workflow, sp.Tag); name != "" {
 		sp.TargetSession = name
-		existing, getErr := store.GetE(name)
-		if getErr != nil {
+		switch {
+		case collision != nil:
+			// A target recorded for another entry is neither active nor
+			// adoptable; the spawn's Up reports the collision.
+		case getErr != nil:
 			// Fail closed: an unreadable store cannot prove the target is
 			// absent, and treating it as absent risks spawning a duplicate
 			// session for a chain that is already active.
 			sp.AlreadyActive = true
 			sp.Warnings = append(sp.Warnings, fmt.Sprintf("could not check whether %q is already active: %v", name, getErr))
-		} else if existing != nil && existing.Population == nil {
+		case existing != nil && existing.Population == nil:
 			sp.AlreadyActive = true
 		}
 	}
