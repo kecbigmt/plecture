@@ -531,6 +531,7 @@ func upsertNodeExecutionTx(ctx context.Context, q *sqlcgen.Queries, sessionID, n
 			CleanedAt:               formatTimeNull(ts.CleanedAt),
 			FinalizedAt:             formatTimeNull(ts.FinalizedAt),
 			ProcessJson:             processJSON,
+			Directory:               nullString(ts.Directory),
 		}); err != nil {
 			return fmt.Errorf("update node execution %q/%q: %w", sessionID, nodeID, err)
 		}
@@ -565,6 +566,7 @@ func upsertNodeExecutionTx(ctx context.Context, q *sqlcgen.Queries, sessionID, n
 				CleanedAt:               formatTimeNull(ts.CleanedAt),
 				FinalizedAt:             formatTimeNull(ts.FinalizedAt),
 				ProcessJson:             processJSON,
+				Directory:               nullString(ts.Directory),
 			})
 			if err != nil {
 				return fmt.Errorf("insert node execution %q/%q: %w", sessionID, nodeID, err)
@@ -597,6 +599,7 @@ func upsertNodeExecutionTx(ctx context.Context, q *sqlcgen.Queries, sessionID, n
 				CleanedAt:               formatTimeNull(ts.CleanedAt),
 				FinalizedAt:             formatTimeNull(ts.FinalizedAt),
 				ProcessJson:             processJSON,
+				Directory:               nullString(ts.Directory),
 			}); err != nil {
 				return fmt.Errorf("update node execution %q/%q: %w", sessionID, nodeID, err)
 			}
@@ -690,6 +693,7 @@ func nodeExecutionFromRow(row sqlcgen.NodeExecution) (*contract.TaskState, error
 		Seq:           int(row.Sequence),
 		Resource:      row.Resource.String,
 		Subscription:  row.Subscription.String,
+		Directory:     row.Directory.String,
 		ExecutionID:   row.ID,
 		Inputs:        inputs,
 		Outputs:       outputs,
@@ -756,6 +760,7 @@ func upsertTaskInstanceTx(ctx context.Context, q *sqlcgen.Queries, sessionID, in
 		CleanedAt:               formatTimeNull(ts.CleanedAt),
 		FinalizedAt:             formatTimeNull(ts.FinalizedAt),
 		ProcessJson:             processJSON,
+		Directory:               nullString(ts.Directory),
 	})
 	if err != nil {
 		return fmt.Errorf("upsert task instance %q/%q: %w", sessionID, instanceName, err)
@@ -837,6 +842,7 @@ func taskInstanceFromRow(row sqlcgen.TaskInstance) (*contract.TaskState, error) 
 	}
 	ts := &contract.TaskState{
 		TaskID:        row.TaskID,
+		Directory:     row.Directory.String,
 		Scope:         row.Scope,
 		Status:        row.Status,
 		Seq:           int(row.Sequence),

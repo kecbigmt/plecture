@@ -43,7 +43,8 @@ task = { type = "string" }
 | `inputs_schema` | Contract for the session inputs this machine accepts. |
 
 `config.toml` has no workspace-directory setting. The invocation's nearest
-ancestor containing `.plect/project.toml` is its project root. When its
+directory containing `.plect/project.toml`, the invocation directory itself
+included, is its project root. When its
 canonical path is in `trusted_project_roots`, that root's `.plect/` definition
 tree composes after plugins and the machine-owned global layer. No other
 ancestor is read, and a generated checkout is never a configuration source.

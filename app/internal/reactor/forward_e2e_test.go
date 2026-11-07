@@ -64,6 +64,7 @@ scope = "run"
 	writeFile(t, filepath.Join(pluginDir, "config", "workflows", "reactive.toml"), `
 [reactive]
 kind = "workflow"
+resource = "issue"
 [[reactive.nodes]]
 id   = "runner"
 uses = "runner"

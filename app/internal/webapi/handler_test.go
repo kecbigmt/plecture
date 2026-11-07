@@ -158,9 +158,9 @@ func TestHandleGet_ResponseJSONOmitsEveryUnsetOptionalKey(t *testing.T) {
 	decodeBody(t, rec, &raw)
 
 	unsetOptionalKeys := []string{
-		"resourceId", "title", "branch", "workflow", "tag", "parentSession",
+		"resourceId", "title", "workflow", "tag", "parentSession",
 		"children", "inputs", "health", "lastCheckedAt", "lastActivityAt",
-		"tasks", "workspaceDirPath", "message", "warnings", "destroyed",
+		"tasks", "workdir", "workdirExists", "message", "warnings", "destroyed",
 		"destroyedAt",
 	}
 	for _, key := range unsetOptionalKeys {
@@ -168,7 +168,7 @@ func TestHandleGet_ResponseJSONOmitsEveryUnsetOptionalKey(t *testing.T) {
 			t.Errorf("response JSON has key %q = %v, want it omitted (not even null)", key, raw[key])
 		}
 	}
-	for _, key := range []string{"sessionName", "createdAt", "run", "workspaceDirExists"} {
+	for _, key := range []string{"sessionName", "createdAt", "run"} {
 		if _, present := raw[key]; !present {
 			t.Errorf("response JSON is missing required key %q: %v", key, raw)
 		}

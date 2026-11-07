@@ -36,8 +36,8 @@ func TestRoundTrip_SessionListEnvelope(t *testing.T) {
 	if decoded.Items[1].ResourceId != "" {
 		t.Errorf("Items[1].ResourceId = %q, want empty (required field, empty value)", decoded.Items[1].ResourceId)
 	}
-	if decoded.Items[1].Branch != nil {
-		t.Errorf("Items[1].Branch = %v, want nil (omitted, not present in fixture)", decoded.Items[1].Branch)
+	if decoded.Items[1].Title != nil {
+		t.Errorf("Items[1].Title = %v, want nil (omitted, not present in fixture)", decoded.Items[1].Title)
 	}
 
 	reencoded, err := json.Marshal(decoded)
@@ -71,7 +71,8 @@ func TestRoundTrip_SessionDetailComposition(t *testing.T) {
 		t.Errorf("identity fields missing after allOf flattening: %+v", got)
 	}
 	// From SessionRuntime:
-	if got.Run != webapiv1.Up || !got.WorkspaceDirExists {
+	if got.Run != webapiv1.Up || got.WorkdirExists == nil || !*got.WorkdirExists ||
+		got.Workdir == nil || *got.Workdir != "/work/team/workspace-a" {
 		t.Errorf("runtime fields missing after allOf flattening: %+v", got)
 	}
 }
@@ -153,8 +154,8 @@ func TestRoundTrip_ExplicitNullOptionalFieldsDecodeSameAsAbsent(t *testing.T) {
 	if got.ResourceId != nil {
 		t.Errorf("ResourceId = %v, want nil for an explicit null", got.ResourceId)
 	}
-	if got.Branch != nil {
-		t.Errorf("Branch = %v, want nil for an explicit null", got.Branch)
+	if got.Title != nil {
+		t.Errorf("Title = %v, want nil for an explicit null", got.Title)
 	}
 	if got.Children != nil {
 		t.Errorf("Children = %v, want nil for an explicit null", got.Children)

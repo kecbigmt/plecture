@@ -5,7 +5,7 @@ version = "0.1.0"
 # would make the plugin unloadable for every current build, not gate on any
 # real compatibility fact. Raise this once a first tagged release exists.
 plect_min_version = "0.0.0"
-description = "GitHub workspace provider, resource observation, and watcher subscription."
+description = "GitHub worktree effect, resource observation, and watcher subscription."
 
 [[executables]]
 name = "github-worktree"
@@ -32,7 +32,7 @@ path = "bin/github-webhook-receiver"
 build = "go -C src build -o ../bin/github-webhook-receiver ./cmd/github-webhook-receiver"
 
 # Mints and caches GitHub App installation access tokens, consumed by
-# gh-app-guard and the workspace provider's git credential helper path.
+# gh-app-guard and the worktree effect's git credential helper path.
 [[executables]]
 name = "gh-app-token"
 path = "bin/gh-app-token"

@@ -1,0 +1,7 @@
+# plect-fixture: result=invalid layer=structural diagnostic=PLECTURE-CFG-FIELD-UNKNOWN entry=definitions
+# reason: a workflow assembles its environment from nodes and declares workdir, so the retired workspace_provider field is refused with a pointer to the migration.
+
+[pull_review]
+kind               = "workflow"
+resource           = "pull_request"
+workspace_provider = "worktree"

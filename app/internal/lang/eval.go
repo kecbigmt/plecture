@@ -10,7 +10,7 @@ import (
 
 // Roots holds what a surface's roots contain at one evaluation: a tree
 // mirroring the dotted root paths values.md declares, so
-// `{ from = "workspace.dir" }` reads the "dir" key of the "workspace" root.
+// `{ from = "session.name" }` reads the "name" key of the "session" root.
 // A root that has nothing to report is absent from the tree rather than
 // present and empty, which is what lets `default` and `optional` tell the
 // two apart.

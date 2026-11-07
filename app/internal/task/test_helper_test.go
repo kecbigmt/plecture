@@ -225,3 +225,25 @@ func objectSchema(props map[string]any, required ...string) map[string]any {
 	}
 	return schema
 }
+
+// providerExec builds a provider hook whose subject is the hook's lifecycle
+// rather than its value forms: one literal script, with the values it needs
+// as positional arguments.
+func providerExec(script string, args ...*lang.Value) *lang.Action {
+	argv := []*lang.Value{
+		{Form: lang.FormLiteral, Literal: "-c"},
+		{Form: lang.FormLiteral, Literal: script},
+		{Form: lang.FormLiteral, Literal: "provider"},
+	}
+	return &lang.Action{Type: lang.ActionExec, Command: "sh", Args: append(argv, args...)}
+}
+
+func literalValue(v string) *lang.Value { return &lang.Value{Form: lang.FormLiteral, Literal: v} }
+
+func fromValue(path string) *lang.Value { return &lang.Value{Form: lang.FormFrom, From: path} }
+
+func exprValue(src string) *lang.Value { return &lang.Value{Form: lang.FormExpr, Expr: src} }
+
+func fromValueOr(path, fallback string) *lang.Value {
+	return &lang.Value{Form: lang.FormFrom, From: path, Default: fallback, HasDefault: true}
+}

@@ -43,7 +43,7 @@ func fixtureConfig(t *testing.T) *config.Config {
 
 func pinSessionRevision(t *testing.T, cfg *config.Config, session *domain.Session) {
 	t.Helper()
-	revision, err := cfg.CaptureWorkflowRevision(session.WorkspaceDirPath, session.Workflow)
+	revision, err := cfg.CaptureWorkflowRevision("", session.Workflow)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -168,7 +168,7 @@ func effectFixtureDoc(d taskFixture) string {
 // The fixture sits at <BaseDir>/workflows/<wfID>.toml plus
 // <BaseDir>/tasks/<id>.toml. Service tests that used to declare tasks on
 // cfg.Tasks now declare them here and freeze `wfID` onto their session.
-func writeWorkflowFixture(t *testing.T, workdirsRoot, wfID string, defs []taskFixture, nodes []nodeFixture) *config.Config {
+func writeWorkflowFixture(t *testing.T, wfID string, defs []taskFixture, nodes []nodeFixture) *config.Config {
 	t.Helper()
 	baseDir := t.TempDir()
 	tasksDir := filepath.Join(baseDir, "tasks")
@@ -202,7 +202,7 @@ func writeWorkflowFixture(t *testing.T, workdirsRoot, wfID string, defs []taskFi
 		}
 	}
 	var w strings.Builder
-	fmt.Fprintf(&w, "[%s]\nkind = \"workflow\"\n\n", wfID)
+	fmt.Fprintf(&w, "[%s]\nkind = \"workflow\"\nresource = \"issue\"\n\n", wfID)
 	for _, n := range nodes {
 		uses := n.uses
 		if uses == "" {
@@ -227,10 +227,8 @@ func writeWorkflowFixture(t *testing.T, workdirsRoot, wfID string, defs []taskFi
 	if err := os.WriteFile(filepath.Join(workflowsDir, wfID+".toml"), []byte(w.String()), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	cfg := &config.Config{
-		WorkspaceDirsRoot: workdirsRoot,
-		BaseDir:           baseDir,
-	}
+	cfg := &config.Config{BaseDir: baseDir}
+	writeIssueResource(t, cfg)
 	return registerFixture(t, cfg)
 }
 
@@ -240,7 +238,7 @@ func writeWorkflowFixture(t *testing.T, workdirsRoot, wfID string, defs []taskFi
 // is actually about, so these helpers derive it: one binding per distinct
 // projection, named after the key it reads.
 var legacyProjection = regexp.MustCompile(
-	`\{\{\s*(?:get\s+)?\.(Self|Prev|Inputs|Locals|SessionInputs)\s+"([A-Za-z0-9_]+)"(?:\s+"[^"]*")?\s*\}\}` +
+	`\{\{\s*(?:get\s+)?\.(Self|Prev|Inputs|Locals|SessionInputs|CleanupInputs)\s+"([A-Za-z0-9_]+)"(?:\s+"[^"]*")?\s*\}\}` +
 		`|\{\{\s*\.(Self|Prev|Inputs|Locals|SessionInputs)\.([A-Za-z0-9_]+)\s*\}\}` +
 		`|\{\{\s*\.Nodes\.([A-Za-z0-9_]+)\.outputs\.([A-Za-z0-9_]+)\s*\}\}` +
 		`|\{\{\s*\.Workflow\.outputs\.([A-Za-z0-9_]+)\s*\}\}` +
@@ -255,6 +253,7 @@ var legacyRootPaths = map[string]string{
 	"Inputs":        "inputs.",
 	"Locals":        "locals.",
 	"SessionInputs": "session.inputs.",
+	"CleanupInputs": "cleanup.inputs.",
 }
 
 var legacyScalarPaths = map[string]struct{ name, path string }{
@@ -419,12 +418,8 @@ func fixtureObserverDoc(defs []taskFixture) string {
 	return b.String()
 }
 
-// stubObservedFacts rewrites the fixture observer so observing a resource
-// succeeds and reports the given facts — for a path that re-observes before
-// deciding (finalize, instantiation) rather than reading the last
-// observation. match is the caller's, because which resources this observer
-// claims decides what a test's own observer is left to claim.
-func stubObservedFacts(t *testing.T, cfg *config.Config, match string, facts map[string]any) {
+// stubObservedFacts makes the fixture observer the one resource type: one identifier recognized by two declarations is an error, not a tie.
+func stubObservedFacts(t *testing.T, cfg *config.Config, facts map[string]any) {
 	t.Helper()
 	encoded, err := json.Marshal(facts)
 	if err != nil {
@@ -436,16 +431,15 @@ func stubObservedFacts(t *testing.T, cfg *config.Config, match string, facts map
 	}
 	sort.Strings(keys)
 	var b strings.Builder
-	fmt.Fprintf(&b, "[%s]\nkind = \"resource\"\nname = \"fixture\"\nmatch = '%s'\n\n", fixtureObserverID, match)
+	fmt.Fprintf(&b, "[%s]\nkind = \"resource\"\n%s\n\n", fixtureObserverID, issueResolverFields)
 	fmt.Fprintf(&b, "[%s.observe]\ntype = \"shell\"\nscript = %q\n\n", fixtureObserverID, "cat <<'JSON'\n"+string(encoded)+"\nJSON")
 	fmt.Fprintf(&b, "[%s.state_schema]\ntype = \"object\"\n\n[%s.state_schema.properties]\n", fixtureObserverID, fixtureObserverID)
 	for _, k := range keys {
 		fmt.Fprintf(&b, "%s = {}\n", k)
 	}
-	path := filepath.Join(cfg.BaseDir, "resources", fixtureObserverID+".toml")
-	if err := os.WriteFile(path, []byte(b.String()), 0o644); err != nil {
-		t.Fatal(err)
-	}
+	dropIssueResource(t, cfg)
+	writeResourceDoc(t, cfg, fixtureObserverID, b.String())
+	setWorkflowsResource(t, cfg, fixtureObserverID)
 }
 
 // observedFacts is one instance's last observation of its resource — where a
@@ -475,23 +469,152 @@ func addWorkflowFields(t *testing.T, cfg *config.Config, wfID, fields string) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	header := fmt.Sprintf("[%s]\nkind = \"workflow\"\n", wfID)
-	at := strings.Index(string(existing), header)
-	if at < 0 {
+	header := regexp.MustCompile(fmt.Sprintf(`(?m)^\[%s\]\nkind = "workflow"\nresource = "[^"]*"\n`, regexp.QuoteMeta(wfID))).FindIndex(existing)
+	if header == nil {
 		t.Fatalf("workflow %s does not carry its definition header:\n%s", wfID, existing)
 	}
-	at += len(header)
+	at := header[1]
 	merged := string(existing[:at]) + fields + string(existing[at:])
 	if err := os.WriteFile(path, []byte(merged), 0o644); err != nil {
 		t.Fatal(err)
 	}
 }
 
-// providerAside gives a fixture's workspace provider an id of its own. One
-// layer has one definition id namespace across every kind, so a provider
-// cannot be named after the workflow that selects it; the body's table name is
-// rewritten with it so a caller states the id once.
-func providerAside(wfID, body string) (string, string) {
-	provID := wfID + "_provider"
-	return provID, strings.ReplaceAll(body, "["+wfID, "["+provID)
+const issueMatch = `^https://github\.com/(?P<owner>[^/]+)/(?P<repo>[^/]+)/(issues|pull)/(?P<number>\d+)` // boundary-allow: neutral fixture of a URL-shaped resource id
+
+const issueResolverFields = "match = '" + issueMatch + "'\n" +
+	`name  = { expr = "match.owner + '/' + match.repo + '-' + match.number" }`
+
+const issueResourceDoc = `[issue]
+kind  = "resource"
+` + issueResolverFields + `
+
+[issue.observe]
+type   = "shell"
+script = "echo 'this fixture has no resource to observe' >&2; exit 1"
+
+[issue.state_schema]
+type = "object"
+`
+
+func writeIssueResource(t *testing.T, cfg *config.Config) {
+	t.Helper()
+	writeResourceDoc(t, cfg, "issue", issueResourceDoc)
+}
+
+func useResource(t *testing.T, cfg *config.Config, wfID, id, doc string) {
+	t.Helper()
+	writeResourceDoc(t, cfg, id, doc)
+	if id != "issue" {
+		dropIssueResource(t, cfg)
+	}
+	setWorkflowResource(t, cfg, wfID, id)
+}
+
+func setWorkflowResource(t *testing.T, cfg *config.Config, wfID, resource string) {
+	t.Helper()
+	path := filepath.Join(cfg.BaseDir, "workflows", wfID+".toml")
+	existing, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	at := resourceLine.FindIndex(existing)
+	if at == nil {
+		t.Fatalf("workflow %s declares no resource:\n%s", wfID, existing)
+	}
+	rewritten := string(existing[:at[0]]) + fmt.Sprintf("resource = %q\n", resource) + string(existing[at[1]:])
+	if err := os.WriteFile(path, []byte(rewritten), 0o644); err != nil {
+		t.Fatal(err)
+	}
+}
+
+var resourceLine = regexp.MustCompile(`(?m)^resource = "[^"]*"\n`)
+
+func setWorkflowsResource(t *testing.T, cfg *config.Config, resource string) {
+	t.Helper()
+	entries, err := os.ReadDir(filepath.Join(cfg.BaseDir, "workflows"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, e := range entries {
+		setWorkflowResource(t, cfg, strings.TrimSuffix(e.Name(), ".toml"), resource)
+	}
+}
+
+func dropIssueResource(t *testing.T, cfg *config.Config) {
+	t.Helper()
+	if err := os.Remove(filepath.Join(cfg.BaseDir, "resources", "issue.toml")); err != nil && !os.IsNotExist(err) {
+		t.Fatal(err)
+	}
+}
+
+func writeResourceDoc(t *testing.T, cfg *config.Config, id, doc string) {
+	t.Helper()
+	dir := filepath.Join(cfg.BaseDir, "resources")
+	if err := os.MkdirAll(dir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(dir, id+".toml"), []byte(doc), 0o644); err != nil {
+		t.Fatal(err)
+	}
+}
+
+const workdirEffectID = "checkout"
+
+// A workdir reading an undeclared output does not resolve at load.
+const workdirOutputsSchema = `
+[outputs_schema]
+type = "object"
+
+[outputs_schema.properties]
+workspace_dir = { type = "string" }
+`
+
+// attachWorkdir runs in $HOME, so the test gets a private one.
+func attachWorkdir(t *testing.T, cfg *config.Config, wfID string, d taskFixture) {
+	t.Helper()
+	t.Setenv("HOME", t.TempDir())
+	if d.id == "" {
+		d.id = workdirEffectID
+	}
+	if d.scope == "" {
+		d.scope = "session"
+	}
+	if !strings.Contains(d.extra, "outputs_schema") {
+		d.extra += workdirOutputsSchema
+	}
+	tasksDir := filepath.Join(cfg.BaseDir, "tasks")
+	if err := os.MkdirAll(tasksDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(tasksDir, d.id+".toml"), []byte(effectFixtureDoc(d)), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	addWorkflowFields(t, cfg, wfID, fmt.Sprintf("workdir = { from = %q }\n", "nodes."+d.id+".outputs.workspace_dir"))
+	path := filepath.Join(cfg.BaseDir, "workflows", wfID+".toml")
+	f, err := os.OpenFile(path, os.O_APPEND|os.O_WRONLY, 0o644)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer f.Close()
+	if _, err := fmt.Fprintf(f, "\n[[%s.nodes]]\nuses = %q\n", wfID, d.id); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func mkdirScript(dir string) string {
+	return fmt.Sprintf("mkdir -p %q\nprintf '{\"workspace_dir\":\"%s\"}'\n", dir, dir)
+}
+
+func attachWorkdirDir(t *testing.T, cfg *config.Config, wfID, dir string) {
+	t.Helper()
+	attachWorkdir(t, cfg, wfID, taskFixture{setup: mkdirScript(dir)})
+}
+
+func addFixtureWorkflow(t *testing.T, cfg *config.Config, wfID, resource, uses, fields string) {
+	t.Helper()
+	doc := fmt.Sprintf("[%[1]s]\nkind = \"workflow\"\nresource = %[2]q\n%[4]s\n[[%[1]s.nodes]]\nuses = %[3]q\n", wfID, resource, uses, fields)
+	if err := os.WriteFile(filepath.Join(cfg.BaseDir, "workflows", wfID+".toml"), []byte(doc), 0o644); err != nil {
+		t.Fatal(err)
+	}
 }

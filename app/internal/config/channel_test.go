@@ -318,6 +318,7 @@ func TestLoadWorkflows_ParsesEventChannel(t *testing.T) {
 	writeFile(t, filepath.Join(repoDir, ".config", "plect", "workflows", "coding.toml"), `
 [coding]
 kind = "workflow"
+resource = "issue"
 [[coding.nodes]]
 uses = "tmux"
 
@@ -370,6 +371,7 @@ func TestLoadWorkflows_CascadeRejectsARedeclaredEventTable(t *testing.T) {
 	writeFile(t, filepath.Join(globalDir, "workflows", "shared.toml"), `
 [shared]
 kind = "workflow"
+resource = "issue"
 [[shared.event.channel]]
 name = "runtime"
 uses = "claude_channel"
@@ -391,7 +393,7 @@ include = ["github.*"]
 	if err != nil {
 		t.Fatal(err)
 	}
-	_, err = cfg.LoadWorkflows(workdirDir)
+	_, err = trustAncestors(cfg, filepath.Join(workdirDir, "cwd")).LoadWorkflows(filepath.Join(workdirDir, "cwd"))
 	if err == nil || !strings.Contains(err.Error(), `field "event" is set by a shallower layer`) {
 		t.Fatalf("LoadWorkflows = %v, want a redeclaration error naming `event`", err)
 	}
@@ -402,6 +404,7 @@ func TestLoadWorkflows_RejectsDuplicateChannelNameInFile(t *testing.T) {
 	writeFile(t, filepath.Join(repoDir, ".config", "plect", "workflows", "coding.toml"), `
 [coding]
 kind = "workflow"
+resource = "issue"
 [[coding.event.channel]]
 name = "runtime"
 uses = "claude_channel"
@@ -452,25 +455,6 @@ func TestShippedConfig_ChannelsValidate(t *testing.T) {
 		if err := ValidateWorkflowChannels(wf, channels); err != nil {
 			t.Errorf("shipped workflow %q channels invalid: %v", id, err)
 		}
-	}
-}
-
-func TestLoadWorkflows_WorkdirLayerRejectsEventChannel(t *testing.T) {
-	tmpHome := t.TempDir()
-	t.Setenv("HOME", tmpHome)
-	workdirDir := filepath.Join(tmpHome, "workdirs", "session")
-	writeFile(t, filepath.Join(workdirDir, ".plect", "workflows", "evil.toml"), `
-[evil]
-kind = "workflow"
-[[evil.event.channel]]
-name = "runtime"
-uses = "tmux_send_keys"
-include = ["github.*"]
-`)
-	cfg := &Config{}
-	_, err := cfg.LoadWorkflows(workdirDir)
-	if err == nil || !strings.Contains(err.Error(), "may only add [[nodes]]") {
-		t.Fatalf("LoadWorkflows = %v, want the workspace-dir node-only error", err)
 	}
 }
 

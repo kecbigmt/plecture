@@ -32,16 +32,37 @@ func TestDetailFromStatus_OmitsUnsetOptionalFields(t *testing.T) {
 	if got.SessionName != "team/workspace-a" || !got.CreatedAt.Equal(createdAt) {
 		t.Fatalf("required fields not carried through: %+v", got)
 	}
-	if got.ResourceId != nil || got.Title != nil || got.Branch != nil || got.Workflow != nil ||
+	if got.ResourceId != nil || got.Title != nil || got.Workflow != nil ||
 		got.Tag != nil || got.ParentSession != nil || got.Children != nil || got.Inputs != nil {
 		t.Errorf("expected every unset optional identity field to be nil, got %+v", got)
 	}
 	if got.Health != nil || got.LastCheckedAt != nil || got.LastActivityAt != nil ||
-		got.Tasks != nil || got.WorkspaceDirPath != nil || got.Message != nil {
+		got.Tasks != nil || got.Workdir != nil || got.WorkdirExists != nil || got.Message != nil {
 		t.Errorf("expected every unset optional runtime field to be nil, got %+v", got)
 	}
 	if got.Warnings != nil || got.Destroyed != nil || got.DestroyedAt != nil {
 		t.Errorf("expected unset top-level fields to be nil, got %+v", got)
+	}
+}
+
+func TestDetailFromStatus_MapsWorkdirAndItsExistence(t *testing.T) {
+	exists := false
+	result := &service.StatusResult{
+		Identity: service.StatusIdentity{SessionName: "team/workspace-a", CreatedAt: time.Now()},
+		Runtime: service.StatusRuntime{
+			Run:           domain.RunUp,
+			Workdir:       "/work/team/workspace-a",
+			WorkdirExists: &exists,
+		},
+	}
+
+	got := detailFromStatus(result)
+
+	if got.Workdir == nil || *got.Workdir != "/work/team/workspace-a" {
+		t.Errorf("Workdir = %v, want /work/team/workspace-a", got.Workdir)
+	}
+	if got.WorkdirExists == nil || *got.WorkdirExists {
+		t.Errorf("WorkdirExists = %v, want a pointer to false", got.WorkdirExists)
 	}
 }
 
@@ -306,7 +327,6 @@ func TestSummaryFromListEntry_MapsRequiredAndOptionalFields(t *testing.T) {
 		Health:        domain.HealthHealthy,
 		ResourceID:    "https://github.com/owner/repo/issues/1",
 		LastActiveAt:  &now,
-		Branch:        "issue/1",
 		ParentSession: "team",
 		Tasks: []service.TaskInstanceView{
 			{Instance: "initial", Status: "produced"},

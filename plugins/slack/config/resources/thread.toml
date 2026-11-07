@@ -1,7 +1,6 @@
-# A separate identity from workspaces/thread_workspace.toml's provider,
-# even though both match the same permalink: that provider resolves a
-# session's workspace, while this one only hosts the query face below. A
-# mention is not enumerable, so this observer declares no query.poll.
+# This resource owns the thread's session identity and subscription hooks;
+# tasks/thread_dir.toml is the effect that gives such a session a directory.
+# A mention is not enumerable, so this observer declares no query.poll.
 
 [thread]
 kind  = "resource"

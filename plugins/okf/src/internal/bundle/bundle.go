@@ -1,6 +1,6 @@
 // Package bundle implements the plumbing shared by every OKF concept kind:
-// resolving the owner alias to an orchestrator workspace directory, locating
-// that workspace directory's knowledge bundle, and containing a concept id
+// resolving the owner alias to an orchestrator workdir, locating
+// that workdir's knowledge bundle, and containing a concept id
 // inside it. Goal parsing itself lives in the sibling goal package; this
 // package only knows how to find bytes safely, not how to interpret them.
 package bundle
@@ -17,7 +17,7 @@ import (
 // bundle that hasn't been bootstrapped, or a missing file) from a resolution
 // that must fail outright (an ambiguous owner alias, or a concept id that
 // escapes the bundle). Observe folds the former into its UNRESOLVED state;
-// every other caller (workspace provider setup, finalize) treats both the
+// every other caller (goal_dir setup, finalize) treats both the
 // same way, as a hard error, because dispatch and completion recording have
 // no "pending" state to fold into.
 type ResolveError struct {
@@ -39,8 +39,8 @@ type StatusRunner interface {
 // not to bundle resolution.
 type statusPayload struct {
 	Runtime struct {
-		WorkspaceDirPath   string `json:"workspace_dir_path"`
-		WorkspaceDirExists bool   `json:"workspace_dir_exists"`
+		Workdir       string `json:"workdir"`
+		WorkdirExists bool   `json:"workdir_exists"`
 	} `json:"runtime"`
 }
 
@@ -87,13 +87,19 @@ func ResolveOwnerWorkspaceDir(runner StatusRunner, owner string) (string, *Resol
 			Unresolved: true,
 		}
 	}
-	if payload.Runtime.WorkspaceDirPath == "" || !payload.Runtime.WorkspaceDirExists {
+	if payload.Runtime.Workdir == "" {
 		return "", &ResolveError{
-			Reason:     "orchestrator workspace directory \"" + payload.Runtime.WorkspaceDirPath + "\" is not readable (possibly mid-destroy)",
+			Reason:     "orchestrator session \"owner:" + owner + "\" declares no workdir, so it has no knowledge bundle to read",
 			Unresolved: true,
 		}
 	}
-	return payload.Runtime.WorkspaceDirPath, nil
+	if !payload.Runtime.WorkdirExists {
+		return "", &ResolveError{
+			Reason:     "orchestrator workdir \"" + payload.Runtime.Workdir + "\" is not readable (possibly mid-destroy)",
+			Unresolved: true,
+		}
+	}
+	return payload.Runtime.Workdir, nil
 }
 
 // Root resolves an orchestrator workspace directory's knowledge bundle to

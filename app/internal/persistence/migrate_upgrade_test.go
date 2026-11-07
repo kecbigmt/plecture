@@ -3,6 +3,7 @@ package persistence
 import (
 	"context"
 	"database/sql"
+	"strings"
 	"testing"
 	"time"
 
@@ -433,5 +434,166 @@ func TestMigrate_DownDropsForwardCursorRowsWithoutError(t *testing.T) {
 	}
 	if tickSeq != 2 {
 		t.Fatalf("tick cursor next_sequence = %d, want 2 (unrelated rows preserved)", tickSeq)
+	}
+}
+
+// preWorkdirDirectoryVersion is the last migration before sessions.workspace_dir
+// is dropped and the @workflow rows are deleted.
+const preWorkdirDirectoryVersion = 20261104140000
+
+const workdirMigrationInstruction = "docs/migrations/resource-and-workspace-effects-migration.md"
+
+// workdirMigrationFixture opens a database at the version before the
+// workdir migration and seeds one session with a workspace_dir, a retired
+// @workflow node execution of the given status, and an ordinary node.
+func workdirMigrationFixture(t *testing.T, sessionStatus, workflowNodeStatus string) (*DB, *goose.Provider, string) {
+	t.Helper()
+	db := openTestDB(t)
+	ctx := context.Background()
+	now := formatTime(time.Now().UTC())
+
+	provider, err := goose.NewProvider(goose.DialectSQLite3, db.write, db.migrations)
+	if err != nil {
+		t.Fatalf("NewProvider: %v", err)
+	}
+	if _, err := provider.UpTo(ctx, preWorkdirDirectoryVersion); err != nil {
+		t.Fatalf("UpTo(%d): %v", preWorkdirDirectoryVersion, err)
+	}
+
+	var destroyedAt sql.NullString
+	if sessionStatus == "destroyed" {
+		destroyedAt = sql.NullString{String: now, Valid: true}
+	}
+	sessionID := "01SESSION000000000000000"
+	if _, err := db.write.ExecContext(ctx,
+		`INSERT INTO sessions (id, name, status, destroyed_at, workflow, workspace_dir, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+		sessionID, "s1", sessionStatus, destroyedAt, "wf", "/tmp/old-workspace", now, now,
+	); err != nil {
+		t.Fatalf("seed session: %v", err)
+	}
+	for _, nodeID := range []string{"@workflow", "n1"} {
+		if _, err := db.write.ExecContext(ctx,
+			`INSERT INTO node_instances (session_id, node_id) VALUES (?, ?)`, sessionID, nodeID,
+		); err != nil {
+			t.Fatalf("seed node_instances %q: %v", nodeID, err)
+		}
+	}
+	status := map[string]string{"@workflow": workflowNodeStatus, "n1": "produced"}
+	for nodeID, st := range status {
+		if _, err := db.write.ExecContext(ctx,
+			`INSERT INTO node_executions (id, session_id, node_id, sequence, scope, status) VALUES (?, ?, ?, 1, 'session', ?)`,
+			"exec-"+nodeID, sessionID, nodeID, st,
+		); err != nil {
+			t.Fatalf("seed node_executions %q: %v", nodeID, err)
+		}
+	}
+	return db, provider, sessionID
+}
+
+func sessionsHasColumn(t *testing.T, db *DB, column string) bool {
+	t.Helper()
+	var n int
+	if err := db.write.QueryRow(`SELECT COUNT(*) FROM pragma_table_info('sessions') WHERE name = ?`, column).Scan(&n); err != nil {
+		t.Fatalf("pragma_table_info: %v", err)
+	}
+	return n > 0
+}
+
+func countExecutions(t *testing.T, db *DB, nodeID string) int {
+	t.Helper()
+	var n int
+	if err := db.write.QueryRow(`SELECT COUNT(*) FROM node_executions WHERE node_id = ?`, nodeID).Scan(&n); err != nil {
+		t.Fatalf("count node_executions: %v", err)
+	}
+	return n
+}
+
+func TestMigrate_WorkdirDirectoryRefusesWhileALiveSessionHoldsAnUnreleasedWorkflowNode(t *testing.T) {
+	for _, workflowNodeStatus := range []string{"produced", "failed"} {
+		t.Run(workflowNodeStatus, func(t *testing.T) {
+			db, provider, _ := workdirMigrationFixture(t, "up", workflowNodeStatus)
+
+			_, err := provider.UpByOne(context.Background())
+			if err == nil {
+				t.Fatal("migration succeeded, want a refusal while a live session holds an unreleased @workflow node")
+			}
+			if !strings.Contains(err.Error(), workdirMigrationInstruction) {
+				t.Errorf("error = %q, want it to name %s", err, workdirMigrationInstruction)
+			}
+			if !sessionsHasColumn(t, db, "workspace_dir") {
+				t.Error("sessions.workspace_dir was dropped by a refused migration")
+			}
+			if got := countExecutions(t, db, "@workflow"); got != 1 {
+				t.Errorf("@workflow node_executions rows = %d after a refused migration, want 1", got)
+			}
+		})
+	}
+}
+
+func TestMigrate_WorkdirDirectoryDropsWorkflowRowsAndWorkspaceColumnOtherwise(t *testing.T) {
+	tests := []struct {
+		name               string
+		sessionStatus      string
+		workflowNodeStatus string
+	}{
+		{"released workflow node of a live session", "up", "cleaned"},
+		{"unreleased workflow node of a destroyed session", "destroyed", "produced"},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			db, provider, sessionID := workdirMigrationFixture(t, tc.sessionStatus, tc.workflowNodeStatus)
+			ctx := context.Background()
+
+			if _, err := provider.UpByOne(ctx); err != nil {
+				t.Fatalf("UpByOne (workdir migration): %v", err)
+			}
+
+			if got := countExecutions(t, db, "@workflow"); got != 0 {
+				t.Errorf("@workflow node_executions rows = %d, want 0", got)
+			}
+			var instances int
+			if err := db.write.QueryRow(`SELECT COUNT(*) FROM node_instances WHERE node_id = '@workflow'`).Scan(&instances); err != nil {
+				t.Fatalf("count node_instances: %v", err)
+			}
+			if instances != 0 {
+				t.Errorf("@workflow node_instances rows = %d, want 0", instances)
+			}
+			if sessionsHasColumn(t, db, "workspace_dir") {
+				t.Error("sessions.workspace_dir still exists")
+			}
+
+			var status string
+			var directory sql.NullString
+			if err := db.write.QueryRow(
+				`SELECT status, directory FROM node_executions WHERE session_id = ? AND node_id = 'n1'`, sessionID,
+			).Scan(&status, &directory); err != nil {
+				t.Fatalf("read the ordinary node's execution: %v", err)
+			}
+			if status != "produced" || directory.Valid {
+				t.Errorf("ordinary node = (%q, directory %v), want it intact with a NULL directory", status, directory)
+			}
+			var name string
+			if err := db.write.QueryRow(`SELECT name FROM sessions WHERE id = ?`, sessionID).Scan(&name); err != nil || name != "s1" {
+				t.Errorf("session row = (%q, %v), want it intact", name, err)
+			}
+		})
+	}
+}
+
+func TestMigrate_InvocationDirLeavesExistingSessionsWithNoRecordedContext(t *testing.T) {
+	db, provider, sessionID := workdirMigrationFixture(t, "up", "cleaned")
+	ctx := context.Background()
+	for i := 0; i < 2; i++ {
+		if _, err := provider.UpByOne(ctx); err != nil {
+			t.Fatalf("UpByOne %d: %v", i, err)
+		}
+	}
+
+	var dir sql.NullString
+	if err := db.write.QueryRow(`SELECT invocation_dir FROM sessions WHERE id = ?`, sessionID).Scan(&dir); err != nil {
+		t.Fatalf("read invocation_dir: %v", err)
+	}
+	if dir.Valid {
+		t.Errorf("invocation_dir = %q for a pre-existing session, want NULL", dir.String)
 	}
 }

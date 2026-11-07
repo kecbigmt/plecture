@@ -6,10 +6,10 @@ logs. Runtime delivery uses the core dispatcher and workflow channels.
 
 ## Contents
 
-- `config/workspaces/thread_workspace.toml` — declares the `thread_workspace`
-  workspace provider: resolves a Slack thread permalink to a session id and
-  acquires/releases a bare workspace directory for it, with no GitHub
-  artifact standing in for the session. See "Workspace provider" below.
+- `config/tasks/thread_dir.toml` — declares the session-scoped `thread_dir`
+  effect: acquires/releases a bare conversation directory for a Slack
+  thread, with no GitHub artifact standing in for the session. See
+  "Thread directory" below.
 - `config/tasks/slack_thread.toml` — creates one Slack root message through
   `slack-adapter`. Outputs: `thread_ts`, `channel_id`, and `permalink`.
 - `config/resources/thread.toml` — declares inputs-free thread subscription
@@ -70,23 +70,37 @@ the resident process). Outbound thread creation and message posting require
 only `SLACK_BOT_TOKEN`; `SLACK_APP_TOKEN` is optional and only activates
 Socket Mode inbound relay.
 
-## Workspace provider
+## Thread directory
 
-`config/workspaces/thread_workspace.toml` resolves a thread's Slack permalink —
-either the root message's own permalink or a reply's permalink carrying
-`?thread_ts=<root>&cid=<channel_id>` — to a session named
+The `thread` resource (`config/resources/thread.toml`) resolves a thread's
+Slack permalink — either the root message's own permalink or a reply's
+permalink carrying `?thread_ts=<root>&cid=<channel_id>` — to a session named
 `slack/<channel_id>-<root thread_ts digits>`, so both forms of the same
-thread's permalink resolve to the same session. `setup` creates a bare
-directory under `config.workspace_dirs_root` and reports the same
-`channel_id`, `thread_ts`, and `permalink` outputs `slack_thread` reports, so
-the shipped `slack`/`status` channels bind from a session this provider
-backs exactly as they would from one `slack_thread` created. `cleanup` removes the directory. Dependencies: `plect` and a POSIX
-shell — no git, and no `slack-adapter` HTTP call, so a workflow that wants a
-repository checkout composes a separate effect for it.
+thread's permalink resolve to the same session. It also owns the
+subscription hooks, so a session whose entry resource is a thread subscribes
+on creation and unsubscribes on destroy.
 
-This workspace provider declares no subscription hook. The separate `thread`
-resource owns the subscription hooks, so a session whose entry
-resource is a thread subscribes on creation and unsubscribes on destroy.
+`config/tasks/thread_dir.toml` is the effect a workflow node composes to give
+such a session a directory. `setup` creates a bare directory under its
+`dirs_root` input (empty means `$HOME/workspace_dirs`) and reports the same
+`channel_id`, `thread_ts`, and `permalink` outputs `slack_thread` reports, so
+the shipped `slack`/`status` channels bind from a session this effect backs
+exactly as they would from one `slack_thread` created. `cleanup` removes the
+directory. Dependencies: a POSIX shell — no git, and no `slack-adapter` HTTP
+call, so a workflow that wants a repository checkout composes a separate
+effect for it. The workflow names the `workspace_dir` output as its
+`workdir`:
+
+```toml
+[thread_session]
+kind     = "workflow"
+resource = "official.slack.thread"
+workdir  = { from = "nodes.thread_dir.outputs.workspace_dir" }
+
+[[thread_session.nodes]]
+id   = "thread_dir"
+uses = "official.slack.thread_dir"
+```
 
 The `mentions` resource matches `slack://<team_id>/mentions`, where
 `team_id` is the Slack workspace ID returned by `auth.test`. Subscribe an

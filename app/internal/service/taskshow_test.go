@@ -163,6 +163,7 @@ model = { type = "string", default = "opus" }
 	writeTaskFile(t, base, "claude_reviewer", `
 [claude_reviewer]
 kind = "workflow"
+resource = "issue"
 `)
 
 	detail, err := TaskShow(&config.Config{BaseDir: base}, "", "work_claude")

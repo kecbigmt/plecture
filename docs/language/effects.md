@@ -7,10 +7,9 @@ It brings something up, keeps it observable, and takes it down. It does not
 decide whether the work is finished — that is a [task document](tasks.md).
 
 An effect may acquire part of a session environment, including a directory.
-There is no workspace-provider lifecycle. A session-scoped checkout or
-conversation-directory effect is an ordinary node whose outputs may be chosen
-by its workflow's single `workdir` declaration. It does not reserve an output
-name, and a workflow with no `workdir` is valid.
+A session-scoped checkout or conversation-directory effect is an ordinary node
+whose outputs may be chosen by its workflow's single `workdir` declaration. It
+does not reserve an output name, and a workflow with no `workdir` is valid.
 
 `setup`/`cleanup`/`health`/`capture` run with no data-home variable in their
 own environment — a build a script starts itself must never reach the
@@ -119,13 +118,11 @@ explicit `down` or `destroy`; cleanup intent is not inferred from resource or
 workflow creation.
 
 When a workflow declares `workdir`, graph-derived preparation nodes execute
-setup, liveness, and cleanup in the session's recorded preparation directory.
-A direct invocation records its caller directory; a chain inherits it from its
-triggering session; and a population inherits the resident's recorded value.
-All other nodes execute setup and liveness in the declared directory. Effects
-cannot override either directory per node or action. Cleanup uses the directory
-its setup used; a vanished directory is a cleanup failure, not an invitation to
-run elsewhere. A probe launch failure caused by that directory invalidates the
+setup in the current user's home directory, whichever way the session was
+created. All other nodes execute setup and liveness in the declared directory.
+Effects cannot override either directory per node or action. A node's liveness
+and cleanup use the directory its setup used; a vanished directory is a cleanup
+failure, not an invitation to run elsewhere. A probe launch failure caused by that directory invalidates the
 node, then cleanup attempts the stored directory. The failed record and its
 release obligation remain durable. The execution-release and reconstruction
 rules, including unavailable cleanup and external-release acknowledgement, are

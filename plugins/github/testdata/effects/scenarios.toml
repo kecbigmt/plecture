@@ -22,3 +22,6 @@ inputs = { app_id = "123456", installation_id = "987654", private_key_path = "/e
 [[gh_app_guard.artifacts]]
 output = "dir"
 path   = "gh"
+
+[[worktree]]
+inputs = { dirs_root = "/spy/workspace_dirs", workspace_layout_root = "/spy/layout", issue_branch_template = "work/{number}", tagged_branch_suffix = "-{tag}", delete_branch_default = "true" }

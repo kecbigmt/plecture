@@ -3,7 +3,5 @@
 
 schema_version = 2
 
-workspace_dirs_root = "~/worktrees"
-
 [runtime]
 kind = "effect"

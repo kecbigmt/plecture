@@ -11,33 +11,6 @@ import (
 	contract "github.com/kecbigmt/plecture/contracts/state"
 )
 
-func runWorkflowCleanupForDestroy(cfg *config.Config, session *domain.Session, force bool, cleanupInputs map[string]string, observer task.Observer) error {
-	wf, err := loadSessionWorkflow(cfg, session.WorkspaceDirPath, session)
-	if err != nil {
-		return err
-	}
-	prov, err := cfg.WorkspaceProviderForSession(session)
-	if err != nil {
-		return err
-	}
-	provInputs, inputsErr := resolveWorkspaceProviderInputs(prov, wf)
-	if inputsErr != nil {
-		return inputsErr
-	}
-	vars := effect.WorkflowHookVars{
-		ResourceID:        session.ResourceID,
-		SessionName:       session.Name,
-		WorkspaceDirsRoot: cfg.WorkspaceDirsRoot,
-		SessionInputs:     session.Inputs,
-		Inputs:            provInputs,
-		Plugins:           cfg.Plugins,
-		SourcePath:        prov.SourcePath,
-		Force:             force,
-		CleanupInputs:     cleanupInputs,
-	}
-	return task.RunWorkflowCleanup(prov, vars, session.Nodes, observer)
-}
-
 // teardownItem pairs one teardown-eligible node or dynamic instance with its
 // own instantiation Seq, the fallback tie-break orderTeardownItems uses.
 type teardownItem struct {
@@ -47,8 +20,7 @@ type teardownItem struct {
 
 // unifiedTeardownList merges every unreleased node execution with every
 // dynamic instance into one dependency-ordered Resolved list (see
-// orderTeardownItems); the @workflow pseudo-node releases last, via the
-// workspace provider cleanup hook. Static nodes are enumerated from
+// orderTeardownItems). Static nodes are enumerated from
 // session.Nodes, not plan, so a dropped node is still torn down.
 func unifiedTeardownList(cfg *config.Config, session *domain.Session, runOnly bool) ([]task.Resolved, error) {
 	defs, err := cfg.TaskDefinitionsForSession(session)
@@ -61,9 +33,6 @@ func unifiedTeardownList(cfg *config.Config, session *domain.Session, runOnly bo
 	static := make(map[string]bool, len(session.Nodes))
 
 	for _, key := range sortedTaskKeys(session.Nodes) {
-		if key == contract.WorkflowPseudoNodeID {
-			continue
-		}
 		st := session.Nodes[key]
 		if st == nil || st.Status == contract.TaskStatusCleaned {
 			continue
@@ -101,8 +70,14 @@ func unifiedTeardownList(cfg *config.Config, session *domain.Session, runOnly bo
 		// Only the cleanup-relevant fields, so a def drifted invalid since
 		// creation is no more fatal than a disappeared one.
 		r := task.Resolved{NodeID: key, TaskID: taskID, Scope: st.Scope}
+		if producer := workdirProducer(cfg, session); producer != "" && st.Directory != "" {
+			// Only nodes persist their edges; an instance that ran in the workdir
+			// still needs its producer until the instance is released.
+			r.DependsOn = []string{producer}
+		}
 		if def, ok := defs[taskID]; ok {
 			r.Cleanup = def.Cleanup
+			r.CleanupInputsSchema = def.CleanupInputsSchema
 			r.SourcePath = def.SourcePath
 			r.Layers = effect.CleanupLayers(def)
 		}
@@ -120,6 +95,7 @@ func resolveNodeCleanup(r *task.Resolved, defs map[string]config.TaskDefinition)
 		return false
 	}
 	r.Cleanup = def.Cleanup
+	r.CleanupInputsSchema = def.CleanupInputsSchema
 	r.SourcePath = def.SourcePath
 	r.Layers = effect.CleanupLayers(def)
 	return true

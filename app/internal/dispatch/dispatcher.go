@@ -233,12 +233,10 @@ func (d *sessionDispatcher) processEvent(ctx context.Context, s *domain.Session,
 			opts := channel.DeliverOptions{
 				Bin: func(ref string) (string, error) { return bins.ResolveBin(ref, def.Ownership()) },
 				Terminal: terminalResolver(s, d.terminal, task.SessionVars{
-					Name:             s.Name,
-					ResourceID:       s.ResourceID,
-					WorkspaceDirPath: s.WorkspaceDirPath,
-					Branch:           domain.SessionBranch(s),
-					Inputs:           s.Inputs,
-					Plugins:          d.plugins,
+					Name:       s.Name,
+					ResourceID: s.ResourceID,
+					Inputs:     s.Inputs,
+					Plugins:    d.plugins,
 				}),
 			}
 			attempts, derr := channel.DeliverWithRetryAndOptions(ctx, def, inputs, ev, d.policy, opts)

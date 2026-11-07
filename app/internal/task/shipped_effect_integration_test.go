@@ -9,6 +9,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"runtime"
 	"sort"
 	"strconv"
 	"strings"
@@ -44,6 +45,27 @@ import (
 // contract change.
 
 const effectRecordName = "effect-invocations.txt"
+
+func repoPluginDirs(t *testing.T) []string {
+	t.Helper()
+	_, thisFile, _, ok := runtime.Caller(0)
+	if !ok {
+		t.Fatal("runtime.Caller failed")
+	}
+	manifests, err := filepath.Glob(filepath.Join(filepath.Dir(thisFile), "..", "..", "..", "plugins", "*", "plugin.toml"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	dirs := make([]string, 0, len(manifests))
+	for _, path := range manifests {
+		dirs = append(dirs, filepath.Dir(path))
+	}
+	sort.Strings(dirs)
+	if len(dirs) == 0 {
+		t.Skip("no plugins in this tree")
+	}
+	return dirs
+}
 
 func TestShippedEffects_InvocationsMatchTheirPluginsRecord(t *testing.T) {
 	for _, source := range repoPluginDirs(t) {
@@ -666,13 +688,11 @@ func (s effectScenario) hooks(def config.TaskDefinition) []string {
 
 func (h *effectHarness) sessionVars() SessionVars {
 	return SessionVars{
-		Name:             "acme/widget-1",
-		ResourceID:       "example://acme/widget/1",
-		WorkspaceDirPath: h.workspace,
-		Branch:           "spy-branch",
-		Inputs:           map[string]any{},
-		Plugins:          []plugins.Mounted{h.mounted},
-		Terminal:         h.terminalBinding(),
+		Name:       "acme/widget-1",
+		ResourceID: "example://acme/widget/1",
+		Inputs:     map[string]any{},
+		Plugins:    []plugins.Mounted{h.mounted},
+		Terminal:   h.terminalBinding(),
 	}
 }
 
@@ -695,10 +715,18 @@ func (h *effectHarness) terminalBinding() *TerminalBinding {
 	}
 }
 
+// harnessWorkdirNode names the stand-in producer of the workdir a scenario's
+// effect runs in.
+const harnessWorkdirNode = "harness_workdir"
+
 func (h *effectHarness) runHook(t *testing.T, hook string, def config.TaskDefinition, r Resolved, session SessionVars, tasks map[string]*contract.TaskState, self map[string]any, scenarioInputs map[string]string) string {
 	t.Helper()
 	ctx := context.Background()
 	inputs := asAnyMap(scenarioInputs)
+	// Every shipped effect under test models a non-preparation node of a
+	// workflow whose workdir is the sandbox workspace, so its actions run there.
+	tasks[harnessWorkdirNode] = &contract.TaskState{Status: contract.TaskStatusProduced, Outputs: map[string]any{"workspace_dir": h.workspace}}
+	r.Workdir = &lang.WorkdirRef{Node: harnessWorkdirNode, Key: "workspace_dir"}
 	switch hook {
 	case "setup":
 		if err := RunSetup(ctx, []Resolved{r}, session, tasks, nil); err != nil {
@@ -708,11 +736,12 @@ func (h *effectHarness) runHook(t *testing.T, hook string, def config.TaskDefini
 	case "cleanup":
 		if state := tasks[r.NodeID]; state == nil || state.Status != contract.TaskStatusProduced {
 			tasks[r.NodeID] = &contract.TaskState{
-				Scope:   r.Scope,
-				Status:  contract.TaskStatusProduced,
-				Inputs:  inputs,
-				Outputs: self,
-				Process: h.recordedProcess(t, nil, self),
+				Scope:     r.Scope,
+				Status:    contract.TaskStatusProduced,
+				Inputs:    inputs,
+				Outputs:   self,
+				Process:   h.recordedProcess(t, nil, self),
+				Directory: h.workspace,
 			}
 		}
 		if err := RunCleanup(ctx, []Resolved{r}, session, tasks, nil); err != nil {
@@ -722,12 +751,15 @@ func (h *effectHarness) runHook(t *testing.T, hook string, def config.TaskDefini
 	case "health.alive":
 		probe := h.probe(def, def.Health.AliveProbe(), self, inputs)
 		probe.Process = h.recordedProcess(t, tasks[r.NodeID], self)
+		probe.Dir = h.workspace
 		if err := RunAliveProbe(ctx, probe, session); err != nil {
 			return "declined: " + err.Error()
 		}
 		return "alive"
 	case "health.activity":
-		signal, err := RunActivityProbe(ctx, h.probe(def, def.Health.ActivityProbe(), self, inputs), session)
+		activity := h.probe(def, def.Health.ActivityProbe(), self, inputs)
+		activity.Dir = h.workspace
+		signal, err := RunActivityProbe(ctx, activity, session)
 		switch {
 		case err != nil:
 			return "declined: " + err.Error()
@@ -737,14 +769,14 @@ func (h *effectHarness) runHook(t *testing.T, hook string, def config.TaskDefini
 			return fmt.Sprintf("activity: fingerprint=%q silence_expected=%v", signal.Fingerprint, signal.SilenceExpected)
 		}
 	case "terminal.capture":
-		binding := &TerminalBinding{Ops: def.Terminal, Outputs: self, SourcePath: def.SourcePath, From: def.Ownership()}
+		binding := &TerminalBinding{Ops: def.Terminal, Outputs: self, Dir: h.workspace, SourcePath: def.SourcePath, From: def.Ownership()}
 		out, err := RunCapture(ctx, binding, session)
 		if err != nil {
 			return "declined: " + err.Error()
 		}
 		return "captured: " + strconv.Quote(out)
 	case "terminal.pid":
-		binding := &TerminalBinding{Ops: def.Terminal, Outputs: self, SourcePath: def.SourcePath, From: def.Ownership()}
+		binding := &TerminalBinding{Ops: def.Terminal, Outputs: self, Dir: h.workspace, SourcePath: def.SourcePath, From: def.Ownership()}
 		stdout, _, err := runTerminalVerb(ctx, binding, "pid", session, nil, nil)
 		if err != nil {
 			return "declined: " + err.Error()
@@ -832,4 +864,79 @@ func (h *effectHarness) expanded(s string) string {
 		s = strings.ReplaceAll(s, rule.from, rule.to)
 	}
 	return s
+}
+
+// spyPlugin copies one plugin into a temp directory and replaces every
+// executable it declares with a script that records its argv and then runs
+// the shell source answer supplies for it. The declarations are the shipped
+// ones; only what they invoke is substituted, so the recorded argv is the
+// argv the real executable would have received.
+func spyPlugin(t *testing.T, source string, argvLog string, answer func(name string) string) plugins.Mounted {
+	t.Helper()
+	manifest, err := plugins.LoadManifest(source)
+	if err != nil {
+		t.Fatalf("LoadManifest(%s): %v", source, err)
+	}
+	dir := t.TempDir()
+	if out, err := exec.Command("cp", "-a", source+string(filepath.Separator)+".", dir).CombinedOutput(); err != nil {
+		t.Fatalf("copy plugin: %v: %s", err, out)
+	}
+	for _, executable := range manifest.Executables {
+		path := filepath.Join(dir, executable.Path)
+		if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+			t.Fatal(err)
+		}
+		spy := "#!/usr/bin/env bash\n" +
+			"{ printf '%s' " + shellQuoteForTest(executable.Name) + "; for a in \"$@\"; do printf '\\036%s' \"$a\"; done; printf '\\035'; } >> " + shellQuoteForTest(argvLog) + "\n" +
+			answer(executable.Name) + "\n"
+		if err := os.WriteFile(path, []byte(spy), 0o755); err != nil {
+			t.Fatal(err)
+		}
+	}
+	return plugins.Mounted{ID: "acme-mirror/" + filepath.Base(source), Dir: dir, Manifest: manifest}
+}
+
+func shellQuoteForTest(v string) string { return "'" + strings.ReplaceAll(v, "'", `'\''`) + "'" }
+
+// stubHostPlect keeps an ambient `plect` off PATH, so this corpus's record
+// never depends on whether the host has one installed and can't reach its
+// real `~/.local/share/plect` state.
+func stubHostPlect(t *testing.T) {
+	t.Helper()
+	dir := t.TempDir()
+	path := filepath.Join(dir, "plect")
+	if err := os.WriteFile(path, []byte("#!/usr/bin/env sh\nexit 0\n"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("PATH", dir+string(os.PathListSeparator)+os.Getenv("PATH"))
+}
+
+// recordedCalls reads the spy log into one line per invocation, with any path
+// inside the plugin recorded relative to it so the record carries no
+// checkout or temp-directory path.
+func recordedCalls(t *testing.T, argvLog, pluginDir string) []string {
+	t.Helper()
+	raw, err := os.ReadFile(argvLog)
+	if err != nil {
+		if os.IsNotExist(err) {
+			return nil
+		}
+		t.Fatal(err)
+	}
+	var calls []string
+	for _, record := range strings.Split(strings.TrimSuffix(string(raw), "\x1d"), "\x1d") {
+		if record == "" {
+			continue
+		}
+		fields := strings.Split(record, "\x1e")
+		quoted := make([]string, len(fields))
+		for i, f := range fields {
+			if rest, ok := strings.CutPrefix(f, pluginDir+string(filepath.Separator)); ok {
+				f = "<plugin>/" + filepath.ToSlash(rest)
+			}
+			quoted[i] = fmt.Sprintf("%q", f)
+		}
+		calls = append(calls, strings.Join(quoted, " "))
+	}
+	return calls
 }

@@ -154,7 +154,6 @@ func TestParseValueRejections(t *testing.T) {
 		{"no discriminating key", map[string]any{"type": "string"}, ClassData, CodeValueTagUnknown},
 		{"two discriminating keys", map[string]any{"from": "inputs.x", "terminal": "send_text"}, ClassBinding, CodeValueTagUnknown},
 		{"terminal verb outside the vocabulary", map[string]any{"terminal": "send_signal"}, ClassBinding, CodeValueTagUnknown},
-		{"a tagged value where only literal data is accepted", map[string]any{"from": "nodes.pane.outputs.session_name"}, ClassLiteral, CodeValueTagSurface},
 		{"a capability tag inside a json operand", map[string]any{"json": map[string]any{"x": map[string]any{"terminal": "send_text"}}}, ClassBinding, CodeValueTagSurface},
 		{"a nested json operand", map[string]any{"json": map[string]any{"x": map[string]any{"json": "y"}}}, ClassBinding, CodeValueTagUnknown},
 	}

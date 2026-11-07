@@ -39,7 +39,7 @@ func TestClassifyWorkflowRebaseSubscriptionOnlyChange(t *testing.T) {
 
 func TestWorkflowRebaseRestartPreservesSessionNodesAndRetriesNewRevision(t *testing.T) {
 	marker := filepath.Join(t.TempDir(), "retry")
-	cfg := writeWorkflowFixture(t, t.TempDir(), "work", []taskFixture{
+	cfg := writeWorkflowFixture(t, "work", []taskFixture{
 		{id: "workspace", scope: "session", setup: "echo '{\"key\":\"kept\"}'", cleanup: "true"},
 		{id: "runtime", scope: "run", setup: "echo '{\"version\":\"old\"}'", cleanup: "true"},
 	}, []nodeFixture{{id: "workspace"}, {id: "runtime"}})
@@ -89,7 +89,7 @@ func TestWorkflowRebaseRestartPreservesSessionNodesAndRetriesNewRevision(t *test
 }
 
 func TestWorkflowRebaseAutomaticallyAddsNode(t *testing.T) {
-	cfg := writeWorkflowFixture(t, t.TempDir(), "work", []taskFixture{{id: "runtime", scope: "run", setup: "echo '{}'"}}, []nodeFixture{{id: "runtime"}})
+	cfg := writeWorkflowFixture(t, "work", []taskFixture{{id: "runtime", scope: "run", setup: "echo '{}'"}}, []nodeFixture{{id: "runtime"}})
 	store := testStore(t)
 	now := time.Now()
 	session := &domain.Session{Name: "one", Workflow: "work", Status: contract.SessionStatusDown, CreatedAt: now, UpdatedAt: now}
@@ -142,7 +142,7 @@ func TestWorkflowRebasePreservesStoppedAndSleepingSessions(t *testing.T) {
 			name = "sleeping"
 		}
 		t.Run(name, func(t *testing.T) {
-			cfg := writeWorkflowFixture(t, t.TempDir(), "work", []taskFixture{{id: "runtime", scope: "run", setup: "echo '{}'", cleanup: "true"}}, []nodeFixture{{id: "runtime"}})
+			cfg := writeWorkflowFixture(t, "work", []taskFixture{{id: "runtime", scope: "run", setup: "echo '{}'", cleanup: "true"}}, []nodeFixture{{id: "runtime"}})
 			store := testStore(t)
 			now := time.Now()
 			session := &domain.Session{Name: "one", Workflow: "work", Status: contract.SessionStatusDown, CreatedAt: now, UpdatedAt: now}
@@ -172,7 +172,7 @@ func TestWorkflowRebasePreservesStoppedAndSleepingSessions(t *testing.T) {
 func TestWorkflowRebaseAliveProbeKeepsLiveSessionNode(t *testing.T) {
 	marker := filepath.Join(t.TempDir(), "cleaned")
 	oldTask := taskFixture{id: "workspace", scope: "session", setup: "echo '{}'", cleanup: "touch '" + marker + "'", alive: "true"}
-	cfg := writeWorkflowFixture(t, t.TempDir(), "work", []taskFixture{oldTask}, []nodeFixture{{id: "workspace"}})
+	cfg := writeWorkflowFixture(t, "work", []taskFixture{oldTask}, []nodeFixture{{id: "workspace"}})
 	store := testStore(t)
 	now := time.Now()
 	session := &domain.Session{Name: "one", Workflow: "work", Status: contract.SessionStatusDown, CreatedAt: now, UpdatedAt: now}
@@ -202,7 +202,7 @@ func TestWorkflowRebaseAliveProbeKeepsLiveSessionNode(t *testing.T) {
 
 func TestWorkflowRebaseRestartCleansRemovedSessionNodeWithOldDefinition(t *testing.T) {
 	marker := filepath.Join(t.TempDir(), "cleanup")
-	cfg := writeWorkflowFixture(t, t.TempDir(), "work", []taskFixture{
+	cfg := writeWorkflowFixture(t, "work", []taskFixture{
 		{id: "workspace", scope: "session", setup: "echo '{}'", cleanup: "echo old > '" + marker + "'"},
 		{id: "runtime", scope: "run", setup: "echo '{}'", cleanup: "true"},
 	}, []nodeFixture{{id: "workspace"}, {id: "runtime"}})
@@ -222,7 +222,7 @@ func TestWorkflowRebaseRestartCleansRemovedSessionNodeWithOldDefinition(t *testi
 	if err := os.Remove(filepath.Join(cfg.BaseDir, "tasks", "workspace.toml")); err != nil {
 		t.Fatal(err)
 	}
-	if err := os.WriteFile(filepath.Join(cfg.BaseDir, "workflows", "work.toml"), []byte("[work]\nkind = \"workflow\"\n[[work.nodes]]\nuses = \"runtime\"\n"), 0o644); err != nil {
+	if err := os.WriteFile(filepath.Join(cfg.BaseDir, "workflows", "work.toml"), []byte("[work]\nkind = \"workflow\"\nresource = \"issue\"\n[[work.nodes]]\nuses = \"runtime\"\n"), 0o644); err != nil {
 		t.Fatal(err)
 	}
 	if err := os.WriteFile(filepath.Join(cfg.BaseDir, "tasks", "runtime.toml"), []byte(effectFixtureDoc(taskFixture{id: "runtime", scope: "run", setup: "echo '{\"new\":true}'", cleanup: "true"})), 0o644); err != nil {
@@ -392,7 +392,7 @@ func TestClassifyWorkflowRebaseDynamicInstanceStatus(t *testing.T) {
 }
 
 func TestWorkflowRebaseRejectsSessionDeclarationChange(t *testing.T) {
-	cfg := writeWorkflowFixture(t, t.TempDir(), "work", []taskFixture{{id: "workspace", scope: "session", setup: "echo '{}'", cleanup: "true"}}, []nodeFixture{{id: "workspace"}})
+	cfg := writeWorkflowFixture(t, "work", []taskFixture{{id: "workspace", scope: "session", setup: "echo '{}'", cleanup: "true"}}, []nodeFixture{{id: "workspace"}})
 	store := testStore(t)
 	now := time.Now()
 	session := &domain.Session{Name: "one", Workflow: "work", Status: contract.SessionStatusDown, CreatedAt: now, UpdatedAt: now}
@@ -417,7 +417,7 @@ func TestWorkflowRebaseRejectsSessionDeclarationChange(t *testing.T) {
 }
 
 func TestWorkflowRebaseDryRunAndCompatibleApply(t *testing.T) {
-	cfg := writeWorkflowFixture(t, t.TempDir(), "work", []taskFixture{{id: "runtime", scope: "run", setup: "echo '{}'"}}, []nodeFixture{{id: "runtime"}})
+	cfg := writeWorkflowFixture(t, "work", []taskFixture{{id: "runtime", scope: "run", setup: "echo '{}'"}}, []nodeFixture{{id: "runtime"}})
 	store := testStore(t)
 	now := time.Now()
 	session := &domain.Session{Name: "one", Workflow: "work", Status: contract.SessionStatusDown, CreatedAt: now, UpdatedAt: now}

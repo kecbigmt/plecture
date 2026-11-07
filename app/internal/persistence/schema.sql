@@ -41,7 +41,7 @@ CREATE TABLE sessions (
     alias TEXT,
     workflow TEXT NOT NULL,
     workflow_revision TEXT,
-    workspace_dir TEXT,
+    invocation_dir TEXT,
     population_workflow TEXT,
     population_name TEXT,
     inputs_json TEXT CHECK (inputs_json IS NULL OR json_valid(inputs_json)),
@@ -124,6 +124,7 @@ CREATE TABLE node_executions (
     cleaned_at TEXT,
     finalized_at TEXT,
     process_json TEXT CHECK (process_json IS NULL OR json_valid(process_json)),
+    directory TEXT,
     FOREIGN KEY (session_id, node_id) REFERENCES node_instances(session_id, node_id) ON DELETE CASCADE
 );
 
@@ -181,7 +182,8 @@ CREATE TABLE task_instances (
     failed_at TEXT,
     cleaned_at TEXT,
     finalized_at TEXT,
-    process_json TEXT CHECK (process_json IS NULL OR json_valid(process_json))
+    process_json TEXT CHECK (process_json IS NULL OR json_valid(process_json)),
+    directory TEXT
 );
 
 CREATE UNIQUE INDEX task_instances_session_id_instance_name ON task_instances(session_id, instance_name);

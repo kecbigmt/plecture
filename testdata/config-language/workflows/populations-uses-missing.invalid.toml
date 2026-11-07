@@ -2,8 +2,8 @@
 # reason: a population declares which query means it uses; there is no default selection.
 
 [bad_uses_missing]
-kind               = "workflow"
-workspace_provider = "query_provider"
+kind     = "workflow"
+resource = "query_source"
 
 [[bad_uses_missing.populations]]
 name              = "dispatch"

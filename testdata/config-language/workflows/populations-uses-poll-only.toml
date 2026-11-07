@@ -2,8 +2,8 @@
 # reason: a population may select only poll from an observer whose query declares both means, opting out of subscribe.
 
 [poll_only_cases]
-kind               = "workflow"
-workspace_provider = "query_provider"
+kind     = "workflow"
+resource = "query_source"
 
 [[poll_only_cases.populations]]
 name              = "dispatch"

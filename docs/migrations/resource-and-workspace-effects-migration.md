@@ -6,8 +6,11 @@ and `resource_observer` have no aliases, provider output records have no
 compatibility reader, and a session is never reconfigured from its current
 directory.
 
-Read the whole procedure before making changes. Perform it after the release
-that implements the dialect; this design PR does not implement it.
+Read the whole procedure before making changes. Perform it with the release
+that removes the workspace provider. The loader refuses each retired spelling
+with a diagnostic that points here: a `kind = "workspace_provider"`
+declaration, a workflow's `workspace_provider` or `workspace_provider_inputs`
+field, and `workspace_dirs_root` in `config.toml`.
 
 ## Backup
 
@@ -31,6 +34,20 @@ placing a project marker or consolidating configuration.
 tree. Durable state is under `XDG_DATA_HOME` as shown above; this procedure
 does not name a state-directory override.
 
+## Release live sessions first
+
+A session whose environment was acquired by a workspace provider owns an
+allocation only the previous release knows how to free: its worktree,
+conversation directory, or scratch directory. The new release's storage
+migration therefore refuses to run while any session that has not been
+destroyed still holds an unreleased `@workflow` record, and names this
+procedure. With the previous release still installed, `plect destroy` each
+such session (add `--force` only to discard a directory you have already
+saved), then upgrade. The migration removes the remaining `@workflow` records
+and the stored workspace directory column; it cannot reconstruct a directory
+from them, because a workflow's work directory is now evaluated from the
+workflow's `workdir` and never stored.
+
 ## Convert declarations and workflows
 
 1. Rewrite every `kind = "resource_observer"` as `kind = "resource"`, adding
@@ -43,10 +60,28 @@ does not name a state-directory override.
 3. Replace a workflow provider field with its entry `resource`, add nodes for
    its effects, and add one `workdir = { from = "nodes.<id>.outputs.<key>" }`
    where the workflow needs a directory. Do not create per-node cwd settings.
+   The directory-creating node and everything it depends on run in your home
+   directory; every other node runs in the workdir. Remove
+   `workspace_dirs_root` from `config.toml`: a directory-creating effect takes
+   its root as an input (the shipped `worktree` and `thread_dir` effects call it
+   `dirs_root` and default to `~/workspace_dirs`).
 4. Replace `@workflow` output consumers with explicit workflow public
    outputs and `outputs_schema`; rewrite display, instructions, channel, and
    downstream bindings to `workflow.outputs.*`.
-5. Move a workflow's initial task selection to each invocation, chain, or
+5. Move a destruction option a provider took (such as a branch to delete) to
+   the effect's `[<id>.cleanup.inputs_schema]`, and read it in cleanup as
+   `cleanup.inputs.<key>`; `plect destroy --input key=value` supplies it, and
+   an input no released effect declares is an error. `force` is a cleanup root
+   of every effect.
+6. A direct invocation reads the `.plect/` overlay of its own directory or of
+   an ancestor directory only when that directory is listed in `trusted_project_roots` in the
+   machine configuration; nothing is trusted implicitly, because an overlay can
+   declare effects that run shell. List each project directory whose overlay you
+   rely on, as an absolute path. A session records the directory it was created
+   in and later operations such as `workflow rebase` expand from that record, so
+   a session created before this release has no record and expands from the
+   plugin and global layers alone.
+7. Move a workflow's initial task selection to each invocation, chain, or
    population. Ensure each task's concrete resource matches the task document
    and ensure a population derives its resource from its workflow.
 

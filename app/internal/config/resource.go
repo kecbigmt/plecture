@@ -16,9 +16,8 @@ type ResourceDef struct {
 	// reconstruction: a task document's completion keys are checked against
 	// this observer's own state contract.
 	Definition *lang.Definition
-	// Match is a regex a resource id must satisfy to be this kind. Required —
-	// unlike WorkspaceProviderConfig's optional resolver, an observer exists
-	// only to recognize and observe ids, so it has no other reason to load.
+	// Match is a regex a resource id must satisfy to be this kind. Required: a
+	// resource exists only to recognize and observe ids.
 	Match string
 	// Name derives the resource instance's name from Match's named captures,
 	// which are the only root it observes. Required: a session name is built
@@ -79,9 +78,8 @@ func (r ResourceDef) Ownership() lang.Ownership {
 }
 
 // LoadResourceDefs loads every resource the trusted base layers
-// declare: plugin roots first, then the global config dir. Mirrors
-// LoadWorkspaceProviders, including its exclusion of the per-workspace-dir
-// ancestor cascade.
+// declare: plugin roots first, then the global config dir. The ancestor overlay
+// cascade is excluded, as for channels.
 func (c *Config) LoadResourceDefs() (map[string]ResourceDef, error) {
 	resolved, err := c.trustedKind(lang.KindResource)
 	if err != nil {

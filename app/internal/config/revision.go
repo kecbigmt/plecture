@@ -19,12 +19,10 @@ import (
 )
 
 type WorkflowRevision struct {
-	Workflow                WorkflowFile                 `json:"workflow"`
-	Effects                 map[string]TaskDefinition    `json:"effects"`
-	Tasks                   map[string]TaskDocument      `json:"tasks"`
-	Provider                *WorkspaceProviderConfig     `json:"provider,omitempty"`
-	Channels                map[string]ChannelDefinition `json:"channels,omitempty"`
-	WorkspaceCapturePending bool                         `json:"workspace_capture_pending,omitempty"`
+	Workflow WorkflowFile                 `json:"workflow"`
+	Effects  map[string]TaskDefinition    `json:"effects"`
+	Tasks    map[string]TaskDocument      `json:"tasks"`
+	Channels map[string]ChannelDefinition `json:"channels,omitempty"`
 }
 
 func (r *WorkflowRevision) PortablePluginSources(mounted []plugins.Mounted) error {
@@ -75,13 +73,6 @@ func (r *WorkflowRevision) PortablePluginSources(mounted []plugins.Mounted) erro
 			return fmt.Errorf("effect %q: %w", key, err)
 		}
 	}
-	if r.Provider != nil && r.Provider.FromPlugin {
-		var err error
-		r.Provider.SourcePath, err = source(r.Provider.SourcePath)
-		if err != nil {
-			return fmt.Errorf("workspace provider %q: %w", r.Provider.ID, err)
-		}
-	}
 	for key, channel := range r.Channels {
 		if channel.FromPlugin {
 			var err error
@@ -115,14 +106,6 @@ func (r WorkflowRevision) CanonicalBody() ([]byte, string, error) {
 			tasks[key] = canonicalTask(doc)
 		}
 		r.Tasks = tasks
-	}
-	if r.Provider != nil {
-		provider := *r.Provider
-		provider.BaseDir = ""
-		if !provider.FromPlugin {
-			provider.SourcePath = ""
-		}
-		r.Provider = &provider
 	}
 	if r.Channels != nil {
 		channels := make(map[string]ChannelDefinition, len(r.Channels))
@@ -196,10 +179,6 @@ func copyRevisionDeclarations(revision WorkflowRevision) WorkflowRevision {
 	revision.Effects = maps.Clone(revision.Effects)
 	revision.Tasks = maps.Clone(revision.Tasks)
 	revision.Channels = maps.Clone(revision.Channels)
-	if revision.Provider != nil {
-		provider := *revision.Provider
-		revision.Provider = &provider
-	}
 	return revision
 }
 
@@ -247,27 +226,14 @@ func (c *Config) TaskDefinitionsForSession(s *domain.Session) (map[string]TaskDe
 	if r, ok, err := RevisionForSession(s); ok || err != nil {
 		return r.Effects, err
 	}
-	return c.LoadTaskDefinitions(s.WorkspaceDirPath)
+	return c.LoadTaskDefinitions("")
 }
 
 func (c *Config) TaskDeclarationsForSession(s *domain.Session) (map[string]TaskDocument, map[string]TaskDefinition, error) {
 	if r, ok, err := RevisionForSession(s); ok || err != nil {
 		return r.Tasks, r.Effects, err
 	}
-	return c.LoadTaskDeclarations(s.WorkspaceDirPath)
-}
-
-func (c *Config) WorkspaceProviderForSession(s *domain.Session) (WorkspaceProviderConfig, error) {
-	if r, ok, err := RevisionForSession(s); ok || err != nil {
-		if err != nil {
-			return WorkspaceProviderConfig{}, err
-		}
-		if r.Provider == nil {
-			return WorkspaceProviderConfig{}, fmt.Errorf("workflow %q has no workspace provider", s.Workflow)
-		}
-		return *r.Provider, nil
-	}
-	return WorkspaceProviderConfig{}, fmt.Errorf("session %q has no workflow", s.Name)
+	return c.LoadTaskDeclarations("")
 }
 
 func (c *Config) ChannelsForSession(s *domain.Session) (map[string]ChannelDefinition, error) {
@@ -277,8 +243,8 @@ func (c *Config) ChannelsForSession(s *domain.Session) (map[string]ChannelDefini
 	return c.LoadChannels()
 }
 
-func (c *Config) CaptureWorkflowRevision(workspaceDirPath, name string) (WorkflowRevision, error) {
-	workflows, err := c.LoadWorkflows(workspaceDirPath)
+func (c *Config) CaptureWorkflowRevision(invocationDir, name string) (WorkflowRevision, error) {
+	workflows, err := c.LoadWorkflows(invocationDir)
 	if err != nil {
 		return WorkflowRevision{}, err
 	}
@@ -295,7 +261,7 @@ func (c *Config) CaptureWorkflowRevision(workspaceDirPath, name string) (Workflo
 		}
 		wf.InputsSchemaFile = ""
 	}
-	effects, err := c.LoadTaskDefinitions(workspaceDirPath)
+	effects, err := c.LoadTaskDefinitions(invocationDir)
 	if err != nil {
 		return WorkflowRevision{}, err
 	}
@@ -309,7 +275,7 @@ func (c *Config) CaptureWorkflowRevision(workspaceDirPath, name string) (Workflo
 	if err := c.validateKnownNodeSubscriptions(wf, effects); err != nil {
 		return WorkflowRevision{}, err
 	}
-	tasks, err := c.LoadTaskDocuments(workspaceDirPath)
+	tasks, err := c.LoadTaskDocuments(invocationDir)
 	if err != nil {
 		return WorkflowRevision{}, err
 	}
@@ -331,31 +297,6 @@ func (c *Config) CaptureWorkflowRevision(workspaceDirPath, name string) (Workflo
 		tasks[key] = doc
 	}
 	revision := WorkflowRevision{Workflow: wf, Effects: effects, Tasks: tasks}
-	if wf.WorkspaceProvider != "" {
-		providers, err := c.LoadWorkspaceProviders()
-		if err != nil {
-			return WorkflowRevision{}, err
-		}
-		provider, ok := providers[wf.WorkspaceProvider]
-		if !ok {
-			return WorkflowRevision{}, fmt.Errorf("workflow %q: workspace provider %q not found", name, wf.WorkspaceProvider)
-		}
-		if provider.InputsSchemaFile != "" {
-			provider.InputsSchema, err = loadRawSchema(nil, provider.ResolvedInputsSchemaPath())
-			if err != nil {
-				return WorkflowRevision{}, err
-			}
-			provider.InputsSchemaFile = ""
-		}
-		if provider.OutputsSchemaFile != "" {
-			provider.OutputsSchema, err = loadRawSchema(nil, provider.ResolvedOutputsSchemaPath())
-			if err != nil {
-				return WorkflowRevision{}, err
-			}
-			provider.OutputsSchemaFile = ""
-		}
-		revision.Provider = &provider
-	}
 	if len(wf.Event.Channel) > 0 {
 		channels, err := c.LoadChannels()
 		if err != nil {

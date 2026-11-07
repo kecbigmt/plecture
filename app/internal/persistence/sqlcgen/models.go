@@ -58,6 +58,7 @@ type NodeExecution struct {
 	CleanedAt               sql.NullString
 	FinalizedAt             sql.NullString
 	ProcessJson             sql.NullString
+	Directory               sql.NullString
 }
 
 type NodeExecutionDependency struct {
@@ -133,7 +134,7 @@ type Session struct {
 	Alias                    sql.NullString
 	Workflow                 string
 	WorkflowRevision         sql.NullString
-	WorkspaceDir             sql.NullString
+	InvocationDir            sql.NullString
 	PopulationWorkflow       sql.NullString
 	PopulationName           sql.NullString
 	InputsJson               sql.NullString
@@ -221,6 +222,7 @@ type TaskInstance struct {
 	CleanedAt               sql.NullString
 	FinalizedAt             sql.NullString
 	ProcessJson             sql.NullString
+	Directory               sql.NullString
 }
 
 type TaskInstanceLayer struct {

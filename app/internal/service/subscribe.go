@@ -8,7 +8,6 @@ import (
 	"strings"
 
 	"github.com/kecbigmt/plecture/app/internal/config"
-	"github.com/kecbigmt/plecture/app/internal/domain"
 	"github.com/kecbigmt/plecture/app/internal/effect"
 	"github.com/kecbigmt/plecture/app/internal/lang"
 	"github.com/kecbigmt/plecture/app/internal/state"
@@ -67,7 +66,6 @@ func Subscribe(cfg *config.Config, store *state.Store, params SubscribeParams) e
 		SessionName: sessionName,
 		Plugins:     cfg.Plugins,
 		SourcePath:  def.SourcePath,
-		Branch:      domain.SessionBranch(session),
 	}); hookErr != nil {
 		return &Error{Code: ErrExecutionFailed, Message: hookErr.Error()}
 	}

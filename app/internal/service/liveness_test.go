@@ -17,7 +17,7 @@ func TestUp_VanishedPaneIsRebuilt(t *testing.T) {
 	store := testStore(t)
 	sessionName := "session1"
 	pane := filepath.Join(t.TempDir(), "pane")
-	cfg := writeWorkflowFixture(t, t.TempDir(), "default",
+	cfg := writeWorkflowFixture(t, "default",
 		[]taskFixture{
 			{id: "pane", scope: "run", setup: "touch " + pane + "; echo '{}'", alive: "test -f " + pane},
 		},
@@ -51,7 +51,7 @@ func TestUp_VanishedPaneIsRebuiltWithADistinctExecutionIdentity(t *testing.T) {
 	store := testStore(t)
 	sessionName := "session1"
 	pane := filepath.Join(t.TempDir(), "pane")
-	cfg := writeWorkflowFixture(t, t.TempDir(), "default",
+	cfg := writeWorkflowFixture(t, "default",
 		[]taskFixture{
 			{id: "pane", scope: "run", setup: "touch " + pane + "; echo '{}'", alive: "test -f " + pane},
 		},
@@ -92,7 +92,7 @@ func TestUp_VanishedGuardDirectoryIsRebuilt(t *testing.T) {
 	}
 	store := testStore(t)
 	sessionName := "session1"
-	cfg := writeWorkflowFixture(t, t.TempDir(), "default",
+	cfg := writeWorkflowFixture(t, "default",
 		[]taskFixture{
 			{
 				id:    "guard",
@@ -135,7 +135,7 @@ func TestUp_VanishedSubscriptionIsRebuilt(t *testing.T) {
 	store := testStore(t)
 	sessionName := "session1"
 	registration := filepath.Join(t.TempDir(), "subscribed")
-	cfg := writeWorkflowFixture(t, t.TempDir(), "default",
+	cfg := writeWorkflowFixture(t, "default",
 		[]taskFixture{
 			{id: "subscription", scope: "run", setup: "touch " + registration + "; echo '{}'", alive: "test -f " + registration},
 		},

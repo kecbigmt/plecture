@@ -47,26 +47,17 @@ func seedReviewWork(t *testing.T, store *state.Store, name string, observed map[
 	})
 }
 
-// writeWorkflowFile writes a spawnable workflow plus the provider that backs
-// it. A workflow a chain can spawn into must be provider-backed, since the
-// provider is what resolves the resource to a session id and acquires the
-// working directory.
+// writeWorkflowFile writes a spawnable workflow that accepts the fixture's
+// resource type, which is what lets a chain resolve its resource to a session
+// name.
 func writeWorkflowFile(t *testing.T, cfg *config.Config, id, body string) {
 	t.Helper()
 	dir := filepath.Join(cfg.BaseDir, "workflows")
 	if err := os.MkdirAll(dir, 0o755); err != nil {
 		t.Fatal(err)
 	}
-	provID, prov := providerAside(id, providerEchoingOutputs(id, `{"workdir":"/tmp/x"}`))
-	header := "[" + id + "]\nkind = \"workflow\"\nworkspace_provider = \"" + provID + "\"\n"
+	header := "[" + id + "]\nkind = \"workflow\"\nresource = \"issue\"\n"
 	if err := os.WriteFile(filepath.Join(dir, id+".toml"), []byte(header+body), 0o644); err != nil {
-		t.Fatal(err)
-	}
-	providersDir := filepath.Join(cfg.BaseDir, "workspaces")
-	if err := os.MkdirAll(providersDir, 0o755); err != nil {
-		t.Fatal(err)
-	}
-	if err := os.WriteFile(filepath.Join(providersDir, provID+".toml"), []byte(prov), 0o644); err != nil {
 		t.Fatal(err)
 	}
 }
@@ -82,7 +73,7 @@ func findSpawn(spawns []ChainSpawn, chainID string) (ChainSpawn, bool) {
 
 func TestCheckSession_ChainFiresWhenWhenAndOutputsHold(t *testing.T) {
 	store := testStore(t)
-	cfg := writeWorkflowFixture(t, t.TempDir(), "wf",
+	cfg := writeWorkflowFixture(t, "wf",
 		[]taskFixture{workTaskWithChain(`
 [[chains]]
 id       = "review"
@@ -128,7 +119,7 @@ revision = { from = "resource.state.revision" }
 // attaches the resolved inputs to the spawn (passed to Up on a real spawn).
 func TestCheckSession_ChainRendersAndAttachesInputs(t *testing.T) {
 	store := testStore(t)
-	cfg := writeWorkflowFixture(t, t.TempDir(), "wf",
+	cfg := writeWorkflowFixture(t, "wf",
 		[]taskFixture{workTaskWithChain(`
 [[chains]]
 id       = "review"
@@ -175,7 +166,7 @@ judge_ids    = { from = "task.done_when.pending_judge_ids" }
 // target and its contract are both declarations, so nothing has to run for
 // the mismatch to be known.
 func TestLoadTaskDeclarations_ChainInputsMustSatisfyTheTargetContract(t *testing.T) {
-	cfg := writeWorkflowFixture(t, t.TempDir(), "wf",
+	cfg := writeWorkflowFixture(t, "wf",
 		[]taskFixture{workTaskWithChain(`
 [[chains]]
 id       = "review"
@@ -201,7 +192,7 @@ additionalProperties = false
 
 func TestCheckSession_ChainBlockedWhenUnmet(t *testing.T) {
 	store := testStore(t)
-	cfg := writeWorkflowFixture(t, t.TempDir(), "wf",
+	cfg := writeWorkflowFixture(t, "wf",
 		[]taskFixture{workTaskWithChain(`
 [[chains]]
 id       = "review"
@@ -226,7 +217,7 @@ all = [ { judge_pending = "ac-met" }, { check = "resource.state.checks_status", 
 
 func TestCheckSession_ChainBlockedOutputsMissing(t *testing.T) {
 	store := testStore(t)
-	cfg := writeWorkflowFixture(t, t.TempDir(), "wf",
+	cfg := writeWorkflowFixture(t, "wf",
 		[]taskFixture{workTaskWithChain(`
 [[chains]]
 id       = "review"
@@ -256,7 +247,7 @@ revision = { from = "resource.state.revision" }
 
 func TestCheckSession_ChainChildPlacementParent(t *testing.T) {
 	store := testStore(t)
-	cfg := writeWorkflowFixture(t, t.TempDir(), "wf",
+	cfg := writeWorkflowFixture(t, "wf",
 		[]taskFixture{workTaskWithChain(`
 [[chains]]
 id        = "review"
@@ -285,7 +276,7 @@ all = [ { judge_pending = "ac-met" } ]
 // not its parent's (there is none).
 func TestCheckSession_ChainSiblingWithoutParentUsesImplicitRoot(t *testing.T) {
 	store := testStore(t)
-	cfg := writeWorkflowFixture(t, t.TempDir(), "wf",
+	cfg := writeWorkflowFixture(t, "wf",
 		[]taskFixture{workTaskWithChain(`
 [[chains]]
 id       = "review"
@@ -312,7 +303,7 @@ all = [ { judge_pending = "ac-met" } ]
 // session already exists is reported already-active rather than re-spawned.
 func TestTickSession_ChainAlreadyActiveSkips(t *testing.T) {
 	store := testStore(t)
-	cfg := writeWorkflowFixture(t, t.TempDir(), "wf",
+	cfg := writeWorkflowFixture(t, "wf",
 		[]taskFixture{workTaskWithChain(`
 [[chains]]
 id       = "review"
@@ -378,7 +369,7 @@ pr_url = { from = "resource.state.pr_url" }
 
 func TestTickSession_ChainCannotAdoptPopulationOwnedTarget(t *testing.T) {
 	store := testStore(t)
-	cfg := writeWorkflowFixture(t, t.TempDir(), "wf",
+	cfg := writeWorkflowFixture(t, "wf",
 		[]taskFixture{workTaskWithChain(`
 [[chains]]
 id       = "review"
@@ -424,7 +415,7 @@ all = [ { judge_pending = "ac-met" } ]
 // resource_allowlist boundary is set to deny the resource.
 func TestTickSession_ChainSpawnFailureIsNonFatal(t *testing.T) {
 	store := testStore(t)
-	cfg := writeWorkflowFixture(t, t.TempDir(), "wf",
+	cfg := writeWorkflowFixture(t, "wf",
 		[]taskFixture{workTaskWithChain(`
 [[chains]]
 id       = "review"
@@ -457,7 +448,7 @@ all = [ { judge_pending = "ac-met" } ]
 // declaration, rather than reported as a blocked fire every tick: the target
 // is a static reference, so its resolution needs nothing to run.
 func TestLoadTaskDeclarations_ChainWorkflowMustResolve(t *testing.T) {
-	cfg := writeWorkflowFixture(t, t.TempDir(), "wf",
+	cfg := writeWorkflowFixture(t, "wf",
 		[]taskFixture{workTaskWithChain(`
 [[chains]]
 id       = "review"
@@ -474,7 +465,7 @@ all = [ { judge_pending = "ac-met" } ]
 
 func TestCheckSession_NoChainsIsEmpty(t *testing.T) {
 	store := testStore(t)
-	cfg := writeWorkflowFixture(t, t.TempDir(), "wf",
+	cfg := writeWorkflowFixture(t, "wf",
 		[]taskFixture{{id: "work", scope: "session", setup: "echo '{}'"}},
 		[]nodeFixture{{id: "work"}})
 	seedReviewWork(t, store, "owner/repo-1", map[string]any{"checks_status": "SUCCESS", "revision": "sha1"})
@@ -492,7 +483,7 @@ func TestCheckSession_NoChainsIsEmpty(t *testing.T) {
 // independent verdict.
 func TestCheckSession_ChainSatisfiedJudgeDoesNotFire(t *testing.T) {
 	store := testStore(t)
-	cfg := writeWorkflowFixture(t, t.TempDir(), "wf",
+	cfg := writeWorkflowFixture(t, "wf",
 		[]taskFixture{workTaskWithChain(`
 [[chains]]
 id       = "review"
@@ -535,7 +526,7 @@ all = [ { judge_pending = "ac-met" } ]
 // not a candidate at all — not merely blocked, absent from the plan.
 func TestCheckSession_ChainTaskScopedEvaluation(t *testing.T) {
 	store := testStore(t)
-	cfg := writeWorkflowFixture(t, t.TempDir(), "wf",
+	cfg := writeWorkflowFixture(t, "wf",
 		[]taskFixture{
 			{
 				id:    "a",
@@ -599,7 +590,7 @@ all = [ { judge = "ac met", id = "ac-met" } ]
 // (config.LegacyChainsDirNotice) so a straggler file isn't silently inert
 // with zero signal.
 func TestCheckSession_LegacyChainsDirIsRefused(t *testing.T) {
-	cfg := writeWorkflowFixture(t, t.TempDir(), "wf",
+	cfg := writeWorkflowFixture(t, "wf",
 		[]taskFixture{
 			{id: "a", scope: "session", setup: "echo '{}'", extra: "[done_when]\nall = [ { judge = \"ac met\", id = \"ac-met\" } ]\n"},
 		},
@@ -628,7 +619,7 @@ all = [ { judge_pending = "ac-met" } ]
 // and the projection reads it from there.
 func TestTickSession_ChainFiresOnExplicitPRURLAcrossRepos(t *testing.T) {
 	store := testStore(t)
-	cfg := writeWorkflowFixture(t, t.TempDir(), "wf",
+	cfg := writeWorkflowFixture(t, "wf",
 		[]taskFixture{{
 			id: "work",
 			extra: `

@@ -154,7 +154,6 @@ describe("AppShell session selection", () => {
             sessionName: "team/a",
             run: "up",
             resourceId: "",
-            workspaceDirExists: true,
             createdAt: "2026-01-01T00:00:00Z",
           }),
         );

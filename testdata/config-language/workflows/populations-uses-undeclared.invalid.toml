@@ -2,8 +2,8 @@
 # reason: a population may select only a query means its resolved observer actually declares.
 
 [bad_uses_undeclared]
-kind               = "workflow"
-workspace_provider = "query_provider"
+kind     = "workflow"
+resource = "query_source"
 
 [[bad_uses_undeclared.populations]]
 name              = "dispatch"

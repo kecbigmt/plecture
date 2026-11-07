@@ -103,7 +103,7 @@ app/internal/service/flake_overlay_test.go
 app/internal/service/nesting_test.go
 app/internal/service/plugin_test.go
 app/internal/service/postmigration_test.go
-app/internal/service/provider_github_e2e_test.go
+app/internal/service/worktree_effect_e2e_test.go
 app/internal/service/resource_test.go
 app/internal/service/service_test.go
 app/internal/service/sessionguard_test.go

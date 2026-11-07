@@ -158,7 +158,7 @@ command = "true"
 func TestWorkflowPopulationSurfaceAndTrustedOwnership(t *testing.T) {
 	src := `[agent]
 kind = "workflow"
-workspace_provider = "provider"
+resource = "source"
 [[agent.populations]]
 name = "dispatch"
 resource_observer = "source"
@@ -204,6 +204,7 @@ resource_observer = "source"`},
 		t.Run(tt.name, func(t *testing.T) {
 			err := validateUserSource(t, `[agent]
 kind = "workflow"
+resource = "issue"
 [[agent.populations]]
 `+tt.body)
 			var d *Diagnostic
@@ -215,6 +216,7 @@ kind = "workflow"
 
 	err := validateUserSource(t, `[agent]
 kind = "workflow"
+resource = "issue"
 [[agent.populations]]
 name = "dispatch"
 resource_observer = "source"
@@ -252,12 +254,9 @@ type = "string"
 type = "exec"
 command = "true"
 
-[provider]
-kind = "workspace_provider"
-
 [agent]
 kind = "workflow"
-workspace_provider = "provider"
+resource = "source"
 [[agent.populations]]
 name = "dispatch"
 resource_observer = "source"

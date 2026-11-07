@@ -1,6 +1,7 @@
 package service
 
 import (
+	"fmt"
 	"sort"
 	"strings"
 
@@ -121,20 +122,19 @@ func sanitizeTag(s string) string {
 }
 
 // resolveSpawnSessionName derives, offline, the session name a fire's spawn
-// would resolve to — mirroring Up's name derivation (the workspace provider resolver) so
-// the idempotency check sees the same name Up will. A resource no resolver
-// matches is an identity dispatch, whose name is the resource itself.
+// would resolve to — mirroring Up's name derivation so the idempotency check
+// sees the same name Up will.
 func resolveSpawnSessionName(cfg *config.Config, resource, workflow, tag string) (string, error) {
-	disp, matched, err := dispatchResource(cfg, workflow, resource)
+	disp, matched, err := dispatchResource(cfg, "", workflow, resource)
 	if err != nil {
 		return "", err
 	}
-	if matched {
-		name := disp.Name
-		if tag != "" {
-			name = name + "+" + tag
-		}
-		return name, nil
+	if !matched {
+		return "", &Error{Code: ErrInvalidInput, Message: fmt.Sprintf("no resource declaration recognizes %q", resource)}
 	}
-	return resource, nil
+	name := disp.Name
+	if tag != "" {
+		name = name + "+" + tag
+	}
+	return name, nil
 }

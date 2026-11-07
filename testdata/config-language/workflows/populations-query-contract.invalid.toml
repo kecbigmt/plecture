@@ -2,8 +2,8 @@
 # reason: one population parameter table must satisfy the shared query inputs_schema.
 
 [bad_query]
-kind               = "workflow"
-workspace_provider = "query_provider"
+kind     = "workflow"
+resource = "query_source"
 
 [[bad_query.populations]]
 name              = "dispatch"

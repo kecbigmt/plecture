@@ -34,13 +34,13 @@ all = [
   { check = "resource.state.checks_status", eq = "SUCCESS" },
 ]
 `)
-	return &config.Config{BaseDir: base, WorkspaceDirsRoot: t.TempDir()}
+	return &config.Config{BaseDir: base}
 }
 
 func writeE2EWorkflow(t *testing.T, base string) {
 	t.Helper()
 	writeFile(t, filepath.Join(base, "tasks", "claude.toml"), "[claude]\nkind = \"effect\"\nscope = \"run\"\n")
-	writeFile(t, filepath.Join(base, "workflows", "session.toml"), "[session]\nkind = \"workflow\"\n[[session.nodes]]\nuses = \"claude\"\n")
+	writeFile(t, filepath.Join(base, "workflows", "session.toml"), "[session]\nkind = \"workflow\"\nresource = \"issue\"\n[[session.nodes]]\nuses = \"claude\"\n")
 }
 
 // e2eObserver has no real resource to look at, so observing one fails and the
@@ -149,7 +149,7 @@ all = [
   { judge = "AC met", id = "ac-met" },
 ]
 `)
-	return &config.Config{BaseDir: base, WorkspaceDirsRoot: t.TempDir()}
+	return &config.Config{BaseDir: base}
 }
 
 // TestSessionReactor_UnchangedUnmetStateAnnouncesOnce: a burst of external

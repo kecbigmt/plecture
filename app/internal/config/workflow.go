@@ -36,17 +36,8 @@ type WorkflowFile struct {
 	Definition  *lang.Definition
 	Name        string
 	Description string
-	// WorkspaceProvider names the workspace provider this workflow runs on.
-	// The workspace provider owns the resource-kind knowledge — resolver,
-	// workspace setup/cleanup, the @workflow outputs contract; the workflow
-	// owns the effect shape on top. A workflow without one cannot acquire a
-	// workspace, so it cannot back a session.
-	WorkspaceProvider string
-	// WorkspaceProviderInputs sets the workspace provider's author-declared
-	// parameters (its `[inputs_schema]`). The values are literal data: the
-	// provider's hooks run before any workspace or node output exists, so
-	// there is nothing for a projection to read.
-	WorkspaceProviderInputs map[string]any
+	Workdir     *lang.WorkdirRef
+	Resource    string
 	// Display declares the values `plect ls` / `show` and the web UI render.
 	// They read persisted outputs and the session's inputs only — no network
 	// — so their freshness follows whatever cadence updates those outputs.
@@ -215,8 +206,7 @@ func NormalizeHealthcheckConfig(in *HealthcheckConfig) HealthcheckConfig {
 // Blocks declares reverse dependency edges: each listed node id becomes a
 // dependent of this one, equivalent to writing the inverse dependency in the
 // listed node. It exists for a cascade overlay that must insert itself ahead
-// of base nodes it cannot modify (e.g. a workspace-dir-process killer that
-// must clean up after the runtime and agent effects).
+// of base nodes it cannot modify.
 type WorkflowNode struct {
 	ID           string
 	Uses         string
@@ -294,10 +284,11 @@ type EventChannel struct {
 // The id is the definition table's name. Effects intentionally have no
 // `depends_on`: wiring is the workflow's job.
 type TaskDefinition struct {
-	ID      string
-	Scope   string
-	Setup   *lang.Action
-	Cleanup *lang.Action
+	ID                  string
+	Scope               string
+	Setup               *lang.Action
+	Cleanup             *lang.Action
+	CleanupInputsSchema map[string]any
 	// Inner names the next effect inward, making this declaration the outer
 	// layer of a nesting chain: either a plain id (resolved in the merged
 	// namespace, or in the declaring plugin's own namespace when the
@@ -518,20 +509,14 @@ func resolveSchemaPath(file, baseDir string) string {
 }
 
 // layerDir pairs a cascade search directory with its trust classification.
-// The workspace-dir layer (`.plect/` inside the workspace directory itself)
-// is clone content — an attacker-controlled repository must not be able to
-// introduce shell that plect would execute. Every other layer (plugin,
-// global, ancestor overlays above the workspace dir) is machine-owned and
-// trusted.
 //
 // plugin marks a layer sourced from c.PluginDirs specifically (as opposed to
 // the global config dir or an ancestor overlay), which is what decides the
 // address its declarations answer to: a mounted plugin's carry its catalog
 // address, and everything else is addressed by id alone.
 type layerDir struct {
-	dir          string
-	workspaceDir bool
-	plugin       bool
+	dir    string
+	plugin bool
 	// global marks the machine's own config root, which is trusted the way a
 	// plugin layer is but is not one, so a same-id collision with a plugin
 	// layer is a replacement rather than an error.
@@ -543,8 +528,8 @@ type layerDir struct {
 }
 
 // LoadWorkflows loads every workflow declaration the cascade layers hold:
-// plugins (base), the global config, then each ancestor overlay ending at the
-// workspace directory. A deeper layer merges into a same-id shallower
+// plugins (base), the global config, then each trusted overlay down to the
+// invocation directory. A deeper layer merges into a same-id shallower
 // workflow by the cascade rules — it may set a field the shallower layer left
 // unset, its nodes append, and its `[tick]` / `[healthcheck]` replace the
 // shallower table wholesale — so a project extends a shared workflow instead
@@ -554,11 +539,8 @@ type layerDir struct {
 // user-owned workflow sharing an id with a plugin's does not extend it either,
 // for the same reason. Only a deeper user-owned layer merges into a shallower
 // one, which is what lets a project extend a workflow it owns.
-//
-// Trust restriction: a workflow document in the workspace-dir layer is clone
-// content and may only add nodes.
-func (c *Config) LoadWorkflows(workspaceDirPath string) (map[string]WorkflowFile, error) {
-	layers, err := c.discoverLayers(workspaceDirPath)
+func (c *Config) LoadWorkflows(invocationDir string) (map[string]WorkflowFile, error) {
+	layers, err := c.discoverLayers(invocationDir)
 	if err != nil {
 		return nil, err
 	}
@@ -595,7 +577,7 @@ func (c *Config) LoadWorkflows(workspaceDirPath string) (map[string]WorkflowFile
 	if err != nil {
 		return nil, err
 	}
-	docs, err := c.LoadTaskDocuments(workspaceDirPath)
+	docs, err := c.LoadTaskDocuments(invocationDir)
 	if err != nil {
 		return nil, err
 	}
@@ -629,14 +611,8 @@ func workflowsHavePopulations(workflows map[string]WorkflowFile) bool {
 // addresses and both load; only a layer with no catalog identity to name it by
 // still collides, since there declaration order would be deciding between two
 // plugins' shell.
-//
-// Trust restriction: task definitions are arbitrary shell, so the
-// workspace-dir layer (clone content) must not contribute any. A
-// `.plect/tasks/*.toml` inside the workspace directory is a load error
-// rather than a silent skip — silently ignoring it would make the author
-// think the task is active.
-func (c *Config) LoadTaskDefinitions(workspaceDirPath string) (map[string]TaskDefinition, error) {
-	layers, err := c.discoverLayers(workspaceDirPath)
+func (c *Config) LoadTaskDefinitions(invocationDir string) (map[string]TaskDefinition, error) {
+	layers, err := c.discoverLayers(invocationDir)
 	if err != nil {
 		return nil, err
 	}
@@ -664,14 +640,8 @@ func (c *Config) LoadTaskDefinitions(workspaceDirPath string) (map[string]TaskDe
 }
 
 // definitionRoots orders the cascade: plugins (base) → global → ancestor
-// overlays, outermost-first, ending at the workspace directory itself — the
-// only untrusted layer. Each entry is a whole definition root rather than one
-// kind's directory, because a directory under a root is author organization.
-//
-// The workspace-dir layer is walked whole too, but it is not a definition
-// root: a declaration it must not carry has to be found in order to be
-// refused, and only `.plect/workflows/` contributes (see discoverLayer).
-func (c *Config) definitionRoots(workspaceDirPath string) []layerDir {
+// overlays above invocationDir.
+func (c *Config) definitionRoots(invocationDir string) []layerDir {
 	pluginIDs := make(map[string]string, len(c.Plugins))
 	for _, m := range c.Plugins {
 		pluginIDs[m.Dir] = m.ID
@@ -683,21 +653,36 @@ func (c *Config) definitionRoots(workspaceDirPath string) []layerDir {
 	if c.BaseDir != "" {
 		dirs = append(dirs, layerDir{dir: c.BaseDir, global: true})
 	}
-	cleanWorkspaceDir := ""
-	if workspaceDirPath != "" {
-		cleanWorkspaceDir = filepath.Clean(workspaceDirPath)
-	}
-	for _, anc := range cascadeAncestors(workspaceDirPath) {
-		dirs = append(dirs, layerDir{dir: filepath.Join(anc, ".plect"), workspaceDir: anc == cleanWorkspaceDir})
+	for _, anc := range cascadeCandidates(invocationDir) {
+		if c.trustsProjectRoot(anc) {
+			dirs = append(dirs, layerDir{dir: filepath.Join(anc, ".plect")})
+		}
 	}
 	return dirs
 }
 
-// cascadeAncestors walks up from workspaceDirPath, ordered outermost-first.
+// trustsProjectRoot counts only listed roots, since an unlisted checkout's `.plect/` can run shell.
+func (c *Config) trustsProjectRoot(dir string) bool {
+	canonical := func(path string) string {
+		if real, err := filepath.EvalSymlinks(path); err == nil {
+			return real
+		}
+		return filepath.Clean(path)
+	}
+	want := canonical(dir)
+	for _, root := range c.TrustedProjectRoots {
+		if canonical(root) == want {
+			return true
+		}
+	}
+	return false
+}
+
+// cascadeCandidates walks up from invocationDir, including it, ordered outermost-first.
 // $HOME is the exclusive upper bound because the user's global config lives
 // at `~/.config/plect/` and `$HOME/.plect/` would collide with that.
-func cascadeAncestors(workspaceDirPath string) []string {
-	if workspaceDirPath == "" {
+func cascadeCandidates(invocationDir string) []string {
+	if invocationDir == "" {
 		return nil
 	}
 	var cleanHome string
@@ -705,7 +690,7 @@ func cascadeAncestors(workspaceDirPath string) []string {
 		cleanHome = filepath.Clean(home)
 	}
 	var chain []string
-	cur := filepath.Clean(workspaceDirPath)
+	cur := filepath.Clean(invocationDir)
 	for {
 		if cur == cleanHome || cur == string(filepath.Separator) {
 			break

@@ -6,7 +6,7 @@ import (
 )
 
 func TestNewLive_ReturnsInitialConfigFromLoad(t *testing.T) {
-	want := &Config{WorkspaceDirsRoot: "/one"}
+	want := &Config{SessionGuard: "/one"}
 	lv, err := NewLive(func() (*Config, error) { return want, nil }, 0)
 	if err != nil {
 		t.Fatalf("NewLive: %v", err)
@@ -25,8 +25,8 @@ func TestNewLive_PropagatesInitialLoadError(t *testing.T) {
 }
 
 func TestLive_Refresh_SwapsInTheNewConfig(t *testing.T) {
-	first := &Config{WorkspaceDirsRoot: "/one"}
-	second := &Config{WorkspaceDirsRoot: "/two"}
+	first := &Config{SessionGuard: "/one"}
+	second := &Config{SessionGuard: "/two"}
 	calls := 0
 	lv, err := NewLive(func() (*Config, error) {
 		calls++
@@ -51,7 +51,7 @@ func TestLive_Refresh_SwapsInTheNewConfig(t *testing.T) {
 // catalog/lock read error rather than losing plugin-mounted definitions it
 // already had.
 func TestLive_Refresh_KeepsPreviousConfigOnLoadError(t *testing.T) {
-	first := &Config{WorkspaceDirsRoot: "/one"}
+	first := &Config{SessionGuard: "/one"}
 	calls := 0
 	lv, err := NewLive(func() (*Config, error) {
 		calls++

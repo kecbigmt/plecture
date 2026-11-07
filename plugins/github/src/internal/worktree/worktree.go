@@ -1,10 +1,10 @@
-// Package worktree implements the GitHub workspace provider's lifecycle: it
+// Package worktree implements the GitHub worktree effect's lifecycle: it
 // turns a GitHub issue or pull request identifier plus a session name into
 // an acquired git worktree, and releases that worktree again on cleanup.
 //
 // Everything GitHub-specific lives here: how a resource identifier is
 // parsed, which branch a resource maps to, and how a repository's worktrees
-// are laid out under the workspace-dirs root.
+// are laid out under the dirs root.
 package worktree
 
 import (
@@ -37,7 +37,7 @@ type WorktreeManager interface {
 	FindGitDir(string, ...string) (string, error)
 }
 
-// SetupOptions are the inputs the workspace provider setup hook receives.
+// SetupOptions are the inputs the worktree effect's setup action receives.
 type SetupOptions struct {
 	// ResourceID is the canonical resource identifier: a GitHub issue or
 	// pull request URL.
@@ -46,13 +46,12 @@ type SetupOptions struct {
 	// "<name>+<tag>" suffix, when present, is what separates one tool's
 	// workspace on a resource from another's.
 	SessionName string
-	// WorkspaceDirsRoot overrides the configured workspace-dirs root.
+	// WorkspaceDirsRoot is the effect's `dirs_root` input; empty means
+	// `$HOME/workspace_dirs`.
 	WorkspaceDirsRoot string
 	// WorkspaceLayoutRoot is the author-declared `workspace_layout_root`
-	// parameter: the root this provider lays its `github.com/<owner>/<repo>/
-	// <branch>` containers out under. Empty falls back to WorkspaceDirsRoot,
-	// so a machine that wants one root for every provider configures it once
-	// in core rather than per provider.
+	// parameter: the root this effect lays its `github.com/<owner>/<repo>/
+	// <branch>` containers out under. Empty falls back to WorkspaceDirsRoot.
 	WorkspaceLayoutRoot string
 	// IssueBranchTemplate and TaggedBranchSuffix are the author-declared
 	// branch-naming parameters; empty means the shipped convention.
@@ -73,17 +72,17 @@ type SetupOptions struct {
 	// Manager lets tests observe acquisition without a real repository.
 	Manager WorktreeManager
 	// GHClient fetches title/state metadata. Defaults to ghapi.Direct(); a
-	// mounted plugin's workspace provider hook instead passes one bound to
-	// the bundled github-watcher binary, so setup shares its shared rate
-	// budget (see workspaces/worktree.toml's setup hook). Ignored when App
+	// mounted plugin's setup action instead passes one bound to the bundled
+	// github-watcher binary, so setup shares its shared rate budget (see
+	// tasks/worktree.toml's setup action). Ignored when App
 	// auth is opted in above: that path replaces this client rather than
 	// being layered on top of it.
 	GHClient github.GHClient
 }
 
-// Setup acquires the workspace for a GitHub resource and returns the outputs
-// the workspace provider contract requires on stdout: the reserved
-// `workspace_dir` key plus the resource facts a workflow's templates may
+// Setup acquires the worktree for a GitHub resource and returns the outputs
+// the effect's outputs contract requires on stdout: the `workspace_dir` key
+// plus the resource facts a workflow's templates may
 // want.
 func Setup(ctx context.Context, opts SetupOptions) (map[string]any, error) {
 	parsed, err := github.ParseURL(opts.ResourceID)
@@ -266,7 +265,7 @@ func appTokenCachePath(appID, installationID, owner, repo string) (string, error
 	return filepath.Join(cacheRoot, "plect", "github-app-token", "worktree", appID+"-"+hex.EncodeToString(sum[:8])+".json"), nil
 }
 
-// CleanupOptions are the inputs the workspace provider cleanup hook
+// CleanupOptions are the inputs the worktree effect's cleanup action
 // receives, read back from the outputs setup recorded.
 type CleanupOptions struct {
 	WorkspaceDir string
@@ -275,7 +274,7 @@ type CleanupOptions struct {
 	// mirroring the caller's `plect destroy --force` intent.
 	Force bool
 	// DeleteBranch mirrors the caller's `plect destroy --input
-	// delete_branch=<v>` intent (workspaces/worktree.toml's cleanup hook): the
+	// delete_branch=<v>` intent (tasks/worktree.toml's cleanup action): the
 	// empty string means the caller expressed none, so the workflow's
 	// `delete_branch_default` parameter decides.
 	DeleteBranch string
@@ -285,8 +284,7 @@ type CleanupOptions struct {
 	// deleting one is not always what a review-only or shared-branch session
 	// wants.
 	DeleteBranchDefault string
-	// WorkspaceDirsRoot overrides the configured workspace-dirs root.
-	WorkspaceDirsRoot string
+	WorkspaceDirsRoot   string
 	// WorkspaceLayoutRoot is setup's parameter of the same name; cleanup
 	// needs it only to build a Manager, since the workspace directory it
 	// releases is read back from setup's own outputs.
@@ -338,9 +336,9 @@ func ResolveDeleteBranch(requested, declaredDefault string) bool {
 	return declaredDefault == "true"
 }
 
-// layoutRoot picks the root this provider lays worktree containers out under:
-// the author-declared parameter when a workflow set one, otherwise the
-// machine's configured workspace-dirs root.
+// layoutRoot picks the root this effect lays worktree containers out under:
+// the author-declared parameter when one is set, otherwise the dirs root,
+// otherwise `$HOME/workspace_dirs`.
 func layoutRoot(layoutRoot, workspaceDirsRoot string) string {
 	if layoutRoot != "" {
 		return expandRoot(layoutRoot)

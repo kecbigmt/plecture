@@ -69,7 +69,7 @@ func evalDocumentChain(cfg *config.Config, store *state.Store, def config.Docume
 		return sp
 	}
 	if len(inputs) > 0 {
-		resolved, vErr := resolveSessionInputs(cfg, session.WorkspaceDirPath, def.Workflow, inputs)
+		resolved, vErr := resolveSessionInputs(cfg, "", def.Workflow, inputs)
 		if vErr != nil {
 			sp.BlockedReason = chainBlockedInvalidBindings
 			sp.Warnings = append(sp.Warnings, fmt.Sprintf("resolved inputs violate workflow %q inputs contract: %s", def.Workflow, vErr.Message))

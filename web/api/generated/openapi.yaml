@@ -313,7 +313,6 @@ components:
       type: object
       required:
         - run
-        - workspaceDirExists
       properties:
         run:
           $ref: '#/components/schemas/SessionRunState'
@@ -329,9 +328,9 @@ components:
           type: array
           items:
             $ref: '#/components/schemas/SessionTaskSummary'
-        workspaceDirPath:
+        workdir:
           type: string
-        workspaceDirExists:
+        workdirExists:
           type: boolean
         message:
           $ref: '#/components/schemas/SessionMessage'
@@ -365,8 +364,6 @@ components:
           type: string
           description: 'Absent and empty are equivalent for every optional field on this model: the API omits an unset value rather than emitting it as `null` or `""`, mirroring the Go source''s `omitempty` struct tags.'
         title:
-          type: string
-        branch:
           type: string
         workflow:
           type: string
@@ -418,7 +415,6 @@ components:
       type: object
       required:
         - run
-        - workspaceDirExists
       properties:
         run:
           $ref: '#/components/schemas/SessionRunState'
@@ -434,9 +430,9 @@ components:
           type: array
           items:
             $ref: '#/components/schemas/SessionTaskSummary'
-        workspaceDirPath:
+        workdir:
           type: string
-        workspaceDirExists:
+        workdirExists:
           type: boolean
         message:
           $ref: '#/components/schemas/SessionMessage'
@@ -466,8 +462,6 @@ components:
           format: date-time
         message:
           $ref: '#/components/schemas/SessionMessage'
-        branch:
-          type: string
         parentSession:
           type: string
         tasks:

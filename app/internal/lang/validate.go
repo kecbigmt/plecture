@@ -38,8 +38,6 @@ func (v Validation) ValidateDefinition(def *Definition) error {
 		return v.validateEffect(def, pos)
 	case KindChannel:
 		return v.validateChannel(def, pos)
-	case KindWorkspaceProvider:
-		return v.validateProvider(def, pos)
 	case KindResource:
 		return v.validateResource(def, pos)
 	case KindWorkflow:
@@ -54,8 +52,15 @@ func (v Validation) validateEffect(def *Definition, pos Position) error {
 	if err := v.action(def.Body, "setup", surfaceEffectSetup, pos); err != nil {
 		return err
 	}
-	if err := v.action(def.Body, "cleanup", surfaceEffectCleanup, pos); err != nil {
-		return err
+	if raw, ok := def.Body["cleanup"]; ok {
+		at := childPos(pos, "cleanup")
+		action, _, err := ParseCleanup(raw, at)
+		if err != nil {
+			return err
+		}
+		if err := v.checkAction(action, surfaceEffectCleanup, at); err != nil {
+			return err
+		}
 	}
 	// Each of the four tables below is closed the way the definition surface
 	// itself is: a misspelled probe, verb, or joint key is a declaration with
@@ -215,26 +220,6 @@ func (v Validation) validateChannel(def *Definition, pos Position) error {
 	return nil
 }
 
-func (v Validation) validateProvider(def *Definition, pos Position) error {
-	if name, ok := def.Body["name"]; ok {
-		if err := v.value(name, ClassData, surfaceProviderName, childPos(pos, "name")); err != nil {
-			return err
-		}
-	}
-	for _, hook := range []struct {
-		field   string
-		surface *Surface
-	}{
-		{"setup", surfaceProviderSetup},
-		{"cleanup", surfaceProviderCleanup},
-	} {
-		if err := v.action(def.Body, hook.field, hook.surface, pos); err != nil {
-			return err
-		}
-	}
-	return v.providerContracts(def, pos)
-}
-
 func (v Validation) validateResource(def *Definition, pos Position) error {
 	if name, ok := def.Body["name"]; ok {
 		if err := v.value(name, ClassData, surfaceResourceName, childPos(pos, "name")); err != nil {
@@ -266,20 +251,8 @@ func (v Validation) validateWorkflow(def *Definition, pos Position) error {
 	if err := v.valueTable(def.Body, "display", ClassData, surfaceWorkflowDisplay, pos); err != nil {
 		return err
 	}
-	if inputs, ok := def.Body["workspace_provider_inputs"]; ok {
-		at := childPos(pos, "workspace_provider_inputs")
-		tbl, err := table(inputs, at)
-		if err != nil {
-			return err
-		}
-		for _, key := range sortedKeys(tbl) {
-			// A workspace provider's hooks run before any node output
-			// exists, so its parameters are literal data and no surface
-			// environment applies.
-			if _, err := ParseValue(tbl[key], ClassLiteral, childPos(at, key)); err != nil {
-				return err
-			}
-		}
+	if _, err := WorkflowWorkdir(def); err != nil {
+		return err
 	}
 	nodes, err := tableArray(def.Body, "nodes", pos)
 	if err != nil {
@@ -464,8 +437,8 @@ func (v Validation) instructionBody(def *Definition, pos Position) error {
 // topology, so the shape of a configuration is discoverable before anything
 // is evaluated.
 func (v Validation) checkStaticTopology(def *Definition, pos Position) error {
-	if wp, ok := def.Body["workspace_provider"]; ok {
-		if _, err := staticRef(wp, childPos(pos, "workspace_provider").Path); err != nil {
+	if resource, ok := def.Body["resource"]; ok && def.Kind == KindWorkflow {
+		if _, err := staticRef(resource, childPos(pos, "resource").Path); err != nil {
 			return err
 		}
 	}

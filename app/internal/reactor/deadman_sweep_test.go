@@ -26,6 +26,7 @@ func TestSupervisor_CheckDeadmanSweepsOnlyHeartbeatScheduledUpSessions(t *testin
 	writeFile(t, filepath.Join(pluginDir, "config", "workflows", "goal.toml"), `
 [goal]
 kind = "workflow"
+resource = "issue"
 [[goal.nodes]]
 id   = "claude"
 uses = "claude"
@@ -35,6 +36,7 @@ heartbeat = "1h"
 	writeFile(t, filepath.Join(pluginDir, "config", "workflows", "reactive.toml"), `
 [reactive]
 kind = "workflow"
+resource = "issue"
 [[reactive.nodes]]
 id   = "claude"
 uses = "claude"
@@ -103,6 +105,7 @@ func TestSupervisor_DeadmanSweepRunsWithoutWaitingOnPerSessionReactor(t *testing
 	writeFile(t, filepath.Join(pluginDir, "config", "workflows", "goal.toml"), `
 [goal]
 kind = "workflow"
+resource = "issue"
 [[goal.nodes]]
 id   = "claude"
 uses = "claude"

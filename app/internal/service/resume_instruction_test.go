@@ -26,7 +26,7 @@ func TestUp_ResumeInstructionForRecreatedRun(t *testing.T) {
 	} {
 		t.Run(tt.name, func(t *testing.T) {
 			store := testStore(t)
-			cfg := writeWorkflowFixture(t, t.TempDir(), "default", []taskFixture{{id: "runtime", scope: "run", setup: `echo '{"session_id":"prior"}'`, cleanup: "true"}}, []nodeFixture{{id: "runtime"}})
+			cfg := writeWorkflowFixture(t, "default", []taskFixture{{id: "runtime", scope: "run", setup: `echo '{"session_id":"prior"}'`, cleanup: "true"}}, []nodeFixture{{id: "runtime"}})
 			if tt.configured != "" {
 				value := tt.configured
 				if value == "disabled" {
@@ -101,7 +101,7 @@ func TestUp_SidecarOnlyRebuildPublishesOneResumeInstruction(t *testing.T) {
 	flagsDir := t.TempDir()
 	sidecarFlag := filepath.Join(flagsDir, "sidecar-unhealthy")
 	agentFlag := filepath.Join(flagsDir, "agent-unhealthy")
-	cfg := writeWorkflowFixture(t, t.TempDir(), "default", []taskFixture{
+	cfg := writeWorkflowFixture(t, "default", []taskFixture{
 		{id: "agent", scope: "run", setup: `echo '{"pid":123,"session_id":"prior"}'`, cleanup: "true", alive: "test ! -e " + agentFlag, activity: `echo '{"fingerprint":"agent"}'`},
 		{id: "sidecar", scope: "run", setup: `echo '{"pid":456}'`, cleanup: "true", alive: "test ! -e " + sidecarFlag, activity: `echo '{"fingerprint":"sidecar"}'`},
 	}, []nodeFixture{{id: "agent"}, {id: "sidecar"}})
@@ -153,7 +153,7 @@ func TestUp_SidecarOnlyRebuildPublishesOneResumeInstruction(t *testing.T) {
 func TestUp_RunNodeWithoutConversationIDPublishesResumeInstruction(t *testing.T) {
 	store := testStore(t)
 	agentFlag := filepath.Join(t.TempDir(), "agent-unhealthy")
-	cfg := writeWorkflowFixture(t, t.TempDir(), "default", []taskFixture{
+	cfg := writeWorkflowFixture(t, "default", []taskFixture{
 		{id: "agent", scope: "run", setup: `echo '{"pid":123}'`, cleanup: "true", alive: "test ! -e " + agentFlag, activity: `echo '{"fingerprint":"agent"}'`},
 		{id: "sidecar", scope: "run", setup: `echo '{"pid":456}'`, cleanup: "true", activity: `echo '{"fingerprint":"sidecar"}'`},
 	}, []nodeFixture{{id: "agent"}, {id: "sidecar"}})

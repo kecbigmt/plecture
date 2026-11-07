@@ -72,7 +72,7 @@ describe("useSessionList", () => {
 describe("useSessionDetail", () => {
   it("does not refetch on window refocus or network reconnect", async () => {
     vi.mocked(fetch).mockImplementation(() =>
-      Promise.resolve(jsonResponse({ sessionName: "team/a", run: "up", resourceId: "", createdAt: new Date().toISOString(), workspaceDirExists: false })),
+      Promise.resolve(jsonResponse({ sessionName: "team/a", run: "up", resourceId: "", createdAt: new Date().toISOString() })),
     );
     const { wrapper } = makeWrapper();
     const { result } = renderHook(() => useSessionDetail("team/a"), { wrapper });

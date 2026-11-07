@@ -78,17 +78,6 @@ func seedSessionSplit(t *testing.T, store interface {
 	if tasks == nil {
 		tasks = map[string]*contract.TaskState{}
 	}
-	// Never synthesize @workflow itself: Destroy treats its presence as
-	// "workflow setup ran, run its cleanup too."
-	if wf := nodes[contract.WorkflowPseudoNodeID]; wf != nil {
-		if wf.Outputs == nil {
-			wf.Outputs = map[string]any{}
-		}
-		if _, ok := wf.Outputs["branch"]; !ok {
-			wf.Outputs["branch"] = "issue/1"
-		}
-	}
-
 	session := &domain.Session{
 		Name:       sessionName,
 		ResourceID: fmt.Sprintf("https://github.com/%s/issues/%d", ownerRepo, number),
@@ -145,7 +134,7 @@ func TestResolveParentSession_RootPrefixRejectsMissingTarget(t *testing.T) {
 
 func TestUp_RejectsInputWithBareSessionName(t *testing.T) {
 	store := testStore(t)
-	cfg := &config.Config{WorkspaceDirsRoot: t.TempDir()}
+	cfg := &config.Config{}
 
 	_, err := Up(cfg, store, UpParams{Identifier: "org/repo-1", Inputs: map[string]any{"template": "review"}})
 	if err == nil {
@@ -162,7 +151,7 @@ func TestUp_RejectsInputWithBareSessionName(t *testing.T) {
 
 func TestUp_RejectsInputWhenSessionExists(t *testing.T) {
 	store := testStore(t)
-	cfg := &config.Config{WorkspaceDirsRoot: t.TempDir()}
+	cfg := &config.Config{}
 	sessionName := "org/repo-9"
 	seedSession(t, store, sessionName, "org/repo", 9, "", nil)
 
@@ -405,7 +394,7 @@ func TestDestroy_RelationGuardAllowsSelf(t *testing.T) {
 		t.Skip("bash not available")
 	}
 	store := testStore(t)
-	cfg := writeWorkflowFixture(t, t.TempDir(), "default",
+	cfg := writeWorkflowFixture(t, "default",
 		[]taskFixture{{id: "envfile", scope: "session", setup: "true", cleanup: "true"}},
 		[]nodeFixture{{id: "envfile"}},
 	)
@@ -474,7 +463,7 @@ func TestUp_RunScopeNestedWriteSurvives(t *testing.T) {
 		},
 	}) + `
 echo '{}'`
-	cfg := writeWorkflowFixture(t, t.TempDir(), "default",
+	cfg := writeWorkflowFixture(t, "default",
 		[]taskFixture{{id: "dispatcher", scope: "run", setup: dispatcher}},
 		[]nodeFixture{{id: "dispatcher"}},
 	)
@@ -509,7 +498,7 @@ func TestUp_ProducesSessionScopedNodeAddedAfterSessionCreation(t *testing.T) {
 	}
 	store := testStore(t)
 	sessionName := "org/repo-12"
-	cfg := writeWorkflowFixture(t, t.TempDir(), "default",
+	cfg := writeWorkflowFixture(t, "default",
 		[]taskFixture{
 			{id: "gh_guard", scope: "session", setup: `echo '{"dir":"the-guard-dir"}'`},
 			{id: "tmux", scope: "run", setup: `echo '{}'`},
@@ -548,7 +537,7 @@ func TestUp_NodeIDTakenByNamedDynamicInstanceIsExcludedFromNodes(t *testing.T) {
 	}
 	store := testStore(t)
 	sessionName := "org/repo-17"
-	cfg := writeWorkflowFixture(t, t.TempDir(), "default",
+	cfg := writeWorkflowFixture(t, "default",
 		[]taskFixture{{id: "gh_guard", scope: "session", setup: `echo '{"dir":"the-guard-dir"}'`}},
 		[]nodeFixture{{id: "gh_guard"}},
 	)
@@ -579,7 +568,7 @@ func TestUp_CleansAndDropsProducedNodeRemovedFromWorkflow(t *testing.T) {
 	store := testStore(t)
 	sessionName := "org/repo-12"
 	cleanupLog := filepath.Join(t.TempDir(), "cleanup.log")
-	cfg := writeWorkflowFixture(t, t.TempDir(), "default",
+	cfg := writeWorkflowFixture(t, "default",
 		[]taskFixture{
 			{
 				id:      "retired",
@@ -658,7 +647,7 @@ func TestUp_StaleNodeCleanupDoesNotClobberConcurrentSessionWrites(t *testing.T) 
 		Health:      &contract.HealthState{LastState: "healthy", LastReason: "concurrent"},
 		TickBackoff: &contract.TickBackoff{LastFingerprint: "concurrent"},
 	})
-	cfg := writeWorkflowFixture(t, t.TempDir(), "default",
+	cfg := writeWorkflowFixture(t, "default",
 		[]taskFixture{
 			{
 				id:      "retired",
@@ -721,7 +710,7 @@ func TestUp_StaleNodeCleanupFailurePreservesInspectableState(t *testing.T) {
 	store := testStore(t)
 	sessionName := "org/repo-13"
 	cleanupLog := filepath.Join(t.TempDir(), "cleanup.log")
-	cfg := writeWorkflowFixture(t, t.TempDir(), "default",
+	cfg := writeWorkflowFixture(t, "default",
 		[]taskFixture{
 			{
 				id:      "retired",
@@ -799,7 +788,7 @@ func TestUp_ForceRecreateResetsRuntimeWithoutPrev(t *testing.T) {
 		t.Fatal(err)
 	}
 	cleanupLog := filepath.Join(t.TempDir(), "cleanup.log")
-	cfg := writeWorkflowFixture(t, oldWorkdirPath, "default",
+	cfg := writeWorkflowFixture(t, "default",
 		[]taskFixture{
 			{
 				id:      "channel",
@@ -821,24 +810,18 @@ func TestUp_ForceRecreateResetsRuntimeWithoutPrev(t *testing.T) {
 		},
 		[]nodeFixture{{id: "channel"}, {id: "runtime"}},
 	)
-	providersDir := filepath.Join(cfg.BaseDir, "workspaces")
-	if err := os.MkdirAll(providersDir, 0o755); err != nil {
-		t.Fatal(err)
-	}
-	providerSetup := fmt.Sprintf(`mkdir -p %s && printf '{"workspace_dir":%q,"branch":"new-branch","prev":"%%s"}' "$1"`, newWorkdirPath, newWorkdirPath)
-	providerSetupArgs := `, { from = "prev.workspace_dir", default = "" }`
-	providerCleanup := fmt.Sprintf(`printf 'workflow=%%s\n' "$1" >> %s; rm -rf "$1"`, cleanupLog)
-	if err := os.WriteFile(filepath.Join(providersDir, "default_provider.toml"), []byte(providerScriptPair("default_provider", providerSetup, providerSetupArgs, providerCleanup, `, { from = "self.outputs.workspace_dir" }`)), 0o644); err != nil {
-		t.Fatal(err)
-	}
-	addWorkflowFields(t, cfg, "default", "workspace_provider = \"default_provider\"\n")
+	attachWorkdir(t, cfg, "default", taskFixture{
+		setup:   fmt.Sprintf(`mkdir -p %s && printf '{"workspace_dir":%q,"prev":"%%s"}' '{{get .Prev "workspace_dir" ""}}'`, newWorkdirPath, newWorkdirPath),
+		cleanup: fmt.Sprintf(`printf 'workflow=%%s\n' '{{.Self "workspace_dir"}}' >> %s; rm -rf '{{.Self "workspace_dir"}}'`, cleanupLog),
+		extra:   workdirOutputsSchema + "\n[outputs_schema.properties.prev]\ntype = \"string\"\n",
+	})
 	sessionName := "org/repo-12"
 	seedSession(t, store, "org/repo-parent", "org/repo", 11, "default", nil)
 	seedSessionSplit(t, store, sessionName, "org/repo", 12, "default", map[string]*contract.TaskState{
-		contract.WorkflowPseudoNodeID: {
+		workdirEffectID: {
 			Scope:   contract.TaskScopeSession,
 			Status:  contract.TaskStatusProduced,
-			Outputs: map[string]any{contract.OutputKeyWorkspaceDir: oldWorkdirPath, "branch": "old-branch"},
+			Outputs: map[string]any{"workspace_dir": oldWorkdirPath},
 			Seq:     1,
 		},
 		"channel": {
@@ -866,7 +849,6 @@ func TestUp_ForceRecreateResetsRuntimeWithoutPrev(t *testing.T) {
 	if err := store.Update(sessionName, func(s *domain.Session) error {
 		s.ParentSession = "org/repo-parent"
 		s.Alias = "resource-alias"
-		s.WorkspaceDirPath = oldWorkdirPath
 		s.Health = &contract.HealthState{LastCheckedAt: time.Now(), LastReason: "old"}
 		s.LastTickAt = time.Now()
 		s.TickBackoff = &contract.TickBackoff{LastFingerprint: "old"}
@@ -893,9 +875,9 @@ func TestUp_ForceRecreateResetsRuntimeWithoutPrev(t *testing.T) {
 		t.Fatalf("force recreate without prev should publish no resume instruction: %+v, %v", resumed, err)
 	}
 
-	workflow := result.Tasks[contract.WorkflowPseudoNodeID]
-	if workflow == nil || workflow.Outputs[contract.OutputKeyWorkspaceDir] != newWorkdirPath || workflow.Outputs["prev"] != "" {
-		t.Fatalf("workflow task = %+v, want provider setup rerun without Prev", workflow)
+	workflow := result.Tasks[workdirEffectID]
+	if workflow == nil || workflow.Outputs["workspace_dir"] != newWorkdirPath || workflow.Outputs["prev"] != "" {
+		t.Fatalf("workdir task = %+v, want its setup rerun without Prev", workflow)
 	}
 	channel := result.Tasks["channel"]
 	if channel == nil || channel.Outputs["thread"] != "new-thread" || channel.Outputs["prev"] != "" {
@@ -915,17 +897,14 @@ func TestUp_ForceRecreateResetsRuntimeWithoutPrev(t *testing.T) {
 	if persisted.Alias != "resource-alias" || persisted.ResourceID != "https://github.com/org/repo/issues/12" {
 		t.Fatalf("identity fields changed after force recreate: %+v", persisted)
 	}
-	if persisted.WorkspaceDirPath != newWorkdirPath {
-		t.Fatalf("WorkspaceDirPath = %q, want recreated workdir %q", persisted.WorkspaceDirPath, newWorkdirPath)
+	if got, err := Workdir(cfg, store, sessionName); err != nil || got != newWorkdirPath {
+		t.Fatalf("Workdir = %q, %v, want recreated workdir %q", got, err, newWorkdirPath)
 	}
 	if fileExists(oldWorkdirPath) {
 		t.Fatalf("old workdir %q still exists", oldWorkdirPath)
 	}
 	if !fileExists(newWorkdirPath) {
 		t.Fatalf("new workdir %q was not created", newWorkdirPath)
-	}
-	if domain.SessionBranch(persisted) != "new-branch" {
-		t.Fatalf("Branch = %q, want provider output", domain.SessionBranch(persisted))
 	}
 	if persisted.Health != nil || !persisted.LastTickAt.IsZero() || persisted.TickBackoff != nil {
 		t.Fatalf("runtime observation fields were not cleared: %+v", persisted)
@@ -966,7 +945,7 @@ func TestUp_ForceRecreateCleanupFailurePreservesInspectableState(t *testing.T) {
 		t.Fatal(err)
 	}
 	cleanupLog := filepath.Join(t.TempDir(), "cleanup.log")
-	cfg := writeWorkflowFixture(t, oldWorkdirPath, "default",
+	cfg := writeWorkflowFixture(t, "default",
 		[]taskFixture{
 			{
 				id:      "channel",
@@ -983,24 +962,17 @@ func TestUp_ForceRecreateCleanupFailurePreservesInspectableState(t *testing.T) {
 		},
 		[]nodeFixture{{id: "channel"}, {id: "runtime"}},
 	)
-	providersDir := filepath.Join(cfg.BaseDir, "workspaces")
-	if err := os.MkdirAll(providersDir, 0o755); err != nil {
-		t.Fatal(err)
-	}
-	providerSetup := `echo '{"workspace_dir":"/unused","branch":"unused"}'`
-	providerSetupArgs := ""
-	providerCleanup := fmt.Sprintf(`printf 'workflow=%%s\n' "$1" >> %s; rm -rf "$1"`, cleanupLog)
-	if err := os.WriteFile(filepath.Join(providersDir, "default_provider.toml"), []byte(providerScriptPair("default_provider", providerSetup, providerSetupArgs, providerCleanup, `, { from = "self.outputs.workspace_dir" }`)), 0o644); err != nil {
-		t.Fatal(err)
-	}
-	addWorkflowFields(t, cfg, "default", "workspace_provider = \"default_provider\"\n")
+	attachWorkdir(t, cfg, "default", taskFixture{
+		setup:   `echo '{"workspace_dir":"/unused"}'`,
+		cleanup: fmt.Sprintf(`printf 'workflow=%%s\n' '{{.Self "workspace_dir"}}' >> %s`, cleanupLog),
+	})
 	sessionName := "org/repo-15"
 	seedSession(t, store, "org/repo-parent", "org/repo", 14, "default", nil)
 	seedSessionWithNodes(t, store, sessionName, "org/repo", 15, "default", map[string]*contract.TaskState{
-		contract.WorkflowPseudoNodeID: {
+		workdirEffectID: {
 			Scope:   contract.TaskScopeSession,
 			Status:  contract.TaskStatusProduced,
-			Outputs: map[string]any{contract.OutputKeyWorkspaceDir: oldWorkdirPath, "branch": "old-branch"},
+			Outputs: map[string]any{"workspace_dir": oldWorkdirPath},
 			Seq:     1,
 		},
 		"channel": {
@@ -1008,18 +980,21 @@ func TestUp_ForceRecreateCleanupFailurePreservesInspectableState(t *testing.T) {
 			Status:  contract.TaskStatusProduced,
 			Outputs: map[string]any{"thread": "old-thread"},
 			Seq:     3,
+			// Recorded edges are what keeps a prerequisite from being
+			// released ahead of a dependent whose cleanup failed.
+			DependsOn: []string{workdirEffectID},
 		},
 		"runtime": {
-			Scope:   contract.TaskScopeRun,
-			Status:  contract.TaskStatusProduced,
-			Outputs: map[string]any{"session_id": "old-runtime"},
-			Seq:     4,
+			Scope:     contract.TaskScopeRun,
+			Status:    contract.TaskStatusProduced,
+			Outputs:   map[string]any{"session_id": "old-runtime"},
+			Seq:       4,
+			DependsOn: []string{workdirEffectID},
 		},
 	})
 	seedSession(t, store, "org/repo-child", "org/repo", 16, "default", nil)
 	if err := store.Update(sessionName, func(s *domain.Session) error {
 		s.ParentSession = "org/repo-parent"
-		s.WorkspaceDirPath = oldWorkdirPath
 		s.Health = &contract.HealthState{LastCheckedAt: time.Now(), LastReason: "old"}
 		s.LastTickAt = time.Now()
 		s.TickBackoff = &contract.TickBackoff{LastFingerprint: "old"}
@@ -1056,18 +1031,12 @@ func TestUp_ForceRecreateCleanupFailurePreservesInspectableState(t *testing.T) {
 	if persisted.ResourceID != "https://github.com/org/repo/issues/15" {
 		t.Fatalf("ResourceID = %q, want preserved binding", persisted.ResourceID)
 	}
-	if persisted.WorkspaceDirPath != oldWorkdirPath || domain.SessionBranch(persisted) != "old-branch" {
-		t.Fatalf("runtime session state = (%q, %q), want preserved before reset", persisted.WorkspaceDirPath, domain.SessionBranch(persisted))
-	}
 	if persisted.Health == nil || persisted.LastTickAt.IsZero() || persisted.TickBackoff == nil {
 		t.Fatalf("runtime observation fields were reset after cleanup failure: %+v", persisted)
 	}
-	if !fileExists(oldWorkdirPath) {
-		t.Fatalf("old workdir %q was removed before workflow cleanup", oldWorkdirPath)
-	}
-	workflow := persisted.Nodes[contract.WorkflowPseudoNodeID]
-	if workflow == nil || workflow.Status != contract.TaskStatusProduced || workflow.Outputs[contract.OutputKeyWorkspaceDir] != oldWorkdirPath {
-		t.Fatalf("@workflow state = %+v, want preserved produced state", workflow)
+	workflow := persisted.Nodes[workdirEffectID]
+	if workflow == nil || workflow.Status != contract.TaskStatusProduced || workflow.Outputs["workspace_dir"] != oldWorkdirPath {
+		t.Fatalf("workdir node state = %+v, want it retained, with its recorded outputs, while a dependent's cleanup failed", workflow)
 	}
 	runtime := persisted.Nodes["runtime"]
 	if runtime == nil || runtime.Status != contract.TaskStatusFailed || runtime.Outputs["session_id"] != "old-runtime" {
@@ -1089,19 +1058,17 @@ func TestUp_ForceRecreateCleanupFailurePreservesInspectableState(t *testing.T) {
 		t.Fatalf("read cleanup log: %v", err)
 	}
 	log := string(data)
+	if strings.Contains(log, "workflow=") {
+		t.Fatalf("cleanup log = %q: the workdir was released although a node depending on it failed its cleanup", log)
+	}
 	for _, want := range []string{"runtime=old-runtime\n", "channel=old-thread\n"} {
 		if !strings.Contains(log, want) {
 			t.Fatalf("cleanup log = %q, missing %q", log, want)
 		}
 	}
-	for _, notWant := range []string{"workflow=" + oldWorkdirPath + "\n"} {
-		if strings.Contains(log, notWant) {
-			t.Fatalf("cleanup log = %q, should not contain %q", log, notWant)
-		}
-	}
 }
 
-func TestUp_ForceRecreateProviderSetupFailurePersistsInspectableState(t *testing.T) {
+func TestUp_ForceRecreateWorkdirSetupFailurePersistsInspectableState(t *testing.T) {
 	if _, err := exec.LookPath("bash"); err != nil {
 		t.Skip("bash not available")
 	}
@@ -1111,7 +1078,7 @@ func TestUp_ForceRecreateProviderSetupFailurePersistsInspectableState(t *testing
 		t.Fatal(err)
 	}
 	cleanupLog := filepath.Join(t.TempDir(), "cleanup.log")
-	cfg := writeWorkflowFixture(t, oldWorkdirPath, "default",
+	cfg := writeWorkflowFixture(t, "default",
 		[]taskFixture{{
 			id:      "runtime",
 			scope:   "run",
@@ -1120,24 +1087,17 @@ func TestUp_ForceRecreateProviderSetupFailurePersistsInspectableState(t *testing
 		}},
 		[]nodeFixture{{id: "runtime"}},
 	)
-	providersDir := filepath.Join(cfg.BaseDir, "workspaces")
-	if err := os.MkdirAll(providersDir, 0o755); err != nil {
-		t.Fatal(err)
-	}
-	providerSetup := `printf 'provider setup failed\n' >&2; exit 42`
-	providerSetupArgs := ""
-	providerCleanup := fmt.Sprintf(`printf 'workflow=%%s\n' "$1" >> %s; rm -rf "$1"`, cleanupLog)
-	if err := os.WriteFile(filepath.Join(providersDir, "default_provider.toml"), []byte(providerScriptPair("default_provider", providerSetup, providerSetupArgs, providerCleanup, `, { from = "self.outputs.workspace_dir" }`)), 0o644); err != nil {
-		t.Fatal(err)
-	}
-	addWorkflowFields(t, cfg, "default", "workspace_provider = \"default_provider\"\n")
+	attachWorkdir(t, cfg, "default", taskFixture{
+		setup:   `printf 'workdir setup failed\n' >&2; exit 42`,
+		cleanup: fmt.Sprintf(`printf 'workflow=%%s\n' '{{.Self "workspace_dir"}}' >> %s; rm -rf '{{.Self "workspace_dir"}}'`, cleanupLog),
+	})
 	sessionName := "org/repo-13"
 	seedSession(t, store, "org/repo-parent", "org/repo", 12, "default", nil)
 	seedSessionWithNodes(t, store, sessionName, "org/repo", 13, "default", map[string]*contract.TaskState{
-		contract.WorkflowPseudoNodeID: {
+		workdirEffectID: {
 			Scope:   contract.TaskScopeSession,
 			Status:  contract.TaskStatusProduced,
-			Outputs: map[string]any{contract.OutputKeyWorkspaceDir: oldWorkdirPath, "branch": "old-branch"},
+			Outputs: map[string]any{"workspace_dir": oldWorkdirPath},
 			Seq:     1,
 		},
 		"runtime": {
@@ -1150,7 +1110,6 @@ func TestUp_ForceRecreateProviderSetupFailurePersistsInspectableState(t *testing
 	seedSession(t, store, "org/repo-child", "org/repo", 14, "default", nil)
 	if err := store.Update(sessionName, func(s *domain.Session) error {
 		s.ParentSession = "org/repo-parent"
-		s.WorkspaceDirPath = oldWorkdirPath
 		return nil
 	}); err != nil {
 		t.Fatalf("update session: %v", err)
@@ -1167,7 +1126,7 @@ func TestUp_ForceRecreateProviderSetupFailurePersistsInspectableState(t *testing
 
 	_, err = Up(cfg, store, UpParams{Identifier: sessionName, ForceRecreate: true})
 	if err == nil {
-		t.Fatal("expected force recreate to fail when provider setup fails")
+		t.Fatal("expected force recreate to fail when the workdir effect setup fails")
 	}
 	svcErr, ok := err.(*Error)
 	if !ok || svcErr.Code != ErrExecutionFailed {
@@ -1176,7 +1135,7 @@ func TestUp_ForceRecreateProviderSetupFailurePersistsInspectableState(t *testing
 
 	persisted := store.Get(sessionName)
 	if persisted == nil {
-		t.Fatal("session must remain inspectable after provider setup failure")
+		t.Fatal("session must remain inspectable after workdir setup failure")
 	}
 	if persisted.ParentSession != "org/repo-parent" || len(persisted.Children) != 1 || persisted.Children[0] != "org/repo-child" {
 		t.Fatalf("relations changed after failed force recreate: %+v", persisted)
@@ -1184,15 +1143,12 @@ func TestUp_ForceRecreateProviderSetupFailurePersistsInspectableState(t *testing
 	if persisted.ResourceID != "https://github.com/org/repo/issues/13" {
 		t.Fatalf("ResourceID = %q, want preserved binding", persisted.ResourceID)
 	}
-	if persisted.WorkspaceDirPath != "" || domain.SessionBranch(persisted) != "" {
-		t.Fatalf("runtime session state = (%q, %q), want cleared after cleanup", persisted.WorkspaceDirPath, domain.SessionBranch(persisted))
-	}
-	workflow := persisted.Nodes[contract.WorkflowPseudoNodeID]
+	workflow := persisted.Nodes[workdirEffectID]
 	if workflow == nil || workflow.Status != contract.TaskStatusFailed {
-		t.Fatalf("@workflow state = %+v, want failed state persisted", workflow)
+		t.Fatalf("workdir node state = %+v, want failed state persisted", workflow)
 	}
 	if workflow.Outputs != nil {
-		t.Fatalf("@workflow outputs = %+v, want no Prev after reset", workflow.Outputs)
+		t.Fatalf("workdir node outputs = %+v, want no Prev after reset", workflow.Outputs)
 	}
 	if persisted.Nodes["runtime"] != nil {
 		t.Fatalf("runtime task = %+v, want cleared after reset", persisted.Nodes["runtime"])
@@ -1225,13 +1181,13 @@ func TestRecreateSessionRuntimeTeardownListFailurePreservesRuntimeFieldsButMarks
 	if err := os.MkdirAll(oldWorkdirPath, 0o755); err != nil {
 		t.Fatal(err)
 	}
-	cfg := writeWorkflowFixture(t, oldWorkdirPath, "default",
+	cfg := writeWorkflowFixture(t, "default",
 		[]taskFixture{{id: "runtime", scope: "run", cleanup: "true"}},
 		[]nodeFixture{{id: "runtime"}},
 	)
 	sessionName := "org/repo-20"
 	seedSessionWithNodes(t, store, sessionName, "org/repo", 20, "default", map[string]*contract.TaskState{
-		contract.WorkflowPseudoNodeID: {Scope: contract.TaskScopeSession, Status: contract.TaskStatusProduced},
+		workdirEffectID: {Scope: contract.TaskScopeSession, Status: contract.TaskStatusProduced},
 		"runtime": {
 			Scope:   contract.TaskScopeRun,
 			Status:  contract.TaskStatusProduced,
@@ -1246,9 +1202,7 @@ func TestRecreateSessionRuntimeTeardownListFailurePreservesRuntimeFieldsButMarks
 		t.Fatal(err)
 	}
 	session := store.Get(sessionName)
-	session.WorkspaceDirPath = oldWorkdirPath
 	session.WorkflowRevision, session.WorkflowRevisionBody = "", ""
-	session.Nodes[contract.WorkflowPseudoNodeID].Outputs["branch"] = "old-branch"
 
 	_, err := recreateSessionRuntime(cfg, store, sessionName, session, config.WorkflowFile{ID: "default"}, &taskpkg.Plan{
 		Run: []taskpkg.Resolved{{
@@ -1270,9 +1224,6 @@ func TestRecreateSessionRuntimeTeardownListFailurePreservesRuntimeFieldsButMarks
 	if persisted == nil {
 		t.Fatal("session must remain inspectable after teardown list failure")
 	}
-	if persisted.WorkspaceDirPath != "" || domain.SessionBranch(persisted) != "issue/1" {
-		t.Fatalf("persisted session state = (%q, %q), want original stored values", persisted.WorkspaceDirPath, domain.SessionBranch(persisted))
-	}
 	runtime := persisted.Nodes["runtime"]
 	if runtime == nil || runtime.Status != contract.TaskStatusProduced || runtime.Outputs["session_id"] != "old-runtime" {
 		t.Fatalf("runtime task = %+v, want untouched produced state", runtime)
@@ -1289,7 +1240,6 @@ func TestUp_ForceRecreateFailureStagesPersistInspectableState(t *testing.T) {
 
 	type expectations struct {
 		workdirPath string
-		branch      string
 		oldExists   bool
 		newExists   bool
 		tasks       map[string]string
@@ -1307,21 +1257,19 @@ func TestUp_ForceRecreateFailureStagesPersistInspectableState(t *testing.T) {
 			name:       "workflow cleanup failure stops before reset",
 			sessionNum: 22,
 			configure: func(t *testing.T, cfg *config.Config, oldWorkdirPath, newWorkdirPath, cleanupLog string) {
-				writeForceRecreateProvider(t, cfg,
-					fmt.Sprintf(`mkdir -p %s && printf '{"workspace_dir":%q,"branch":"new-branch"}'`, newWorkdirPath, newWorkdirPath),
-					fmt.Sprintf(`printf 'workflow=%%s\n' "$1" >> %s; exit 25`, cleanupLog),
-				)
-				prependForceRecreateWorkflow(t, cfg, "workspace_provider = \"default_provider\"\n")
+				attachWorkdir(t, cfg, "default", taskFixture{
+					setup:   fmt.Sprintf(`mkdir -p %s && printf '{"workspace_dir":%q}'`, newWorkdirPath, newWorkdirPath),
+					cleanup: fmt.Sprintf(`printf 'workflow=%%s\n' '{{.Self "workspace_dir"}}' >> %s; exit 25`, cleanupLog),
+				})
 			},
 			want: func(oldWorkdirPath, newWorkdirPath string) expectations {
 				return expectations{
 					workdirPath: oldWorkdirPath,
-					branch:      "old-branch",
 					oldExists:   true,
 					tasks: map[string]string{
-						contract.WorkflowPseudoNodeID: contract.TaskStatusFailed,
-						"runtime":                     contract.TaskStatusCleaned,
-						"channel":                     contract.TaskStatusCleaned,
+						workdirEffectID: contract.TaskStatusFailed,
+						"runtime":       contract.TaskStatusCleaned,
+						"channel":       contract.TaskStatusCleaned,
 					},
 				}
 			},
@@ -1330,11 +1278,10 @@ func TestUp_ForceRecreateFailureStagesPersistInspectableState(t *testing.T) {
 			name:       "session setup failure persists failed task state",
 			sessionNum: 27,
 			configure: func(t *testing.T, cfg *config.Config, oldWorkdirPath, newWorkdirPath, cleanupLog string) {
-				writeForceRecreateProvider(t, cfg,
-					fmt.Sprintf(`mkdir -p %s && printf '{"workspace_dir":%q,"branch":"new-branch"}'`, newWorkdirPath, newWorkdirPath),
-					fmt.Sprintf(`printf 'workflow=%%s\n' "$1" >> %s; rm -rf "$1"`, cleanupLog),
-				)
-				prependForceRecreateWorkflow(t, cfg, "workspace_provider = \"default_provider\"\n")
+				attachWorkdir(t, cfg, "default", taskFixture{
+					setup:   fmt.Sprintf(`mkdir -p %s && printf '{"workspace_dir":%q}'`, newWorkdirPath, newWorkdirPath),
+					cleanup: fmt.Sprintf(`printf 'workflow=%%s\n' '{{.Self "workspace_dir"}}' >> %s; rm -rf '{{.Self "workspace_dir"}}'`, cleanupLog),
+				})
 				writeTaskFixture(t, cfg, taskFixture{
 					id:      "channel",
 					scope:   "session",
@@ -1345,12 +1292,11 @@ func TestUp_ForceRecreateFailureStagesPersistInspectableState(t *testing.T) {
 			want: func(oldWorkdirPath, newWorkdirPath string) expectations {
 				return expectations{
 					workdirPath: newWorkdirPath,
-					branch:      "new-branch",
 					oldExists:   false,
 					newExists:   true,
 					tasks: map[string]string{
-						contract.WorkflowPseudoNodeID: contract.TaskStatusProduced,
-						"channel":                     contract.TaskStatusFailed,
+						workdirEffectID: contract.TaskStatusProduced,
+						"channel":       contract.TaskStatusFailed,
 					},
 					absentTasks: []string{"runtime"},
 				}
@@ -1367,7 +1313,7 @@ func TestUp_ForceRecreateFailureStagesPersistInspectableState(t *testing.T) {
 				t.Fatal(err)
 			}
 			cleanupLog := filepath.Join(t.TempDir(), "cleanup.log")
-			cfg := writeWorkflowFixture(t, oldWorkdirPath, "default",
+			cfg := writeWorkflowFixture(t, "default",
 				[]taskFixture{
 					{
 						id:      "channel",
@@ -1389,10 +1335,10 @@ func TestUp_ForceRecreateFailureStagesPersistInspectableState(t *testing.T) {
 			sessionName := fmt.Sprintf("org/repo-%d", tc.sessionNum)
 			seedSession(t, store, "org/repo-parent", "org/repo", tc.sessionNum-1, "default", nil)
 			seedSessionWithNodes(t, store, sessionName, "org/repo", tc.sessionNum, "default", map[string]*contract.TaskState{
-				contract.WorkflowPseudoNodeID: {
+				workdirEffectID: {
 					Scope:   contract.TaskScopeSession,
 					Status:  contract.TaskStatusProduced,
-					Outputs: map[string]any{contract.OutputKeyWorkspaceDir: oldWorkdirPath, "branch": "old-branch"},
+					Outputs: map[string]any{"workspace_dir": oldWorkdirPath},
 					Seq:     1,
 				},
 				"channel": {
@@ -1411,7 +1357,6 @@ func TestUp_ForceRecreateFailureStagesPersistInspectableState(t *testing.T) {
 			seedSession(t, store, "org/repo-child", "org/repo", tc.sessionNum+1, "default", nil)
 			if err := store.Update(sessionName, func(s *domain.Session) error {
 				s.ParentSession = "org/repo-parent"
-				s.WorkspaceDirPath = oldWorkdirPath
 				return nil
 			}); err != nil {
 				t.Fatalf("update session: %v", err)
@@ -1446,8 +1391,8 @@ func TestUp_ForceRecreateFailureStagesPersistInspectableState(t *testing.T) {
 				t.Fatalf("ResourceID = %q, want preserved binding", persisted.ResourceID)
 			}
 			want := tc.want(oldWorkdirPath, newWorkdirPath)
-			if persisted.WorkspaceDirPath != want.workdirPath || domain.SessionBranch(persisted) != want.branch {
-				t.Fatalf("runtime session state = (%q, %q), want (%q, %q)", persisted.WorkspaceDirPath, domain.SessionBranch(persisted), want.workdirPath, want.branch)
+			if got := persisted.Nodes[workdirEffectID].Outputs["workspace_dir"]; got != want.workdirPath {
+				t.Fatalf("recorded workdir = %v, want %q", got, want.workdirPath)
 			}
 			if fileExists(oldWorkdirPath) != want.oldExists {
 				t.Fatalf("old workdir exists = %v, want %v", fileExists(oldWorkdirPath), want.oldExists)
@@ -1475,23 +1420,6 @@ func TestUp_ForceRecreateFailureStagesPersistInspectableState(t *testing.T) {
 			}
 		})
 	}
-}
-
-func writeForceRecreateProvider(t *testing.T, cfg *config.Config, setup, cleanup string) {
-	t.Helper()
-	providersDir := filepath.Join(cfg.BaseDir, "workspaces")
-	if err := os.MkdirAll(providersDir, 0o755); err != nil {
-		t.Fatal(err)
-	}
-	doc := providerScriptPair("default_provider", setup, "", cleanup, `, { from = "self.outputs.workspace_dir" }`)
-	if err := os.WriteFile(filepath.Join(providersDir, "default_provider.toml"), []byte(doc), 0o644); err != nil {
-		t.Fatal(err)
-	}
-}
-
-func prependForceRecreateWorkflow(t *testing.T, cfg *config.Config, fields string) {
-	t.Helper()
-	addWorkflowFields(t, cfg, "default", fields)
 }
 
 // writeTaskFixture renders one effect declaration: the definition table, its
@@ -1568,7 +1496,7 @@ func TestDestroy_WritesTombstone(t *testing.T) {
 		t.Skip("bash not available")
 	}
 	store := testStore(t)
-	cfg := writeWorkflowFixture(t, t.TempDir(), "default",
+	cfg := writeWorkflowFixture(t, "default",
 		[]taskFixture{
 			{id: "envfile", scope: "session", setup: "true", cleanup: "true"},
 		},
@@ -1614,7 +1542,7 @@ func TestDestroy_DefaultFailsFastOnRunCleanupError(t *testing.T) {
 		t.Skip("bash not available")
 	}
 	store := testStore(t)
-	cfg := writeWorkflowFixture(t, t.TempDir(), "default",
+	cfg := writeWorkflowFixture(t, "default",
 		[]taskFixture{
 			{id: "tmux", scope: "run", setup: "true", cleanup: "exit 1"},
 			{id: "envfile", scope: "session", setup: "true", cleanup: "true"},
@@ -1646,7 +1574,7 @@ func TestDestroy_ForceContinuesOnCleanupError(t *testing.T) {
 	store := testStore(t)
 	tmpDir := t.TempDir()
 	marker := tmpDir + "/session-cleanup-ran"
-	cfg := writeWorkflowFixture(t, tmpDir, "default",
+	cfg := writeWorkflowFixture(t, "default",
 		[]taskFixture{
 			{id: "tmux", scope: "run", setup: "true", cleanup: "exit 1"},
 			{id: "envfile", scope: "session", setup: "true", cleanup: "touch " + marker},
@@ -1733,7 +1661,7 @@ func TestDestroy_ForceKeepsChildrensParentLinkWithWarning(t *testing.T) {
 		t.Skip("bash not available")
 	}
 	store := testStore(t)
-	cfg := writeWorkflowFixture(t, t.TempDir(), "default",
+	cfg := writeWorkflowFixture(t, "default",
 		[]taskFixture{{id: "envfile", scope: "session", setup: "true", cleanup: "true"}},
 		[]nodeFixture{{id: "envfile"}},
 	)
@@ -1779,7 +1707,7 @@ func TestUp_ForceRecreateRendersTerminalHelperAgainstThisPassOutputs(t *testing.
 	if err := os.MkdirAll(oldWorkdirPath, 0o755); err != nil {
 		t.Fatal(err)
 	}
-	cfg := writeWorkflowFixture(t, oldWorkdirPath, "default",
+	cfg := writeWorkflowFixture(t, "default",
 		[]taskFixture{
 			{
 				id:       "terminal",
@@ -1798,22 +1726,16 @@ func TestUp_ForceRecreateRendersTerminalHelperAgainstThisPassOutputs(t *testing.
 			{id: "prompt", inputs: map[string]*lang.Value{"session": fromValue("nodes.terminal.outputs.session_name")}},
 		},
 	)
-	providersDir := filepath.Join(cfg.BaseDir, "workspaces")
-	if err := os.MkdirAll(providersDir, 0o755); err != nil {
-		t.Fatal(err)
-	}
-	providerSetup := fmt.Sprintf(`mkdir -p %s && printf '{"workspace_dir":%q}'`, newWorkdirPath, newWorkdirPath)
-	if err := os.WriteFile(filepath.Join(providersDir, "default_provider.toml"),
-		[]byte(providerScriptPair("default_provider", providerSetup, "", "true", "")), 0o644); err != nil {
-		t.Fatal(err)
-	}
-	addWorkflowFields(t, cfg, "default", "workspace_provider = \"default_provider\"\n")
+	attachWorkdir(t, cfg, "default", taskFixture{
+		setup:   fmt.Sprintf(`mkdir -p %s && printf '{"workspace_dir":%q}'`, newWorkdirPath, newWorkdirPath),
+		cleanup: "true",
+	})
 	sessionName := "org/repo-14"
 	seedSessionWithNodes(t, store, sessionName, "org/repo", 14, "default", map[string]*contract.TaskState{
-		contract.WorkflowPseudoNodeID: {
+		workdirEffectID: {
 			Scope:   contract.TaskScopeSession,
 			Status:  contract.TaskStatusProduced,
-			Outputs: map[string]any{contract.OutputKeyWorkspaceDir: oldWorkdirPath},
+			Outputs: map[string]any{"workspace_dir": oldWorkdirPath},
 			Seq:     1,
 		},
 		"terminal": {
@@ -1829,12 +1751,6 @@ func TestUp_ForceRecreateRendersTerminalHelperAgainstThisPassOutputs(t *testing.
 			Seq:     3,
 		},
 	})
-	if err := store.Update(sessionName, func(s *domain.Session) error {
-		s.WorkspaceDirPath = oldWorkdirPath
-		return nil
-	}); err != nil {
-		t.Fatalf("update session: %v", err)
-	}
 
 	result, err := Up(cfg, store, UpParams{Identifier: sessionName, ForceRecreate: true})
 	if err != nil {
@@ -1844,33 +1760,4 @@ func TestUp_ForceRecreateRendersTerminalHelperAgainstThisPassOutputs(t *testing.
 	if prompt == nil || prompt.Outputs["delivered"] != "sent=agent-recreated" {
 		t.Fatalf("prompt task = %+v, want the terminal verb rendered against this pass's session_name", prompt)
 	}
-}
-
-// providerScriptPair is a resolver-less provider whose setup and cleanup each
-// run one literal script, for a fixture whose subject is the lifecycle around
-// them.
-func providerScriptPair(id, setup, setupArgs, cleanup, cleanupArgs string) string {
-	return fmt.Sprintf(`
-[%[1]s]
-kind = "workspace_provider"
-
-[%[1]s.setup]
-type    = "exec"
-command = "sh"
-args    = ["-c", %[2]q, "provider"%[3]s]
-
-[%[1]s.cleanup]
-type    = "exec"
-command = "sh"
-args    = ["-c", %[4]q, "provider"%[5]s]
-
-# A cleanup reading an output has to declare it: the contract is what makes
-# the read resolvable at load.
-[%[1]s.outputs_schema]
-type = "object"
-
-[%[1]s.outputs_schema.properties]
-workspace_dir = { type = "string" }
-branch        = { type = "string" }
-`, id, setup, setupArgs, cleanup, cleanupArgs)
 }

@@ -25,11 +25,10 @@ func TestStore_PutAndGet(t *testing.T) {
 
 	now := time.Now()
 	session := &domain.Session{
-		Name:             "owner/repo-123",
-		ResourceID:       "https://example.test/owner/repo/items/123",
-		WorkspaceDirPath: "/tmp/workdirs/github.com/owner/repo/issue-123",
-		CreatedAt:        now,
-		UpdatedAt:        now,
+		Name:       "owner/repo-123",
+		ResourceID: "https://example.test/owner/repo/items/123",
+		CreatedAt:  now,
+		UpdatedAt:  now,
 	}
 
 	if err := store.Put(session); err != nil {

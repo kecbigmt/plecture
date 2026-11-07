@@ -2,8 +2,8 @@
 # reason: in user-owned config a relative reference that would select catalog content must carry its catalog alias.
 
 [my_session]
-kind               = "workflow"
-workspace_provider = "worktree"
+kind     = "workflow"
+resource = "issue"
 
 [[my_session.nodes]]
 uses = "runtime"

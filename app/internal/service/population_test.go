@@ -30,10 +30,10 @@ func seedPopulationRowForTest(t *testing.T, store *state.Store, p *contract.Popu
 func TestUpPopulationProvenanceCannotAdoptAnExistingSession(t *testing.T) {
 	store := testStore(t)
 	workdir := filepath.Join(t.TempDir(), "wd")
-	cfg := writeWorkflowFixture(t, filepath.Join(t.TempDir(), "workdirs"), "agent",
+	cfg := writeWorkflowFixture(t, "agent",
 		[]taskFixture{{id: "noop", scope: "session", setup: "echo '{}'"}},
 		[]nodeFixture{{id: "noop"}})
-	writeSetupWorkflow(t, cfg, "agent", capProviderCreatingWorkspace("agent", workdir))
+	useCapWorkflow(t, cfg, "agent", workdir, false)
 	resource := "https://example.test/cases/owned"
 	owner := &contract.PopulationProvenance{Workflow: "agent", Name: "first"}
 	seedPopulationRowForTest(t, store, owner)
@@ -57,10 +57,10 @@ func TestUpPopulationProvenanceCannotAdoptAnExistingSession(t *testing.T) {
 func TestChainStyleDispatchCannotAdoptAPopulationSession(t *testing.T) {
 	store := testStore(t)
 	workdir := filepath.Join(t.TempDir(), "wd")
-	cfg := writeWorkflowFixture(t, filepath.Join(t.TempDir(), "workdirs"), "agent",
+	cfg := writeWorkflowFixture(t, "agent",
 		[]taskFixture{{id: "noop", scope: "session", setup: "echo '{}'"}},
 		[]nodeFixture{{id: "noop"}})
-	writeSetupWorkflow(t, cfg, "agent", capProviderCreatingWorkspace("agent", workdir))
+	useCapWorkflow(t, cfg, "agent", workdir, false)
 	resource := "https://example.test/cases/owned"
 	owner := &contract.PopulationProvenance{Workflow: "agent", Name: "dispatch"}
 	seedPopulationRowForTest(t, store, owner)
@@ -81,7 +81,7 @@ resource          = "issue_pr"
 instructions      = [{ text = "Handle {{ resource.id }}." }]
 `
 	store := testStore(t)
-	cfg := writeTaskDocumentFixture(t, t.TempDir(), "wf",
+	cfg := writeTaskDocumentFixture(t, "wf",
 		map[string]string{"resource_kind": "pull", "revision": "sha2"}, reviewDocument, missingPolicy)
 	seedSession(t, store, "session-a", "workspace-a", 1, "wf", map[string]*contract.TaskState{
 		"review#1": {

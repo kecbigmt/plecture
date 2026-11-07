@@ -1,7 +1,7 @@
-// Package ghapi runs GitHub REST calls on behalf of the workspace provider:
+// Package ghapi runs GitHub REST calls on behalf of the worktree effect:
 // through `gh api`, either directly or via a github-watcher binary that
 // gates calls against its poll loop's shared rate budget — the same
-// cross-process coupling production's workspace-provider/resource scripts
+// cross-process coupling production's worktree/resource scripts
 // rely on, so a setup or observe call and the watcher's own polling back
 // off together instead of each retrying independently and re-tripping
 // GitHub's secondary rate limit — or, for a host that has opted into

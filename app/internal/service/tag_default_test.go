@@ -1,31 +1,20 @@
 package service
 
 import (
-	"os"
 	"path/filepath"
 	"testing"
+
+	"github.com/kecbigmt/plecture/app/internal/config"
 )
 
-// addSetupWorkflow writes a second provider-backed workflow alongside the one
-// writeWorkflowFixture created: a one-node workflow file plus a provider TOML
-// (the github resolver + a setup that materializes a unique workdir). It lets a
-// single test dispatch the same resource to two tools (claude vs codex).
-func addSetupWorkflow(t *testing.T, baseDir, wfID, workdir string) {
+// addSetupWorkflow writes a second workflow alongside the one
+// writeWorkflowFixture created: a one-node workflow whose own directory effect
+// materializes a unique workdir. It lets a single test dispatch the same
+// resource to two tools (claude vs codex).
+func addSetupWorkflow(t *testing.T, cfg *config.Config, wfID, workdir string) {
 	t.Helper()
-	if err := os.MkdirAll(filepath.Join(baseDir, "workflows"), 0o755); err != nil {
-		t.Fatal(err)
-	}
-	if err := os.MkdirAll(filepath.Join(baseDir, "workspaces"), 0o755); err != nil {
-		t.Fatal(err)
-	}
-	provID, prov := providerAside(wfID, providerCreatingWorkspace(wfID, workdir))
-	wf := "[" + wfID + "]\nkind = \"workflow\"\nworkspace_provider = \"" + provID + "\"\n\n[[" + wfID + ".nodes]]\nuses = \"noop\"\n"
-	if err := os.WriteFile(filepath.Join(baseDir, "workflows", wfID+".toml"), []byte(wf), 0o644); err != nil {
-		t.Fatal(err)
-	}
-	if err := os.WriteFile(filepath.Join(baseDir, "workspaces", provID+".toml"), []byte(prov), 0o644); err != nil {
-		t.Fatal(err)
-	}
+	addFixtureWorkflow(t, cfg, wfID, "issue", "noop", "")
+	attachWorkdir(t, cfg, wfID, taskFixture{id: wfID + "_dir", setup: mkdirScript(workdir)})
 }
 
 // TestCreate_DefaultTagSeparatesWorkflows is the ADR's core guarantee: with no
@@ -33,11 +22,11 @@ func addSetupWorkflow(t *testing.T, baseDir, wfID, workdir string) {
 // sessions because each session name carries its workflow id as the tag.
 func TestCreate_DefaultTagSeparatesWorkflows(t *testing.T) {
 	store := testStore(t)
-	cfg := writeWorkflowFixture(t, t.TempDir(), "noop_base",
+	cfg := writeWorkflowFixture(t, "noop_base",
 		[]taskFixture{{id: "noop", scope: "session", setup: "echo '{}'"}},
 		[]nodeFixture{{id: "noop"}})
-	addSetupWorkflow(t, cfg.BaseDir, "claude", filepath.Join(t.TempDir(), "claude"))
-	addSetupWorkflow(t, cfg.BaseDir, "codex", filepath.Join(t.TempDir(), "codex"))
+	addSetupWorkflow(t, cfg, "claude", filepath.Join(t.TempDir(), "claude"))
+	addSetupWorkflow(t, cfg, "codex", filepath.Join(t.TempDir(), "codex"))
 
 	url := "https://github.com/org/repo/issues/1"
 
@@ -56,8 +45,8 @@ func TestCreate_DefaultTagSeparatesWorkflows(t *testing.T) {
 	if review.SessionName != "org/repo-1+codex" {
 		t.Errorf("codex session = %q, want org/repo-1+codex", review.SessionName)
 	}
-	if work.WorkspaceDirPath == review.WorkspaceDirPath {
-		t.Errorf("cross-tool sessions share a session %q; the default tag must separate them", work.WorkspaceDirPath)
+	if work.SessionName == review.SessionName {
+		t.Errorf("cross-tool sessions share the session %q; the default tag must separate them", work.SessionName)
 	}
 	if store.Get("org/repo-1+claude") == nil || store.Get("org/repo-1+codex") == nil {
 		t.Fatal("both tagged sessions must persist")
@@ -71,10 +60,10 @@ func TestCreate_DefaultTagSeparatesWorkflows(t *testing.T) {
 // explicit label wins over the workflow-id default.
 func TestCreate_ExplicitTagOverridesDefault(t *testing.T) {
 	store := testStore(t)
-	cfg := writeWorkflowFixture(t, t.TempDir(), "noop_base",
+	cfg := writeWorkflowFixture(t, "noop_base",
 		[]taskFixture{{id: "noop", scope: "session", setup: "echo '{}'"}},
 		[]nodeFixture{{id: "noop"}})
-	addSetupWorkflow(t, cfg.BaseDir, "codex", filepath.Join(t.TempDir(), "codex"))
+	addSetupWorkflow(t, cfg, "codex", filepath.Join(t.TempDir(), "codex"))
 
 	url := "https://github.com/org/repo/issues/2"
 	res, err := Create(cfg, store, CreateParams{URL: url, Workflow: "codex", Tag: "review-initial"})
@@ -91,10 +80,10 @@ func TestCreate_ExplicitTagOverridesDefault(t *testing.T) {
 // auto-create reuses one session instead of forking a second.
 func TestUpCreateConvergeOnDefaultTag(t *testing.T) {
 	store := testStore(t)
-	cfg := writeWorkflowFixture(t, t.TempDir(), "noop_base",
+	cfg := writeWorkflowFixture(t, "noop_base",
 		[]taskFixture{{id: "noop", scope: "session", setup: "echo '{}'"}},
 		[]nodeFixture{{id: "noop"}})
-	addSetupWorkflow(t, cfg.BaseDir, "claude", filepath.Join(t.TempDir(), "claude"))
+	addSetupWorkflow(t, cfg, "claude", filepath.Join(t.TempDir(), "claude"))
 
 	url := "https://github.com/org/repo/issues/3"
 	first, err := Up(cfg, store, UpParams{Identifier: url, Workflow: "claude"})

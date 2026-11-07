@@ -89,22 +89,22 @@ var downTool = mcp.NewTool("plect_down",
 )
 
 var destroyTool = mcp.NewTool("plect_destroy",
-	mcp.WithDescription("Tear down a session: run-scoped cleanup (auto-down) → session-scoped cleanup → workspace directory removal → state entry deletion. Fail-fast by default; --force demotes cleanup errors to warnings so a stuck session can be freed. Also fails closed (code has_children) if the session has child sessions, since deleting it would orphan them; --force orphans them instead, reported via cleanup_warnings."),
+	mcp.WithDescription("Tear down a session: run-scoped cleanup (auto-down) → session-scoped cleanup → state entry deletion. Fail-fast by default; --force demotes cleanup errors to warnings so a stuck session can be freed. Also fails closed (code has_children) if the session has child sessions, since deleting it would orphan them; --force orphans them instead, reported via cleanup_warnings."),
 	mcp.WithToolAnnotation(mcp.ToolAnnotation{DestructiveHint: boolPtr(true)}),
 	mcp.WithString("session",
 		mcp.Required(),
 		mcp.Description("Resource identifier or session name (e.g. session-123)"),
 	),
 	mcp.WithBoolean("force",
-		mcp.Description("Demote cleanup errors to warnings so teardown continues through workspace directory cleanup and state deletion; also passes the force intent to cleanup hooks and proceeds when the session has child sessions, orphaning them instead of aborting"),
+		mcp.Description("Demote cleanup errors to warnings so teardown continues through every effect's cleanup and state deletion; also passes the force intent to cleanup actions and proceeds when the session has child sessions, orphaning them instead of aborting"),
 	),
 	mcp.WithObject("cleanup_inputs",
-		mcp.Description("Opaque key/value cleanup intents forwarded to workspace provider cleanup, unexamined by core; consult the workspace provider's own docs for which keys it reads"),
+		mcp.Description("Cleanup intents validated against the cleanup input schemas of the effects being released and handed only to the effects that declare them; consult an effect's own docs for which keys it reads"),
 	),
 )
 
 var statusTool = mcp.NewTool("plect_status",
-	mcp.WithDescription("Report a session's four fact layers: identity (resource id / workflow / tag / tree position), runtime (declared alive-probe liveness, workspace directory existence, run-scoped task state), work (each task instance's outputs, done_when evaluation, heartbeat budget, and chain plan), and flow (recent events). No workspace-provider-specific field — everything renders generically from outputs / done_when / events."),
+	mcp.WithDescription("Report a session's four fact layers: identity (resource id / workflow / tag / tree position), runtime (declared alive-probe liveness, work directory existence, run-scoped task state), work (each task instance's outputs, done_when evaluation, heartbeat budget, and chain plan), and flow (recent events). No plugin-specific field — everything renders generically from outputs / done_when / events."),
 	mcp.WithToolAnnotation(mcp.ToolAnnotation{ReadOnlyHint: boolPtr(true)}),
 	mcp.WithString("url",
 		mcp.Required(),
@@ -166,6 +166,17 @@ func handleWorkflowRebase(ctx context.Context, request mcp.CallToolRequest) (*mc
 		return errorResult(err), nil
 	}
 	return jsonResult(map[string]any{"ok": true, "session_name": result.SessionName, "from": result.From, "to": result.To, "class": result.Class, "recreate_nodes": result.RecreateNodes, "reasons": result.Reasons})
+}
+
+// callerDir is the MCP server's own working directory, which with its trusted
+// ancestors contributes the `.plect/` overlays a direct invocation reads; an
+// unreadable one selects none.
+func callerDir() string {
+	dir, err := os.Getwd()
+	if err != nil {
+		return ""
+	}
+	return dir
 }
 
 func handleWorkflowList(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
@@ -234,6 +245,7 @@ func handleUp(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallToolRe
 		ParentSession: request.GetString("parent", ""),
 		Inputs:        inputs,
 		ForceRecreate: request.GetBool("force_recreate", false),
+		InvocationDir: callerDir(),
 	})
 	if err != nil {
 		return errorResult(err), nil
@@ -294,9 +306,8 @@ func handleDestroy(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallT
 	}
 
 	resp := map[string]any{
-		"ok":                    true,
-		"session_name":          result.SessionName,
-		"removed_workspace_dir": result.RemovedWorkspaceDir,
+		"ok":           true,
+		"session_name": result.SessionName,
 	}
 	if len(result.CleanupWarnings) > 0 {
 		resp["cleanup_warnings"] = result.CleanupWarnings

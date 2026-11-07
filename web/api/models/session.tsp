@@ -40,7 +40,6 @@ model SessionIdentity {
   @doc("Absent and empty are equivalent for every optional field on this model: the API omits an unset value rather than emitting it as `null` or `\"\"`, mirroring the Go source's `omitempty` struct tags.")
   resourceId?: string;
   title?: string;
-  branch?: string;
   workflow?: string;
   tag?: string;
   parentSession?: string;
@@ -63,8 +62,8 @@ model SessionRuntime {
   lastCheckedAt?: utcDateTime;
   lastActivityAt?: utcDateTime;
   tasks?: SessionTaskSummary[];
-  workspaceDirPath?: string;
-  workspaceDirExists: boolean;
+  workdir?: string;
+  workdirExists?: boolean;
   message?: SessionMessage;
 }
 
@@ -82,7 +81,6 @@ model SessionSummary {
   resourceId: string;
   lastActiveAt?: utcDateTime;
   message?: SessionMessage;
-  branch?: string;
   parentSession?: string;
   tasks?: SessionTaskSummary[];
 }

@@ -34,6 +34,7 @@ all = [{ judge_pending = "ac-met" }]
 	writeFile(t, filepath.Join(base, "workflows", "claude_reviewer.toml"), `
 [claude_reviewer]
 kind = "workflow"
+resource = "issue"
 `)
 	cfg := &Config{BaseDir: base}
 	docs, observers := loadDocsAndObservers(t, cfg)
@@ -245,6 +246,7 @@ priority = { type = "string", default = "high" }
 			writeFile(t, filepath.Join(base, "workflows", "claude_reviewer.toml"), `
 [claude_reviewer]
 kind = "workflow"
+resource = "issue"
 `)
 			writeFile(t, filepath.Join(base, "tasks", "work.toml"), tc.body)
 			_, err := (&Config{BaseDir: base}).LoadTaskDocuments("")

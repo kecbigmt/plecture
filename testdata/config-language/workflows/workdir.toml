@@ -1,0 +1,15 @@
+# plect-fixture: result=valid entry=definitions
+# reason: a workflow names the one node output its non-preparation nodes run in as a single projection.
+
+[pull_review]
+kind     = "workflow"
+resource = "pull_request"
+workdir  = { from = "nodes.checkout.outputs.workspace_dir" }
+
+[[pull_review.nodes]]
+id   = "checkout"
+uses = "checkout_effect"
+
+[[pull_review.nodes]]
+id   = "agent"
+uses = "agent_runtime"

@@ -8,9 +8,9 @@ import (
 	"github.com/kecbigmt/plecture/app/internal/lang"
 )
 
-// A workspace provider's resolver fails with the provider's id, so the
+// A resource's name derivation fails with the resource's id, so the
 // declaration an author must fix is named, whichever way the resolution broke.
-func TestTryResolveNameFailurePathsNameTheProvider(t *testing.T) {
+func TestTryResolveNameFailurePathsNameTheResource(t *testing.T) {
 	tests := []struct {
 		name  string
 		match string
@@ -28,10 +28,10 @@ func TestTryResolveNameFailurePathsNameTheProvider(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			prov := config.WorkspaceProviderConfig{ID: "prov", Match: tc.match, Name: name}
-			got, matched, err := tryResolveName(prov, tc.id)
+			def := config.ResourceDef{ID: "prov", Match: tc.match, Name: name}
+			_, got, matched, err := resolveResource(map[string]config.ResourceDef{"prov": def}, tc.id)
 			if err == nil || !strings.Contains(err.Error(), `"prov"`) {
-				t.Fatalf("error = %v, want one naming provider \"prov\"", err)
+				t.Fatalf("error = %v, want one naming resource \"prov\"", err)
 			}
 			if got != "" || matched {
 				t.Errorf("a failed resolution returned (%q, %v), want no name", got, matched)

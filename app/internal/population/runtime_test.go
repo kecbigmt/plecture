@@ -3,7 +3,6 @@ package population
 import (
 	"context"
 	"errors"
-	"fmt"
 	"testing"
 
 	"github.com/kecbigmt/plecture/app/internal/config"
@@ -81,17 +80,6 @@ func TestUpPopulationReportsRunStateFromBeforeTheIdempotentUpCall(t *testing.T) 
 type = "exec"
 command = "true"
 `, "uses = [\"poll\"]\npoll_every = \"1m\"", `resource = { from = "resource.id" }`)
-	writeDefinition(t, cfg.BaseDir, "provider", fmt.Sprintf(`[provider]
-kind = "workspace_provider"
-match = "^urn:case:(?P<id>[A-Za-z0-9]+)$"
-name = { from = "match.id" }
-[provider.setup]
-type = "exec"
-command = "printf"
-args = ['{"workspace_dir":"%s","branch":"main"}']
-[provider.outputs_schema]
-type = "object"
-`, cfg.WorkspaceDirsRoot))
 	definitions, err := Load(cfg)
 	if err != nil {
 		t.Fatal(err)

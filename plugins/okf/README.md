@@ -8,7 +8,7 @@ lives here.
 
 The plugin is scoped by the OKF specification, not by one use case: v1 owns
 only the goal resource, the concept kind with machine semantics today
-(observation, finalization, workspace dispatch). Bundle plumbing shared by
+(observation, finalization, goal directory dispatch). Bundle plumbing shared by
 future OKF concepts — owner alias resolution, bundle root discovery,
 containment checks, frontmatter parsing — is kept internally separable
 (`internal/bundle`, `internal/goal`) so a later concept kind can reuse it
@@ -22,19 +22,20 @@ change out of scope for this plugin's extraction.
 
 ## Contents
 
-- `workspaces/local_okf.toml` — the `local_okf` workspace provider: its
-  `match` / `name` pair derives a session id offline from the resource
-  identifier's captures; `setup` and `cleanup` invoke the executable below to
-  acquire and release a read-context workspace directory over the owner's
-  bundle.
+- `tasks/goal_dir.toml` — the session-scoped `goal_dir` effect: `setup`
+  and `cleanup` invoke the executable below to acquire and release a
+  read-context directory over the owner's bundle. A workflow names its
+  `workspace_dir` output as its `workdir`. The session id is derived
+  offline from the resource identifier's captures by
+  `resources/okf_goal.toml`'s `match` / `name` pair.
 - `resources/okf_goal.toml` — the goal resource: `observe` reports parse
   and completion state; `finalize` records a done_when-satisfied goal's
   completion, once.
 - `cmd/okf-bundle`, `cmd/okf-goal` — the executables those hooks run. Their
   shared `internal/` packages (`bundle`, `goal`, `resource`, `workspace`,
   `task`) hold the actual logic; each `cmd/` main is a thin flag-parsing and
-  JSON-encoding shell around them — `okf-bundle` wraps the workspace
-  provider hooks, `okf-goal` wraps the resource and goal task hooks.
+  JSON-encoding shell around them — `okf-bundle` wraps the `goal_dir`
+  actions, `okf-goal` wraps the resource and goal task hooks.
 - `tasks/goal_bootstrap.toml` — the effect that re-creates any `pursue_goal`
   instance a session lost across a destroy→up cycle. It shells out to
   `plect task setup pursue_goal`, so a host that enables this plugin
@@ -64,12 +65,12 @@ go build -o <bindir>/okf-bundle ./cmd/okf-bundle
 
 Then add this directory to `plugin_dirs` in `~/.config/plect/config.toml`,
 or enable it through a registered catalog (see
-`docs/design/plugin-packaging.md`), so its `workspaces/`, `resources/`,
-and `tasks/` are loaded.
+`docs/design/plugin-packaging.md`), so its `resources/` and `tasks/` are
+loaded.
 
 ## Outputs
 
-`workspaces/local_okf.toml`'s `setup` emits `workspace_dir`, `owner`,
+`tasks/goal_dir.toml`'s `setup` emits `workspace_dir`, `owner`,
 `concept_id`, and `concept_path`. `resources/okf_goal.toml`'s `observe`
 emits `goal_parse_status`, `goal_status`, `checklist_status`,
 `goal_revision`, `revision`, `open_items`, and `observe_error`. Read them in
@@ -81,7 +82,7 @@ own copied outputs.
 - `plect` itself on `PATH` — every resolution step shells out to
   `plect status` to find the owner's orchestrator session, and
   `goal_bootstrap` shells out to `plect task setup` to create instances.
-- A knowledge bundle at `<orchestrator workspace directory>/knowledge/bundle/`,
+- A knowledge bundle at `<orchestrator workdir>/knowledge/bundle/`,
   with goal Concept files under `goals/`.
 - If a host wants a reviewer spawned automatically, a host-defined workflow
   for its `pursue_goal` extension's chain to target (see Contents above).

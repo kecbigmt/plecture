@@ -1,6 +1,17 @@
 == goal_bootstrap / setup
-call[0]: "okf-goal" "task" "bootstrap" "--workspace-dir" "<workspace>" "--owner" "acme" "--session" "acme/widget-1" "--assignees" "[\"user:acme\"]"
+call[0]: "okf-goal" "task" "bootstrap" "--workspace-dir" "/spy/orchestrator" "--owner" "acme" "--session" "acme/widget-1" "--assignees" "[\"user:acme\"]"
 outputs: {"created":"0"}
 
 == goal_bootstrap / health.alive
 alive
+
+== goal_dir / setup
+call[0]: "okf-bundle" "setup" "--resource" "example://acme/widget/1" "--session" "acme/widget-1"
+outputs: {"concept_id":"goals/c.md","concept_path":"<state>/goal/c.md","owner":"acme","workspace_dir":"<state>/goal"}
+
+== goal_dir / health.alive
+alive
+
+== goal_dir / cleanup
+call[0]: "okf-bundle" "cleanup" "--workspace-dir" "<state>/goal"
+cleaned

@@ -8,28 +8,16 @@ import (
 	"testing"
 	"time"
 
-	"github.com/kecbigmt/plecture/app/internal/config"
 	"github.com/kecbigmt/plecture/app/internal/domain"
 	"github.com/kecbigmt/plecture/app/internal/testpath"
 	"github.com/kecbigmt/plecture/contracts/event"
 	contract "github.com/kecbigmt/plecture/contracts/state"
 )
 
-// writeSetupWorkflow gives the fixture workflow a workspace provider: the
-// extra TOML lands in workspaces/<wfID>.toml and the workflow gains
-// `workspace_provider = "<wfID>"`.
-func writeSetupWorkflow(t *testing.T, cfg *config.Config, wfID, extra string) {
-	t.Helper()
-	workspacesDir := filepath.Join(cfg.BaseDir, "workspaces")
-	if err := os.MkdirAll(workspacesDir, 0o755); err != nil {
-		t.Fatal(err)
-	}
-	provID, body := providerAside(wfID, extra)
-	if err := os.WriteFile(filepath.Join(workspacesDir, provID+".toml"), []byte(body), 0o644); err != nil {
-		t.Fatal(err)
-	}
-	addWorkflowFields(t, cfg, wfID, "workspace_provider = \""+provID+"\"\n")
-}
+// deliveryResolverFields makes a test's own `delivery` resource recognize the
+// fixture URLs the way the default `issue` resource does.
+const deliveryResolverFields = `name = { expr = "match.owner + '/' + match.repo + '-' + match.number" }
+match = '^https://github\.com/(?P<owner>[^/]+)/(?P<repo>[^/]+)/(issues|pull)/(?P<number>\d+)'`
 
 func TestCreate_WorkflowSetupPath(t *testing.T) {
 	store := testStore(t)
@@ -37,42 +25,36 @@ func TestCreate_WorkflowSetupPath(t *testing.T) {
 	// on darwin), so workdir must be resolved the same way before comparing.
 	workdir := filepath.Join(testpath.Real(t, t.TempDir()), "wd")
 
-	cfg := writeWorkflowFixture(t, t.TempDir(), "wf",
+	cfg := writeWorkflowFixture(t, "wf",
 		[]taskFixture{{id: "probe", scope: "session", setup: `echo "{\"cwd\":\"$(pwd)\"}"`}},
 		[]nodeFixture{{id: "probe"}})
-	writeSetupWorkflow(t, cfg, "wf", providerRunningScript("wf", fmt.Sprintf(`mkdir -p %s
-echo '{"workspace_dir":"%s","branch":"issue/5","title":"T"}'
-`, workdir, workdir)))
+	attachWorkdirDir(t, cfg, "wf", workdir)
 
-	result, err := Create(cfg, store, CreateParams{URL: "https://github.com/org/repo/issues/5"})
-	if err != nil {
+	if _, err := Create(cfg, store, CreateParams{URL: "https://github.com/org/repo/issues/5"}); err != nil {
 		t.Fatalf("Create: %v", err)
-	}
-	if result.WorkspaceDirPath != workdir {
-		t.Errorf("WorkspaceDirPath = %q, want %q (mirrored from workdir output)", result.WorkspaceDirPath, workdir)
-	}
-	if result.Branch != "issue/5" {
-		t.Errorf("Branch = %q, want issue/5", result.Branch)
 	}
 
 	s := store.Get("org/repo-5+wf")
 	if s == nil {
 		t.Fatal("session not persisted")
 	}
-	wfState := s.Nodes[contract.WorkflowPseudoNodeID]
-	if wfState == nil || wfState.Status != contract.TaskStatusProduced {
-		t.Fatalf("pseudo-node = %+v, want produced", wfState)
+	dir := s.Nodes[workdirEffectID]
+	if dir == nil || dir.Status != contract.TaskStatusProduced {
+		t.Fatalf("workdir node = %+v, want produced", dir)
 	}
-	if wfState.Outputs["title"] != "T" {
-		t.Errorf("free-form outputs should persist: %v", wfState.Outputs)
+	if got, err := Workdir(cfg, store, s.Name); err != nil || got != workdir {
+		t.Errorf("Workdir = %q, %v, want %q (read from the producer's output)", got, err, workdir)
 	}
-	// Session tasks ran with the new workdir as cwd.
+	// Session nodes ran in the directory the workflow's workdir names.
 	probe := s.Nodes["probe"]
 	if probe == nil || probe.Status != contract.TaskStatusProduced {
 		t.Fatalf("probe = %+v", probe)
 	}
 	if got, _ := probe.Outputs["cwd"].(string); got != workdir {
 		t.Errorf("task cwd = %q, want workdir %q", got, workdir)
+	}
+	if probe.Directory != workdir {
+		t.Errorf("recorded directory = %q, want %q", probe.Directory, workdir)
 	}
 	if len(s.WorkflowRevision) != 64 {
 		t.Fatalf("revision digest = %q, want SHA-256 hex", s.WorkflowRevision)
@@ -95,12 +77,10 @@ func TestCreate_RecordsParentSession(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	cfg := writeWorkflowFixture(t, t.TempDir(), "wf",
+	cfg := writeWorkflowFixture(t, "wf",
 		[]taskFixture{{id: "probe", scope: "session", setup: `jq -nc --arg parent "{{.ParentSession}}" '{parent:$parent}'`}},
 		[]nodeFixture{{id: "probe"}})
-	writeSetupWorkflow(t, cfg, "wf", providerRunningScript("wf", fmt.Sprintf(`mkdir -p %s
-echo '{"workspace_dir":"%s"}'
-`, workdir, workdir)))
+	attachWorkdirDir(t, cfg, "wf", workdir)
 
 	if _, err := Create(cfg, store, CreateParams{
 		URL:           "https://github.com/org/repo/issues/6",
@@ -148,12 +128,10 @@ func TestCreate_SessionNodeNestedWriteSurvives(t *testing.T) {
 		},
 	}) + `
 echo '{}'`
-	cfg := writeWorkflowFixture(t, t.TempDir(), "claude",
+	cfg := writeWorkflowFixture(t, "claude",
 		[]taskFixture{{id: "dispatcher", scope: "session", setup: dispatcher}},
 		[]nodeFixture{{id: "dispatcher"}})
-	writeSetupWorkflow(t, cfg, "claude", providerRunningScript("claude", fmt.Sprintf(`mkdir -p %s
-echo '{"workspace_dir":"%s"}'
-`, workdir, workdir)))
+	attachWorkdirDir(t, cfg, "claude", workdir)
 
 	url := "https://github.com/org/repo/issues/11"
 	if _, err := Create(cfg, store, CreateParams{URL: url}); err != nil {
@@ -181,21 +159,17 @@ echo '{"workspace_dir":"%s"}'
 // Binding-implies-delivery applies at session creation too, not only to a
 // dynamic task setup: the session's own resource is wired through the same
 // subscribeIfWired call TaskSetup makes for an explicit --resource.
-func TestCreate_ResourceSubscribesToMatchingProvider(t *testing.T) {
+func TestCreate_SubscribesSessionResource(t *testing.T) {
 	store := testStore(t)
 	workdir := filepath.Join(t.TempDir(), "wd")
 	subRec := filepath.Join(t.TempDir(), "sub-rec")
 
-	cfg := writeWorkflowFixture(t, t.TempDir(), "wf",
+	cfg := writeWorkflowFixture(t, "wf",
 		[]taskFixture{{id: "probe", scope: "session", setup: `echo '{}'`}},
 		[]nodeFixture{{id: "probe"}})
-	extra := providerRunningScript("wf", fmt.Sprintf(`mkdir -p %s
-echo '{"workspace_dir":"%s"}'
-`, workdir, workdir))
 	resourceHooks := `[delivery]
 kind = "resource"
-name = "fixture"
-match = '^https://github\.com/'
+` + deliveryResolverFields + `
 [delivery.observe]
 type = "exec"
 command = "printf"
@@ -207,8 +181,8 @@ command = "sh"
 args    = ["-c", 'printf "%s\n%s\n" "$1" "$2" > "$3"', "provider",
   { from = "session.name" }, { from = "resource.id" }, "` + subRec + `"]
 `
-	writeSetupWorkflow(t, cfg, "wf", extra)
-	writeResourceDefFixture(t, cfg.BaseDir, "delivery", resourceHooks)
+	attachWorkdirDir(t, cfg, "wf", workdir)
+	useResource(t, cfg, "wf", "delivery", resourceHooks)
 
 	url := "https://github.com/org/repo/issues/9"
 	if _, err := Create(cfg, store, CreateParams{URL: url}); err != nil {
@@ -225,71 +199,16 @@ args    = ["-c", 'printf "%s\n%s\n" "$1" "$2" > "$3"', "provider",
 	}
 }
 
-// An issue session's own subscribe wiring at create time must carry the
-// branch its workspace provider's setup hook produced, not just its name and
-// resource — this is what lets the GitHub workspace provider's subscribe
-// hook forward a session branch to the shipped watcher's linked-PR
-// discovery for an issue resource, without a `plect subscribe` action ever
-// running.
-func TestCreate_ResourceSubscribeCarriesSetupProducedBranch(t *testing.T) {
-	store := testStore(t)
-	workdir := filepath.Join(t.TempDir(), "wd")
-	subRec := filepath.Join(t.TempDir(), "sub-rec")
-
-	cfg := writeWorkflowFixture(t, t.TempDir(), "wf",
-		[]taskFixture{{id: "probe", scope: "session", setup: `echo '{}'`}},
-		[]nodeFixture{{id: "probe"}})
-	extra := providerRunningScript("wf", fmt.Sprintf(`mkdir -p %s
-echo '{"workspace_dir":"%s","branch":"issue/9"}'
-`, workdir, workdir))
-	resourceHooks := `[delivery]
-kind = "resource"
-name = "fixture"
-match = '^https://github\.com/'
-[delivery.observe]
-type = "exec"
-command = "printf"
-args = ['{}']
-
-[delivery.subscribe]
-type    = "exec"
-command = "sh"
-args    = ["-c", 'printf "%s" "$1" > "$2"', "provider",
-  { from = "session.branch" }, "` + subRec + `"]
-`
-	writeSetupWorkflow(t, cfg, "wf", extra)
-	writeResourceDefFixture(t, cfg.BaseDir, "delivery", resourceHooks)
-
-	url := "https://github.com/org/repo/issues/9"
-	result, err := Create(cfg, store, CreateParams{URL: url})
-	if err != nil {
-		t.Fatalf("Create: %v", err)
-	}
-	if result.Branch != "issue/9" {
-		t.Fatalf("precondition: Branch = %q, want issue/9", result.Branch)
-	}
-
-	got, readErr := os.ReadFile(subRec)
-	if readErr != nil {
-		t.Fatalf("subscribe hook did not run: %v", readErr)
-	}
-	if string(got) != "issue/9" {
-		t.Errorf("subscribe hook saw session.branch = %q, want issue/9", got)
-	}
-}
-
-// A resource no workspace provider hooks for must leave Create unaffected:
+// A resource with no subscribe hook must leave Create unaffected:
 // no subscribe hook to run means nothing queued for retry either.
 func TestCreate_NoDeliverableResourceBehavesAsBefore(t *testing.T) {
 	store := testStore(t)
 	workdir := filepath.Join(t.TempDir(), "wd")
 
-	cfg := writeWorkflowFixture(t, t.TempDir(), "wf",
+	cfg := writeWorkflowFixture(t, "wf",
 		[]taskFixture{{id: "probe", scope: "session", setup: `echo '{}'`}},
 		[]nodeFixture{{id: "probe"}})
-	writeSetupWorkflow(t, cfg, "wf", providerRunningScript("wf", fmt.Sprintf(`mkdir -p %s
-echo '{"workspace_dir":"%s"}'
-`, workdir, workdir)))
+	attachWorkdirDir(t, cfg, "wf", workdir)
 
 	url := "https://github.com/org/repo/issues/10"
 	if _, err := Create(cfg, store, CreateParams{URL: url}); err != nil {
@@ -314,12 +233,10 @@ func TestCreate_WorkflowSetupRecordsLifecycleCreated(t *testing.T) {
 	store := testStore(t)
 	workdir := filepath.Join(t.TempDir(), "wd")
 
-	cfg := writeWorkflowFixture(t, t.TempDir(), "wf",
+	cfg := writeWorkflowFixture(t, "wf",
 		[]taskFixture{{id: "noop", scope: "session", setup: "echo '{}'"}},
 		[]nodeFixture{{id: "noop"}})
-	writeSetupWorkflow(t, cfg, "wf", providerRunningScript("wf", fmt.Sprintf(`mkdir -p %s
-echo '{"workspace_dir":"%s"}'
-`, workdir, workdir)))
+	attachWorkdirDir(t, cfg, "wf", workdir)
 
 	url := "https://github.com/org/repo/issues/7"
 	countCreated := func() int {
@@ -351,14 +268,11 @@ func TestCreate_WorkflowSetupFailureLeavesRetryableState(t *testing.T) {
 	workdir := filepath.Join(t.TempDir(), "wd")
 	gate := filepath.Join(t.TempDir(), "gate")
 
-	cfg := writeWorkflowFixture(t, t.TempDir(), "wf",
+	cfg := writeWorkflowFixture(t, "wf",
 		[]taskFixture{{id: "noop", scope: "session", setup: "echo '{}'"}},
 		[]nodeFixture{{id: "noop"}})
-	// Fails until the gate file exists — simulates a transient gh outage.
-	writeSetupWorkflow(t, cfg, "wf", providerRunningScript("wf", fmt.Sprintf(`[ -f %s ] || { echo "transient" >&2; exit 1; }
-mkdir -p %s
-echo '{"workspace_dir":"%s"}'
-`, gate, workdir, workdir)))
+	// Fails until the gate file exists — simulates a transient outage.
+	attachWorkdir(t, cfg, "wf", taskFixture{setup: fmt.Sprintf("[ -f %s ] || { echo \"transient\" >&2; exit 1; }\n", gate) + mkdirScript(workdir)})
 
 	url := "https://github.com/org/repo/issues/6"
 	if _, err := Create(cfg, store, CreateParams{URL: url}); err == nil {
@@ -368,8 +282,8 @@ echo '{"workspace_dir":"%s"}'
 	if s == nil {
 		t.Fatal("failed setup must still leave an inspectable state entry")
 	}
-	if st := s.Nodes[contract.WorkflowPseudoNodeID]; st == nil || st.Status != contract.TaskStatusFailed {
-		t.Fatalf("pseudo-node = %+v, want failed", st)
+	if st := s.Nodes[workdirEffectID]; st == nil || st.Status != contract.TaskStatusFailed {
+		t.Fatalf("workdir node = %+v, want failed", st)
 	}
 
 	if err := os.WriteFile(gate, []byte("ok"), 0o644); err != nil {
@@ -379,8 +293,8 @@ echo '{"workspace_dir":"%s"}'
 		t.Fatalf("retry should succeed: %v", err)
 	}
 	s = store.Get("org/repo-6+wf")
-	if st := s.Nodes[contract.WorkflowPseudoNodeID]; st == nil || st.Status != contract.TaskStatusProduced {
-		t.Fatalf("pseudo-node after retry = %+v, want produced", st)
+	if st := s.Nodes[workdirEffectID]; st == nil || st.Status != contract.TaskStatusProduced {
+		t.Fatalf("workdir node after retry = %+v, want produced", st)
 	}
 
 	// The first attempt left an inspectable state entry but failed before
@@ -404,16 +318,12 @@ func TestDestroy_UnsubscribesSessionResource(t *testing.T) {
 	subRec := filepath.Join(t.TempDir(), "sub-rec")
 	unsubRec := filepath.Join(t.TempDir(), "unsub-rec")
 
-	cfg := writeWorkflowFixture(t, t.TempDir(), "wf",
+	cfg := writeWorkflowFixture(t, "wf",
 		[]taskFixture{{id: "probe", scope: "session", setup: `echo '{}'`}},
 		[]nodeFixture{{id: "probe"}})
-	extra := providerRunningScript("wf", fmt.Sprintf(`mkdir -p %s
-echo '{"workspace_dir":"%s"}'
-`, workdir, workdir))
 	resourceHooks := `[delivery]
 kind = "resource"
-name = "fixture"
-match = '^https://github\.com/'
+` + deliveryResolverFields + `
 [delivery.observe]
 type = "exec"
 command = "printf"
@@ -431,8 +341,8 @@ command = "sh"
 args    = ["-c", 'printf "%s\n%s\n" "$1" "$2" > "$3"', "provider",
   { from = "session.name" }, { from = "resource.id" }, "` + unsubRec + `"]
 `
-	writeSetupWorkflow(t, cfg, "wf", extra)
-	writeResourceDefFixture(t, cfg.BaseDir, "delivery", resourceHooks)
+	attachWorkdirDir(t, cfg, "wf", workdir)
+	useResource(t, cfg, "wf", "delivery", resourceHooks)
 
 	url := "https://github.com/org/repo/issues/12"
 	if _, err := Create(cfg, store, CreateParams{URL: url}); err != nil {
@@ -466,19 +376,15 @@ func TestDestroy_UnsubscribeFailureIsDurablyQueuedAndDrainsViaAnotherSession(t *
 	toggle := filepath.Join(t.TempDir(), "toggle")
 	rec := filepath.Join(t.TempDir(), "rec")
 
-	cfg := writeWorkflowFixture(t, t.TempDir(), "wf",
+	cfg := writeWorkflowFixture(t, "wf",
 		[]taskFixture{
 			{id: "probe", scope: "session", setup: `echo '{}'`},
 			{id: "work", scope: "session", setup: `echo '{}'`},
 		},
 		[]nodeFixture{{id: "probe"}})
-	extra := providerRunningScript("wf", fmt.Sprintf(`mkdir -p %s
-echo '{"workspace_dir":"%s"}'
-`, workdir, workdir))
 	resourceHooks := `[delivery]
 kind = "resource"
-name = "fixture"
-match = '^https://github\.com/'
+` + deliveryResolverFields + `
 [delivery.observe]
 type = "exec"
 command = "printf"
@@ -493,8 +399,8 @@ type    = "exec"
 command = "sh"
 args    = ["-c", 'test -e "$1" || exit 3; echo done > "$2"', "provider", "` + toggle + `", "` + rec + `"]
 `
-	writeSetupWorkflow(t, cfg, "wf", extra)
-	writeResourceDefFixture(t, cfg.BaseDir, "delivery", resourceHooks)
+	attachWorkdirDir(t, cfg, "wf", workdir)
+	useResource(t, cfg, "wf", "delivery", resourceHooks)
 
 	// toggle is absent, so the unsubscribe hook fails.
 	url := "https://github.com/org/repo/issues/13"
@@ -532,27 +438,18 @@ args    = ["-c", 'test -e "$1" || exit 3; echo done > "$2"', "provider", "` + to
 	}
 }
 
-func TestDestroy_RunsWorkflowCleanup(t *testing.T) {
+func TestDestroy_RunsSessionEffectCleanup(t *testing.T) {
 	store := testStore(t)
 	workdir := filepath.Join(t.TempDir(), "wd")
 	marker := filepath.Join(t.TempDir(), "released")
 
-	cfg := writeWorkflowFixture(t, t.TempDir(), "wf",
+	cfg := writeWorkflowFixture(t, "wf",
 		[]taskFixture{{id: "noop", scope: "session", setup: "echo '{}'"}},
 		[]nodeFixture{{id: "noop"}})
-	writeSetupWorkflow(t, cfg, "wf",
-		providerCreatingWorkspace("wf", workdir)+fmt.Sprintf(`
-[wf.cleanup]
-type    = "exec"
-command = "sh"
-args    = ["-c", 'rm -rf "$1" && touch "$2"', "provider", { from = "self.outputs.workspace_dir" }, %q]
-
-[wf.outputs_schema]
-type = "object"
-
-[wf.outputs_schema.properties]
-workspace_dir = { type = "string" }
-`, marker))
+	attachWorkdir(t, cfg, "wf", taskFixture{
+		setup:   mkdirScript(workdir),
+		cleanup: fmt.Sprintf(`rm -rf '{{.Self "workspace_dir"}}' && touch %q`, marker),
+	})
 
 	url := "https://github.com/org/repo/issues/7"
 	if _, err := Create(cfg, store, CreateParams{URL: url}); err != nil {
@@ -561,57 +458,44 @@ workspace_dir = { type = "string" }
 	if err := os.Remove(filepath.Join(cfg.BaseDir, "workflows", "wf.toml")); err != nil {
 		t.Fatal(err)
 	}
-	if err := os.Remove(filepath.Join(cfg.BaseDir, "workspaces", "wf_provider.toml")); err != nil {
-		t.Fatal(err)
-	}
 
-	result, err := Destroy(cfg, store, DestroyParams{Identifier: "org/repo-7+wf"})
-	if err != nil {
+	if _, err := Destroy(cfg, store, DestroyParams{Identifier: "org/repo-7+wf"}); err != nil {
 		t.Fatalf("Destroy: %v", err)
 	}
 	if _, err := os.Stat(marker); err != nil {
-		t.Error("workflow cleanup did not run")
+		t.Error("effect cleanup did not run")
 	}
-	if !result.RemovedWorkspaceDir {
-		t.Error("workdir was removed by cleanup; result should report it")
+	if _, err := os.Stat(workdir); !os.IsNotExist(err) {
+		t.Errorf("workdir should have been removed by its producer's cleanup: %v", err)
 	}
 	if store.Get("org/repo-7+wf") != nil {
 		t.Error("state entry should be deleted")
 	}
 }
 
-// TestDestroy_ForwardsCleanupInputsToWorkflowCleanup pins the generic
-// escape hatch destroy operators use to pass provider-specific cleanup
-// intents (e.g. --input delete_branch=true) through to provider cleanup,
-// without core interpreting them.
-func TestDestroy_ForwardsCleanupInputsToWorkflowCleanup(t *testing.T) {
+// Destroy operators pass an effect's declared cleanup intents (for example
+// --input delete_branch=true) through to its cleanup, without core
+// interpreting them.
+func TestDestroy_ForwardsCleanupInputsToEffectCleanup(t *testing.T) {
 	store := testStore(t)
 	workdir := filepath.Join(t.TempDir(), "wd")
 	marker := filepath.Join(t.TempDir(), "delete_branch.txt")
 
-	cfg := writeWorkflowFixture(t, t.TempDir(), "wf",
+	cfg := writeWorkflowFixture(t, "wf",
 		[]taskFixture{{id: "noop", scope: "session", setup: "echo '{}'"}},
 		[]nodeFixture{{id: "noop"}})
-	writeSetupWorkflow(t, cfg, "wf",
-		providerCreatingWorkspace("wf", workdir)+fmt.Sprintf(`
-[wf.cleanup]
-type    = "exec"
-command = "sh"
-args = [
-  "-c",
-  'rm -rf "$1" && printf "%%s" "$2" > "$3"',
-  "provider",
-  { from = "self.outputs.workspace_dir" },
-  { from = "cleanup.inputs.delete_branch", default = "" },
-  %q,
-]
-
-[wf.outputs_schema]
+	attachWorkdir(t, cfg, "wf", taskFixture{
+		setup: mkdirScript(workdir),
+		cleanup: fmt.Sprintf(`rm -rf '{{.Self "workspace_dir"}}'
+printf '%%s' '{{.CleanupInputs "delete_branch"}}' > %q`, marker),
+		extra: `[cleanup.inputs_schema]
 type = "object"
+additionalProperties = false
 
-[wf.outputs_schema.properties]
-workspace_dir = { type = "string" }
-`, marker))
+[cleanup.inputs_schema.properties]
+delete_branch = { type = "boolean" }
+`,
+	})
 
 	url := "https://github.com/org/repo/issues/8"
 	if _, err := Create(cfg, store, CreateParams{URL: url}); err != nil {
@@ -629,20 +513,45 @@ workspace_dir = { type = "string" }
 		t.Fatal(err)
 	}
 	if got := strings.TrimSpace(string(data)); got != "true" {
-		t.Errorf("cleanup saw .CleanupInputs.delete_branch = %q, want true", got)
+		t.Errorf("cleanup saw cleanup.inputs.delete_branch = %q, want true", got)
 	}
 }
 
-func TestDestroy_WorkflowCleanupFailureBlocksWithoutForce(t *testing.T) {
+func TestDestroy_RejectsCleanupInputNoEffectDeclares(t *testing.T) {
 	store := testStore(t)
 	workdir := filepath.Join(t.TempDir(), "wd")
 
-	cfg := writeWorkflowFixture(t, t.TempDir(), "wf",
+	cfg := writeWorkflowFixture(t, "wf",
 		[]taskFixture{{id: "noop", scope: "session", setup: "echo '{}'"}},
 		[]nodeFixture{{id: "noop"}})
-	writeSetupWorkflow(t, cfg, "wf",
-		providerRunningScript("wf", fmt.Sprintf("mkdir -p %s\nprintf '{\"workspace_dir\":\"%s\"}'\n", workdir, workdir))+
-			"\n[wf.cleanup]\ntype = \"exec\"\ncommand = \"sh\"\nargs = [\"-c\", \"exit 9\"]\n")
+	attachWorkdirDir(t, cfg, "wf", workdir)
+	if _, err := Create(cfg, store, CreateParams{URL: "https://github.com/org/repo/issues/8"}); err != nil {
+		t.Fatalf("Create: %v", err)
+	}
+
+	_, err := Destroy(cfg, store, DestroyParams{
+		Identifier:    "org/repo-8+wf",
+		CleanupInputs: map[string]string{"unknown_key": "true"},
+	})
+	if err == nil || !strings.Contains(err.Error(), "unknown_key") {
+		t.Fatalf("err = %v, want rejection naming unknown_key", err)
+	}
+	if store.Get("org/repo-8+wf") == nil {
+		t.Error("a rejected cleanup input must leave the session in place")
+	}
+	if _, statErr := os.Stat(workdir); statErr != nil {
+		t.Errorf("a rejected cleanup input must not run any cleanup: %v", statErr)
+	}
+}
+
+func TestDestroy_EffectCleanupFailureBlocksWithoutForce(t *testing.T) {
+	store := testStore(t)
+	workdir := filepath.Join(t.TempDir(), "wd")
+
+	cfg := writeWorkflowFixture(t, "wf",
+		[]taskFixture{{id: "noop", scope: "session", setup: "echo '{}'"}},
+		[]nodeFixture{{id: "noop"}})
+	attachWorkdir(t, cfg, "wf", taskFixture{setup: mkdirScript(workdir), cleanup: "exit 9"})
 
 	url := "https://github.com/org/repo/issues/8"
 	if _, err := Create(cfg, store, CreateParams{URL: url}); err != nil {
@@ -653,8 +562,8 @@ func TestDestroy_WorkflowCleanupFailureBlocksWithoutForce(t *testing.T) {
 	if err == nil {
 		t.Fatal("expected destroy to fail-fast on cleanup error")
 	}
-	if !strings.Contains(err.Error(), "--force") {
-		t.Errorf("error should hint at --force: %v", err)
+	if !strings.Contains(err.Error(), workdirEffectID) {
+		t.Errorf("error should name the failing node: %v", err)
 	}
 	if store.Get("org/repo-8+wf") == nil {
 		t.Error("state entry must survive a blocked destroy")
@@ -677,12 +586,10 @@ func TestUp_RecoversFailedWorkflowSetup(t *testing.T) {
 	workdir := filepath.Join(t.TempDir(), "wd")
 	gate := filepath.Join(t.TempDir(), "gate")
 
-	cfg := writeWorkflowFixture(t, t.TempDir(), "wf",
+	cfg := writeWorkflowFixture(t, "wf",
 		[]taskFixture{{id: "noop", scope: "session", setup: "echo '{}'"}},
 		[]nodeFixture{{id: "noop"}})
-	writeSetupWorkflow(t, cfg, "wf", providerRunningScript("wf", fmt.Sprintf(
-		"[ -f %s ] || { echo transient >&2; exit 1; }\nmkdir -p %s\nprintf '{\"workspace_dir\":\"%s\"}'\n",
-		gate, workdir, workdir)))
+	attachWorkdir(t, cfg, "wf", taskFixture{setup: fmt.Sprintf("[ -f %s ] || { echo transient >&2; exit 1; }\n", gate) + mkdirScript(workdir)})
 
 	url := "https://github.com/org/repo/issues/9"
 	if _, err := Create(cfg, store, CreateParams{URL: url}); err == nil {
@@ -696,7 +603,7 @@ func TestUp_RecoversFailedWorkflowSetup(t *testing.T) {
 		t.Fatalf("Up should recover the partial create: %v", err)
 	}
 	s := store.Get("org/repo-9+wf")
-	if st := s.Nodes[contract.WorkflowPseudoNodeID]; st == nil || st.Status != contract.TaskStatusProduced {
-		t.Fatalf("pseudo-node = %+v, want produced after Up recovery", st)
+	if st := s.Nodes[workdirEffectID]; st == nil || st.Status != contract.TaskStatusProduced {
+		t.Fatalf("workdir node = %+v, want produced after Up recovery", st)
 	}
 }

@@ -29,7 +29,6 @@ issue, and the residues it surfaced are owner calls on the specification PR.
 | `effects/` | The effect kind: lifecycle, health, terminal, nesting |
 | `workflows/` | The workflow kind, including user-owned populations |
 | `channels/` | The channel kind |
-| `providers/` | The workspace provider kind |
 | `resources/` | The resource kind |
 | `chains/` | Chains, a task-document construct |
 | `plugins/` | Plugin and catalog manifests |

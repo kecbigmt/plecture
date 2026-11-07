@@ -12,7 +12,7 @@ import (
 
 func TestPublishTerminalToParent_WakePreservesSuspendedRepairStreak(t *testing.T) {
 	store := testStore(t)
-	cfg := writeWorkflowFixture(t, t.TempDir(), "default", []taskFixture{{id: "runner", scope: contract.TaskScopeRun, setup: "echo '{}'", alive: "true"}}, []nodeFixture{{id: "initial", uses: "runner"}})
+	cfg := writeWorkflowFixture(t, "default", []taskFixture{{id: "runner", scope: contract.TaskScopeRun, setup: "echo '{}'", alive: "true"}}, []nodeFixture{{id: "initial", uses: "runner"}})
 	parent := "owner/repo-parent"
 	seedRepairSession(t, store, parent, nil)
 	if err := store.Update(parent, func(s *domain.Session) error {
@@ -41,7 +41,7 @@ func TestPublishTerminalToParent_WakePreservesSuspendedRepairStreak(t *testing.T
 
 func TestPublishTerminalToParent_NoParentIsNoOp(t *testing.T) {
 	store := testStore(t)
-	cfg := &config.Config{WorkspaceDirsRoot: t.TempDir()}
+	cfg := &config.Config{}
 	seedSessionWithNodes(t, store, "owner/repo-1", "owner/repo", 1, "", nil)
 
 	id, wakeErr, err := PublishTerminalToParent(cfg, store, "owner/repo-1", TerminalParams{
@@ -61,7 +61,7 @@ func TestPublishTerminalToParent_NoParentIsNoOp(t *testing.T) {
 
 func TestPublishTerminalToParent_RootPrefixDeliversToRootTarget(t *testing.T) {
 	store := testStore(t)
-	cfg := &config.Config{WorkspaceDirsRoot: t.TempDir()}
+	cfg := &config.Config{}
 	seedSessionWithNodes(t, store, "owner/repo-1", "owner/repo", 1, "", nil)
 	seedSessionWithNodes(t, store, "owner/repo-reviewer", "owner/repo", 1, "claude", nil)
 	setParent(t, store, "owner/repo-reviewer", "root:owner/repo-1")
@@ -91,7 +91,7 @@ func TestPublishTerminalToParent_RootPrefixDeliversToRootTarget(t *testing.T) {
 
 func TestPublishTerminalToParent_WritesIntoParentsOwnLog(t *testing.T) {
 	store := testStore(t)
-	cfg := &config.Config{WorkspaceDirsRoot: t.TempDir()}
+	cfg := &config.Config{}
 	seedSessionWithNodes(t, store, "owner/repo-orchestrator", "owner/repo", 1, "", nil)
 	seedSessionWithNodes(t, store, "owner/repo-1", "owner/repo", 1, "claude", nil)
 	setParent(t, store, "owner/repo-1", "owner/repo-orchestrator")
@@ -149,7 +149,7 @@ func TestPublishTerminalToParent_WritesIntoParentsOwnLog(t *testing.T) {
 
 func TestPublishTerminalToParent_DeadSummaryAlreadySelfDescribingIsNotDoubled(t *testing.T) {
 	store := testStore(t)
-	cfg := &config.Config{WorkspaceDirsRoot: t.TempDir()}
+	cfg := &config.Config{}
 	seedSessionWithNodes(t, store, "owner/repo-orchestrator", "owner/repo", 1, "", nil)
 	seedSessionWithNodes(t, store, "owner/repo-1", "owner/repo", 1, "claude", nil)
 	setParent(t, store, "owner/repo-1", "owner/repo-orchestrator")
@@ -176,7 +176,7 @@ func TestPublishTerminalToParent_DeadSummaryAlreadySelfDescribingIsNotDoubled(t 
 
 func TestPublishTerminalToParent_DedupSkipsRepeatedPush(t *testing.T) {
 	store := testStore(t)
-	cfg := &config.Config{WorkspaceDirsRoot: t.TempDir()}
+	cfg := &config.Config{}
 	seedSessionWithNodes(t, store, "owner/repo-orchestrator", "owner/repo", 1, "", nil)
 	seedSessionWithNodes(t, store, "owner/repo-1", "owner/repo", 1, "claude", nil)
 	setParent(t, store, "owner/repo-1", "owner/repo-orchestrator")
@@ -209,7 +209,7 @@ func TestPublishTerminalToParent_DedupSkipsRepeatedPush(t *testing.T) {
 
 func TestPublishTerminalToParent_DedupIsPerType(t *testing.T) {
 	store := testStore(t)
-	cfg := &config.Config{WorkspaceDirsRoot: t.TempDir()}
+	cfg := &config.Config{}
 	seedSessionWithNodes(t, store, "owner/repo-orchestrator", "owner/repo", 1, "", nil)
 	seedSessionWithNodes(t, store, "owner/repo-1", "owner/repo", 1, "claude", nil)
 	setParent(t, store, "owner/repo-1", "owner/repo-orchestrator")
@@ -233,7 +233,7 @@ func TestPublishTerminalToParent_DedupIsPerType(t *testing.T) {
 
 func TestPublishTerminalToParent_RunScopeUpTargetIsNotWoken(t *testing.T) {
 	store := testStore(t)
-	cfg := &config.Config{WorkspaceDirsRoot: t.TempDir()}
+	cfg := &config.Config{}
 	seedSessionWithNodes(t, store, "owner/repo-orchestrator", "owner/repo", 1, "", map[string]*contract.TaskState{
 		"tmux": {Scope: contract.TaskScopeRun, Status: contract.TaskStatusProduced},
 	})
@@ -260,7 +260,7 @@ func TestPublishTerminalToParent_RunScopeUpTargetIsNotWoken(t *testing.T) {
 
 func TestPublishTerminalToParent_FullStopTargetRecordsPushWithoutWake(t *testing.T) {
 	store := testStore(t)
-	cfg := &config.Config{WorkspaceDirsRoot: t.TempDir()}
+	cfg := &config.Config{}
 	seedSessionWithNodes(t, store, "owner/repo-orchestrator", "owner/repo", 1, "", nil)
 	seedSessionWithNodes(t, store, "owner/repo-1", "owner/repo", 1, "claude", nil)
 	setParent(t, store, "owner/repo-1", "owner/repo-orchestrator")
@@ -287,7 +287,7 @@ func TestPublishTerminalToParent_FullStopTargetRecordsPushWithoutWake(t *testing
 // The invariant must hold even if a caller passes wakeIfDown=true by mistake.
 func TestPublishTerminalTo_SelfTargetNeverWakesRegardlessOfCallerRequest(t *testing.T) {
 	store := testStore(t)
-	cfg := &config.Config{WorkspaceDirsRoot: t.TempDir()}
+	cfg := &config.Config{}
 	// No workflow configured, so an attempted Up would fail loudly — proving
 	// absence of a wake attempt (wakeErr == nil) rather than merely a failed one.
 	seedSessionWithNodes(t, store, "owner/repo-1", "owner/repo", 1, "", nil)

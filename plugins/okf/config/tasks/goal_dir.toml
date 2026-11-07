@@ -1,0 +1,38 @@
+# local-okf goal directory effect: a read-context scratch directory over the
+# owner's knowledge bundle. A workflow composes it as a node and names its
+# `workspace_dir` output as its `workdir`; the directory lives under the owner
+# session's own workdir, so there is no dirs root.
+[goal_dir]
+kind  = "effect"
+scope = "session"
+
+[goal_dir.setup]
+type = "exec"
+bin  = "okf-bundle"
+args = ["setup", "--resource", { from = "resource.id" }, "--session", { from = "session.name" }]
+
+[goal_dir.cleanup]
+type = "exec"
+bin  = "okf-bundle"
+args = ["cleanup", "--workspace-dir", { from = "self.outputs.workspace_dir" }]
+
+[goal_dir.health.alive]
+type    = "exec"
+command = "test"
+args    = ["-d", { from = "self.outputs.workspace_dir" }]
+
+[goal_dir.outputs_schema]
+type     = "object"
+required = ["workspace_dir", "owner", "concept_id", "concept_path"]
+
+[goal_dir.outputs_schema.properties.workspace_dir]
+type = "string"
+
+[goal_dir.outputs_schema.properties.owner]
+type = "string"
+
+[goal_dir.outputs_schema.properties.concept_id]
+type = "string"
+
+[goal_dir.outputs_schema.properties.concept_path]
+type = "string"

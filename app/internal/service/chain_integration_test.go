@@ -53,7 +53,7 @@ revision = { from = "resource.state.revision" }
 	// The work session is keyed to an issue; the pull request it opened is a
 	// fact its resource observation reports, and the chain names it.
 	const prURL = "https://github.com/testowner/testrepo/pull/56"
-	stubObservedFacts(t, cfg, ".", map[string]any{"checks_status": "SUCCESS", "revision": "sha1", "pr_url": prURL})
+	stubObservedFacts(t, cfg, map[string]any{"checks_status": "SUCCESS", "revision": "sha1", "pr_url": prURL})
 
 	url := "https://github.com/testowner/testrepo/issues/55"
 	work := "testowner/testrepo-55+default"
@@ -139,7 +139,7 @@ func TestIntegration_LegacyChainsFileIsRefused(t *testing.T) {
 		},
 		[]nodeFixture{{id: "tmux"}},
 	)
-	stubObservedFacts(t, cfg, ".", map[string]any{"checks_status": "SUCCESS", "revision": "sha1"})
+	stubObservedFacts(t, cfg, map[string]any{"checks_status": "SUCCESS", "revision": "sha1"})
 	dir := filepath.Join(cfg.BaseDir, "chains")
 	if err := os.MkdirAll(dir, 0o755); err != nil {
 		t.Fatal(err)

@@ -166,7 +166,7 @@ func renderStatus(cmd *cobra.Command, result *service.StatusResult) {
 // renderStatusWork prints one "Task <name> <status>" line per produced
 // instance, with a done expansion only for instances that declare a
 // done_when — the unified display rule applies regardless of task origin
-// (run / node / @workflow / initial / runtime-added), so there is no
+// (run / node / initial / runtime-added), so there is no
 // scope/case-splitting by origin here.
 func renderStatusWork(out interface{ Write([]byte) (int, error) }, work []service.StatusTask, persisted bool) {
 	for i, t := range work {

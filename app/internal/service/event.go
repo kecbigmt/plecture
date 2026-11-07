@@ -505,9 +505,9 @@ func resolveSessionName(cfg *config.Config, store *state.Store, identifier strin
 		return "", &Error{Code: ErrInvalidInput, Message: fmt.Sprintf("identifier %q matches multiple sessions (%s); use the session name", identifier, strings.Join(names, ", "))}
 	}
 
-	// Workspace provider resolver dispatch (pure/offline). cfg is nil in some unit tests.
+	// Resource-type dispatch (pure/offline). cfg is nil in some unit tests.
 	if cfg != nil {
-		if disp, matched, err := dispatchResource(cfg, "", identifier); err == nil && matched {
+		if disp, matched, err := dispatchResource(cfg, "", "", identifier); err == nil && matched {
 			return disp.Name, nil
 		}
 	}

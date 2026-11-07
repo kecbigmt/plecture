@@ -1,7 +1,6 @@
 {
   "sessionName": "team/workspace-a",
   "resourceId": "https://example.com/team/workspace/issues/1",
-  "branch": "issue/1",
   "workflow": "default",
   "children": ["team/workspace-a/review"],
   "inputs": {
@@ -12,7 +11,8 @@
   "createdAt": "2026-09-06T00:00:00Z",
   "run": "up",
   "health": "healthy",
-  "workspaceDirExists": true,
+  "workdir": "/work/team/workspace-a",
+  "workdirExists": true,
   "tasks": [
     { "instance": "initial", "status": "produced" }
   ]

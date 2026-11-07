@@ -13,16 +13,13 @@ import (
 // frozen workflow is impossible now that the inline `[[tasks]]`
 // path is gone, but we surface it as an error rather than panicking so a stale state
 // entry from before the migration doesn't crash the binary.
-func buildPlanForSession(cfg *config.Config, workdirDir string, session *domain.Session) (*task.Plan, error) {
+func buildPlanForSession(cfg *config.Config, session *domain.Session) (*task.Plan, error) {
 	if session == nil || session.Workflow == "" {
 		return nil, fmt.Errorf("session has no frozen workflow; destroy and recreate it with --workflow")
 	}
 	if r, ok, err := config.RevisionForSession(session); ok || err != nil {
 		if err != nil {
 			return nil, err
-		}
-		if r.WorkspaceCapturePending {
-			return nil, fmt.Errorf("session %q has pending workspace capture; retry create or destroy it", session.Name)
 		}
 		return task.CompileWorkflow(r.Workflow, r.Effects)
 	}

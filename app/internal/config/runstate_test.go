@@ -16,6 +16,7 @@ func writeRunScopedWorkflow(t *testing.T) string {
 	writeFile(t, filepath.Join(base, "workflows", "default.toml"), `
 [default]
 kind = "workflow"
+resource = "issue"
 
 [[default.nodes]]
 id   = "pane"

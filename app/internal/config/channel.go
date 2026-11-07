@@ -18,7 +18,7 @@ const (
 
 // ChannelInputSpec is the per-key shorthand in a channel's [input_schema]
 // (`path = { type = "string", required = true }`) — deliberately not the full
-// JSON-Schema document effects and workspace providers carry, because only a
+// JSON-Schema document effects carry, because only a
 // channel input's presence is checked before delivery.
 type ChannelInputSpec struct {
 	Type     string
@@ -36,9 +36,8 @@ type ChannelInputSpec struct {
 }
 
 // ChannelDefinition binds a workflow's [[event.channel]] to one delivery
-// primitive. It follows the workspace provider trust model, not the
-// per-workspace-dir workflow cascade: an exec or shell channel runs a
-// process, so only user/machine-owned layers may declare one and event data
+// primitive. It loads from the trusted base layers alone, not the ancestor
+// overlay cascade: an exec or shell channel runs a process, so only user/machine-owned layers may declare one and event data
 // must never choose what runs.
 type ChannelDefinition struct {
 	ID          string
@@ -88,8 +87,8 @@ func (d ChannelDefinition) ApplyInputDefaults(inputs map[string]any) map[string]
 }
 
 // LoadChannels loads every channel the trusted base layers declare: plugin
-// roots first, then the global config dir. The per-workspace-dir cascade is
-// excluded for the same reason as workspace providers — a channel may run a
+// roots first, then the global config dir. The ancestor overlay cascade is
+// excluded for the same reason as for resources — a channel may run a
 // process.
 func (c *Config) LoadChannels() (map[string]ChannelDefinition, error) {
 	resolved, err := c.trustedKind(lang.KindChannel)

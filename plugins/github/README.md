@@ -1,6 +1,6 @@
 # github
 
-The GitHub catalog plugin: a workspace provider and a resource observation
+The GitHub catalog plugin: a worktree effect and a resource observation
 contract, plus watcher subscription wiring, reconciled from the production
 GitHub configuration this repository was originally bootstrapped with.
 
@@ -20,8 +20,12 @@ rollup, and linked-PR discovery.
   `src/cmd/github-webhook-receiver`, `src/cmd/gh-app-token`); plus
   `gh-guard` (`scripts/gh-guard`) and `gh-app-guard`
   (`scripts/gh-app-guard`), shipped shell shims, not build targets.
-- `workspaces/worktree.toml` — declares the `worktree` provider: resolves a GitHub issue/PR URL to a session id
-  and acquires/releases the git worktree it maps to.
+- `tasks/worktree.toml` — declares the session-scoped `worktree` effect: acquires/releases the git worktree
+  a GitHub issue/PR resource maps to, on a branch it chooses itself, and
+  outputs `workspace_dir` and `branch`. A workflow names that output as its
+  `workdir` (see "Workflow example" below). The session id a GitHub URL
+  resolves to comes from `resources/issue.toml` and
+  `resources/pull_request.toml`.
 - `resources/issue.toml`, `resources/pull_request.toml` — the standalone observation contracts, one per resource kind
   (`plect resource status`): resource kind, CI check rollup, issue
   completion, revision, linked PR, mergeability, and GitHub's own aggregate
@@ -61,11 +65,11 @@ rollup, and linked-PR discovery.
 
 Out of scope for this plugin: which agent CLI runs the session (a Claude or
 Codex task/workflow pack is a separate plugin), and the workflow that wires
-`workspace_provider = "official.github.worktree"` plus an agent pack together.
+the `worktree` effect plus an agent pack together.
 
 **Removed:** a GitHub Projects v2 item id (`PVTI_...`) is no longer an
 accepted resource identifier. It was never reachable through shipped
-dispatch — the `worktree` provider's `match` regex above only matches an
+dispatch — the `issue`/`pull_request` resources' `match` regexes above only match an
 issue or pull request URL — so the `gh api graphql` resolution path that
 used to back it (ambient-`gh`-authenticated, never App-aware) was dead
 code, removed rather than kept behind a deprecation shim. See
@@ -76,14 +80,13 @@ where this is a live change.
 ## Cleanup
 
 `plect destroy` always releases the worktree it acquired. To also delete the
-local branch, pass the workspace-provider-level cleanup intent this plugin
-reads:
+local branch, pass the cleanup input the `worktree` effect declares:
 
 ```bash
 plect destroy <session> --input delete_branch=true
 ```
 
-Left off, the branch decision falls through to the workspace provider's
+Left off, the branch decision falls through to the `worktree` effect's
 `delete_branch_default` parameter below, which is itself off unless a
 workflow says otherwise (the safer default for a review-only or
 shared-branch session). Branch deletion uses a safe `git branch -d`, so it
@@ -132,21 +135,35 @@ self-test asserts the two never overlap).
 
 Author-declared values a workflow sets to steer this plugin's configs
 without replacing them (the parameterization rung of
-`docs/design/task-nesting.md`'s customization ladder). The workspace
-provider's parameters go in a workflow's `[workspace_provider_inputs]`
-table:
+`docs/design/task-nesting.md`'s customization ladder). The `worktree`
+effect's parameters go in its workflow node's `inputs`:
 
 | Parameter | Meaning |
 |---|---|
-| `workspace_layout_root` | Root the `github.com/<owner>/<repo>/<branch>` worktree containers are laid out under. Empty = the configured `workspace_dirs_root`. |
+| `dirs_root` | Root worktree containers are laid out under when `workspace_layout_root` is unset. Empty = `$HOME/workspace_dirs`. |
+| `workspace_layout_root` | Root the `github.com/<owner>/<repo>/<branch>` worktree containers are laid out under. Empty = `dirs_root`. |
 | `issue_branch_template` | Branch name an issue resource maps to. Placeholders: `{owner}`, `{repo}`, `{number}`. Default `issue/{number}`. A pull request's branch always comes from its head ref. |
 | `tagged_branch_suffix` | Suffix appended for a tagged session, separator included. Placeholder: `{tag}`. Default `+{tag}`. |
 | `delete_branch_default` | `"true"` to reclaim the branch on destroy when the caller expressed no `delete_branch` intent. Default off. |
 
-```toml
-workspace_provider = "official.github.worktree"
+## Workflow example
 
-[workspace_provider_inputs]
+A workflow declares its entry resource and, optionally, the directory its
+non-preparation nodes run in. The `worktree` node is the `workdir` producer,
+so it runs in the user's home directory and every other node runs in the
+checkout it creates:
+
+```toml
+[pull_review]
+kind     = "workflow"
+resource = "official.github.pull_request"
+workdir  = { from = "nodes.worktree.outputs.workspace_dir" }
+
+[[pull_review.nodes]]
+id   = "worktree"
+uses = "official.github.worktree"
+
+[pull_review.nodes.inputs]
 workspace_layout_root = "~/worktrees"
 issue_branch_template = "work/{number}"
 delete_branch_default = "true"
@@ -226,7 +243,7 @@ not a per-session task in a plan, so there is no per-call installation
 context to select a token by — this is deliberately one App id/installation
 per deployment, set via environment rather than `gh_app_guard`'s per-session
 task inputs. `github-watcher gh-api`, the cross-process helper the workspace
-provider and resource observation call into, shares the same auth (same env,
+`worktree` effect and resource observation call into, shares the same auth (same env,
 same token cache), so both the poll loop and config-layer `gh api` calls
 authenticate as the one installation. Set these on the `github-watcher serve`
 process (and anywhere `gh-api` runs standalone):
@@ -294,7 +311,7 @@ plect plugin add official/github
 `--subdir plugins` scopes the catalog root (and the fetch/verify/mount trust
 space) to this repository's `plugins/` subtree, where `plugins/catalog.toml`
 lives — not the whole repository. This plugin's own config
-(workspaces/resources) never encodes the alias you register under: it
+(tasks/resources) never encodes the alias you register under: it
 resolves its executables through `{ bin = "github-worktree" }`'s plugin-local
 bare-name reading, which resolves against the containing plugin regardless of
 which alias you chose.
@@ -321,11 +338,12 @@ What stays in your own config after enabling this plugin:
 
 - Resource allowlist entries (`resource_allowlist` in `config.toml`) for the
   owners/repositories you allow `plect create` to dispatch against.
-- Workspace dirs root choice (`workspace_dirs_root` in `config.toml`), and a
+- Dirs root choice (the `worktree` node's `dirs_root` input; default
+  `$HOME/workspace_dirs`), and a
   per-repository `<repoDir>/.plect/base-branch` file for a repository that
   branches from something other than its actual default (a git-flow repo
   branching from `develop`, say).
-- Whether you compose the GitHub workspace provider/tasks with a Claude,
+- Whether you compose the GitHub worktree effect/tasks with a Claude,
   Codex, or other agent workflow pack.
 - Team-specific process on top of `work` / `review` / `respond` /
   `investigate` — project-board integration, PR-description conventions,

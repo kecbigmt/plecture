@@ -9,7 +9,8 @@ import (
 func TestParseDefinitionDocumentValid(t *testing.T) {
 	defs, err := ParseDefinitionDocument("relative.toml", []byte(`
 [worktree]
-kind = "workspace_provider"
+kind  = "effect"
+scope = "session"
 
 [worktree.setup]
 type = "exec"
@@ -20,8 +21,8 @@ kind  = "effect"
 scope = "run"
 
 [review_session]
-kind               = "workflow"
-workspace_provider = "worktree"
+kind     = "workflow"
+resource = "issue"
 
 [[review_session.nodes]]
 uses = "runtime"
@@ -36,7 +37,7 @@ uses = "runtime"
 	for _, d := range defs {
 		byID[d.ID] = d
 	}
-	if byID["worktree"] == nil || byID["worktree"].Kind != KindWorkspaceProvider {
+	if byID["worktree"] == nil || byID["worktree"].Kind != KindEffect {
 		t.Errorf("worktree: %+v", byID["worktree"])
 	}
 	if byID["runtime"] == nil || byID["runtime"].Kind != KindEffect {
@@ -66,7 +67,7 @@ kind = "environment"
 func TestParseDefinitionDocumentIDInvalid(t *testing.T) {
 	_, err := ParseDefinitionDocument("f.toml", []byte(`
 [local-okf]
-kind = "workspace_provider"
+kind = "effect"
 `))
 	assertDiagnostic(t, err, CodeIDInvalid, LayerStructural)
 }

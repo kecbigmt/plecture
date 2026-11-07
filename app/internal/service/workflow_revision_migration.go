@@ -24,7 +24,7 @@ func BackfillWorkflowRevisions(cfg *config.Config, store *state.Store) error {
 	sort.Strings(names)
 	for _, name := range names {
 		s := sessions[name]
-		revision, err := cfg.CaptureWorkflowRevision(s.WorkspaceDirPath, s.Workflow)
+		revision, err := cfg.CaptureWorkflowRevision("", s.Workflow)
 		if err != nil {
 			return fmt.Errorf("migrate session %q workflow revision: %w", name, err)
 		}
@@ -39,7 +39,7 @@ func BackfillWorkflowRevisions(cfg *config.Config, store *state.Store) error {
 			if current.WorkflowRevision != "" {
 				return nil
 			}
-			if current.Workflow != s.Workflow || current.WorkspaceDirPath != s.WorkspaceDirPath {
+			if current.Workflow != s.Workflow {
 				return fmt.Errorf("session identity changed during workflow revision migration")
 			}
 			current.WorkflowRevision = digest

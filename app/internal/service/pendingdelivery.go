@@ -6,7 +6,6 @@ import (
 	"log/slog"
 
 	"github.com/kecbigmt/plecture/app/internal/config"
-	"github.com/kecbigmt/plecture/app/internal/domain"
 	"github.com/kecbigmt/plecture/app/internal/persistence"
 	"github.com/kecbigmt/plecture/app/internal/state"
 )
@@ -104,7 +103,7 @@ func sweepOrphanedPendingDeliveries(cfg *config.Config, store *state.Store) {
 				sweepErr = dequeuePendingDelivery(store, retry)
 				return
 			}
-			unsubscribed, err := unsubscribeIfWired(cfg, retry.Session, retry.ResourceID, "")
+			unsubscribed, err := unsubscribeIfWired(cfg, retry.Session, retry.ResourceID)
 			if err != nil || !unsubscribed {
 				sweepErr = err
 				return
@@ -154,7 +153,7 @@ func flushOnePendingDelivery(cfg *config.Config, store *state.Store, retry persi
 		if fresh == nil || !resourceStillNeededBySession(fresh, retry.ResourceID) {
 			return dequeuePendingDelivery(store, retry)
 		}
-		subscribed, err := subscribeIfWiredWithPolicy(cfg, retry.Session, retry.ResourceID, domain.SessionBranch(fresh), nodeSubscriptionNeededBySession(fresh, retry.ResourceID))
+		subscribed, err := subscribeIfWiredWithPolicy(cfg, retry.Session, retry.ResourceID, nodeSubscriptionNeededBySession(fresh, retry.ResourceID))
 		if err != nil || !subscribed {
 			return err
 		}
@@ -163,7 +162,7 @@ func flushOnePendingDelivery(cfg *config.Config, store *state.Store, retry persi
 		if fresh != nil && resourceStillNeededBySession(fresh, retry.ResourceID) {
 			return dequeuePendingDelivery(store, retry)
 		}
-		unsubscribed, err := unsubscribeIfWired(cfg, retry.Session, retry.ResourceID, domain.SessionBranch(fresh))
+		unsubscribed, err := unsubscribeIfWired(cfg, retry.Session, retry.ResourceID)
 		if err != nil || !unsubscribed {
 			return err
 		}

@@ -112,8 +112,8 @@ receiving everything and relying on a later check to reject the rest.
 | Resource `name` | `match.<capture>` |
 | Resource `observe` | `resource.id`, `resource.inputs.<key>` |
 | Resource `finalize` | `resource.id`, `session.name`, `resource.revision`, `judges`, `resource.inputs.<key>` |
-| Resource `subscribe` | `session.name`, `session.branch`, `resource.id`, `resource.inputs.<key>` |
-| Resource `unsubscribe` | `session.name`, `session.branch`, `resource.id`, `resource.inputs.<key>` |
+| Resource `subscribe` | `session.name`, `resource.id`, `resource.inputs.<key>` |
+| Resource `unsubscribe` | `session.name`, `resource.id`, `resource.inputs.<key>` |
 | Resource query means | `inputs.<key>` |
 | Workflow public `outputs` | `nodes.<id>.outputs.<key>`, `session.inputs.<key>` |
 | Workflow population session `inputs` | `resource.id`, `item.<key>` |

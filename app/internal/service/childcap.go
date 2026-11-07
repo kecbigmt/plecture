@@ -38,7 +38,7 @@ func reserveChildCapSlot(cfg *config.Config, store *state.Store, childSessionNam
 		if parent == nil {
 			return false, nil
 		}
-		wf, err := loadSessionWorkflow(cfg, parent.WorkspaceDirPath, parent)
+		wf, err := loadSessionWorkflow(cfg, parent)
 		if err != nil {
 			return false, &Error{Code: ErrExecutionFailed, Message: fmt.Sprintf("load parent %s workflow: %v", parentSessionName, err)}
 		}

@@ -28,6 +28,11 @@ const nodeReadPrefix = "nodes."
 
 const publicOutputReadPrefix = "workflow.outputs."
 
+type WorkdirRef struct {
+	Node string
+	Key  string
+}
+
 // WorkflowNodes reads one workflow definition's node array as the topology it
 // declares: each node's id (defaulted from the referenced definition's id),
 // the node ids its input values read, and whether those edges form a cycle.
@@ -134,6 +139,35 @@ func workflowNode(entry map[string]any, pos Position, outputs map[string]*Value)
 		node.Subscription = strings.TrimPrefix(path, "self.outputs.")
 	}
 	return node, nil
+}
+
+// WorkflowWorkdir reads `workdir` as one node-output projection rather than a
+// general value: the preparation nodes are derived from the node it names
+// before anything is evaluated.
+func WorkflowWorkdir(def *Definition) (*WorkdirRef, error) {
+	raw, ok := def.Body["workdir"]
+	if !ok {
+		return nil, nil
+	}
+	at := childPos(Position{File: def.File, Path: def.ID}, "workdir")
+	tbl, err := table(raw, at)
+	if err != nil {
+		return nil, err
+	}
+	const shape = "workdir projects one node output as { from = \"nodes.<id>.outputs.<key>\" }"
+	if err := rejectUnknownFields(tbl, at, "from"); err != nil {
+		return nil, err
+	}
+	path, isString := tbl["from"].(string)
+	if !isString {
+		return nil, newDiag(CodeFromRoot, LayerStructural, at, shape)
+	}
+	segments := strings.Split(path, ".")
+	if len(segments) != 4 || segments[0] != "nodes" || segments[2] != "outputs" ||
+		!isValidID(segments[1]) || !isValidID(segments[3]) {
+		return nil, newDiag(CodeFromRoot, LayerStructural, at, shape)
+	}
+	return &WorkdirRef{Node: segments[1], Key: segments[3]}, nil
 }
 
 func WorkflowOutputValues(def *Definition) (map[string]*Value, error) {

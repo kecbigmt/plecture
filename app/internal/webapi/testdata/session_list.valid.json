@@ -5,8 +5,7 @@
       "displayStatus": "up · healthy",
       "run": "up",
       "health": "healthy",
-      "resourceId": "https://example.com/team/workspace/issues/1",
-      "branch": "issue/1"
+      "resourceId": "https://example.com/team/workspace/issues/1"
     },
     {
       "sessionName": "team/workspace-b",

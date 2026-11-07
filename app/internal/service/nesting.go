@@ -53,6 +53,7 @@ type probeTarget struct {
 	Self     map[string]any
 	Inputs   map[string]any
 	Env      []string
+	Dir      string
 	// SourcePath is the file this unit's probes were declared in — one
 	// layer's own declaration for a nesting chain — so a plugin-local bare
 	// `bin = "<name>"` resolves against the plugin that ships it.
@@ -74,6 +75,7 @@ func (t probeTarget) probe(action *lang.Action) task.Probe {
 		From:       t.From,
 		Env:        t.Env,
 		Process:    t.Process,
+		Dir:        t.Dir,
 	}
 }
 
@@ -94,6 +96,7 @@ func probeTargets(instance string, def config.TaskDefinition, st *contract.TaskS
 			SourcePath: def.SourcePath,
 			From:       def.Ownership(),
 			Process:    st.Process,
+			Dir:        st.Directory,
 		}}
 	}
 	var targets []probeTarget
@@ -111,6 +114,7 @@ func probeTargets(instance string, def config.TaskDefinition, st *contract.TaskS
 			SourcePath: layer.SourcePath,
 			From:       layer.From,
 			Process:    st.Process,
+			Dir:        st.Directory,
 		})
 	}
 	return targets

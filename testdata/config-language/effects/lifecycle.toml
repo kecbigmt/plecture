@@ -9,13 +9,12 @@ scope = "run"
 type = "shell"
 script = '''
 tmux has-session -t "$session_name" 2>/dev/null \
-  || tmux new-session -d -s "$session_name" -c "$workspace_dir"
+  || tmux new-session -d -s "$session_name"
 printf '{"session_name":"%s"}\n' "$session_name"
 '''
 
 [pane.setup.bind]
-session_name  = { from = "session.name" }
-workspace_dir = { from = "workspace.dir" }
+session_name = { from = "session.name" }
 
 [pane.cleanup]
 type   = "shell"

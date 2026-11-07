@@ -61,31 +61,6 @@ const (
 	RelationUnrelated  SessionRelation = "unrelated"
 )
 
-// branchOutputKey is the workspace-provider output key a git-backed
-// workspace provider is conventioned to publish its checked-out branch
-// under. Core does not define or require this key; SessionBranch is a
-// convenience projection for the several call sites that want it, not a
-// core concept of its own.
-const branchOutputKey = "branch"
-
-// SessionBranch reads the @workflow pseudo-node's own "branch" output, or
-// "" if the session's workflow setup never published one (no workspace
-// provider, a provider that isn't git-backed, or setup has not run yet).
-// This is deliberately not a Session field: a checked-out branch is git
-// vocabulary, and core stays version-control-agnostic by identity, so the
-// fact lives only in the provider's own setup output.
-func SessionBranch(s *Session) string {
-	if s == nil || s.Nodes == nil {
-		return ""
-	}
-	ws, ok := s.Nodes[contract.WorkflowPseudoNodeID]
-	if !ok || ws == nil {
-		return ""
-	}
-	branch, _ := ws.Outputs[branchOutputKey].(string)
-	return branch
-}
-
 // MergedTasks combines s.Nodes and s.Tasks into one map (a fresh shallow
 // copy — writing into it does not reach s.Nodes/s.Tasks).
 func MergedTasks(s *Session) map[string]*contract.TaskState {

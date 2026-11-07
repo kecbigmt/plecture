@@ -40,6 +40,10 @@ func cleanupRoots(ctx RenderContext) lang.Roots {
 	env["inputs"] = normalizeOutputs(ctx.Inputs)
 	env["nodes"] = nodeRoots(ctx.Tasks)
 	env["workflow"] = map[string]any{"outputs": orEmpty(normalizeOutputs(ctx.Workflow))}
+	env["force"] = ctx.Session.Force
+	if len(ctx.CleanupInputs) > 0 {
+		env["cleanup"] = map[string]any{"inputs": normalizeOutputs(ctx.CleanupInputs)}
+	}
 	return env
 }
 
@@ -52,7 +56,6 @@ func healthRoots(ctx RenderContext) lang.Roots {
 
 func terminalRoots(self map[string]any, session SessionVars) lang.Roots {
 	env := sessionRoots(RenderContext{Session: session})
-	delete(env, "workspace")
 	env["self"] = map[string]any{"outputs": orEmpty(normalizeOutputs(self))}
 	return env
 }
@@ -74,27 +77,7 @@ func sessionRoots(ctx RenderContext) lang.Roots {
 	if inputs := normalizeOutputs(ctx.Session.Inputs); len(inputs) > 0 {
 		session["inputs"] = inputs
 	}
-	env := lang.Roots{"session": session}
-	if workspace := presentStrings(map[string]string{
-		"dir":    ctx.Session.WorkspaceDirPath,
-		"branch": ctx.Session.Branch,
-	}); workspace != nil {
-		env["workspace"] = workspace
-	}
-	return env
-}
-
-func presentStrings(in map[string]string) map[string]any {
-	out := map[string]any{}
-	for key, value := range in {
-		if value != "" {
-			out[key] = value
-		}
-	}
-	if len(out) == 0 {
-		return nil
-	}
-	return out
+	return lang.Roots{"session": session}
 }
 
 func nodeRoots(tasks map[string]map[string]any) map[string]any {
@@ -226,6 +209,7 @@ func chainHost(base RenderContext, observer Observer, scope, nodeID string) effe
 			ctx.Self = self
 			ctx.Inputs = inputs
 			ctx.SourcePath = layer.SourcePath
+			ctx.CleanupInputs = FilterCleanupInputs(layer.CleanupInputsSchema, base.Session.CleanupInputs)
 			if !layer.DeclaresProcess() {
 				ctx.Process = nil
 			}

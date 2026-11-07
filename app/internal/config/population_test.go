@@ -80,7 +80,7 @@ extends = "base_work"
 
 [agent]
 kind = "workflow"
-workspace_provider = "provider"
+resource = "source"
 [[agent.populations]]
 name = "dispatch"
 resource_observer = "source"
@@ -125,7 +125,7 @@ func TestPopulationDurationsMustBePositive(t *testing.T) {
 	for _, field := range []string{"poll_every", "expire_after"} {
 		t.Run(field, func(t *testing.T) {
 			base := t.TempDir()
-			src := "[agent]\nkind = \"workflow\"\n[[agent.populations]]\nname = \"dispatch\"\nresource_observer = \"source\"\n" + field + " = \"0s\"\n[agent.populations.query]\n"
+			src := "[agent]\nkind = \"workflow\"\nresource = \"issue\"\n[[agent.populations]]\nname = \"dispatch\"\nresource_observer = \"source\"\n" + field + " = \"0s\"\n[agent.populations.query]\n"
 			if err := os.WriteFile(filepath.Join(base, "agent.toml"), []byte(src), 0o644); err != nil {
 				t.Fatal(err)
 			}
@@ -207,7 +207,7 @@ resource          = "other"
 
 [agent]
 kind = "workflow"
-workspace_provider = "provider"
+resource = "source"
 [[agent.populations]]
 name = "dispatch"
 resource_observer = "source"

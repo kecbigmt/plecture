@@ -1,9 +1,9 @@
 # The local-okf.goal resource: a goal Concept in an owner's knowledge
 # bundle. The owner segment selects the orchestrator session (the
 # "owner:<owner>" alias); the concept id is resolved inside
-# <workspace-dir>/knowledge/bundle/ only — `..` or symlink escapes are
-# refused via realpath-based containment checks (workspaces/local-okf.toml
-# shares this resolution chain for workspace dispatch). Parsing (frontmatter
+# <workdir>/knowledge/bundle/ only — `..` or symlink escapes are refused via
+# realpath-based containment checks (tasks/goal_dir.toml shares this
+# resolution chain for directory acquisition at dispatch). Parsing (frontmatter
 # + "## Done When" checklist) treats the goal file's content as data, never
 # as code.
 

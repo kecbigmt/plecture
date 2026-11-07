@@ -86,7 +86,7 @@ func downUnlocked(cfg *config.Config, store *state.Store, params DownParams) (*D
 			return nil, &Error{Code: ErrExecutionFailed, Message: fmt.Sprintf("failed to record session status: %v", err)}
 		}
 	}
-	plan, err := buildPlanForSession(cfg, session.WorkspaceDirPath, session)
+	plan, err := buildPlanForSession(cfg, session)
 	if err != nil {
 		return nil, &Error{Code: ErrExecutionFailed, Message: err.Error()}
 	}

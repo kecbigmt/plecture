@@ -18,6 +18,7 @@ func TestWorkflowNodes_DerivesIDsAndReads(t *testing.T) {
 	def := workflowDef(t, `
 [session]
 kind = "workflow"
+resource = "issue"
 
 [[session.nodes]]
 uses = "pane"
@@ -53,6 +54,7 @@ func TestWorkflowNodes_SubscriptionReadsOnlyOwnOutput(t *testing.T) {
 	valid := workflowDef(t, `
 [session]
 kind = "workflow"
+resource = "issue"
 [[session.nodes]]
 uses = "thread"
 subscription = { from = "self.outputs.permalink" }
@@ -68,7 +70,7 @@ subscription = { from = "self.outputs.permalink" }
 		`subscription = { from = "self.outputs.permalink", inputs = {} }`,
 	} {
 		t.Run(declaration, func(t *testing.T) {
-			def := workflowDef(t, "[session]\nkind = \"workflow\"\n[[session.nodes]]\nuses = \"thread\"\n"+declaration)
+			def := workflowDef(t, "[session]\nkind = \"workflow\"\nresource = \"issue\"\n[[session.nodes]]\nuses = \"thread\"\n"+declaration)
 			if err := (Validation{}).ValidateDefinition(def); err == nil {
 				t.Fatal("invalid subscription was accepted")
 			}
@@ -80,6 +82,7 @@ func TestWorkflowNodes_QualifiedUsesDefaultsToReferencedID(t *testing.T) {
 	def := workflowDef(t, `
 [session]
 kind = "workflow"
+resource = "issue"
 
 [[session.nodes]]
 uses = "official.tmux.pane"
@@ -97,6 +100,7 @@ func TestWorkflowNodes_DuplicateIDRejected(t *testing.T) {
 	def := workflowDef(t, `
 [session]
 kind = "workflow"
+resource = "issue"
 
 [[session.nodes]]
 uses = "pane"
@@ -113,6 +117,7 @@ func TestWorkflowNodes_NodeWithoutUsesRejected(t *testing.T) {
 	def := workflowDef(t, `
 [session]
 kind = "workflow"
+resource = "issue"
 
 [[session.nodes]]
 id = "worker"
@@ -125,6 +130,7 @@ func TestWorkflowNodes_UnknownNodeFieldRejected(t *testing.T) {
 	def := workflowDef(t, `
 [session]
 kind = "workflow"
+resource = "issue"
 
 [[session.nodes]]
 uses       = "pane"
@@ -141,7 +147,7 @@ func TestValidateWorkflow_UnknownClockFieldRejected(t *testing.T) {
 		"[session.tick]\nstale_when = \"15m\"\n",
 		"[session.healthcheck]\nperiod_seconds = 300\n",
 	} {
-		def := workflowDef(t, "[session]\nkind = \"workflow\"\n\n"+body)
+		def := workflowDef(t, "[session]\nkind = \"workflow\"\nresource = \"issue\"\n\n"+body)
 		assertDiagnostic(t, Validation{}.ValidateDefinition(def), CodeFieldUnknown, LayerStructural)
 	}
 }
@@ -150,6 +156,7 @@ func TestValidateWorkflow_CycleThroughBlocksRejected(t *testing.T) {
 	def := workflowDef(t, `
 [session]
 kind = "workflow"
+resource = "issue"
 
 [[session.nodes]]
 uses   = "pane"
@@ -172,6 +179,7 @@ func TestValidateWorkflow_EdgeToUndeclaredNodeIsNotACycle(t *testing.T) {
 	def := workflowDef(t, `
 [session]
 kind = "workflow"
+resource = "issue"
 
 [[session.nodes]]
 uses = "reaper"
@@ -192,6 +200,7 @@ func TestWorkflowNodes_ReadsThroughAJSONOperand(t *testing.T) {
 	def := workflowDef(t, `
 [session]
 kind = "workflow"
+resource = "issue"
 
 [[session.nodes]]
 uses = "producer"
@@ -215,6 +224,7 @@ func TestValidateWorkflow_CycleThroughAJSONOperandRejected(t *testing.T) {
 	def := workflowDef(t, `
 [session]
 kind = "workflow"
+resource = "issue"
 
 [[session.nodes]]
 uses = "first"
@@ -237,6 +247,7 @@ func TestValidateWorkflow_NonArrayEventChannelRejected(t *testing.T) {
 	def := workflowDef(t, `
 [session]
 kind = "workflow"
+resource = "issue"
 
 [session.event]
 channel = "runtime"
@@ -252,7 +263,7 @@ func TestValidateWorkflow_EventChannelRequiresNameAndUses(t *testing.T) {
 		"[[session.event.channel]]\nuses = \"delivery\"\n",
 		"[[session.event.channel]]\nname = \"runtime\"\n",
 	} {
-		def := workflowDef(t, "[session]\nkind = \"workflow\"\n\n[[session.nodes]]\nuses = \"pane\"\n\n"+body)
+		def := workflowDef(t, "[session]\nkind = \"workflow\"\nresource = \"issue\"\n\n[[session.nodes]]\nuses = \"pane\"\n\n"+body)
 		assertDiagnostic(t, Validation{}.ValidateDefinition(def), CodeFieldRequired, LayerStructural)
 	}
 }
@@ -261,6 +272,7 @@ func TestValidateWorkflow_PublicOutputsAcceptedOverNodeOutputsAndSessionInputs(t
 	def := workflowDef(t, `
 [session]
 kind = "workflow"
+resource = "issue"
 
 [session.outputs]
 endpoint = { from = "nodes.worker.outputs.endpoint" }
@@ -283,7 +295,7 @@ func TestValidateWorkflow_PublicOutputRejectsRootsOutsideItsSurface(t *testing.T
 		`{ from = "self.outputs.pid" }`,
 		`{ expr = "workflow.outputs.other + 'x'" }`,
 	} {
-		def := workflowDef(t, "[session]\nkind = \"workflow\"\n\n[session.outputs]\nendpoint = "+binding+"\n")
+		def := workflowDef(t, "[session]\nkind = \"workflow\"\nresource = \"issue\"\n\n[session.outputs]\nendpoint = "+binding+"\n")
 		if err := (Validation{}).ValidateDefinition(def); err == nil {
 			t.Fatalf("binding %s accepted, want a diagnostic", binding)
 		}
@@ -294,6 +306,7 @@ func TestWorkflowNodes_ReadOfPublicOutputExpandsToItsProducers(t *testing.T) {
 	def := workflowDef(t, `
 [session]
 kind = "workflow"
+resource = "issue"
 
 [session.outputs]
 endpoint = { from = "nodes.orchestrator.outputs.endpoint" }
@@ -339,6 +352,7 @@ func TestValidateWorkflow_CycleThroughPublicOutputRejected(t *testing.T) {
 	def := workflowDef(t, `
 [session]
 kind = "workflow"
+resource = "issue"
 
 [session.outputs]
 endpoint = { from = "nodes.agent.outputs.endpoint" }
@@ -356,6 +370,7 @@ func TestValidateWorkflow_CycleAcrossNodesThroughPublicOutputRejected(t *testing
 	def := workflowDef(t, `
 [session]
 kind = "workflow"
+resource = "issue"
 
 [session.outputs]
 from_second = { from = "nodes.second.outputs.value" }

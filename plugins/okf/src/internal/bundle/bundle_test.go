@@ -4,6 +4,7 @@ import (
 	"errors"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 )
 
@@ -50,7 +51,7 @@ func (f fakeRunner) Status(alias string) ([]byte, error) { return f.output, f.er
 
 func TestResolveOwnerWorkspaceDir(t *testing.T) {
 	t.Run("resolved", func(t *testing.T) {
-		runner := fakeRunner{output: []byte(`{"runtime":{"workspace_dir_path":"/w","workspace_dir_exists":true}}`)}
+		runner := fakeRunner{output: []byte(`{"runtime":{"workdir":"/w","workdir_exists":true}}`)}
 		got, resolveErr := ResolveOwnerWorkspaceDir(runner, "acme")
 		if resolveErr != nil {
 			t.Fatalf("unexpected error: %v", resolveErr)
@@ -77,7 +78,26 @@ func TestResolveOwnerWorkspaceDir(t *testing.T) {
 	})
 
 	t.Run("unreadable workspace directory is unresolved", func(t *testing.T) {
-		runner := fakeRunner{output: []byte(`{"runtime":{"workspace_dir_path":"/w","workspace_dir_exists":false}}`)}
+		runner := fakeRunner{output: []byte(`{"runtime":{"workdir":"/w","workdir_exists":false}}`)}
+		_, resolveErr := ResolveOwnerWorkspaceDir(runner, "acme")
+		if resolveErr == nil || !resolveErr.Unresolved {
+			t.Fatalf("want an Unresolved error, got %#v", resolveErr)
+		}
+	})
+
+	t.Run("an owner session declaring no workdir is unresolved", func(t *testing.T) {
+		runner := fakeRunner{output: []byte(`{"runtime":{}}`)}
+		_, resolveErr := ResolveOwnerWorkspaceDir(runner, "acme")
+		if resolveErr == nil || !resolveErr.Unresolved {
+			t.Fatalf("want an Unresolved error, got %#v", resolveErr)
+		}
+		if !strings.Contains(resolveErr.Reason, "declares no workdir") {
+			t.Fatalf("reason = %q, want it to say the session declares no workdir", resolveErr.Reason)
+		}
+	})
+
+	t.Run("a workdir without a recorded existence is unresolved", func(t *testing.T) {
+		runner := fakeRunner{output: []byte(`{"runtime":{"workdir":"/w"}}`)}
 		_, resolveErr := ResolveOwnerWorkspaceDir(runner, "acme")
 		if resolveErr == nil || !resolveErr.Unresolved {
 			t.Fatalf("want an Unresolved error, got %#v", resolveErr)

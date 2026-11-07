@@ -23,7 +23,7 @@ func writeCapWorkflow(t *testing.T, baseDir, id string, maxUpChildren *int) {
 	if err := os.MkdirAll(dir, 0o755); err != nil {
 		t.Fatal(err)
 	}
-	body := fmt.Sprintf("[%s]\nkind = \"workflow\"\n", id)
+	body := fmt.Sprintf("[%s]\nkind = \"workflow\"\nresource = \"issue\"\n", id)
 	if maxUpChildren != nil {
 		body += fmt.Sprintf("max_up_children = %d\n", *maxUpChildren)
 	}

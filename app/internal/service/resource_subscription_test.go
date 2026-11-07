@@ -9,7 +9,7 @@ import (
 	"github.com/kecbigmt/plecture/app/internal/config"
 )
 
-func TestSubscribeUsesResourceWithoutWorkspaceProvider(t *testing.T) {
+func TestSubscribeRunsResourceHook(t *testing.T) {
 	base := t.TempDir()
 	record := filepath.Join(base, "record")
 	writeResourceDefFixture(t, base, "remote", `[remote]
@@ -23,7 +23,7 @@ args = ['{}']
 [remote.subscribe]
 type = "exec"
 command = "sh"
-args = ["-c", "printf '%s|%s|%s' \"$1\" \"$2\" \"$3\" > \"$4\"", "hook", { from = "resource.id" }, { from = "session.name" }, { from = "session.branch", default = "" }, "`+record+`"]
+args = ["-c", "printf '%s|%s' \"$1\" \"$2\" > \"$3\"", "hook", { from = "resource.id" }, { from = "session.name" }, "`+record+`"]
 `)
 	cfg := &config.Config{BaseDir: base}
 	if err := Subscribe(cfg, subscribeStore(t, "session"), SubscribeParams{ResourceID: "remote://one", SessionName: "session"}); err != nil {
@@ -33,7 +33,7 @@ args = ["-c", "printf '%s|%s|%s' \"$1\" \"$2\" \"$3\" > \"$4\"", "hook", { from 
 	if err != nil {
 		t.Fatal(err)
 	}
-	if string(got) != "remote://one|session|" {
+	if string(got) != "remote://one|session" {
 		t.Fatalf("hook args = %q", got)
 	}
 }

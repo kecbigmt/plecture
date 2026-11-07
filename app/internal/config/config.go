@@ -71,8 +71,7 @@ const (
 )
 
 type Config struct {
-	SchemaVersion     int    `toml:"schema_version"`
-	WorkspaceDirsRoot string `toml:"workspace_dirs_root"`
+	SchemaVersion int `toml:"schema_version"`
 	// MaxUpChildren caps concurrently-up sessions whose logical parent is the
 	// virtual root. Nil leaves parentless admission unlimited.
 	MaxUpChildren *int `toml:"max_up_children"`
@@ -90,6 +89,10 @@ type Config struct {
 	// global layer and ancestor overlays stack on top of them. Entries are
 	// trusted — only the user or the system's config-management tooling writes config.toml.
 	PluginDirs []string `toml:"plugin_dirs"`
+	// TrustedProjectRoots lists the directories whose `.plect/` may layer over
+	// a direct invocation made below them. Project definitions can run shell,
+	// so no directory is trusted implicitly.
+	TrustedProjectRoots []string `toml:"trusted_project_roots"`
 	// Plugins is the resolved catalog-qualified identity + manifest for
 	// every plugin folded into PluginDirs by resolveDeclaredPlugins (empty
 	// for hand-authored plugin_dirs entries, which carry no catalog
@@ -116,26 +119,21 @@ type Config struct {
 	// SessionGuard is a per-session dispatch boundary sourced from the
 	// PLECT_SESSION_GUARD environment variable (not config.toml). When set, a
 	// `plect up` may only produce a *resolved session name* that
-	// matches this regex. The orchestrator's agent pane exports it from the
-	// workspace provider's `session_guard` output (e.g. "^acme/"), so a
-	// prompt-injected board body cannot make the orchestrator dispatch work
-	// outside its own session-name space. Empty = disabled.
+	// matches this regex, so a prompt-injected board body cannot make an
+	// orchestrator dispatch work outside its own session-name space. Empty =
+	// disabled.
 	//
 	// The guard is intentionally an opaque regex over the resolved session
-	// name: plect core stays workspace-provider-agnostic and never parses
-	// the resource identifier's internal structure — knowing how names are
-	// shaped is the workspace provider's job, encoded in the pattern it
-	// emits.
+	// name: plect core never parses the resource identifier's internal
+	// structure.
 	SessionGuard string `toml:"-"`
 }
 
 func DefaultConfig() *Config {
-	home, _ := os.UserHomeDir()
 	return &Config{
-		SchemaVersion:     lang.KnownSchemaVersion,
-		WorkspaceDirsRoot: filepath.Join(home, "workspace_dirs"),
-		Detached:          true,
-		SessionGuard:      os.Getenv("PLECT_SESSION_GUARD"),
+		SchemaVersion: lang.KnownSchemaVersion,
+		Detached:      true,
+		SessionGuard:  os.Getenv("PLECT_SESSION_GUARD"),
 	}
 }
 
@@ -186,20 +184,19 @@ func Load() (*Config, error) {
 	if cfg.MaxUpChildren != nil && *cfg.MaxUpChildren < 1 {
 		return nil, fmt.Errorf("config.toml: max_up_children must be at least 1, got %d", *cfg.MaxUpChildren)
 	}
-	if meta.IsDefined("worktrees_root") {
-		slog.Warn("legacy config key worktrees_root is ignored; rename it to workspace_dirs_root or run the legacy migration", "path", configPath)
+	for _, root := range cfg.TrustedProjectRoots {
+		if !filepath.IsAbs(root) {
+			return nil, fmt.Errorf("config.toml: trusted_project_roots entry %q is not an absolute path", root)
+		}
 	}
-	if meta.IsDefined("workdirs_root") {
-		slog.Warn("legacy config key workdirs_root is ignored; rename it to workspace_dirs_root or run the legacy migration", "path", configPath)
+	if meta.IsDefined("workspace_dirs_root") {
+		return nil, fmt.Errorf("config.toml: workspace_dirs_root is retired: a directory-creating effect takes its root as an input; see %s", lang.WorkspaceProviderMigrationGuide)
 	}
 
 	// Expand ~ in path configs
 	home, homeErr := os.UserHomeDir()
 	if homeErr != nil {
 		return resolveDeclaredPlugins(cfg)
-	}
-	if len(cfg.WorkspaceDirsRoot) > 0 && cfg.WorkspaceDirsRoot[0] == '~' {
-		cfg.WorkspaceDirsRoot = filepath.Join(home, cfg.WorkspaceDirsRoot[1:])
 	}
 	for i, dir := range cfg.PluginDirs {
 		if len(dir) > 0 && dir[0] == '~' {

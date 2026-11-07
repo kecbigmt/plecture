@@ -541,3 +541,56 @@ func TestPutSession_NodeDependencyEdgeDoesNotLeakAcrossReleaseAndRecreate(t *tes
 		t.Fatalf("AllSessions node %q DependsOn = %v, want none", "a", a)
 	}
 }
+
+func TestPutSession_TaskStateDirectoryRoundTripsForNodesAndDynamicInstances(t *testing.T) {
+	db := migratedTestDB(t)
+	ctx := context.Background()
+	now := time.Now().UTC()
+
+	session := &domain.Session{
+		Name: "dirs", CreatedAt: now, UpdatedAt: now,
+		Nodes: map[string]*contract.TaskState{
+			"in-dir":  {Scope: contract.TaskScopeSession, Status: contract.TaskStatusProduced, TaskID: "work", Directory: "/work/in-dir"},
+			"no-dir":  {Scope: contract.TaskScopeSession, Status: contract.TaskStatusProduced, TaskID: "work"},
+			"in-home": {Scope: contract.TaskScopeSession, Status: contract.TaskStatusProduced, TaskID: "work", Directory: "/home/user"},
+		},
+		Tasks: map[string]*contract.TaskState{
+			"initial": {Scope: contract.TaskScopeSession, Status: contract.TaskStatusProduced, TaskID: "work", Name: "initial", Directory: "/work/instance"},
+			"bare":    {Scope: contract.TaskScopeSession, Status: contract.TaskStatusProduced, TaskID: "work", Name: "bare"},
+		},
+	}
+	if err := db.PutSession(ctx, session); err != nil {
+		t.Fatalf("PutSession: %v", err)
+	}
+
+	got, err := db.GetSession(ctx, "dirs")
+	if err != nil {
+		t.Fatalf("GetSession: %v", err)
+	}
+	for id, want := range map[string]string{"in-dir": "/work/in-dir", "no-dir": "", "in-home": "/home/user"} {
+		if gotDir := got.Nodes[id].Directory; gotDir != want {
+			t.Errorf("node %q Directory = %q, want %q", id, gotDir, want)
+		}
+	}
+	for id, want := range map[string]string{"initial": "/work/instance", "bare": ""} {
+		if gotDir := got.Tasks[id].Directory; gotDir != want {
+			t.Errorf("task instance %q Directory = %q, want %q", id, gotDir, want)
+		}
+	}
+
+	got.Nodes["no-dir"].Directory = "/work/late"
+	got.Tasks["bare"].Directory = "/work/late-instance"
+	if err := db.PutSession(ctx, got); err != nil {
+		t.Fatalf("PutSession (update): %v", err)
+	}
+	updated, err := db.GetSession(ctx, "dirs")
+	if err != nil {
+		t.Fatalf("GetSession (update): %v", err)
+	}
+	if gotDir := updated.Nodes["no-dir"].Directory; gotDir != "/work/late" {
+		t.Errorf("updated node Directory = %q, want /work/late", gotDir)
+	}
+	if gotDir := updated.Tasks["bare"].Directory; gotDir != "/work/late-instance" {
+		t.Errorf("updated task instance Directory = %q, want /work/late-instance", gotDir)
+	}
+}

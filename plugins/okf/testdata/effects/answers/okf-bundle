@@ -1,0 +1,2 @@
+mkdir -p "$PLECT_EFFECT_STATE/goal"
+printf '%s' "{\"workspace_dir\":\"$PLECT_EFFECT_STATE/goal\",\"owner\":\"acme\",\"concept_id\":\"goals/c.md\",\"concept_path\":\"$PLECT_EFFECT_STATE/goal/c.md\"}"

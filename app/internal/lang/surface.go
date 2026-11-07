@@ -98,24 +98,16 @@ func withRootCode(s *Surface, code Code) *Surface {
 // The surfaces below are values.md's table, in its order. A projection
 // naming a root the surface does not observe is PLECTURE-CFG-FROM-ROOT.
 var (
-	surfaceProviderName = newSurface("workspace_provider.name", LayerSemantic,
-		"match.<capture>")
-	surfaceProviderSetup = newSurface("workspace_provider.setup", LayerSemantic,
-		"resource.id", "session.name", "session.inputs.<key>", "inputs.<key>",
-		"prev.<key>", "config.workspace_dirs_root")
-	surfaceProviderCleanup = newSurface("workspace_provider.cleanup", LayerSemantic,
-		"self.outputs.<key>", "inputs.<key>", "cleanup.inputs.<key>", "session.name",
-		"config.workspace_dirs_root", "force")
 	surfaceResourceName = newSurface("resource.name", LayerSemantic,
 		"match.<capture>")
 	surfaceResourceObserve = newSurface("resource.observe", LayerSemantic,
-		"resource.id", "workspace.dir", "workspace.branch")
+		"resource.id")
 	surfaceResourceFinalize = newSurface("resource.finalize", LayerSemantic,
 		"resource.id", "session.name", "resource.revision", "judges")
 	surfaceResourceSubscribe = newSurface("resource.subscribe", LayerSemantic,
-		"resource.id", "resource.inputs.<key>", "session.name", "session.branch")
+		"resource.id", "resource.inputs.<key>", "session.name")
 	surfaceResourceUnsubscribe = newSurface("resource.unsubscribe", LayerSemantic,
-		"resource.id", "resource.inputs.<key>", "session.name", "session.branch")
+		"resource.id", "resource.inputs.<key>", "session.name")
 	surfaceResourceQuery = newSurface("resource.query", LayerSemantic,
 		"inputs.<key>")
 
@@ -126,7 +118,7 @@ var (
 	// A workflow event channel's inputs read the same roots a node's do.
 	surfaceWorkflowNodeInputs = newSurface("workflow.node.inputs", LayerSemantic,
 		"nodes.<id>.outputs.<key>", "workflow.outputs.<key>", "session.*",
-		"session.inputs.<key>", "workspace.*")
+		"session.inputs.<key>")
 	surfaceWorkflowPopulationInputs = newSurface("workflow.population.session.inputs", LayerSemantic,
 		"resource.id", "item.<key>")
 
@@ -137,17 +129,17 @@ var (
 
 	surfaceEffectSetup = newSurface("effect.setup", LayerSemantic,
 		"inputs.<key>", "prev.<key>", "nodes.<id>.outputs.<key>", "workflow.outputs.<key>",
-		"session.*", "session.inputs.<key>", "workspace.*", "resource.id")
+		"session.*", "session.inputs.<key>", "resource.id")
 	surfaceEffectCleanup = newSurface("effect.cleanup", LayerSemantic,
-		"self.outputs.<key>", "self.process.identity", "inputs.<key>", "nodes.<id>.outputs.<key>",
-		"workflow.outputs.<key>", "session.*", "workspace.*")
+		"self.outputs.<key>", "self.process.identity", "inputs.<key>", "cleanup.inputs.<key>", "force",
+		"nodes.<id>.outputs.<key>", "workflow.outputs.<key>", "session.*")
 	surfaceEffectHealth = newSurface("effect.health", LayerSemantic,
-		"self.outputs.<key>", "inputs.<key>", "session.*", "workspace.*")
+		"self.outputs.<key>", "inputs.<key>", "session.*")
 	surfaceEffectTerminal = newSurface("effect.terminal", LayerSemantic,
 		"self.outputs.<key>", "session.*")
 	surfaceEffectInner = newSurface("effect.inner", LayerSemantic,
 		"inputs.<key>", "locals.<key>", "nodes.<id>.outputs.<key>", "workflow.outputs.<key>",
-		"session.*", "workspace.*")
+		"session.*")
 	surfaceEffectOutputsBind = newSurface("effect.outputs.bind", LayerStructural,
 		"inner.outputs.<key>", "locals.<key>", "inputs.<key>")
 

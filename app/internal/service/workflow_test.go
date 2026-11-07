@@ -64,6 +64,7 @@ type = "noop"
 	writeFile(t, filepath.Join(globalDir, "workflows", "coding.toml"), `
 [coding]
 kind = "workflow"
+resource = "issue"
 name        = "Coding agent"
 description = "Spawn tmux + agent"
 
@@ -79,6 +80,7 @@ uses = "tmux"
 	writeFile(t, filepath.Join(globalDir, "workflows", "bare.toml"), `
 [bare]
 kind = "workflow"
+resource = "issue"
 [[bare.nodes]]
 uses = "tmux"
 `)
@@ -130,63 +132,6 @@ func TestWorkflowShow_ReturnsCompiledDAG(t *testing.T) {
 	}
 }
 
-func TestWorkflowShow_WorkspaceProviderLoadErrorIsSurfaced(t *testing.T) {
-	tmpHome := t.TempDir()
-	t.Setenv("HOME", tmpHome)
-	globalDir := filepath.Join(tmpHome, ".config", "plect")
-	if err := os.MkdirAll(globalDir, 0o755); err != nil {
-		t.Fatal(err)
-	}
-	if err := os.WriteFile(filepath.Join(globalDir, "config.toml"), []byte("schema_version = 2\n"), 0o644); err != nil {
-		t.Fatal(err)
-	}
-	writeFile(t, filepath.Join(globalDir, "tasks", "tmux.toml"), `
-[tmux]
-kind  = "effect"
-scope = "run"
-
-[tmux.setup]
-type   = "shell"
-script = "echo '{}'"
-
-[tmux.health.alive]
-type = "noop"
-`)
-	// `setup` is required for a workspace provider; omitting it fails the load.
-	writeFile(t, filepath.Join(globalDir, "workspaces", "broken.toml"), `
-[broken]
-kind = "workspace_provider"
-`)
-	writeFile(t, filepath.Join(globalDir, "workflows", "usesbroken.toml"), `
-[usesbroken]
-kind = "workflow"
-workspace_provider = "broken"
-
-[[usesbroken.nodes]]
-uses = "tmux"
-`)
-	cfg, err := config.Load()
-	if err != nil {
-		t.Fatal(err)
-	}
-	got, err := WorkflowShow(cfg, filepath.Join(tmpHome, "workdirs", "session"), "usesbroken")
-	if err != nil {
-		t.Fatalf("WorkflowShow should still return a partial result, got error: %v", err)
-	}
-	if got.WorkspaceProviderInfo != nil {
-		t.Errorf("expected no resolved workspace provider info, got %+v", got.WorkspaceProviderInfo)
-	}
-	if got.WorkspaceProviderError == "" {
-		t.Fatal("expected WorkspaceProviderError to be populated")
-	}
-	if !strings.Contains(got.WorkspaceProviderError, "setup") {
-		t.Errorf("error should name the missing field: %q", got.WorkspaceProviderError)
-	}
-	if len(got.Nodes) != 1 {
-		t.Errorf("expected the rest of the workflow to still render: %+v", got.Nodes)
-	}
-}
-
 func TestWorkflowShow_PopulatesChannels(t *testing.T) {
 	tmpHome := t.TempDir()
 	t.Setenv("HOME", tmpHome)
@@ -222,6 +167,7 @@ path = { type = "string", required = true }
 	writeFile(t, filepath.Join(globalDir, "workflows", "withchan.toml"), `
 [withchan]
 kind = "workflow"
+resource = "issue"
 [[withchan.nodes]]
 uses = "tmux"
 
@@ -279,6 +225,7 @@ type = "noop"
 	writeFile(t, filepath.Join(globalDir, "workflows", "withchan.toml"), `
 [withchan]
 kind = "workflow"
+resource = "issue"
 [[withchan.nodes]]
 uses = "tmux"
 
@@ -329,6 +276,7 @@ type = "noop"
 	writeFile(t, filepath.Join(globalDir, "workflows", "withchan.toml"), `
 [withchan]
 kind = "workflow"
+resource = "issue"
 [[withchan.nodes]]
 uses = "tmux"
 
@@ -406,6 +354,7 @@ template = { type = "string" }
 	writeFile(t, filepath.Join(globalDir, "workflows", "coding.toml"), `
 [coding]
 kind = "workflow"
+resource = "issue"
 
 [[coding.nodes]]
 uses = "tmux"
@@ -456,6 +405,7 @@ func TestResolveSessionInputs_RejectsUnknownTask(t *testing.T) {
 	writeFile(t, filepath.Join(globalDir, "workflows", "claude.toml"), `
 [claude]
 kind = "workflow"
+resource = "issue"
 [claude.inputs_schema]
 type = "object"
 required = ["task"]
@@ -502,6 +452,7 @@ func TestResolveSessionInputs_MissingRequiredTaskListsChoices(t *testing.T) {
 	writeFile(t, filepath.Join(globalDir, "workflows", "claude.toml"), `
 [claude]
 kind = "workflow"
+resource = "issue"
 [claude.inputs_schema]
 type = "object"
 required = ["task"]
