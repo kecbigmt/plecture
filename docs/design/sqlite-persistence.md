@@ -757,10 +757,15 @@ and no `-- +goose Down` section. A migration that has shipped in a release
 never changes; a problem found after an upgrade is fixed with a new
 migration.
 
-Three Go tests keep the history and `schema.sql` in agreement:
+Three Go tests keep the history and `schema.sql` in agreement. The first two
+are `app/db`'s own tests and do not depend on `app/internal/persistence`, so
+the contract files and the checks that guard them change under one owner
+gate. The third tests the runtime's migration path. CI runs all three as the
+`storage-contract` job's named steps, with the sqlc regeneration check; the
+first two also run under a plain `go test`.
 
-- `TestSchemaSQL_MatchesMigrationHistory` applies every embedded migration to
-  an empty database and compares the result with `schema.sql` applied
+- `TestSchemaSQL_MatchesMigrationHistory` applies every embedded migration
+  with goose to an empty database and compares the result with `schema.sql` applied
   directly. Tables are compared through SQLite introspection: columns,
   secondary indexes including a partial index's predicate, foreign keys, and
   CHECK constraints. Triggers and views are compared by `(type, name)`, their
@@ -768,8 +773,8 @@ Three Go tests keep the history and `schema.sql` in agreement:
   are stripped, identifier quoting is dropped, whitespace is collapsed, and
   case is folded outside string literals. String-literal contents compare
   byte for byte. goose's ledger table is excluded.
-- `TestMigrationsMatchTheirManifest` (`app/internal/migrationsum`) compares
-  every migration file with `app/db/migrations.sum`. The
+- `TestMigrationsMatchTheirManifest` compares every migration file with
+  `app/db/migrations.sum`, through `app/db/migrationsum`. The
   manifest is in `sha256sum` format: one `<sha256 hex>  <file name>` line
   per migration over its raw bytes, sorted by name, with no aggregate line.
   The test fails on a changed hash, an unlisted file, a listed file that no
@@ -778,13 +783,14 @@ Three Go tests keep the history and `schema.sql` in agreement:
   intended edit of an unreleased migration, and refuses while any migration
   has a Down section. `cd migrations && sha256sum -c ../migrations.sum`
   checks it without Go.
-- `TestMigrate_UpgradesEveryReleasedSchema` (`-tags integration`) loads one
-  fixture per released schema version,
-  `app/internal/persistence/testdata/upgrade/<version>.sql`: a `sqlite3`
-  dump of a store built from that release tag's own migration files, its
-  goose ledger, and representative rows. It runs the current migrations with
-  foreign keys enforced and asserts the resulting version and the rows that
-  survive. A release with a new schema version adds its fixture.
+- `TestMigrate_UpgradesEveryReleasedSchema` (`app/internal/persistence`,
+  `-tags integration`) loads one fixture per released schema version,
+  `app/internal/persistence/testdata/upgrade/<version>.sql`: a `sqlite3` dump
+  of a store built from that release tag's own migration files, its goose
+  ledger, and representative rows. It runs the current migrations through
+  `persistence.Migrate` with foreign keys enforced, and asserts the resulting
+  version and the rows that survive. A release with a new schema version adds
+  its fixture.
 
 ### Changing the schema
 
@@ -794,8 +800,8 @@ Three Go tests keep the history and `schema.sql` in agreement:
    shipped in a release.
 3. In `app/`, run `go generate ./internal/persistence/...`. It regenerates
    `app/internal/persistence/sqlcgen` and `app/db/migrations.sum`.
-4. Run `go test ./internal/persistence/... ./internal/migrationsum/...`. The
-   drift test fails until the migration history reproduces `schema.sql`.
+4. Run `go test ./db/... ./internal/persistence/...`. The drift test fails
+   until the migration history reproduces `schema.sql`.
 
 ### Adding an upgrade fixture
 
