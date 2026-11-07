@@ -150,7 +150,7 @@ func upUnlocked(cfg *config.Config, store *state.Store, params UpParams) (*UpRes
 		if params.Workflow != "" && existing != nil && params.Workflow != existing.Workflow {
 			return nil, &Error{Code: ErrInvalidInput, Message: fmt.Sprintf("--workflow %q does not match the session's frozen workflow %q", params.Workflow, existing.Workflow)}
 		}
-		initialTask, taskErr := checkInitialTask(cfg, params.InvocationDir, params.Identifier, params.InitialTask)
+		initialTask, taskErr := checkInitialTask(cfg, params.InvocationDir, params.Identifier, existing, params.InitialTask)
 		if taskErr != nil {
 			return nil, taskErr
 		}

@@ -272,3 +272,18 @@ func TestLoad_ChainTaskForAnotherResourceTypeIsRefused(t *testing.T) {
 		t.Fatalf("err = %v, want the chain's task mismatch reported at load", err)
 	}
 }
+
+func TestUp_RepeatedSelectionResolvesAgainstTheSessionsRevisionNotTodaysConfig(t *testing.T) {
+	store := testStore(t)
+	cfg := initialTaskFixture(t)
+	if _, err := Up(cfg, store, UpParams{Identifier: identityCaseID, InitialTask: &InitialTask{TaskID: "triage"}}); err != nil {
+		t.Fatalf("first up: %v", err)
+	}
+	if err := os.Remove(filepath.Join(cfg.BaseDir, "tasks", "triage.toml")); err != nil {
+		t.Fatal(err)
+	}
+
+	if _, err := Up(cfg, store, UpParams{Identifier: identityCaseID, InitialTask: &InitialTask{TaskID: "triage"}}); err != nil {
+		t.Fatalf("repeated up after the document left today's config: %v", err)
+	}
+}

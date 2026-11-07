@@ -5,6 +5,7 @@ import (
 	"strings"
 
 	"github.com/kecbigmt/plecture/app/internal/config"
+	"github.com/kecbigmt/plecture/app/internal/domain"
 	"github.com/kecbigmt/plecture/app/internal/state"
 	"github.com/kecbigmt/plecture/app/internal/task"
 	contract "github.com/kecbigmt/plecture/contracts/state"
@@ -35,14 +36,23 @@ type initialTaskBinding struct {
 
 // checkInitialTask runs before anything is created, so a selection that can
 // never instantiate leaves no session behind.
-func checkInitialTask(cfg *config.Config, invocationDir, entry string, sel *InitialTask) (*initialTaskBinding, error) {
+func checkInitialTask(cfg *config.Config, invocationDir, entry string, existing *domain.Session, sel *InitialTask) (*initialTaskBinding, error) {
 	if sel == nil {
 		return nil, nil
 	}
 	if strings.TrimSpace(sel.TaskID) == "" {
 		return nil, &Error{Code: ErrInvalidInput, Message: "a task resource or its inputs need a task: pass --task"}
 	}
-	docs, effects, err := cfg.LoadTaskDeclarations(invocationDir)
+	// An existing session instantiates from its own revision, so the check
+	// reads the same declarations rather than today's configuration.
+	var docs map[string]config.TaskDocument
+	var effects map[string]config.TaskDefinition
+	var err error
+	if existing != nil {
+		docs, effects, err = cfg.TaskDeclarationsForSession(existing)
+	} else {
+		docs, effects, err = cfg.LoadTaskDeclarations(invocationDir)
+	}
 	if err != nil {
 		return nil, &Error{Code: ErrExecutionFailed, Message: fmt.Sprintf("load task declarations: %v", err)}
 	}
