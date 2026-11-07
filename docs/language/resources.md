@@ -68,7 +68,14 @@ action input object. A resource does not own a task's state or judge evidence.
 
 `plect subscribe <resource-id>` selects exactly one matching resource
 declaration. It accepts `--inputs` or `--inputs-file` for the action input
-object. Session creation and task binding subscribe automatically when that
+object, as `plect resource status <resource-id>` does for a standalone
+observe. `plect up` takes the entry binding's object as `--resource-inputs`
+and the initial task binding's as `--task-resource-inputs`; `plect task setup`
+takes its binding's as `--resource-inputs`. Each binding records its own
+object, apart from workflow and task inputs, and that binding's actions read
+it: a delivery retry repeats the call with the inputs of the binding that
+queued it, and an unsubscribe uses the inputs of the binding whose removal
+left the resource unneeded. Session creation and task binding subscribe automatically when that
 declaration has a `subscribe` action and the empty input object satisfies its
 schema. A node's `subscription` uses the same empty-input rule after its setup
 produces an identifier. If required inputs prevent that binding, a known

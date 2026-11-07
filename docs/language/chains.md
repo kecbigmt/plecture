@@ -18,6 +18,7 @@ document that declared it.
 | `workflow` | The workflow to run. A static reference. |
 | `placement` | Where the spawned session sits relative to this one. |
 | `resource` | The concrete entry resource of the spawned session. |
+| `task` | The task document the spawned session starts with. A static reference. |
 | `when` | The facts that must hold for the chain to fire. |
 | `inputs` | The session inputs handed to the spawned workflow. |
 
@@ -38,6 +39,7 @@ all = [
 id        = "goal_review"
 workflow  = "goal_reviewer"
 placement = "sibling"
+task      = "goal_review"
 
 [pursue_goal.chains.when]
 all = [
@@ -46,7 +48,6 @@ all = [
 ]
 
 [pursue_goal.chains.inputs]
-task         = "goal_review"
 work_session = { from = "task.session" }
 instance     = { from = "task.instance" }
 judge_ids    = { from = "task.done_when.pending_judge_ids" }
@@ -100,6 +101,7 @@ id        = "review"
 workflow  = "goal_reviewer"
 placement = "sibling"
 resource  = { from = "resource.state.pr_url" }
+task      = "goal_review"
 
 [work.chains.when]
 all = [
@@ -108,7 +110,6 @@ all = [
 ]
 
 [work.chains.inputs]
-task         = "goal_review"
 work_session = { from = "task.session" }
 judge_ids    = { from = "task.done_when.pending_judge_ids" }
 ```
@@ -125,6 +126,22 @@ than spawning a session bound to nothing: the pull request does not exist yet,
 so neither does the review. The chain fires on the tick after the fact
 arrives.
 
+## The spawned session's task
+
+`task` selects the one task document the spawned session starts with, the
+same selection `plect up --task` and a population's `session.task` make. It
+binds the spawned session's entry resource, so the document must be written
+for the resource type the target workflow accepts; a mismatch is a load error,
+not a fire that fails every tick. Omitting it spawns a session with no task.
+
+A fire supplies the empty resource action input object for both the entry
+binding and the task binding. A resource whose `inputs_schema` refuses it
+cannot be reached by a chain: the spawn fails and is reported on the chain,
+and the next tick retries it.
+
+A session input named `task` has no meaning of its own: the selection is the
+field, never an input.
+
 ## Static workflow references
 
 `workflow` is a static reference. Templated or otherwise computed workflow
@@ -137,6 +154,8 @@ consumer.
 - `workflow` resolves to a definition of kind `workflow`.
 - `workflow` is never a computed value.
 - The target workflow accepts the resolved chain resource.
+- `task`, when present, is a static reference to a task document written for
+  the target workflow's resource type.
 - `resource` projects the same roots `inputs` does.
 - A `resource` that resolves to nothing, or to an empty string, blocks the
   fire.

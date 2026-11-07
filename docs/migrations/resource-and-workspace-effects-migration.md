@@ -97,7 +97,7 @@ workflow's `workdir` and never stored.
    a session created before this release has no record and expands from the
    plugin and global layers alone.
 7. Move a workflow's initial task selection to each invocation, chain, or
-   population. Ensure each task's concrete resource matches the task document.
+   population, as described in "Initial tasks and resource inputs" below.
 8. Delete `resource_observer` from every `[[<workflow>.populations]]` entry.
    A population queries its workflow's entry `resource` and validates `query`
    against that resource's query `inputs_schema`; the loader refuses the
@@ -126,6 +126,48 @@ collision.
    it a recorded entry.
 3. A workflow whose sessions others locate by name (`plect status`,
    `plect event publish`) needs the same rewrite in those callers.
+
+## Initial tasks and resource inputs
+
+Core selects a session's initial task. `plect up --task <task>` no longer
+writes `{"task": <task>}` into the session inputs for a workflow node to act
+on: core checks that the task document's resource type claims the binding,
+fails before creating anything when it does not, and instantiates the task as
+the session's `initial` instance after the workflow's session nodes run.
+
+1. Delete the node that instantiated the initial task from every workflow
+   (in a typical tree, a `uses = "initial_task"` node whose setup ran
+   `plect task setup "$task" --name initial`), and the effect declaration once
+   nothing uses it. A workflow that keeps the node and is invoked with
+   `--task` creates `initial` twice over: the node first, then core, which
+   keeps the node's instance only when it is the same task bound to the same
+   resource and otherwise fails the up.
+2. Remove `task` from each workflow's `inputs_schema`, including its
+   `required` entry and any `"none"` enum value. A remaining `task` input is
+   an ordinary session input with no meaning to core.
+3. Move each chain's `[<doc>.chains.inputs] task = "<task>"` to the chain's
+   own `task = "<task>"` field. Loading checks that the task is written for
+   the target workflow's resource type and reports
+   `PLECTURE-CFG-RESOURCE-OBSERVER-MISMATCH` otherwise.
+4. Replace `plect up --task none` (and an MCP `task` of `"none"`) with
+   omitting the task. `none` is no longer special and resolves like any
+   other task id.
+5. Where the initial task works a resource other than the entry, pass it as
+   `--task-resource <resource-id>`. A task bound to the entry resource needs
+   no flag.
+6. A resource that declares an `inputs_schema` its actions read through
+   `resource.inputs.*` receives its action input object from each binding:
+   `plect up --resource-inputs` for the entry, `plect up
+   --task-resource-inputs` for the initial task, `plect task setup
+   --resource-inputs` for a task added later, and `plect resource status
+   --inputs` for a standalone observe. A task bound to the entry resource
+   does not inherit the entry's object. A chain or population supplies the
+   empty object, so it cannot reach a resource whose schema requires inputs.
+
+The storage migration adds the recorded binding inputs with no manual step. A
+session created before this release has empty entry and task binding inputs,
+which is what every binding received until now, and keeps the `initial`
+instance its node created.
 
 ## Establish project contexts
 
