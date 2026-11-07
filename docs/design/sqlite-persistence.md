@@ -786,6 +786,37 @@ Three Go tests keep the history and `schema.sql` in agreement:
   foreign keys enforced and asserts the resulting version and the rows that
   survive. A release with a new schema version adds its fixture.
 
+### Changing the schema
+
+1. Edit `app/db/schema.sql`, and `app/db/query.sql` when a query changes.
+2. Add a migration under `app/db/migrations/` that reaches the same
+   structure, with an Up section only. Never edit a migration that has
+   shipped in a release.
+3. In `app/`, run `go generate ./internal/persistence/...`. It regenerates
+   `app/internal/persistence/sqlcgen` and `app/db/migrations.sum`.
+4. Run `go test ./internal/persistence/... ./internal/migrationsum/...`. The
+   drift test fails until the migration history reproduces `schema.sql`.
+
+### Adding an upgrade fixture
+
+A release whose schema version is new adds
+`app/internal/persistence/testdata/upgrade/<version>.sql` and lists the rows
+its upgrade must leave in the test's `upgradeFixtures` table. The fixture is
+built from the release tag's own migration files. `<migrations>` is the tag's
+migrations directory: `app/db/migrations`, or
+`app/internal/persistence/migrations` in a tag older than `app/db`.
+`<goose version>` is the `github.com/pressly/goose/v3` version in
+`app/go.mod`.
+
+```bash
+git archive <tag> <migrations> | tar -x -C <dir>
+cd <dir>
+go run github.com/pressly/goose/v3/cmd/goose@<goose version> \
+  -dir <migrations> sqlite3 store.db up
+sqlite3 store.db < rows.sql   # representative rows, adapted from the previous fixture
+sqlite3 store.db .dump > <repo>/app/internal/persistence/testdata/upgrade/<version>.sql
+```
+
 ### Rollback
 
 A problem found after an upgrade is fixed forward, with a new migration.
