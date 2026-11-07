@@ -173,18 +173,19 @@ classifies every `_json` column by its owning declaration:
 
 | Table | Key and relational columns | JSON or scalar payload | Source |
 | --- | --- | --- | --- |
-| `sessions` | `id` (ULID) primary key; `name` (unique only among live rows — see "Session identity and lifecycle"); `status`, nullable `destroyed_at`; nullable `parent_session_id` and `root_session_id`, each referencing `sessions(id)`; nullable `resource_id`, `resource_type`, `tag`, `alias`, `population_workflow`, `population_name` (the pair also references `populations(workflow, name)`); nullable lifecycle-configuration digest baseline; `workflow`, `created_at`, `updated_at` | inputs, health, tick backoff | `state.json` `sessions` entries |
+| `resources` | `id` primary key (opaque; see "Resources"); `type`; `name` unique across types; `locator`; `created_at` | none | each distinct resource a session, task, node, population member or delivery retry refers to |
+| `sessions` | `id` (ULID) primary key; `name` (unique only among live rows — see "Session identity and lifecycle"); `status`, nullable `destroyed_at`; nullable `parent_session_id` and `root_session_id`, each referencing `sessions(id)`; nullable `resource_id` referencing `resources(id)`; nullable `tag`, `alias`, `population_workflow`, `population_name` (the pair also references `populations(workflow, name)`); nullable lifecycle-configuration digest baseline; `workflow`, `created_at`, `updated_at` | inputs, health, tick backoff | `state.json` `sessions` entries |
 | `node_instances` | `(session_id, node_id)` primary key; session foreign key; no other columns | none — purely the logical node's identity | `state.json` `sessions.*.tasks` entries with `dynamic` unset (keys only) |
-| `node_executions` | `id` (ULID, minted per setup attempt) primary key; `(session_id, node_id)` foreign key to `node_instances`; `sequence`; nullable `task_id`, `name`, `resource`; `scope`, `status`, nullable `finalized_at`; release outcome and unavailable reason; at most one unreleased row per `(session_id, node_id)` — see "Node execution identity" | inputs, outputs, state, observed value, `done_when` (rare, not relationally queried), setup-time cleanup facts, nullable `directory` (the directory the setup ran in; `NULL` when setup ran with no explicit directory), error, lifecycle timestamps | `state.json` `sessions.*.tasks` entries with `dynamic` unset (per-attempt facts) |
+| `node_executions` | `id` (ULID, minted per setup attempt) primary key; `(session_id, node_id)` foreign key to `node_instances`; `sequence`; nullable `task_id`, `name`, `resource_id` (referencing `resources(id)`); `scope`, `status`, nullable `finalized_at`; release outcome and unavailable reason; at most one unreleased row per `(session_id, node_id)` — see "Node execution identity" | inputs, outputs, state, observed value, `done_when` (rare, not relationally queried), setup-time cleanup facts, nullable `directory` (the directory the setup ran in; `NULL` when setup ran with no explicit directory), error, lifecycle timestamps | `state.json` `sessions.*.tasks` entries with `dynamic` unset (per-attempt facts) |
 | `node_execution_layers` | `(execution_id, position)` primary key; execution foreign key (`ON DELETE CASCADE`) | inputs, locals, outputs, env, heartbeat counters, lifecycle timestamps, error | `TaskState.Layers` (static node instances) |
 | `node_execution_dependencies` | `(execution_id, depends_on_execution_id)` primary key; both reference `node_executions(id)` (`ON DELETE CASCADE`) | none — the edge itself is the payload | snapshotted from `task.Resolved.DependsOn` at the dependent's own setup time — see "Node execution identity" |
-| `task_instances` | `id` (ULID, stable across every write that still names the same `(session_id, instance_name)`; re-minted only when a cleanup removes the row before a later setup recreates it) primary key; `(session_id, instance_name)` unique; session foreign key; `task_id`, `scope`, `status`, `sequence`, nullable `resource`, `named`, nullable `finalized_at` | inputs, outputs, state, observed value, extra completion data, nullable `directory` (the directory the setup ran in; `NULL` when setup ran with no explicit directory), error, lifecycle timestamps | `state.json` `sessions.*.tasks` entries with `dynamic: true` |
+| `task_instances` | `id` (ULID, stable across every write that still names the same `(session_id, instance_name)`; re-minted only when a cleanup removes the row before a later setup recreates it) primary key; `(session_id, instance_name)` unique; session foreign key; `task_id`, `scope`, `status`, `sequence`, nullable `resource_id` (referencing `resources(id)`), `named`, nullable `finalized_at` | inputs, outputs, state, observed value, extra completion data, nullable `directory` (the directory the setup ran in; `NULL` when setup ran with no explicit directory), error, lifecycle timestamps | `state.json` `sessions.*.tasks` entries with `dynamic: true` |
 | `task_instance_layers` | `(task_instance_id, position)` primary key; task-instance foreign key | inputs, locals, outputs, env, heartbeat counters, lifecycle timestamps, error | `TaskState.Layers` (dynamic instances) |
 | `task_done_when_states` | `task_instance_id` primary key and foreign key | counters, fingerprints, reason/body, escalation data | `TaskState.DoneWhen` (dynamic instances only) |
 | `task_done_when_unsatisfied_items` | `(task_instance_id, position)` primary key; task-instance foreign key | one unsatisfied-leaf id per row | `DoneWhenState.LastUnsatisfied` |
 | `task_done_when_judges` | `(task_instance_id, leaf_id)` primary key and task-instance foreign key; `judge_session`/nullable `judge_workflow` remain stored facts | action, reason, revision, relation, and creation time | `DoneWhenState.Judges` (dynamic instances only) |
 | `populations` | `(workflow, name)` primary key | none | `state.json` `populations` map key and value |
-| `population_members` | `(workflow, name, resource_id)` primary key and `populations(workflow, name)` foreign key; nullable `session_name` | item, generation, timestamps, flags, `decision_kind`/`decision_reason` | `PopulationState.Members` |
+| `population_members` | `(workflow, name, resource_id)` primary key, `populations(workflow, name)` foreign key, and `resource_id` referencing `resources(id)`; nullable `session_name` | item, generation, timestamps, flags, `decision_kind`/`decision_reason` | `PopulationState.Members` |
 | `population_member_blockers` | `(workflow, name, resource_id, position)` primary key; foreign key to `population_members` | one blocker reason per row | `PopulationMember.LastBlockers` |
 | `session_channel_health` | `(session_id, kind)` primary key; session foreign key; `kind` CHECK IN `validation`/`delivery` | consecutive failures, first/last failure time, last channel/error, escalation time | `Session.ChannelValidationHealth`/`ChannelDeliveryHealth` |
 | `up_reservations` | `child_session_name` primary key; nullable `parent_session_name`, `virtual_root`, `pid`, `reserved_at` | none | `state.json` `up_reservations` |
@@ -210,7 +211,8 @@ second tombstone marker exists. `chain_attempts` stores one non-empty cap
 refusal fingerprint per `(session_id, instance, chain_id)`, so
 compare-and-set and conditional revert run in an immediate transaction.
 `subscription_retries` stores deduplicated failed `subscribe` and
-`unsubscribe` intents by `(session_id, action, resource_id)`. A teardown retry
+`unsubscribe` intents by `(session_id, action, resource_id)`, `resource_id`
+referencing `resources(id)`. A teardown retry
 uses the destroyed incarnation id, and a sweep drops its stale subscribe
 intent or retries its unsubscribe intent without involving a same-name live
 replacement.
@@ -507,12 +509,12 @@ one; reads by name always resolve the live row, and a superseded
 incarnation stays reachable only by its own `id`.
 
 A name composed from a resource is not, by itself, an entry identity.
-`resource_type` and `tag` record the entry resource the row was created for,
-next to the concrete `resource_id`. A resource-addressed `plect up` reuses a
-live row only when both match what the identifier resolves to, and reports a
-collision otherwise; under one composed name, a matching type and tag already
-fix the resource name. A row whose `resource_type`
-is NULL records no entry, so it never matches and is reachable only by name.
+`resource_id` and `tag` record the entry resource the row was created for, and
+`name` stores the name composed from them at creation. A resource-addressed
+`plect up` reuses a live row only when its `resource_id` is the `resources` row
+the identifier resolves to and its `tag` is the requested one, and reports a
+collision otherwise. A row whose `resource_id` is NULL records no entry, so it
+never matches and is reachable only by name.
 
 `status TEXT CHECK (status IN ('down', 'up', 'destroyed'))` is a lifecycle
 phase, not liveness or health — `domain.HealthState` (a derived runtime
@@ -551,6 +553,39 @@ onto the new incarnation just because the child itself is written again.
 of them onto the referenced row's current name (with a `root:` prefix for
 `RootSessionID`) — not itself the identity a write resolves against.
 
+## Resources
+
+Every `resource_id` column stores a `resources.id`, never an identifier
+string: the identifier a resource's actions receive is the row's `locator`.
+`resources.id` is opaque. Core mints a ULID for a row it records, while a row
+the resources migration recorded has a 32-digit hexadecimal id; nothing reads
+the shape.
+
+`type` is the address of the resource declaration that resolved the
+identifier, and `name` is the slug that declaration's `name` derived. `name` is
+the resource's identity and is unique across types, because a session takes
+its name from it: an identifier whose derived name is already recorded resolves
+to that row, and a different type deriving a recorded name is refused. A
+derived name outside the session-name rule is refused where it is derived.
+`locator` is the identifier first resolved to the row; a later spelling that
+derives the same name never replaces it.
+
+An empty `type` marks an identifier no declaration resolved: an identifier a
+task binds that no declaration, or more than one, recognizes, and every
+identifier the resources migration recorded. Such a row is named by its own
+`id`, so it never holds a name a declaration derives, and one identifier has
+one such row, found by its `locator`.
+
+A row is recorded in the same write transaction as the first row that refers
+to it, and deleted in the write that removes the last reference from
+`sessions`, `task_instances`, `node_executions`, `population_members` or
+`subscription_retries`. A pending retry counts, because an `unsubscribe` retry
+still names its resource after the binding that subscribed it is gone. A
+destroyed session's retained row keeps its resource. The observation a node or
+task recorded (`resource_observation_json`) stays on that node or task row: it
+is what was observed when that row was evaluated, not a property of the
+resource.
+
 ## Status message
 
 `Session.Message` is not a stored field: the fact lives entirely in the
@@ -570,10 +605,20 @@ appending a new one; a no-op call appends nothing.
 ## Schema excerpts
 
 `app/internal/persistence/schema.sql` declares the application-owned tables.
-The following excerpt shows the session relationship and event ordering shape;
+The following excerpt shows the resource, session relationship and event ordering shapes;
 the remaining tables follow the keys in the inventory above.
 
 ```sql
+CREATE TABLE resources (
+    id TEXT PRIMARY KEY,
+    type TEXT NOT NULL,
+    name TEXT NOT NULL,
+    locator TEXT NOT NULL,
+    created_at TEXT NOT NULL
+);
+
+CREATE UNIQUE INDEX resources_name ON resources(name);
+
 CREATE TABLE sessions (
     id TEXT PRIMARY KEY,
     name TEXT NOT NULL,
@@ -581,8 +626,7 @@ CREATE TABLE sessions (
     destroyed_at TEXT,
     parent_session_id TEXT REFERENCES sessions(id) ON DELETE NO ACTION,
     root_session_id TEXT REFERENCES sessions(id) ON DELETE NO ACTION,
-    resource_id TEXT,
-    resource_type TEXT,
+    resource_id TEXT REFERENCES resources(id),
     tag TEXT,
     alias TEXT,
     workflow TEXT NOT NULL,
@@ -600,6 +644,7 @@ CREATE TABLE sessions (
 CREATE UNIQUE INDEX sessions_live_name ON sessions(name) WHERE status <> 'destroyed';
 CREATE INDEX sessions_alias_idx ON sessions(alias);
 CREATE INDEX sessions_parent_idx ON sessions(parent_session_id);
+CREATE INDEX sessions_resource_idx ON sessions(resource_id);
 
 CREATE TABLE events (
     id TEXT PRIMARY KEY,

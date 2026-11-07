@@ -132,6 +132,11 @@ receiving everything and relying on a later check to reject the rest.
 | Task instruction body | `resource.id`, `resource.state.<key>`, `self.state.<key>`, `inputs.<key>`, `session.*`, `workflow.outputs.<key>` |
 | Chain `inputs`, chain `resource` | `task.session`, `task.instance`, `task.workflow`, `task.done_when.pending_judge_ids`, `resource.state.<key>`, `self.state.<key>` |
 
+Where a surface observes `session.*`, `session.tag` is the tag the session was
+created with, and is absent for an untagged session. It is the recorded tag
+rather than a segment parsed out of `session.name`, because a resource name may
+itself contain `+`.
+
 A projection in a task document's instruction body is spelled `{{ <path> }}`
 rather than as a tagged value, because prose has no room for a table; it is the
 same projection, validated the same way, and stringified on the way out. See

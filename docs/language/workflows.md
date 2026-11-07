@@ -15,10 +15,13 @@ that lists the candidates.
 The resource's `name` derives its resource name. Without a tag, that value is
 the session name. A tag appends one validated non-empty session-name segment,
 `<resource-name>+<tag>` with the tag matching `[A-Za-z0-9_-]+`. The resulting
-name must either be new or name the same entry-resource and tag record: a live
-session with that name whose entry resource type or tag differs is a
-collision, not the same session. The session records its entry resource type,
-the concrete identifier, and the tag. Tags
+name must either be new or name the same entry resource and tag: a live
+session with that name that refers to another resource, or that records
+another tag, is a collision, not the same session. The session records a
+reference to its entry resource, the tag, and the name composed from them at
+creation; the identifier its resource actions receive belongs to the resource,
+not the session. `session.tag` reads the recorded tag, so a resource name that
+itself contains `+` never changes it. Tags
 distinguish concurrent sessions for one resource without making a task,
 plugin, workflow, or working-directory detail part of core identity.
 

@@ -139,7 +139,8 @@ per-layer namespace every kind shares, and references use the same dotted forms
 validated against `kind = "task"`.
 
 Instance identity is separate and orthogonal: the id names the declaration,
-while an instance is identified by its concrete resource and instance name. A
+while an instance is identified by its concrete resource and that resource's
+resource name. A
 task can be added to a session whose entry resource has another type; this does
 not change the session's identity or environment.
 
