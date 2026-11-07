@@ -89,7 +89,6 @@ func (db *DB) UpdatePopulation(ctx context.Context, key contract.PopulationProve
 			}
 			kept[member.Resource.ID] = true
 		}
-		var dropped []string
 		for id := range previous {
 			if kept[id] {
 				continue
@@ -97,9 +96,8 @@ func (db *DB) UpdatePopulation(ctx context.Context, key contract.PopulationProve
 			if err := q.DeletePopulationMember(ctx, sqlcgen.DeletePopulationMemberParams{ProjectRoot: key.ProjectRoot, Workflow: key.Workflow, Name: key.Name, ResourceID: id}); err != nil {
 				return fmt.Errorf("delete population member %s of %+v: %w", id, key, err)
 			}
-			dropped = append(dropped, id)
 		}
-		return releaseResourcesTx(ctx, q, dropped)
+		return nil
 	})
 }
 

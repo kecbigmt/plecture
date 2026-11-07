@@ -133,6 +133,10 @@ type Resource struct {
 	CreatedAt string
 }
 
+type ResourceReference struct {
+	ResourceID sql.NullString
+}
+
 type Session struct {
 	ID                       string
 	Name                     string

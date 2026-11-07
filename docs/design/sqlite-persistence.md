@@ -579,9 +579,12 @@ identifier the resources migration recorded. Such a row is named by its own
 one such row, found by its `locator`.
 
 A row is recorded in the same write transaction as the first row that refers
-to it, and deleted in the write that removes the last reference from
-`sessions`, `task_instances`, `node_executions` (`resource_id` or
-`subscription_id`), `population_members` or `subscription_retries`. A pending
+to it. Its release is a schema rule: the `resource_references` view lists every
+reference — `sessions`, `task_instances`, `node_executions` (`resource_id` and
+`subscription_id`), `population_members` and `subscription_retries` — and an
+`AFTER DELETE` and an `AFTER UPDATE OF` trigger on each of those tables delete
+the row once the view no longer names it, so the write that removes the last
+reference releases the row whichever code issued it. A pending
 retry counts, because an `unsubscribe` retry still names its resource after the
 binding that subscribed it is gone; a task cleanup queues that retry in the
 write that removes the binding, so the row is never released in between. A
