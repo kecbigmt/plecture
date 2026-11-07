@@ -185,10 +185,8 @@ func (db *DB) subscriptionRetries(ctx context.Context, query string, args ...any
 // DeleteSubscriptionRetry removes a retry only after its outcome is known.
 func (db *DB) DeleteSubscriptionRetry(ctx context.Context, sessionID, action, resourceID string) error {
 	return db.WithImmediateTx(ctx, func(tx *sql.Tx) error {
-		if _, err := tx.ExecContext(ctx, `DELETE FROM subscription_retries WHERE session_id = ? AND action = ? AND resource_id = ?`, sessionID, action, resourceID); err != nil {
-			return err
-		}
-		return releaseResourcesTx(ctx, sqlcgen.New(tx), []string{resourceID})
+		_, err := tx.ExecContext(ctx, `DELETE FROM subscription_retries WHERE session_id = ? AND action = ? AND resource_id = ?`, sessionID, action, resourceID)
+		return err
 	})
 }
 
@@ -198,9 +196,7 @@ func (db *DB) DeleteSubscriptionRetryForLiveSession(ctx context.Context, session
 		if err != nil {
 			return err
 		}
-		if _, err := tx.ExecContext(ctx, `DELETE FROM subscription_retries WHERE session_id = ? AND action = ? AND resource_id = ?`, id, action, resourceID); err != nil {
-			return err
-		}
-		return releaseResourcesTx(ctx, sqlcgen.New(tx), []string{resourceID})
+		_, err = tx.ExecContext(ctx, `DELETE FROM subscription_retries WHERE session_id = ? AND action = ? AND resource_id = ?`, id, action, resourceID)
+		return err
 	})
 }

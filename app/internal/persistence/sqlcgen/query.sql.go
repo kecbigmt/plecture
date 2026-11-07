@@ -267,21 +267,6 @@ func (q *Queries) DeleteTaskInstanceLayersByInstanceID(ctx context.Context, task
 	return err
 }
 
-const deleteUnreferencedResource = `-- name: DeleteUnreferencedResource :exec
-DELETE FROM resources
-WHERE resources.id = ?1
-  AND NOT EXISTS (SELECT 1 FROM sessions WHERE sessions.resource_id = ?1)
-  AND NOT EXISTS (SELECT 1 FROM task_instances WHERE task_instances.resource_id = ?1)
-  AND NOT EXISTS (SELECT 1 FROM node_executions WHERE node_executions.resource_id = ?1 OR node_executions.subscription_id = ?1)
-  AND NOT EXISTS (SELECT 1 FROM population_members WHERE population_members.resource_id = ?1)
-  AND NOT EXISTS (SELECT 1 FROM subscription_retries WHERE subscription_retries.resource_id = ?1)
-`
-
-func (q *Queries) DeleteUnreferencedResource(ctx context.Context, id string) error {
-	_, err := q.db.ExecContext(ctx, deleteUnreferencedResource, id)
-	return err
-}
-
 const deleteUpReservation = `-- name: DeleteUpReservation :exec
 DELETE FROM up_reservations WHERE child_session_name = ?
 `
@@ -1886,37 +1871,6 @@ func (q *Queries) ListSessionIDsByName(ctx context.Context, name string) ([]stri
 			return nil, err
 		}
 		items = append(items, id)
-	}
-	if err := rows.Close(); err != nil {
-		return nil, err
-	}
-	if err := rows.Err(); err != nil {
-		return nil, err
-	}
-	return items, nil
-}
-
-const listSessionResourceIDs = `-- name: ListSessionResourceIDs :many
-SELECT resource_id FROM sessions WHERE sessions.id = ?1 AND resource_id IS NOT NULL
-UNION SELECT resource_id FROM task_instances WHERE task_instances.session_id = ?1 AND resource_id IS NOT NULL
-UNION SELECT resource_id FROM node_executions WHERE node_executions.session_id = ?1 AND resource_id IS NOT NULL
-UNION SELECT subscription_id FROM node_executions WHERE node_executions.session_id = ?1 AND subscription_id IS NOT NULL
-UNION SELECT resource_id FROM subscription_retries WHERE subscription_retries.session_id = ?1
-`
-
-func (q *Queries) ListSessionResourceIDs(ctx context.Context, sessionID string) ([]sql.NullString, error) {
-	rows, err := q.db.QueryContext(ctx, listSessionResourceIDs, sessionID)
-	if err != nil {
-		return nil, err
-	}
-	defer rows.Close()
-	var items []sql.NullString
-	for rows.Next() {
-		var resource_id sql.NullString
-		if err := rows.Scan(&resource_id); err != nil {
-			return nil, err
-		}
-		items = append(items, resource_id)
 	}
 	if err := rows.Close(); err != nil {
 		return nil, err

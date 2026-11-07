@@ -106,32 +106,6 @@ func recordUntypedResourceTx(ctx context.Context, q *sqlcgen.Queries, r *contrac
 	return nil
 }
 
-// releaseResourcesTx deletes each of ids that nothing references any more.
-// Callers pass the ids a write could have dropped, collected before it, so a
-// write never pays for a sweep of every recorded resource.
-func releaseResourcesTx(ctx context.Context, q *sqlcgen.Queries, ids []string) error {
-	for _, id := range ids {
-		if err := q.DeleteUnreferencedResource(ctx, id); err != nil {
-			return fmt.Errorf("release resource %s: %w", id, err)
-		}
-	}
-	return nil
-}
-
-func sessionResourceIDsTx(ctx context.Context, q *sqlcgen.Queries, sessionID string) ([]string, error) {
-	rows, err := q.ListSessionResourceIDs(ctx, sessionID)
-	if err != nil {
-		return nil, fmt.Errorf("list resources referenced by session %s: %w", sessionID, err)
-	}
-	ids := make([]string, 0, len(rows))
-	for _, row := range rows {
-		if row.Valid {
-			ids = append(ids, row.String)
-		}
-	}
-	return ids, nil
-}
-
 // fillResourcesTx completes references a row read left holding only an ID.
 func fillResourcesTx(ctx context.Context, q *sqlcgen.Queries, refs []*contract.Resource) error {
 	seen := map[string]bool{}

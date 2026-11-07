@@ -386,3 +386,58 @@ CREATE TABLE event_cursors (
     next_sequence INTEGER NOT NULL CHECK (next_sequence >= 0),
     PRIMARY KEY (session_id, kind)
 );
+
+-- A resources row is released by the schema, not by each writer, so a write
+-- that drops the last reference releases it whatever code made the write.
+-- resource_references is the one list of those references; a new column that
+-- refers to resources(id) joins it and gets its own pair of triggers, or a
+-- release it does not know about fails that write on the foreign key.
+CREATE VIEW resource_references AS
+SELECT resource_id FROM sessions WHERE resource_id IS NOT NULL
+UNION ALL SELECT resource_id FROM task_instances WHERE resource_id IS NOT NULL
+UNION ALL SELECT resource_id FROM node_executions WHERE resource_id IS NOT NULL
+UNION ALL SELECT subscription_id FROM node_executions WHERE subscription_id IS NOT NULL
+UNION ALL SELECT resource_id FROM population_members
+UNION ALL SELECT resource_id FROM subscription_retries;
+
+CREATE TRIGGER sessions_release_resource AFTER DELETE ON sessions BEGIN
+    DELETE FROM resources WHERE id = OLD.resource_id AND NOT EXISTS (SELECT 1 FROM resource_references WHERE resource_id = OLD.resource_id);
+END;
+
+CREATE TRIGGER sessions_release_replaced_resource AFTER UPDATE OF resource_id ON sessions BEGIN
+    DELETE FROM resources WHERE id = OLD.resource_id AND NOT EXISTS (SELECT 1 FROM resource_references WHERE resource_id = OLD.resource_id);
+END;
+
+CREATE TRIGGER task_instances_release_resource AFTER DELETE ON task_instances BEGIN
+    DELETE FROM resources WHERE id = OLD.resource_id AND NOT EXISTS (SELECT 1 FROM resource_references WHERE resource_id = OLD.resource_id);
+END;
+
+CREATE TRIGGER task_instances_release_replaced_resource AFTER UPDATE OF resource_id ON task_instances BEGIN
+    DELETE FROM resources WHERE id = OLD.resource_id AND NOT EXISTS (SELECT 1 FROM resource_references WHERE resource_id = OLD.resource_id);
+END;
+
+CREATE TRIGGER node_executions_release_resource AFTER DELETE ON node_executions BEGIN
+    DELETE FROM resources WHERE id = OLD.resource_id AND NOT EXISTS (SELECT 1 FROM resource_references WHERE resource_id = OLD.resource_id);
+    DELETE FROM resources WHERE id = OLD.subscription_id AND NOT EXISTS (SELECT 1 FROM resource_references WHERE resource_id = OLD.subscription_id);
+END;
+
+CREATE TRIGGER node_executions_release_replaced_resource AFTER UPDATE OF resource_id, subscription_id ON node_executions BEGIN
+    DELETE FROM resources WHERE id = OLD.resource_id AND NOT EXISTS (SELECT 1 FROM resource_references WHERE resource_id = OLD.resource_id);
+    DELETE FROM resources WHERE id = OLD.subscription_id AND NOT EXISTS (SELECT 1 FROM resource_references WHERE resource_id = OLD.subscription_id);
+END;
+
+CREATE TRIGGER population_members_release_resource AFTER DELETE ON population_members BEGIN
+    DELETE FROM resources WHERE id = OLD.resource_id AND NOT EXISTS (SELECT 1 FROM resource_references WHERE resource_id = OLD.resource_id);
+END;
+
+CREATE TRIGGER population_members_release_replaced_resource AFTER UPDATE OF resource_id ON population_members BEGIN
+    DELETE FROM resources WHERE id = OLD.resource_id AND NOT EXISTS (SELECT 1 FROM resource_references WHERE resource_id = OLD.resource_id);
+END;
+
+CREATE TRIGGER subscription_retries_release_resource AFTER DELETE ON subscription_retries BEGIN
+    DELETE FROM resources WHERE id = OLD.resource_id AND NOT EXISTS (SELECT 1 FROM resource_references WHERE resource_id = OLD.resource_id);
+END;
+
+CREATE TRIGGER subscription_retries_release_replaced_resource AFTER UPDATE OF resource_id ON subscription_retries BEGIN
+    DELETE FROM resources WHERE id = OLD.resource_id AND NOT EXISTS (SELECT 1 FROM resource_references WHERE resource_id = OLD.resource_id);
+END;

@@ -597,19 +597,3 @@ VALUES (?, ?, ?, ?, ?);
 -- name: ListResourcesByIDs :many
 SELECT id, type, name, locator, created_at
 FROM resources WHERE id IN (sqlc.slice(ids));
-
--- name: DeleteUnreferencedResource :exec
-DELETE FROM resources
-WHERE resources.id = ?1
-  AND NOT EXISTS (SELECT 1 FROM sessions WHERE sessions.resource_id = ?1)
-  AND NOT EXISTS (SELECT 1 FROM task_instances WHERE task_instances.resource_id = ?1)
-  AND NOT EXISTS (SELECT 1 FROM node_executions WHERE node_executions.resource_id = ?1 OR node_executions.subscription_id = ?1)
-  AND NOT EXISTS (SELECT 1 FROM population_members WHERE population_members.resource_id = ?1)
-  AND NOT EXISTS (SELECT 1 FROM subscription_retries WHERE subscription_retries.resource_id = ?1);
-
--- name: ListSessionResourceIDs :many
-SELECT resource_id FROM sessions WHERE sessions.id = sqlc.arg(session_id) AND resource_id IS NOT NULL
-UNION SELECT resource_id FROM task_instances WHERE task_instances.session_id = sqlc.arg(session_id) AND resource_id IS NOT NULL
-UNION SELECT resource_id FROM node_executions WHERE node_executions.session_id = sqlc.arg(session_id) AND resource_id IS NOT NULL
-UNION SELECT subscription_id FROM node_executions WHERE node_executions.session_id = sqlc.arg(session_id) AND subscription_id IS NOT NULL
-UNION SELECT resource_id FROM subscription_retries WHERE subscription_retries.session_id = sqlc.arg(session_id);
