@@ -38,6 +38,12 @@ CREATE TABLE sessions (
     parent_session_id TEXT REFERENCES sessions(id) ON DELETE NO ACTION,
     root_session_id TEXT REFERENCES sessions(id) ON DELETE NO ACTION,
     resource_id TEXT,
+    -- The entry resource a session was created for. NULL resource_type means
+    -- the session predates the record, so no later resource-addressed up can
+    -- prove it names the same entry.
+    resource_type TEXT,
+    instance_name TEXT,
+    tag TEXT,
     alias TEXT,
     workflow TEXT NOT NULL,
     workflow_revision TEXT,

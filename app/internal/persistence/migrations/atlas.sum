@@ -1,4 +1,4 @@
-h1:EJaYBmjB1uoeTOfcafAEdfRS7FjL7tYFkJ9n7xwCk8E=
+h1:nvA0DPlxtD7j81NMt9jDqz1EmkUrQYcl8jvsr+LDR4Y=
 20260906051929_persistence_smoke.sql h1:VJQbsA+3kdW09JOA/7fdHbtscHLy6/jFDEL+ECJl9WI=
 20260906071015_add_runtime_state_tables.sql h1:lQ0V2wgPlls9T1lbkNb5OAMaibpbrU+kCzsFa/WoR7o=
 20260906085730_drop_persistence_smoke.sql h1:2sJTGdSHyAu6UyBQO56htsBLZJw1tjZVqoHjtaLsDnM=
@@ -17,3 +17,4 @@ h1:EJaYBmjB1uoeTOfcafAEdfRS7FjL7tYFkJ9n7xwCk8E=
 20261104140000_node_subscription.sql h1:AtuK0cEkOv7HbQ5Npghzm9w+mDlysvuU7iEXVoMOHcI=
 20261106000000_workdir_directory.sql h1:vOAhNXjJshEJoURiRMJShxqmJj/BYiMeXTOq4XuhAG4=
 20261107000000_session_invocation_dir.sql h1:L0zO57sRBerz4QdQGhuNHiTDtmRT9jaC3L+D2kjF+54=
+20261107120000_session_entry_identity.sql h1:J3v+bg4sRBA9grpld8DssxNlg+cfuCYEEoS5gzO/9YI=
