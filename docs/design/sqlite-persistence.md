@@ -132,7 +132,10 @@ A column is `NULL` exactly when the domain value it holds can be genuinely
 absent — never observed or resolved yet, or an optional fact. A column that
 domain logic always populates is `NOT NULL` with no `DEFAULT`, so every write
 site states its value explicitly rather than silently inheriting one from the
-database. A closed-set text column (`scope`, `status`, an action or relation,
+database. Several columns that together encode one optional value (a
+session's health state, its tick backoff) share one marker column that is
+`NULL` exactly when the value is absent, and a `CHECK` keeps the group's other
+columns `NULL` along with it. A closed-set text column (`scope`, `status`, an action or relation,
 a decision kind) carries a `CHECK (col IN (...))` naming its exact values; a
 boolean column is `boolean NOT NULL CHECK (col IN (0, 1))` rather than SQLite's
 untyped affinity alone. Every `*_at` timestamp column is a UTC RFC3339 string
@@ -145,8 +148,13 @@ A text column holding JSON carries the `_json` suffix. Every `_json` column
 is declaration-owned: its shape comes from a configuration-language or
 plugin schema, and the database stores it opaquely, enforcing only
 well-formedness (`CHECK (col IS NULL OR json_valid(col))`, or `CHECK
-(json_valid(col))` for a `NOT NULL` one like `events.metadata_json`), never
-its internal structure. Core-owned structure is never stored as JSON — it
+(json_valid(col))` for a `NOT NULL` one like `events.metadata_json`) and, for
+a column that holds a map, that the top-level value is an object
+(`json_type(col) = 'object'`), never its internal structure. A map every row
+carries (inputs, outputs, state, locals, env) is `NOT NULL`, stores `{}` for
+no entries, and reads back as no map at all; an optional document (an
+observation, a process identity, a node's `done_when`) is `NULL` when absent,
+never the JSON text `null`. Core-owned structure is never stored as JSON — it
 gets relational columns or a child table instead. One narrow exception
 exists: `node_executions.done_when_json`, a static workflow node's
 `done_when`, is core-owned shape, but declaring one is rare (no shipped
@@ -176,7 +184,7 @@ classifies every `_json` column by its owning declaration:
 | `resources` | `id` primary key (opaque; see "Resources"); `type`; `name` unique across types; `locator`; `created_at` | none | each distinct resource a session, task, node, population member or delivery retry refers to |
 | `sessions` | `id` (ULID) primary key; `name` (unique only among live rows — see "Session identity and lifecycle"); `status`, nullable `destroyed_at`; nullable `parent_session_id` and `root_session_id`, each referencing `sessions(id)`; `project_root` (the configuration context, `''` for global only); nullable `resource_id` referencing `resources(id)`; nullable `tag`, `alias`, `population_workflow`, `population_name` (with `project_root` they reference `populations(project_root, workflow, name)`); nullable lifecycle-configuration digest baseline; `workflow`, `created_at`, `updated_at` | inputs, health, tick backoff | `state.json` `sessions` entries |
 | `node_instances` | `(session_id, node_id)` primary key; session foreign key; no other columns | none — purely the logical node's identity | `state.json` `sessions.*.tasks` entries with `dynamic` unset (keys only) |
-| `node_executions` | `id` (ULID, minted per setup attempt) primary key; `(session_id, node_id)` foreign key to `node_instances`; `sequence`; nullable `task_id`, `name`, `resource_id` and `subscription_id` (each referencing `resources(id)`; `subscription_id` is the resource the node's subscription output bound); `scope`, `status`, nullable `finalized_at`; release outcome and unavailable reason; at most one unreleased row per `(session_id, node_id)` — see "Node execution identity" | inputs, outputs, state, observed value, `done_when` (rare, not relationally queried), setup-time cleanup facts, nullable `directory` (the directory the setup ran in; `NULL` when setup ran with no explicit directory), error, lifecycle timestamps | `state.json` `sessions.*.tasks` entries with `dynamic` unset (per-attempt facts) |
+| `node_executions` | `id` (ULID, minted per setup attempt) primary key; `(session_id, node_id)` foreign key to `node_instances`; `sequence`; nullable `task_id`, `resource_id` and `subscription_id` (each referencing `resources(id)`; `subscription_id` is the resource the node's subscription output bound); `scope`, `status`, nullable `finalized_at`; release outcome and unavailable reason; at most one unreleased row per `(session_id, node_id)` — see "Node execution identity" | inputs, outputs, state, observed value, `done_when` (rare, not relationally queried), setup-time cleanup facts, nullable `directory` (the directory the setup ran in; `NULL` when setup ran with no explicit directory), error, lifecycle timestamps | `state.json` `sessions.*.tasks` entries with `dynamic` unset (per-attempt facts) |
 | `node_execution_layers` | `(execution_id, position)` primary key; execution foreign key (`ON DELETE CASCADE`) | inputs, locals, outputs, env, heartbeat counters, lifecycle timestamps, error | `TaskState.Layers` (static node instances) |
 | `node_execution_dependencies` | `(execution_id, depends_on_execution_id)` primary key; both reference `node_executions(id)` (`ON DELETE CASCADE`) | none — the edge itself is the payload | snapshotted from `task.Resolved.DependsOn` at the dependent's own setup time — see "Node execution identity" |
 | `task_instances` | `id` (ULID, stable across every write that still names the same `(session_id, instance_name)`; re-minted only when a cleanup removes the row before a later setup recreates it) primary key; `(session_id, instance_name)` unique; session foreign key; `task_id`, `scope`, `status`, `sequence`, nullable `resource_id` (referencing `resources(id)`), `named`, nullable `finalized_at` | inputs, outputs, state, observed value, extra completion data, nullable `directory` (the directory the setup ran in; `NULL` when setup ran with no explicit directory), error, lifecycle timestamps | `state.json` `sessions.*.tasks` entries with `dynamic: true` |

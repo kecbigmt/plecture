@@ -162,7 +162,7 @@ func TestPutSession_NewExecutionRefusesAConcurrentWritersUnreleasedRow(t *testin
 		"a": {
 			Scope: contract.TaskScopeSession, Status: contract.TaskStatusProduced, TaskID: "work",
 			Outputs:      map[string]any{"from": "writer-a"},
-			Layers:       []contract.LayerState{{EffectID: "outer", Status: contract.TaskStatusProduced}},
+			Layers:       []contract.LayerState{{EffectID: "outer", Status: contract.TaskStatusProduced, SetupAt: now}},
 			DependsOn:    []string{"dep"},
 			NewExecution: true,
 		},
@@ -176,7 +176,7 @@ func TestPutSession_NewExecutionRefusesAConcurrentWritersUnreleasedRow(t *testin
 		"a": {
 			Scope: contract.TaskScopeSession, Status: contract.TaskStatusProduced, TaskID: "work",
 			Outputs:      map[string]any{"from": "writer-b"},
-			Layers:       []contract.LayerState{{EffectID: "different", Status: contract.TaskStatusProduced}},
+			Layers:       []contract.LayerState{{EffectID: "different", Status: contract.TaskStatusProduced, SetupAt: now}},
 			NewExecution: true,
 		},
 	}}

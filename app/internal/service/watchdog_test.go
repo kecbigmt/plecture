@@ -1815,8 +1815,8 @@ pid = { type = "integer" }
 					Scope: contract.TaskScopeRun, TaskID: "agent", Status: contract.TaskStatusProduced,
 					Outputs: inner, Process: tc.process,
 					Layers: []contract.LayerState{
-						{EffectID: "agent", Status: contract.TaskStatusProduced},
-						{EffectID: "agent_runtime", Status: contract.TaskStatusProduced, Outputs: inner},
+						{EffectID: "agent", Status: contract.TaskStatusProduced, SetupAt: time.Now()},
+						{EffectID: "agent_runtime", Status: contract.TaskStatusProduced, SetupAt: time.Now(), Outputs: inner},
 					},
 				},
 			})

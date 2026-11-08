@@ -44,7 +44,7 @@ func (q *Queries) CountLiveSessionsNamed(ctx context.Context, name string) (int6
 }
 
 const currentNodeExecution = `-- name: CurrentNodeExecution :one
-SELECT id, session_id, node_id, sequence, task_id, name, scope, status, resource_id, subscription_id,
+SELECT id, session_id, node_id, sequence, task_id, scope, status, resource_id, subscription_id,
        inputs_json, outputs_json, state_json,
        resource_observation_json, resource_observed_at, done_when_json,
        extra_done_when_json, error, setup_at,
@@ -66,7 +66,6 @@ func (q *Queries) CurrentNodeExecution(ctx context.Context, arg CurrentNodeExecu
 		&i.NodeID,
 		&i.Sequence,
 		&i.TaskID,
-		&i.Name,
 		&i.Scope,
 		&i.Status,
 		&i.ResourceID,
@@ -516,12 +515,12 @@ func (q *Queries) InsertEvent(ctx context.Context, arg InsertEventParams) error 
 
 const insertNodeExecution = `-- name: InsertNodeExecution :one
 INSERT INTO node_executions (
-    id, session_id, node_id, sequence, task_id, name, scope, status, resource_id, subscription_id,
+    id, session_id, node_id, sequence, task_id, scope, status, resource_id, subscription_id,
     inputs_json, outputs_json, state_json,
     resource_observation_json, resource_observed_at, done_when_json,
     extra_done_when_json, error, setup_at,
     failed_at, cleaned_at, finalized_at, process_json, directory
-) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 RETURNING id
 `
 
@@ -531,14 +530,13 @@ type InsertNodeExecutionParams struct {
 	NodeID                  string
 	Sequence                int64
 	TaskID                  sql.NullString
-	Name                    sql.NullString
 	Scope                   string
 	Status                  string
 	ResourceID              sql.NullString
 	SubscriptionID          sql.NullString
-	InputsJson              sql.NullString
-	OutputsJson             sql.NullString
-	StateJson               sql.NullString
+	InputsJson              string
+	OutputsJson             string
+	StateJson               string
 	ResourceObservationJson sql.NullString
 	ResourceObservedAt      sql.NullString
 	DoneWhenJson            sql.NullString
@@ -559,7 +557,6 @@ func (q *Queries) InsertNodeExecution(ctx context.Context, arg InsertNodeExecuti
 		arg.NodeID,
 		arg.Sequence,
 		arg.TaskID,
-		arg.Name,
 		arg.Scope,
 		arg.Status,
 		arg.ResourceID,
@@ -613,13 +610,13 @@ type InsertNodeExecutionLayerParams struct {
 	Position             int64
 	EffectID             string
 	Status               string
-	InputsJson           sql.NullString
-	LocalsJson           sql.NullString
-	OutputsJson          sql.NullString
-	EnvJson              sql.NullString
-	HeartbeatTicks       sql.NullInt64
-	HeartbeatEscalations sql.NullInt64
-	SetupAt              sql.NullString
+	InputsJson           string
+	LocalsJson           string
+	OutputsJson          string
+	EnvJson              string
+	HeartbeatTicks       int64
+	HeartbeatEscalations int64
+	SetupAt              string
 	FailedAt             sql.NullString
 	CleanedAt            sql.NullString
 	Error                sql.NullString
@@ -725,7 +722,7 @@ type InsertSessionParams struct {
 	ProjectRoot              string
 	PopulationWorkflow       sql.NullString
 	PopulationName           sql.NullString
-	InputsJson               sql.NullString
+	InputsJson               string
 	HealthLastCheckedAt      sql.NullString
 	HealthLastActivityAt     sql.NullString
 	HealthLastFingerprint    sql.NullString
@@ -879,13 +876,13 @@ type InsertTaskInstanceLayerParams struct {
 	Position             int64
 	EffectID             string
 	Status               string
-	InputsJson           sql.NullString
-	LocalsJson           sql.NullString
-	OutputsJson          sql.NullString
-	EnvJson              sql.NullString
-	HeartbeatTicks       sql.NullInt64
-	HeartbeatEscalations sql.NullInt64
-	SetupAt              sql.NullString
+	InputsJson           string
+	LocalsJson           string
+	OutputsJson          string
+	EnvJson              string
+	HeartbeatTicks       int64
+	HeartbeatEscalations int64
+	SetupAt              string
 	FailedAt             sql.NullString
 	CleanedAt            sql.NullString
 	Error                sql.NullString
@@ -998,7 +995,7 @@ func (q *Queries) LatestRepairStateChange(ctx context.Context, arg LatestRepairS
 }
 
 const listCurrentNodeExecutions = `-- name: ListCurrentNodeExecutions :many
-SELECT ne.id, ne.session_id, ne.node_id, ne.sequence, ne.task_id, ne.name,
+SELECT ne.id, ne.session_id, ne.node_id, ne.sequence, ne.task_id,
        ne.scope, ne.status, ne.resource_id, ne.subscription_id, ne.inputs_json,
        ne.outputs_json, ne.state_json, ne.resource_observation_json,
        ne.resource_observed_at, ne.done_when_json, ne.extra_done_when_json,
@@ -1029,7 +1026,6 @@ func (q *Queries) ListCurrentNodeExecutions(ctx context.Context, sessionID strin
 			&i.NodeID,
 			&i.Sequence,
 			&i.TaskID,
-			&i.Name,
 			&i.Scope,
 			&i.Status,
 			&i.ResourceID,
@@ -1063,7 +1059,7 @@ func (q *Queries) ListCurrentNodeExecutions(ctx context.Context, sessionID strin
 }
 
 const listCurrentNodeExecutionsForSessions = `-- name: ListCurrentNodeExecutionsForSessions :many
-SELECT ne.id, ne.session_id, ne.node_id, ne.sequence, ne.task_id, ne.name,
+SELECT ne.id, ne.session_id, ne.node_id, ne.sequence, ne.task_id,
        ne.scope, ne.status, ne.resource_id, ne.subscription_id, ne.inputs_json,
        ne.outputs_json, ne.state_json, ne.resource_observation_json,
        ne.resource_observed_at, ne.done_when_json, ne.extra_done_when_json,
@@ -1104,7 +1100,6 @@ func (q *Queries) ListCurrentNodeExecutionsForSessions(ctx context.Context, sess
 			&i.NodeID,
 			&i.Sequence,
 			&i.TaskID,
-			&i.Name,
 			&i.Scope,
 			&i.Status,
 			&i.ResourceID,
@@ -2426,7 +2421,7 @@ func (q *Queries) NextEventSequence(ctx context.Context, sessionID string) (int6
 }
 
 const nodeExecutionByID = `-- name: NodeExecutionByID :one
-SELECT id, session_id, node_id, sequence, task_id, name, scope, status, resource_id, subscription_id,
+SELECT id, session_id, node_id, sequence, task_id, scope, status, resource_id, subscription_id,
        inputs_json, outputs_json, state_json,
        resource_observation_json, resource_observed_at, done_when_json,
        extra_done_when_json, error, setup_at,
@@ -2443,7 +2438,6 @@ func (q *Queries) NodeExecutionByID(ctx context.Context, id string) (NodeExecuti
 		&i.NodeID,
 		&i.Sequence,
 		&i.TaskID,
-		&i.Name,
 		&i.Scope,
 		&i.Status,
 		&i.ResourceID,
@@ -2547,7 +2541,7 @@ func (q *Queries) SessionNamesByIDs(ctx context.Context, ids []string) ([]Sessio
 
 const updateNodeExecution = `-- name: UpdateNodeExecution :exec
 UPDATE node_executions SET
-    sequence = ?, task_id = ?, name = ?, scope = ?, status = ?, resource_id = ?, subscription_id = ?,
+    sequence = ?, task_id = ?, scope = ?, status = ?, resource_id = ?, subscription_id = ?,
     inputs_json = ?, outputs_json = ?, state_json = ?,
     resource_observation_json = ?, resource_observed_at = ?, done_when_json = ?,
     extra_done_when_json = ?, error = ?,
@@ -2558,14 +2552,13 @@ WHERE id = ?
 type UpdateNodeExecutionParams struct {
 	Sequence                int64
 	TaskID                  sql.NullString
-	Name                    sql.NullString
 	Scope                   string
 	Status                  string
 	ResourceID              sql.NullString
 	SubscriptionID          sql.NullString
-	InputsJson              sql.NullString
-	OutputsJson             sql.NullString
-	StateJson               sql.NullString
+	InputsJson              string
+	OutputsJson             string
+	StateJson               string
 	ResourceObservationJson sql.NullString
 	ResourceObservedAt      sql.NullString
 	DoneWhenJson            sql.NullString
@@ -2584,7 +2577,6 @@ func (q *Queries) UpdateNodeExecution(ctx context.Context, arg UpdateNodeExecuti
 	_, err := q.db.ExecContext(ctx, updateNodeExecution,
 		arg.Sequence,
 		arg.TaskID,
-		arg.Name,
 		arg.Scope,
 		arg.Status,
 		arg.ResourceID,
@@ -2655,7 +2647,7 @@ type UpdateSessionByIDParams struct {
 	ProjectRoot              string
 	PopulationWorkflow       sql.NullString
 	PopulationName           sql.NullString
-	InputsJson               sql.NullString
+	InputsJson               string
 	HealthLastCheckedAt      sql.NullString
 	HealthLastActivityAt     sql.NullString
 	HealthLastFingerprint    sql.NullString
@@ -2888,9 +2880,9 @@ type UpsertTaskInstanceParams struct {
 	Sequence                int64
 	ResourceID              sql.NullString
 	Named                   bool
-	InputsJson              sql.NullString
-	OutputsJson             sql.NullString
-	StateJson               sql.NullString
+	InputsJson              string
+	OutputsJson             string
+	StateJson               string
 	ResourceObservationJson sql.NullString
 	ResourceObservedAt      sql.NullString
 	ExtraDoneWhenJson       sql.NullString

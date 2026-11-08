@@ -356,9 +356,12 @@ func resourceObservationColumns(o *contract.ResourceObservation) (stateJSON, at 
 	if o == nil {
 		return sql.NullString{}, sql.NullString{}, nil
 	}
-	stateJSON, err = marshalJSONMap(o.State)
-	if err != nil {
-		return sql.NullString{}, sql.NullString{}, err
+	if len(o.State) > 0 {
+		data, err := marshalJSONObject(o.State)
+		if err != nil {
+			return sql.NullString{}, sql.NullString{}, err
+		}
+		stateJSON = sql.NullString{String: data, Valid: true}
 	}
 	return stateJSON, formatTimeNull(o.At), nil
 }
@@ -367,9 +370,12 @@ func observationFromColumns(stateJSON, at sql.NullString) (*contract.ResourceObs
 	if !stateJSON.Valid && !at.Valid {
 		return nil, nil
 	}
-	state, err := unmarshalJSONMap(stateJSON)
-	if err != nil {
-		return nil, err
+	var state map[string]any
+	if stateJSON.Valid {
+		var err error
+		if state, err = unmarshalJSONObject[any](stateJSON.String); err != nil {
+			return nil, err
+		}
 	}
 	atTime, err := parseTimeNull(at)
 	if err != nil {
@@ -461,11 +467,11 @@ func orderNodesByDependency(nodes map[string]*contract.TaskState) []string {
 // inserting a fresh one when none exists. Layers and dependency edges are
 // always replaced wholesale for whichever execution id this resolves to.
 func upsertNodeExecutionTx(ctx context.Context, q *sqlcgen.Queries, sessionID, nodeID string, ts *contract.TaskState) error {
-	inputsJSON, err := marshalJSONMap(ts.Inputs)
+	inputsJSON, err := marshalJSONObject(ts.Inputs)
 	if err != nil {
 		return fmt.Errorf("marshal node %q/%q inputs: %w", sessionID, nodeID, err)
 	}
-	outputsJSON, err := marshalJSONMap(ts.Outputs)
+	outputsJSON, err := marshalJSONObject(ts.Outputs)
 	if err != nil {
 		return fmt.Errorf("marshal node %q/%q outputs: %w", sessionID, nodeID, err)
 	}
@@ -473,7 +479,7 @@ func upsertNodeExecutionTx(ctx context.Context, q *sqlcgen.Queries, sessionID, n
 	if err != nil {
 		return fmt.Errorf("marshal node %q/%q process: %w", sessionID, nodeID, err)
 	}
-	stateJSON, err := marshalJSONMap(ts.State)
+	stateJSON, err := marshalJSONObject(ts.State)
 	if err != nil {
 		return fmt.Errorf("marshal node %q/%q state: %w", sessionID, nodeID, err)
 	}
@@ -518,7 +524,6 @@ func upsertNodeExecutionTx(ctx context.Context, q *sqlcgen.Queries, sessionID, n
 			ID:                      executionID,
 			Sequence:                int64(ts.Seq),
 			TaskID:                  nullString(ts.TaskID),
-			Name:                    nullString(ts.Name),
 			Scope:                   ts.Scope,
 			Status:                  ts.Status,
 			ResourceID:              resourceID(ts.Resource),
@@ -553,7 +558,6 @@ func upsertNodeExecutionTx(ctx context.Context, q *sqlcgen.Queries, sessionID, n
 				NodeID:                  nodeID,
 				Sequence:                int64(ts.Seq),
 				TaskID:                  nullString(ts.TaskID),
-				Name:                    nullString(ts.Name),
 				Scope:                   ts.Scope,
 				Status:                  ts.Status,
 				ResourceID:              resourceID(ts.Resource),
@@ -586,7 +590,6 @@ func upsertNodeExecutionTx(ctx context.Context, q *sqlcgen.Queries, sessionID, n
 				ID:                      executionID,
 				Sequence:                int64(ts.Seq),
 				TaskID:                  nullString(ts.TaskID),
-				Name:                    nullString(ts.Name),
 				Scope:                   ts.Scope,
 				Status:                  ts.Status,
 				ResourceID:              resourceID(ts.Resource),
@@ -650,15 +653,15 @@ func upsertNodeExecutionTx(ctx context.Context, q *sqlcgen.Queries, sessionID, n
 }
 
 func nodeExecutionFromRow(row sqlcgen.NodeExecution) (*contract.TaskState, error) {
-	inputs, err := unmarshalJSONMap(row.InputsJson)
+	inputs, err := unmarshalJSONObject[any](row.InputsJson)
 	if err != nil {
 		return nil, fmt.Errorf("inputs: %w", err)
 	}
-	outputs, err := unmarshalJSONMap(row.OutputsJson)
+	outputs, err := unmarshalJSONObject[any](row.OutputsJson)
 	if err != nil {
 		return nil, fmt.Errorf("outputs: %w", err)
 	}
-	state, err := unmarshalJSONMap(row.StateJson)
+	state, err := unmarshalJSONObject[any](row.StateJson)
 	if err != nil {
 		return nil, fmt.Errorf("state: %w", err)
 	}
@@ -692,7 +695,6 @@ func nodeExecutionFromRow(row sqlcgen.NodeExecution) (*contract.TaskState, error
 	}
 	return &contract.TaskState{
 		TaskID:        row.TaskID.String,
-		Name:          row.Name.String,
 		Scope:         row.Scope,
 		Status:        row.Status,
 		Seq:           int(row.Sequence),
@@ -722,11 +724,11 @@ func nodeExecutionFromRow(row sqlcgen.NodeExecution) (*contract.TaskState, error
 // delete's cascade, since a surviving instance's row is no longer deleted
 // on every write.
 func upsertTaskInstanceTx(ctx context.Context, q *sqlcgen.Queries, sessionID, instanceName string, ts *contract.TaskState) error {
-	inputsJSON, err := marshalJSONMap(ts.Inputs)
+	inputsJSON, err := marshalJSONObject(ts.Inputs)
 	if err != nil {
 		return fmt.Errorf("marshal task %q/%q inputs: %w", sessionID, instanceName, err)
 	}
-	outputsJSON, err := marshalJSONMap(ts.Outputs)
+	outputsJSON, err := marshalJSONObject(ts.Outputs)
 	if err != nil {
 		return fmt.Errorf("marshal task %q/%q outputs: %w", sessionID, instanceName, err)
 	}
@@ -734,7 +736,7 @@ func upsertTaskInstanceTx(ctx context.Context, q *sqlcgen.Queries, sessionID, in
 	if err != nil {
 		return fmt.Errorf("marshal task %q/%q process: %w", sessionID, instanceName, err)
 	}
-	stateJSON, err := marshalJSONMap(ts.State)
+	stateJSON, err := marshalJSONObject(ts.State)
 	if err != nil {
 		return fmt.Errorf("marshal task %q/%q state: %w", sessionID, instanceName, err)
 	}
@@ -812,15 +814,15 @@ func upsertTaskInstanceTx(ctx context.Context, q *sqlcgen.Queries, sessionID, in
 }
 
 func taskInstanceFromRow(row sqlcgen.TaskInstance) (*contract.TaskState, error) {
-	inputs, err := unmarshalJSONMap(row.InputsJson)
+	inputs, err := unmarshalJSONObject[any](row.InputsJson)
 	if err != nil {
 		return nil, fmt.Errorf("inputs: %w", err)
 	}
-	outputs, err := unmarshalJSONMap(row.OutputsJson)
+	outputs, err := unmarshalJSONObject[any](row.OutputsJson)
 	if err != nil {
 		return nil, fmt.Errorf("outputs: %w", err)
 	}
-	state, err := unmarshalJSONMap(row.StateJson)
+	state, err := unmarshalJSONObject[any](row.StateJson)
 	if err != nil {
 		return nil, fmt.Errorf("state: %w", err)
 	}
@@ -953,21 +955,24 @@ func doneWhenFromRow(dw sqlcgen.TaskDoneWhenState, unsatisfied []string, judges 
 
 func insertNodeExecutionLayersTx(ctx context.Context, q *sqlcgen.Queries, executionID string, layers []contract.LayerState) error {
 	for i, l := range layers {
-		inputsJSON, err := marshalJSONMap(l.Inputs)
+		inputsJSON, err := marshalJSONObject(l.Inputs)
 		if err != nil {
 			return fmt.Errorf("marshal layer %d inputs: %w", i, err)
 		}
-		localsJSON, err := marshalJSONMap(l.Locals)
+		localsJSON, err := marshalJSONObject(l.Locals)
 		if err != nil {
 			return fmt.Errorf("marshal layer %d locals: %w", i, err)
 		}
-		outputsJSON, err := marshalJSONMap(l.Outputs)
+		outputsJSON, err := marshalJSONObject(l.Outputs)
 		if err != nil {
 			return fmt.Errorf("marshal layer %d outputs: %w", i, err)
 		}
-		envJSON, err := marshalEnv(l.Env)
+		envJSON, err := marshalJSONObject(l.Env)
 		if err != nil {
 			return fmt.Errorf("marshal layer %d env: %w", i, err)
+		}
+		if l.SetupAt.IsZero() {
+			return fmt.Errorf("node execution layer %d (%s) has no setup time", i, l.EffectID)
 		}
 		if err := q.InsertNodeExecutionLayer(ctx, sqlcgen.InsertNodeExecutionLayerParams{
 			ExecutionID:          executionID,
@@ -978,9 +983,9 @@ func insertNodeExecutionLayersTx(ctx context.Context, q *sqlcgen.Queries, execut
 			LocalsJson:           localsJSON,
 			OutputsJson:          outputsJSON,
 			EnvJson:              envJSON,
-			HeartbeatTicks:       nullInt(l.HeartbeatTicks),
-			HeartbeatEscalations: nullInt(l.HeartbeatEscalations),
-			SetupAt:              formatTimeNull(l.SetupAt),
+			HeartbeatTicks:       int64(l.HeartbeatTicks),
+			HeartbeatEscalations: int64(l.HeartbeatEscalations),
+			SetupAt:              formatTime(l.SetupAt),
 			FailedAt:             formatTimeNull(l.FailedAt),
 			CleanedAt:            formatTimeNull(l.CleanedAt),
 			Error:                nullString(l.Error),
@@ -993,21 +998,24 @@ func insertNodeExecutionLayersTx(ctx context.Context, q *sqlcgen.Queries, execut
 
 func insertTaskInstanceLayersTx(ctx context.Context, q *sqlcgen.Queries, taskInstanceID string, layers []contract.LayerState) error {
 	for i, l := range layers {
-		inputsJSON, err := marshalJSONMap(l.Inputs)
+		inputsJSON, err := marshalJSONObject(l.Inputs)
 		if err != nil {
 			return fmt.Errorf("marshal layer %d inputs: %w", i, err)
 		}
-		localsJSON, err := marshalJSONMap(l.Locals)
+		localsJSON, err := marshalJSONObject(l.Locals)
 		if err != nil {
 			return fmt.Errorf("marshal layer %d locals: %w", i, err)
 		}
-		outputsJSON, err := marshalJSONMap(l.Outputs)
+		outputsJSON, err := marshalJSONObject(l.Outputs)
 		if err != nil {
 			return fmt.Errorf("marshal layer %d outputs: %w", i, err)
 		}
-		envJSON, err := marshalEnv(l.Env)
+		envJSON, err := marshalJSONObject(l.Env)
 		if err != nil {
 			return fmt.Errorf("marshal layer %d env: %w", i, err)
+		}
+		if l.SetupAt.IsZero() {
+			return fmt.Errorf("task instance layer %d (%s) has no setup time", i, l.EffectID)
 		}
 		if err := q.InsertTaskInstanceLayer(ctx, sqlcgen.InsertTaskInstanceLayerParams{
 			TaskInstanceID:       taskInstanceID,
@@ -1018,9 +1026,9 @@ func insertTaskInstanceLayersTx(ctx context.Context, q *sqlcgen.Queries, taskIns
 			LocalsJson:           localsJSON,
 			OutputsJson:          outputsJSON,
 			EnvJson:              envJSON,
-			HeartbeatTicks:       nullInt(l.HeartbeatTicks),
-			HeartbeatEscalations: nullInt(l.HeartbeatEscalations),
-			SetupAt:              formatTimeNull(l.SetupAt),
+			HeartbeatTicks:       int64(l.HeartbeatTicks),
+			HeartbeatEscalations: int64(l.HeartbeatEscalations),
+			SetupAt:              formatTime(l.SetupAt),
 			FailedAt:             formatTimeNull(l.FailedAt),
 			CleanedAt:            formatTimeNull(l.CleanedAt),
 			Error:                nullString(l.Error),
@@ -1029,17 +1037,6 @@ func insertTaskInstanceLayersTx(ctx context.Context, q *sqlcgen.Queries, taskIns
 		}
 	}
 	return nil
-}
-
-func marshalEnv(env map[string]string) (sql.NullString, error) {
-	if len(env) == 0 {
-		return sql.NullString{}, nil
-	}
-	data, err := json.Marshal(env)
-	if err != nil {
-		return sql.NullString{}, err
-	}
-	return sql.NullString{String: string(data), Valid: true}, nil
 }
 
 func layersFromNodeExecutionRows(rows []sqlcgen.NodeExecutionLayer) ([]contract.LayerState, error) {
@@ -1076,25 +1073,25 @@ func layersFromTaskRows(rows []sqlcgen.TaskInstanceLayer) ([]contract.LayerState
 
 // layerFromColumns is shared by both layer tables' rows, which carry the
 // identical set of non-key columns.
-func layerFromColumns(effectID, status string, inputsJSON, localsJSON, outputsJSON, envJSON sql.NullString,
-	heartbeatTicks, heartbeatEscalations sql.NullInt64, setupAt, failedAt, cleanedAt sql.NullString, errCol sql.NullString) (contract.LayerState, error) {
-	inputs, err := unmarshalJSONMap(inputsJSON)
+func layerFromColumns(effectID, status, inputsJSON, localsJSON, outputsJSON, envJSON string,
+	heartbeatTicks, heartbeatEscalations int64, setupAt string, failedAt, cleanedAt, errCol sql.NullString) (contract.LayerState, error) {
+	inputs, err := unmarshalJSONObject[any](inputsJSON)
 	if err != nil {
 		return contract.LayerState{}, fmt.Errorf("inputs: %w", err)
 	}
-	locals, err := unmarshalJSONMap(localsJSON)
+	locals, err := unmarshalJSONObject[any](localsJSON)
 	if err != nil {
 		return contract.LayerState{}, fmt.Errorf("locals: %w", err)
 	}
-	outputs, err := unmarshalJSONMap(outputsJSON)
+	outputs, err := unmarshalJSONObject[any](outputsJSON)
 	if err != nil {
 		return contract.LayerState{}, fmt.Errorf("outputs: %w", err)
 	}
-	var env map[string]string
-	if err := unmarshalJSONValue(envJSON, &env); err != nil {
+	env, err := unmarshalJSONObject[string](envJSON)
+	if err != nil {
 		return contract.LayerState{}, fmt.Errorf("env: %w", err)
 	}
-	setup, err := parseTimeNull(setupAt)
+	setup, err := parseTime(setupAt)
 	if err != nil {
 		return contract.LayerState{}, fmt.Errorf("setup_at: %w", err)
 	}
@@ -1113,8 +1110,8 @@ func layerFromColumns(effectID, status string, inputsJSON, localsJSON, outputsJS
 		Locals:               locals,
 		Outputs:              outputs,
 		Env:                  env,
-		HeartbeatTicks:       int(heartbeatTicks.Int64),
-		HeartbeatEscalations: int(heartbeatEscalations.Int64),
+		HeartbeatTicks:       int(heartbeatTicks),
+		HeartbeatEscalations: int(heartbeatEscalations),
 		SetupAt:              setup,
 		FailedAt:             failed,
 		CleanedAt:            cleaned,

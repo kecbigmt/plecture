@@ -166,7 +166,7 @@ AND NOT EXISTS (
 );
 
 -- name: CurrentNodeExecution :one
-SELECT id, session_id, node_id, sequence, task_id, name, scope, status, resource_id, subscription_id,
+SELECT id, session_id, node_id, sequence, task_id, scope, status, resource_id, subscription_id,
        inputs_json, outputs_json, state_json,
        resource_observation_json, resource_observed_at, done_when_json,
        extra_done_when_json, error, setup_at,
@@ -174,7 +174,7 @@ SELECT id, session_id, node_id, sequence, task_id, name, scope, status, resource
 FROM node_executions WHERE session_id = ? AND node_id = ? AND status <> 'cleaned';
 
 -- name: NodeExecutionByID :one
-SELECT id, session_id, node_id, sequence, task_id, name, scope, status, resource_id, subscription_id,
+SELECT id, session_id, node_id, sequence, task_id, scope, status, resource_id, subscription_id,
        inputs_json, outputs_json, state_json,
        resource_observation_json, resource_observed_at, done_when_json,
        extra_done_when_json, error, setup_at,
@@ -183,17 +183,17 @@ FROM node_executions WHERE id = ?;
 
 -- name: InsertNodeExecution :one
 INSERT INTO node_executions (
-    id, session_id, node_id, sequence, task_id, name, scope, status, resource_id, subscription_id,
+    id, session_id, node_id, sequence, task_id, scope, status, resource_id, subscription_id,
     inputs_json, outputs_json, state_json,
     resource_observation_json, resource_observed_at, done_when_json,
     extra_done_when_json, error, setup_at,
     failed_at, cleaned_at, finalized_at, process_json, directory
-) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 RETURNING id;
 
 -- name: UpdateNodeExecution :exec
 UPDATE node_executions SET
-    sequence = ?, task_id = ?, name = ?, scope = ?, status = ?, resource_id = ?, subscription_id = ?,
+    sequence = ?, task_id = ?, scope = ?, status = ?, resource_id = ?, subscription_id = ?,
     inputs_json = ?, outputs_json = ?, state_json = ?,
     resource_observation_json = ?, resource_observed_at = ?, done_when_json = ?,
     extra_done_when_json = ?, error = ?,
@@ -201,7 +201,7 @@ UPDATE node_executions SET
 WHERE id = ?;
 
 -- name: ListCurrentNodeExecutions :many
-SELECT ne.id, ne.session_id, ne.node_id, ne.sequence, ne.task_id, ne.name,
+SELECT ne.id, ne.session_id, ne.node_id, ne.sequence, ne.task_id,
        ne.scope, ne.status, ne.resource_id, ne.subscription_id, ne.inputs_json,
        ne.outputs_json, ne.state_json, ne.resource_observation_json,
        ne.resource_observed_at, ne.done_when_json, ne.extra_done_when_json,
@@ -217,7 +217,7 @@ AND NOT EXISTS (
 ORDER BY ne.node_id;
 
 -- name: ListCurrentNodeExecutionsForSessions :many
-SELECT ne.id, ne.session_id, ne.node_id, ne.sequence, ne.task_id, ne.name,
+SELECT ne.id, ne.session_id, ne.node_id, ne.sequence, ne.task_id,
        ne.scope, ne.status, ne.resource_id, ne.subscription_id, ne.inputs_json,
        ne.outputs_json, ne.state_json, ne.resource_observation_json,
        ne.resource_observed_at, ne.done_when_json, ne.extra_done_when_json,

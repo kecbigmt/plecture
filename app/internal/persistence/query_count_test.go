@@ -119,13 +119,13 @@ func TestAllSessions_QueryCountDoesNotScaleWithSessionCount(t *testing.T) {
 			Nodes: map[string]*contract.TaskState{
 				"setup": {
 					Scope: contract.TaskScopeRun, Status: contract.TaskStatusProduced, TaskID: "setup-def",
-					Layers: []contract.LayerState{{EffectID: "outer", Status: contract.TaskStatusProduced}},
+					Layers: []contract.LayerState{{EffectID: "outer", Status: contract.TaskStatusProduced, SetupAt: now}},
 				},
 			},
 			Tasks: map[string]*contract.TaskState{
 				"impl": {
 					Scope: contract.TaskScopeSession, Status: contract.TaskStatusProduced, TaskID: "impl-def",
-					Layers: []contract.LayerState{{EffectID: "layer1", Status: contract.TaskStatusProduced}},
+					Layers: []contract.LayerState{{EffectID: "layer1", Status: contract.TaskStatusProduced, SetupAt: now}},
 					DoneWhen: &contract.DoneWhenState{
 						HeartbeatTicks: 1, LastFingerprint: "fp", LastUnsatisfied: []string{"leaf-a"},
 						Judges: map[string]*contract.DoneWhenJudge{

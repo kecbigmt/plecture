@@ -14,11 +14,6 @@ import (
 	"testing/fstest"
 )
 
-type rowCheck struct {
-	query string
-	want  []string
-}
-
 // survivingRows holds what every fixture's representative rows become
 // at the current schema. Joins go through resources.locator, not
 // resources.id, because the upgrade assigns resource ids at random.
@@ -51,6 +46,13 @@ var survivingRows = []rowCheck{
 		[]string{"triage-7|delivery|2"}},
 	{`SELECT s.name || '|' || h.kind || '|' || h.consecutive_failures FROM session_channel_health h JOIN sessions s ON s.id = h.session_id`,
 		[]string{"triage-7|delivery|1"}},
+	{`SELECT name || '|' || inputs_json FROM sessions ORDER BY name`,
+		[]string{"old-run|{}", `triage-7|{"item":"7"}`, "triage-7-review|{}"}},
+	{`SELECT inputs_json || outputs_json || state_json || '|' || COALESCE(done_when_json, 'NULL') FROM node_executions`,
+		[]string{"{}{}{}|NULL"}},
+	{`SELECT inputs_json || locals_json || env_json || '|' || heartbeat_ticks || '|' || heartbeat_escalations FROM node_execution_layers UNION ALL
+	  SELECT inputs_json || locals_json || env_json || '|' || heartbeat_ticks || '|' || heartbeat_escalations FROM task_instance_layers`,
+		[]string{"{}{}{}|0|0", "{}{}{}|0|0"}},
 }
 
 // stopEventAdded is what an upgrade across the down-and-sleep migration
@@ -96,11 +98,18 @@ var upgradeFixtures = map[string][]rowCheck{
 	"20260908130000": append(slices.Concat(survivingRows, sidecarRows), blockersLost, stopEventAdded, revisionBackfillPending),
 	"20261008155752": append(slices.Concat(survivingRows, sidecarRows), blockersKept, stopEventAdded, revisionBackfillPending),
 	"20261104000000": append(slices.Concat(survivingRows, sidecarRows), blockersKept, eventsUnchanged, revisionBackfillPending),
-	"20261104014706": append(slices.Concat(survivingRows, sidecarRows), blockersKept, eventsUnchanged,
-		rowCheck{`SELECT completed FROM workflow_revision_migration`, []string{"1"}},
-		rowCheck{`SELECT s.name || '|' || w.workflow || '|' || w.body FROM sessions s JOIN workflow_revisions w ON w.digest = s.workflow_revision`,
-			[]string{`triage-7|triage|{"nodes":{}}`}},
+	"20261104014706": append(slices.Concat(survivingRows, sidecarRows), blockersKept, eventsUnchanged, revisionsBackfilled),
+	"20261108000000": append(slices.Concat(survivingRows, sidecarRows), blockersKept, eventsUnchanged, revisionsBackfilled,
+		rowCheck{`SELECT name || '|' || health_notify_count || '|' || health_unevaluable_cycles FROM sessions WHERE health_notify_count IS NOT NULL`,
+			[]string{"triage-7|1|0"}},
+		rowCheck{`SELECT effect_id || '|' || setup_at FROM task_instance_layers`,
+			[]string{"checkout|2026-09-07T10:00:01.000000000Z"}},
 	),
+}
+
+var revisionsBackfilled = rowCheck{
+	`SELECT s.name || '|' || w.workflow || '|' || w.body || '|' || m.completed FROM sessions s JOIN workflow_revisions w ON w.digest = s.workflow_revision, workflow_revision_migration m`,
+	[]string{`triage-7|triage|{"nodes":{}}|1`},
 }
 
 func TestMigrate_UpgradesEveryReleasedSchema(t *testing.T) {
@@ -165,27 +174,6 @@ func loadUpgradeFixture(t *testing.T, ctx context.Context, db *DB, path string) 
 	if violations := queryStrings(t, ctx, db, "SELECT \"table\" FROM pragma_foreign_key_check"); len(violations) > 0 {
 		t.Fatalf("%s violates foreign keys in %v", path, violations)
 	}
-}
-
-func queryStrings(t *testing.T, ctx context.Context, db *DB, query string) []string {
-	t.Helper()
-	rows, err := db.write.QueryContext(ctx, query)
-	if err != nil {
-		t.Fatalf("%s: %v", query, err)
-	}
-	defer rows.Close()
-	var got []string
-	for rows.Next() {
-		var value string
-		if err := rows.Scan(&value); err != nil {
-			t.Fatalf("scan %s: %v", query, err)
-		}
-		got = append(got, value)
-	}
-	if err := rows.Err(); err != nil {
-		t.Fatalf("iterate %s: %v", query, err)
-	}
-	return got
 }
 
 // A fixture under testdata/upgrade/refused is a released schema whose rows

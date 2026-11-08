@@ -350,13 +350,13 @@ func (db *DB) writeSessionTx(ctx context.Context, tx *sql.Tx, s *domain.Session)
 	health := sessionHealthColumns(s.Health)
 	tickConsecutiveUnchanged, tickLastFingerprint := sessionTickColumns(s.TickBackoff)
 
-	inputsJSON, err := marshalJSONMap(s.Inputs)
+	inputsJSON, err := marshalJSONObject(s.Inputs)
 	if err != nil {
 		return fmt.Errorf("marshal session %q inputs: %w", s.Name, err)
 	}
 
 	if existingID == "" {
-		params, err := insertSessionParams(candidateID, status, parentCol, rootCol, populationWorkflow, populationName, inputsJSON, health, tickConsecutiveUnchanged, tickLastFingerprint, s)
+		params, err := insertSessionParams(candidateID, status, inputsJSON, parentCol, rootCol, populationWorkflow, populationName, health, tickConsecutiveUnchanged, tickLastFingerprint, s)
 		if err != nil {
 			return err
 		}
@@ -405,7 +405,7 @@ func (db *DB) writeSessionTx(ctx context.Context, tx *sql.Tx, s *domain.Session)
 // insertSessionParams builds InsertSession's parameters from already-resolved
 // column values, shared by writeSessionTx's insert branch and ImportSession
 // so the two never disagree about which Go field feeds which column.
-func insertSessionParams(id, status string, parentCol, rootCol, populationWorkflow, populationName, inputsJSON sql.NullString, health healthColumns, tickConsecutiveUnchanged sql.NullInt64, tickLastFingerprint sql.NullString, s *domain.Session) (sqlcgen.InsertSessionParams, error) {
+func insertSessionParams(id, status, inputsJSON string, parentCol, rootCol, populationWorkflow, populationName sql.NullString, health healthColumns, tickConsecutiveUnchanged sql.NullInt64, tickLastFingerprint sql.NullString, s *domain.Session) (sqlcgen.InsertSessionParams, error) {
 	return sqlcgen.InsertSessionParams{
 		ID:                       id,
 		Name:                     s.Name,
@@ -459,14 +459,14 @@ func (db *DB) ImportSession(ctx context.Context, id string, s *domain.Session) e
 		}
 		health := sessionHealthColumns(s.Health)
 		tickConsecutiveUnchanged, tickLastFingerprint := sessionTickColumns(s.TickBackoff)
-		inputsJSON, err := marshalJSONMap(s.Inputs)
+		inputsJSON, err := marshalJSONObject(s.Inputs)
 		if err != nil {
 			return fmt.Errorf("marshal session %q inputs: %w", s.Name, err)
 		}
 		if err := recordResourceTx(ctx, q, s.Resource); err != nil {
 			return fmt.Errorf("import session %q: %w", s.Name, err)
 		}
-		params, err := insertSessionParams(id, status, sql.NullString{}, sql.NullString{}, populationWorkflow, populationName, inputsJSON, health, tickConsecutiveUnchanged, tickLastFingerprint, s)
+		params, err := insertSessionParams(id, status, inputsJSON, sql.NullString{}, sql.NullString{}, populationWorkflow, populationName, health, tickConsecutiveUnchanged, tickLastFingerprint, s)
 		if err != nil {
 			return err
 		}
@@ -638,7 +638,7 @@ func sessionFromRow(row sqlcgen.Session) (*domain.Session, error) {
 		s.Population = &contract.PopulationProvenance{ProjectRoot: row.ProjectRoot, Workflow: row.PopulationWorkflow.String, Name: row.PopulationName.String}
 	}
 
-	inputs, err := unmarshalJSONMap(row.InputsJson)
+	inputs, err := unmarshalJSONObject[any](row.InputsJson)
 	if err != nil {
 		return nil, fmt.Errorf("parse session %q inputs_json: %w", row.Name, err)
 	}
