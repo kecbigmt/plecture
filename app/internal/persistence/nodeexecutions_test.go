@@ -4,6 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"reflect"
+	"strings"
 	"testing"
 	"time"
 
@@ -645,5 +646,45 @@ func TestPutSession_NodeWithoutDoneWhenStoresSQLNull(t *testing.T) {
 	}
 	if !reflect.DeepEqual(got.Nodes["present"].DoneWhen, doneWhen) {
 		t.Errorf("present DoneWhen = %+v, want %+v", got.Nodes["present"].DoneWhen, doneWhen)
+	}
+}
+
+func TestPutSession_RefusesALayerWithoutSetupTimeAndWritesNothing(t *testing.T) {
+	now := time.Now().UTC()
+	unset := []contract.LayerState{{EffectID: "outer", Status: contract.TaskStatusProduced}}
+	for _, tc := range []struct {
+		name  string
+		place func(s *domain.Session)
+		want  string
+	}{
+		{"node execution layer", func(s *domain.Session) {
+			s.Nodes = map[string]*contract.TaskState{"agent": {Scope: contract.TaskScopeSession, Status: contract.TaskStatusProduced, TaskID: "agent", SetupAt: now, Layers: unset}}
+		}, "node execution layer 0 (outer) has no setup time"},
+		{"task instance layer", func(s *domain.Session) {
+			s.Tasks = map[string]*contract.TaskState{"initial": {Scope: contract.TaskScopeSession, Status: contract.TaskStatusProduced, TaskID: "work", SetupAt: now, Layers: unset}}
+		}, "task instance layer 0 (outer) has no setup time"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			db := migratedTestDB(t)
+			ctx := context.Background()
+			if err := db.PutSession(ctx, &domain.Session{Name: "s1", Workflow: "before", CreatedAt: now, UpdatedAt: now}); err != nil {
+				t.Fatalf("seed: %v", err)
+			}
+
+			next := &domain.Session{Name: "s1", Workflow: "after", CreatedAt: now, UpdatedAt: now}
+			tc.place(next)
+			err := db.PutSession(ctx, next)
+			if err == nil || !strings.Contains(err.Error(), tc.want) {
+				t.Fatalf("PutSession = %v, want an error containing %q", err, tc.want)
+			}
+
+			got, err := db.GetSession(ctx, "s1")
+			if err != nil {
+				t.Fatal(err)
+			}
+			if got.Workflow != "before" || len(got.Nodes) != 0 || len(got.Tasks) != 0 {
+				t.Errorf("after the refused write: workflow %q, nodes %v, tasks %v; want the seeded session unchanged", got.Workflow, got.Nodes, got.Tasks)
+			}
+		})
 	}
 }
