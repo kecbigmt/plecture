@@ -57,6 +57,9 @@ func EnsureCurrentAllowDevBuild(ctx context.Context, path string) (*DB, error) {
 // migrations and the refusal below without the real migrations/ tree or the
 // process's actual build stamp.
 func ensureCurrent(ctx context.Context, path string, migrations fs.FS, isDevBuild, allowDevBuild bool) (*DB, error) {
+	if _, err := backupRetain(); err != nil {
+		return nil, err
+	}
 	if err := os.MkdirAll(filepath.Dir(path), 0o700); err != nil {
 		return nil, fmt.Errorf("persistence: create database directory: %w", err)
 	}

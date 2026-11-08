@@ -92,11 +92,31 @@ func (db *DB) Migrate(ctx context.Context) error {
 		return err
 	}
 
+	backup, backupErr := db.backupBeforeMigrate(ctx, current, target)
+	if backupErr != nil {
+		err := fmt.Errorf("persistence: pre-migration backup failed, no migration applied: %w", backupErr)
+		marker.Stage = "failed"
+		marker.Error = err.Error()
+		if writeErr := writeMarker(gate.markerPath, marker); writeErr != nil {
+			return fmt.Errorf("%w (also failed to record failure evidence: %v)", err, writeErr)
+		}
+		return err
+	}
+	if backup != "" {
+		marker.Backup = backup
+		if err := writeMarker(gate.markerPath, marker); err != nil {
+			return err
+		}
+	}
+
 	if migrateErr := db.migrateLocked(ctx); migrateErr != nil {
 		marker.Stage = "failed"
 		marker.Error = migrateErr.Error()
 		if writeErr := writeMarker(gate.markerPath, marker); writeErr != nil {
 			return fmt.Errorf("%w (also failed to record failure evidence: %v)", migrateErr, writeErr)
+		}
+		if backup != "" {
+			return fmt.Errorf("persistence: migration failed, failure evidence preserved at %s, pre-migration backup at %s: %w", gate.markerPath, backup, migrateErr)
 		}
 		return fmt.Errorf("persistence: migration failed, pre-migration state and failure evidence preserved at %s: %w", gate.markerPath, migrateErr)
 	}

@@ -33,6 +33,10 @@ const coordinationPollInterval = 100 * time.Millisecond
 //     intent. A normal access briefly holds it shared before taking the
 //     access gate; a migration holds it exclusive from the moment it commits
 //     to migrating until the migration finishes or fails.
+//   - handleLockPath ("<db>.handle.lock") is held shared by every open DB
+//     handle from Open to Close, idle or not. Only a restore takes it
+//     exclusively, because the access lock cannot tell it that an idle
+//     process still has the file open.
 //   - markerPath ("<db>.migration.json") records diagnostics for whichever
 //     process currently (or most recently) holds the coordination lock
 //     exclusively. It is never consulted to decide whether a migration is in
@@ -44,6 +48,7 @@ const coordinationPollInterval = 100 * time.Millisecond
 type accessGate struct {
 	accessLockPath       string
 	coordinationLockPath string
+	handleLockPath       string
 	markerPath           string
 }
 
@@ -51,6 +56,7 @@ func newAccessGate(dbPath string) *accessGate {
 	return &accessGate{
 		accessLockPath:       dbPath + ".access.lock",
 		coordinationLockPath: dbPath + ".coordination.lock",
+		handleLockPath:       dbPath + ".handle.lock",
 		markerPath:           dbPath + ".migration.json",
 	}
 }
@@ -156,6 +162,7 @@ type migrationMarker struct {
 	StartedAt     time.Time `json:"started_at"`
 	Stage         string    `json:"stage"`
 	Error         string    `json:"error,omitempty"`
+	Backup        string    `json:"backup,omitempty"`
 }
 
 func writeMarker(path string, m migrationMarker) error {
