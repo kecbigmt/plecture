@@ -156,7 +156,7 @@ func TestMigrate_TighteningRefusesALayerWhoseSetupTimeCannotBeBackfilled(t *test
 			if err == nil {
 				t.Fatal("Migrate succeeded, want a refusal for layers with no setup time to copy")
 			}
-			for _, want := range []string{tc.nodeLayer + ".setup_at is NULL in 2 rows", "task_instance_layers.setup_at is NULL in 1 row"} {
+			for _, want := range []string{tc.nodeLayer + ".setup_at is NULL in 2 rows", "task_instance_layers.setup_at is NULL in 1 row", "docs/migrations/nullable-column-tightening.md"} {
 				if !strings.Contains(err.Error(), want) {
 					t.Errorf("error = %q, want it to report %q", err, want)
 				}

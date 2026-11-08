@@ -205,7 +205,7 @@ func (db *DB) refuseLayersWithoutSetupTime(ctx context.Context, current, target 
 		}
 	}
 	if len(unfilled) > 0 {
-		return fmt.Errorf("persistence: upgrade refused, no migration applied: %s; set or delete those rows with the previous release, then upgrade", strings.Join(unfilled, "; "))
+		return fmt.Errorf("persistence: upgrade refused, no migration applied: %s; set or delete those rows with the previous release, then upgrade; see docs/migrations/nullable-column-tightening.md", strings.Join(unfilled, "; "))
 	}
 	return nil
 }
