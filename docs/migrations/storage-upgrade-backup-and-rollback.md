@@ -74,12 +74,26 @@ has done real work, fix forward with a new release instead.
    ```
 
    The command refuses in three cases, and changes nothing when it does:
-   - a plect process still has the store open;
+   - a plect process still has the store open (processes of releases that
+     predate `plect storage restore` are not detected, which is why step 1
+     stops every process first);
    - no backup has that name;
    - the backup's schema is newer than the binary running the command
      supports.
 
-4. Start the earlier release.
+4. Keep the new release from running again. The restored store is at the
+   earlier schema, so the next process of the new release that opens it
+   (`plect serve`, `plect-web`, or any command) migrates it again. That undoes
+   the rollback without any error.
+   - Before starting anything, switch every unit, service definition, and
+     wrapper that starts plect to the earlier release. This includes the
+     resident `plect serve`, `plect-web`, scripts, and shell aliases.
+   - `plect storage restore` is the last command the new binary runs on this
+     data home.
+   - A `plect: storage: backed up schema … before migrating` line on stderr
+     after the restore means the new release migrated the store again and the
+     rollback was undone. Stop everything and repeat from step 1.
+5. Start the earlier release.
 
 The restore moves the files it replaced into
 `<data home>/restore-displaced/<UTC timestamp>/`: `storage.db`, its
