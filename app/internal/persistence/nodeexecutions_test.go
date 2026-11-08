@@ -2,6 +2,8 @@ package persistence
 
 import (
 	"context"
+	"database/sql"
+	"reflect"
 	"testing"
 	"time"
 
@@ -592,5 +594,56 @@ func TestPutSession_TaskStateDirectoryRoundTripsForNodesAndDynamicInstances(t *t
 	}
 	if gotDir := updated.Tasks["bare"].Directory; gotDir != "/work/late-instance" {
 		t.Errorf("updated task instance Directory = %q, want /work/late-instance", gotDir)
+	}
+}
+
+func TestPutSession_NodeWithoutDoneWhenStoresSQLNull(t *testing.T) {
+	db := migratedTestDB(t)
+	ctx := context.Background()
+	now := time.Now().UTC()
+	doneWhen := &contract.DoneWhenState{HeartbeatTicks: 2, LastAction: "wait"}
+	if err := db.PutSession(ctx, &domain.Session{
+		Name: "s1", CreatedAt: now, UpdatedAt: now,
+		Nodes: map[string]*contract.TaskState{
+			"absent":  {Scope: contract.TaskScopeSession, Status: contract.TaskStatusProduced, TaskID: "work"},
+			"present": {Scope: contract.TaskScopeSession, Status: contract.TaskStatusProduced, TaskID: "work", DoneWhen: doneWhen},
+		},
+	}); err != nil {
+		t.Fatalf("PutSession: %v", err)
+	}
+
+	stored := map[string]sql.NullString{}
+	rows, err := db.write.QueryContext(ctx, `SELECT node_id, done_when_json FROM node_executions`)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer rows.Close()
+	for rows.Next() {
+		var node string
+		var column sql.NullString
+		if err := rows.Scan(&node, &column); err != nil {
+			t.Fatal(err)
+		}
+		stored[node] = column
+	}
+	if err := rows.Err(); err != nil {
+		t.Fatal(err)
+	}
+	if stored["absent"].Valid {
+		t.Errorf("done_when_json for a node without done_when = %q, want SQL NULL", stored["absent"].String)
+	}
+	if !stored["present"].Valid {
+		t.Error("done_when_json for a node with done_when is NULL, want its document")
+	}
+
+	got, err := db.GetSession(ctx, "s1")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got.Nodes["absent"].DoneWhen != nil {
+		t.Errorf("absent DoneWhen = %+v, want nil", got.Nodes["absent"].DoneWhen)
+	}
+	if !reflect.DeepEqual(got.Nodes["present"].DoneWhen, doneWhen) {
+		t.Errorf("present DoneWhen = %+v, want %+v", got.Nodes["present"].DoneWhen, doneWhen)
 	}
 }

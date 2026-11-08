@@ -32,12 +32,14 @@ func unmarshalJSONMap(s sql.NullString) (map[string]any, error) {
 	return m, nil
 }
 
-// marshalJSONValue treats a nil pointer/interface as genuinely absent.
-func marshalJSONValue(v any) (sql.NullString, error) {
-	if v == nil {
+// marshalJSONPointer takes a typed pointer rather than any: a typed-nil
+// pointer boxed in an interface is a non-nil interface, and would be stored
+// as the JSON text null instead of SQL NULL.
+func marshalJSONPointer[T any](p *T) (sql.NullString, error) {
+	if p == nil {
 		return sql.NullString{}, nil
 	}
-	data, err := json.Marshal(v)
+	data, err := json.Marshal(p)
 	if err != nil {
 		return sql.NullString{}, err
 	}
@@ -56,16 +58,6 @@ func unmarshalJSONValue(s sql.NullString, out any) error {
 // legitimate 0, not an absent fact worth a NULL.
 func nullInt(v int) sql.NullInt64 {
 	return sql.NullInt64{Int64: int64(v), Valid: true}
-}
-
-// processColumn stores a process identity as one JSON document, and a nil
-// identity as NULL rather than the JSON null a typed-nil pointer would
-// marshal to.
-func processColumn(p *contract.ProcessIdentity) (sql.NullString, error) {
-	if p == nil {
-		return sql.NullString{}, nil
-	}
-	return marshalJSONValue(p)
 }
 
 func processFromColumn(s sql.NullString) (*contract.ProcessIdentity, error) {

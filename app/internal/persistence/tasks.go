@@ -469,7 +469,7 @@ func upsertNodeExecutionTx(ctx context.Context, q *sqlcgen.Queries, sessionID, n
 	if err != nil {
 		return fmt.Errorf("marshal node %q/%q outputs: %w", sessionID, nodeID, err)
 	}
-	processJSON, err := processColumn(ts.Process)
+	processJSON, err := marshalJSONPointer(ts.Process)
 	if err != nil {
 		return fmt.Errorf("marshal node %q/%q process: %w", sessionID, nodeID, err)
 	}
@@ -481,7 +481,7 @@ func upsertNodeExecutionTx(ctx context.Context, q *sqlcgen.Queries, sessionID, n
 	if err != nil {
 		return fmt.Errorf("marshal node %q/%q observed: %w", sessionID, nodeID, err)
 	}
-	doneWhenJSON, err := marshalJSONValue(ts.DoneWhen)
+	doneWhenJSON, err := marshalJSONPointer(ts.DoneWhen)
 	if err != nil {
 		return fmt.Errorf("marshal node %q/%q done_when: %w", sessionID, nodeID, err)
 	}
@@ -730,7 +730,7 @@ func upsertTaskInstanceTx(ctx context.Context, q *sqlcgen.Queries, sessionID, in
 	if err != nil {
 		return fmt.Errorf("marshal task %q/%q outputs: %w", sessionID, instanceName, err)
 	}
-	processJSON, err := processColumn(ts.Process)
+	processJSON, err := marshalJSONPointer(ts.Process)
 	if err != nil {
 		return fmt.Errorf("marshal task %q/%q process: %w", sessionID, instanceName, err)
 	}
@@ -1035,7 +1035,11 @@ func marshalEnv(env map[string]string) (sql.NullString, error) {
 	if len(env) == 0 {
 		return sql.NullString{}, nil
 	}
-	return marshalJSONValue(env)
+	data, err := json.Marshal(env)
+	if err != nil {
+		return sql.NullString{}, err
+	}
+	return sql.NullString{String: string(data), Valid: true}, nil
 }
 
 func layersFromNodeExecutionRows(rows []sqlcgen.NodeExecutionLayer) ([]contract.LayerState, error) {
