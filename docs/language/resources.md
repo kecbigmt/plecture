@@ -90,6 +90,14 @@ declares an input schema and an item schema, and at least one of `poll` or
 only report appearances. A query item has a string `resource` property and
 optional appearance context. It does not duplicate observation state.
 
+A query whose subscribe source durably registers a consumer also declares an
+`unregister` action. Both actions receive the query's literal `inputs.*` and
+stable `population.id`. Closing a subscribe connection retains registration;
+the population evaluator runs `unregister` when removing the population.
+Unregister failure is reported and retried without silently activating a
+different delivery route. A durable source replays an appearance until the
+evaluator records it durably and acknowledges it through the source protocol.
+
 ## Validation rules
 
 - `match`, `name`, `observe`, and `state_schema` are required.
@@ -103,5 +111,6 @@ optional appearance context. It does not duplicate observation state.
   `inputs_schema`.
 - Query inputs satisfy the query input schema independently of action inputs.
 - A query has its shared schemas and at least one means.
+- A query that registers a durable subscribe consumer declares `unregister`.
 - A task's resource type matches the concrete resource to which its instance
   is bound.

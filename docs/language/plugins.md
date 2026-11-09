@@ -107,12 +107,17 @@ path in its manifest. plect validates the table against that JSON Schema,
 writes it privately under the instance state directory, and passes its path
 as `--config`. A table without a schema or a schema violation fails loading;
 core does not interpret the settings. Secrets go in `env_file` only. For a
-Slack service, `mention_session` may be omitted: the adapter then puts
-unbound mentions on its existing feed for a per-thread population. When set,
-it publishes those mentions to the named session. Existing thread subscribers
-receive their thread mentions first in either case. A population may name an
-instance with `mention_session` set, but its feed has no unbound mentions.
-Both modes can be configured on different instances.
+Slack service, `mention_session` may be omitted. It is the one
+default-recipient field: a mention goes first to subscribed thread sessions,
+then to every durably registered unbound-mention population whose
+`channel_ids` contains its channel, then to `mention_session` if set. Without
+any recipient, the adapter drops the mention and logs its channel, thread,
+and reason. Registrations persist consumer identity, channel filter, pending
+mentions, and delivery watermark across disconnects. The population
+acknowledges each item after recording its appearance durably; removing the
+population explicitly unregisters it. A default and registrations may
+coexist on one instance. A later user filter or failed admission does not
+fall through to the default.
 
 `restart` is `on-failure` by default or `never`. `health` defaults to and only
 accepts `{ type = "process" }`. Unknown keys, duplicate names, unresolved or
@@ -127,8 +132,8 @@ names fail config validation; dynamic unknown names and stopped services fail
 requests for retry. Slack channels remain `exec` channels invoking
 `curl --unix-socket` with the resolved path.
 
-For a per-thread Slack population, the query names the instance with no
-`mention_session` and passes the same name to its sessions:
+For a per-thread Slack population, the query names its instance and passes
+the same name to its sessions:
 
 ```toml
 [[thread_work.populations]]
@@ -144,8 +149,10 @@ channel_ids = ["C0456"]
 service = { from = "query.service" }
 ```
 
-The query consumes that service's unbound-mention feed. Each created session
-subscribes to its thread on the same service. A per-PR population instead
+The query registers its channel filter on that service and consumes its
+durable unbound-mention feed. Its consumer identity is the workflow population
+identity, independent of a live connection. Each created session subscribes
+to its thread on the same service. A per-PR population instead
 polls matching pull requests and uses a webhook receiver for early arrivals;
 its sessions name the GitHub watcher service for subscription delivery:
 

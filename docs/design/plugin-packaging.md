@@ -179,9 +179,9 @@ config_schema = "config/service.schema.json"
 
 Its schema requires `channel_id` as a string. Optional `mention_session` is a
 session name string; optional `allowed_user_ids` is an array of strings. It
-rejects unknown keys and secret settings. A deployment that has a
-`mention_session` delivers unbound mentions to that session; one without it
-keeps the unbound feed for a population.
+rejects unknown keys and secret settings. `mention_session` is the single
+default-recipient field, used when no population registration matches the
+mention's channel.
 
 An enabled plugin can make a resident executable available without starting it.
 Only user-owned service declarations start a process. In these examples,
@@ -299,11 +299,18 @@ their service the same way. An unknown literal name fails config validation;
 a dynamic unknown name or stopped service fails a request for retry. No new
 channel primitive is defined.
 
-Slack's optional `mention_session` selects delivery of unbound mentions to
-one existing session. When unset, unbound mentions enter the service's feed
-for a per-thread `subscribe` population. Existing thread subscribers take
-precedence in either mode. Slack models unbound mentions as a service feed
-and threads as resources with session subscriptions.
+Slack routes a mention first to a subscribed thread session, then to every
+durably registered unbound-mention population whose `channel_ids` matches
+its channel, then to optional `mention_session`. With no recipient, it drops
+the mention and logs channel, thread, and reason. A registration persists
+consumer identity, channel filter, pending mentions, and delivery watermark
+in the service's private state. It survives a disconnected reader; the
+adapter replays pending mentions on reconnect until the population durably
+records each appearance and acknowledges it. Removing a population explicitly
+unregisters it. The default-recipient field may coexist with registrations
+on the same service. A later user filter or failed admission does not fall
+through to the default. Slack models the feed as service state and threads as
+resources with session subscriptions.
 
 Build-less script executables are the primary v1 form. They must carry their
 interpreter through a shebang. Built binaries are the additional case for

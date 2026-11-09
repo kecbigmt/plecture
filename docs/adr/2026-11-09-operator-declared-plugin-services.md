@@ -89,12 +89,13 @@ as `--config` to the service. Core does not interpret the table. Credentials
 belong only in `env_file`; a service schema must not declare secret fields.
 
 No directory or data store is shared between a service and action processes.
-The Slack adapter owns its subscriber and unbound-mention state in its private
-service directory. The GitHub watcher owns its subscription registry, rate
-budget, and token cache there. Hooks, channels, tasks, and population queries
-use the selected service's Unix socket to access that state. The watcher
-exposes subscription and token/rate-budget operations needed by its hooks and
-query helpers through that socket; hooks do not write `subscriptions.json`.
+The Slack adapter owns its subscriber and unbound-mention registration state
+in its private service directory. The GitHub watcher owns its subscription
+registry, rate budget, and token cache there. Hooks, channels, tasks, and
+population queries use the selected service's Unix socket to access that
+state. The watcher exposes subscription and token/rate-budget operations
+needed by its hooks and query helpers through that socket; hooks do not write
+`subscriptions.json`.
 
 `restart` defaults to `on-failure`, with `never` available. `health` defaults
 to `{ type = "process" }`; that is the only health kind in this decision.
@@ -142,15 +143,31 @@ channel_id = "C0456"
 allowed_user_ids = ["U0456"]
 ```
 
-`mention_session` is optional for each Slack instance. When set, an unbound
-mention is published to that session with `plect event publish`. When unset,
-the mention enters that instance's existing unbound-mention feed for a
-`subscribe` population. A population may still name an instance with
-`mention_session` set, but its feed receives no unbound mentions. The two
-delivery policies may coexist across instances. A mention in a thread
-with an existing session subscriber goes to that subscriber first, regardless
-of `mention_session`; it does not become unbound. The bot-scoped `mentions`
-resource and instance registry are removed.
+`mention_session` is the one optional default-recipient field for each Slack
+instance. A mention is routed in this order:
+
+1. A subscribed thread session receives it. This includes sessions created by
+   a per-thread population and handles their follow-up mentions.
+2. Each durably registered unbound-mention population whose `channel_ids`
+   includes the mention's channel receives it through the feed.
+3. If no registration matches and `mention_session` is set, the adapter
+   publishes the mention to that session with `plect event publish`.
+4. Otherwise the adapter drops it and logs its channel, thread, and reason.
+
+The adapter persists each population consumer's identity, channel filter,
+pending mentions, and delivery watermark in its private state. Registration,
+including a changed channel filter, is durable before the consumer reads the
+feed. A disconnected consumer remains registered; the adapter holds matching
+mentions and replays them on reconnect until acknowledged. A live connection
+is never the routing authority. The population evaluator invokes the query's
+unregister action with the old service name and stable consumer identity when
+removing a population; closing its connection does not unregister it. An
+unregister failure retains the registration for retry and reports the failure.
+Overlapping registrations each receive the mention. A registration can
+coexist with `mention_session` on one instance. The default receives only
+mentions for which no registration matches. A population's later user filter
+or failed admission does not send the mention back to the default. The
+bot-scoped `mentions` resource and instance registry are removed.
 
 Each service gets a private state directory derived from `name`, under
 `<data-home>/services/<name>/`, and a Unix socket path `api.sock` in
@@ -195,8 +212,8 @@ designed mediation boundary, not wider socket permissions. A provider's
 public ingress, such as a webhook receiver, keeps its own external
 authentication and is not this local hook API.
 
-A per-thread population binds its query to the Slack service whose
-`mention_session` is unset:
+A per-thread population binds its query to a Slack service and durably
+registers its channel filter:
 
 ```toml
 [[thread_work.populations]]
@@ -212,9 +229,12 @@ channel_ids = ["C0456"]
 service = { from = "query.service" }
 ```
 
-The `thread.query.subscribe` action reads that service's `/unbound-mentions`
-feed through its resolved socket. It yields one thread resource per mention;
-the created session's thread subscription receives the initiating mention
+The `thread.query.subscribe` action registers with that service through its
+resolved socket and reads its durable `/unbound-mentions` feed. Its stable
+consumer identity comes from the workflow population, not a connection. It
+yields one thread resource per mention and acknowledges the feed item only
+after the population durably records its appearance. The created session's
+thread subscription receives the initiating mention
 through the adapter's pending-mention catch-up. This is a subscribe-only
 population because mentions have no absence snapshot.
 
@@ -253,6 +273,20 @@ resolves `github-reviews` for the watcher's token and rate budget API; GitHub
 remains the membership authority. Each created review session's resource
 subscription resolves the same service and calls its socket API. The watcher
 retains its subscription state privately.
+
+### Open question: default-recipient target
+
+Should the single `mention_session` field become a target described by
+workflow, resource, and task, so the adapter can start or reuse the session
+that workflow resolves for the resource and set up a task with the mention?
+The recommendation for this ADR is to keep `mention_session` as one field
+until that behavior is specified separately. A population with one constant
+session key covers only a fixed resource and repeated appearances. A target
+that chooses a resource and sets up a task for each mention has additional
+session admission, task identity, and retry semantics; calling it a
+population would hide those decisions. If the owner chooses the richer
+target, replace this one field and specify those semantics in a subsequent
+decision, without adding a parallel default-recipient field.
 
 `plect service list` displays declared services with name, executable, state,
 pid, and restarts. `--all` also displays one `available` row for each

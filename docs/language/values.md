@@ -114,7 +114,8 @@ receiving everything and relying on a later check to reject the rest.
 | Resource `finalize` | `resource.id`, `session.name`, `resource.revision`, `judges` |
 | Resource `subscribe` | `session.name`, `session.inputs.<key>`, `resource.id`, `resource.inputs.<key>` |
 | Resource `unsubscribe` | `session.name`, `session.inputs.<key>`, `resource.id`, `resource.inputs.<key>` |
-| Resource query means | `inputs.<key>` |
+| Resource query poll | `inputs.<key>` |
+| Resource query subscribe | `inputs.<key>`, `population.id` |
 | Workflow public `outputs` | `nodes.<id>.outputs.<key>`, `session.inputs.<key>` |
 | Workflow population session `inputs` | `resource.id`, `item.<key>`, `query.<key>` |
 | Workflow `display` | `workflow.outputs.<key>`, `session.inputs.<key>` |
@@ -139,6 +140,10 @@ name must identify one loaded `[[services]]` declaration; no caller supplies a
 socket path. In a population's session inputs, `query.<key>` reads that
 population's literal query parameter, so a service name selected for a query
 can also bind the created session's hooks and tasks.
+`population.id` is a stable identity for a resident population, independent of
+its query process or connection. A subscribe action can use it to register a
+durable feed consumer and explicitly unregister that consumer when the
+population is removed.
 
 Where a surface observes `session.*`, `session.tag` is the tag the session was
 created with, and is absent for an untagged session. It is the recorded tag
