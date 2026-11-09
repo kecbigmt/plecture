@@ -47,16 +47,20 @@ failure is recorded degradation. Finalization receives the concrete resource
 and session. A resource does not own a task's state or judge evidence.
 
 `plect subscribe <resource-id>` resolves exactly one resource declaration and
-records a durable subscription for the calling session. It runs no resource
-hook. `plect unsubscribe <id>` removes the calling session's subscription to
-resource `<id>`; `plect subscription list [--session] [--resource-type] --json`
-lists subscriptions for services.
-Subscriptions survive session down/up. Destroying a session removes them;
-they also cascade if its retained session row is deleted. Core
-records `source` (`runtime`, `dispatch`, or `node`), `inputs` JSON, and
-`created_at` for each row. `plect event publish --resource <id>` appends an
-event to every subscribed session log and reports the delivered count. A failed
-append is an error, not zero delivery.
+records an idempotent `runtime` row for the calling session. It runs no
+resource hook. `plect unsubscribe <id>` removes only that session's `runtime`
+row for resource `<id>`. `plect up <url>` records a `dispatch` row for the
+session's entry resource; a node with `subscription` records a `node` row while
+any live node binds the resource. Source rows overlap without replacing one
+another. Subscriptions survive session down/up. Destroying a session removes
+them; they also cascade if its retained session row is deleted. Core records
+`inputs` JSON and `created_at` for each row. A `max_subscribers` limit counts
+distinct sessions, not rows. `plect event publish --resource <id>` appends an
+event once to each subscribed session log and reports the delivered session
+count. A failed append is an error, not zero delivery. Services receive the
+full membership snapshot and later deltas from their supervising plect over
+stdio; `plect subscription list [--session] [--resource-type] --json` is the
+operator-facing query.
 
 The Slack bot-user resource form is `slack://<team_id>/<bot_user_id>` and sets
 `max_subscribers = 1`. A session that handles otherwise-undelivered mentions
@@ -71,20 +75,6 @@ declares an input schema and an item schema, and at least one of `poll` or
 only report appearances. A query item has a string `resource` property and
 optional appearance context. It does not duplicate observation state.
 
-A query whose subscribe source durably registers a consumer also declares an
-`unregister` action. Both actions receive the query's literal `inputs.*` and
-stable `population.id`. Closing a subscribe connection retains registration;
-the population evaluator runs `unregister` when removing the population.
-The evaluator retains the old query inputs and service name until that action
-succeeds. Unregister failure is reported and retried without silently
-activating a different delivery route. A durable subscribe item includes an
-opaque `delivery_id` declared in its item schema. After recording that
-appearance durably, the evaluator writes one JSON line
-`{"ack":"<delivery_id>"}` to the subscribe process's stdin. The process
-forwards the acknowledgement to its service. A crash before acknowledgement
-causes replay; duplicate appearances are handled idempotently. Writing an
-item to stdout alone never advances the service's delivery watermark.
-
 ## Validation rules
 
 - `match`, `name`, `observe`, and `state_schema` are required.
@@ -97,7 +87,5 @@ item to stdout alone never advances the service's delivery watermark.
 - `max_subscribers`, when present, is a positive integer.
 - Query inputs satisfy the query input schema independently of action inputs.
 - A query has its shared schemas and at least one means.
-- A query that registers a durable subscribe consumer declares `unregister`.
-- A durable subscribe item's schema requires a string `delivery_id`.
 - A task's resource type matches the concrete resource to which its instance
   is bound.

@@ -91,32 +91,46 @@ fails validation is a load error. Core does not interpret its fields. The
 Slack schema requires a nonempty `bots` array; each bot requires string
 `app_token_env`, `bot_token_env`, and `channel_id` fields and an
 `allowed_user_ids` string array, with no extra fields. Token fields name keys
-in `env_file`; their values remain there. On every service executable
-invocation, including a node, channel, or hook action, plect provides the
-service's env values and writes the validated config as JSON to the private
-path in `PLECT_SERVICE_CONFIG`.
+in `env_file`; their values remain there. The adapter rejects duplicate
+`channel_id` values across bots. On every service executable invocation,
+including a node, channel, or hook action, plect overlays the service env
+values on the action's ordinary environment and writes the validated config
+as JSON to the private path in `PLECT_SERVICE_CONFIG`. Service values win
+duplicate keys; an undeclared service executable fails invocation by name.
 
 `restart` defaults to `on-failure` and may be `never`. `health` defaults to
-and only accepts `{ type = "process" }`. The service gets a private state
-directory at `<data-home>/services/<name>/`, provided in
-`PLECT_SERVICE_STATE_DIR`. It uses plect's subscription and resource-event
-commands rather than a local service API. Slack outbound actions call the
-provider Web API directly. Unknown service keys, duplicate executable
-bindings, and invalid values fail loading.
+and only accepts `{ type = "process" }`. The supervised service gets only its
+`env_file` and plect runtime values. It receives a private state directory
+through `PLECT_SERVICE_STATE_DIR`, not a global data or config home. The
+service writes JSON-lines `publish` requests to stdout; its supervising plect
+writes `published` counts and a full `subscriptions` snapshot to stdin at
+start, followed by add/remove deltas. Logs go to stderr. It never calls the
+plect CLI. No local control listener exists. Browser content on the same host
+and other OS users cannot reach one; same-user code is outside this boundary.
+The env file is owner-readable and `PLECT_SERVICE_CONFIG` names a private
+file. Slack outbound actions call the provider Web API directly.
 
-A session subscribes to the Slack bot-user resource with
-`plect subscribe slack://T0123/U0123`; that resource allows one subscriber.
-An allowed mention is delivered as `user.emit` to a subscribed thread, to a
-matching undelivered-publish population member, or to the bot-user
-subscriber, in that order. Denied messages are handled by the adapter. Core
-holds subscriptions across session down/up and removes them on session
-deletion. The population form is specified in [workflows](workflows.md).
+Core keys subscriptions by `(session, resource, source)`. `plect subscribe`
+adds an idempotent `runtime` row; `plect unsubscribe` removes only that row.
+`plect up <url>` adds a `dispatch` row for the entry resource, removed on
+session destroy. A node `subscription` adds a `node` row while any live node
+binds that resource. A resource's `max_subscribers` counts distinct sessions,
+and delivery happens once per session/resource. Core publishes to subscribed
+sessions and sends each service subscription snapshots and deltas by stdio.
 
-A GitHub watcher reads `plect subscription list --resource-type
-<github-resource-type> --json` each cycle. Standalone issue and pull-request
-observation needs no watcher service. It uses action-process credentials and
-a process-local rate budget and App token cache. GitHub query populations
-retain their poll form.
+The Slack bot-user resource `slack://<team_id>/<bot_user_id>` allows one
+subscriber. An allowed mention is delivered as `user.emit` to a subscribed
+thread, then to the bot-user subscriber if the thread delivery count is zero;
+otherwise it is dropped and logged. The adapter handles denied messages.
+Slack thread `query.subscribe` and `/unbound-mentions` are absent. Creating a
+session for each new mention thread is deferred until a use case exists.
+Population `uses`, `[query]`, and executable query means remain as specified
+in [workflows](workflows.md).
+
+The GitHub watcher receives subscription snapshots and deltas through stdio.
+Standalone issue and pull-request observation needs no watcher service; it
+uses action-process credentials and a process-local rate budget and App token
+cache. GitHub query populations retain their poll form.
 
 `plect service list` shows declared name, executable, state, pid, and restart
 count. With `--all`, an enabled service-marked executable with no declaration

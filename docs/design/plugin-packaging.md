@@ -200,7 +200,8 @@ The schema requires at least one bot. Each bot requires the four fields shown;
 unknown fields fail validation. The two token fields name variables in the
 service's `env_file`, not token values. Plugin authors keep secret values out
 of service config because plect cannot infer whether an arbitrary field is
-secret.
+secret. The adapter rejects duplicate `channel_id` values across bots so
+outbound calls can select the bot from the thread's channel.
 
 Only user-owned service declarations start a process. In this example,
 `<config-home>` is `/srv/plect/config`. One Slack service serves two bots:
@@ -252,43 +253,52 @@ resident process log rather than a session event log. An explicit
 `plect plugin update` authorizes restarting an already-declared service when
 its executable changes.
 
-Each service receives only its env-file values and plect runtime values. Its
-private state directory is `<data-home>/services/<name>/` with mode `0700`,
-supplied as `PLECT_SERVICE_STATE_DIR`. When a node, channel, or hook runs an
-executable marked `service = true`, plect gives that invocation the same
-service env values and a private JSON config file named by
-`PLECT_SERVICE_CONFIG`. One service per executable makes that binding unique.
-Slack outbound actions call the provider Web API directly, with no workflow
-`base_url` input. The service calls plect for subscription listing and event
-publication; core holds the membership and delivery authority.
+Each supervised service receives only its env-file values and plect runtime
+values. Its private state directory is `<data-home>/services/<name>/` with mode
+`0700`, supplied as `PLECT_SERVICE_STATE_DIR`; it receives neither the global
+data home nor config home. No service listens for local control requests.
+Browser content on the same host and other OS users cannot reach a local
+listener; same-user code is outside this boundary. The env file is
+owner-readable, and the JSON config file is private.
 
-Core stores subscriptions keyed by session and resource, including their
-source, inputs, and creation time. `plect subscribe` and `plect unsubscribe`
-change this table, and `plect subscription list [--session] [--resource-type] --json`
-exposes it to services. `plect event publish --resource <id>` delivers
-to every subscriber and reports the delivered count. A resource can bound
-admission with `max_subscribers`; the Slack bot-user resource
-`slack://<team_id>/<bot_user_id>` sets it to one. Subscriptions survive
-session down/up; destroy removes them, and deleting the session row cascades.
-Resources retain `observe` but have
-no subscribe or unsubscribe hooks.
+A service writes JSON-lines `publish` requests to stdout. Its supervising
+plect writes `published` counts and a full `subscriptions` snapshot on stdin
+at service start, then subscription add/remove deltas. Service logs go to
+stderr. The service never invokes the plect CLI. Core holds subscription
+membership and event delivery; services keep provider API cache, rate budget,
+and watch state privately.
+
+When a node, channel, or hook runs an executable marked `service = true`,
+plect overlays that service's env-file values on the action's ordinary env
+and supplies its validated JSON config through private
+`PLECT_SERVICE_CONFIG`. Service values win duplicate keys. No declaration for
+that executable is an invocation error naming it. One service per executable
+makes the binding unique. Slack outbound actions call the provider Web API
+directly, with no workflow `base_url` input.
+
+Core stores subscriptions keyed by `(session, resource, source)`. An explicit
+`plect subscribe` writes a `runtime` row and `plect unsubscribe` removes only
+that row. `plect up <url>` writes a `dispatch` row for the entry resource;
+session destroy removes it. A node with `subscription` writes a `node` row
+while at least one such node binds the resource. The limit in
+`max_subscribers` counts distinct sessions, and an event is delivered once per
+session/resource even when several source rows exist. `plect event publish
+--resource <id>` and a service's stdio `publish` request both use this table.
+Resources retain `observe` but have no subscribe or unsubscribe hooks.
 
 For an allowed mention, the Slack adapter publishes `user.emit` to the thread
-resource. If it reaches no subscriber, core admits a matching
-undelivered-publish population and delivers the event to its new member.
-Otherwise the adapter publishes to the bot-user resource; with no recipient it
-drops and logs the channel, thread, and reason. The adapter handles denied
-users or channels before publication. A dispatcher subscribes explicitly to
-the bot-user resource. A thread worker population uses `resource =
-"slack_thread"` and a `where` expression over `match.*`, instead of a query.
-The population's resource type equals its workflow entry resource type; a
-population cannot declare a second authoritative type.
+resource. A zero delivered count leads to a publish to the bot-user resource
+`slack://<team_id>/<bot_user_id>`, which permits one subscriber. Zero again
+drops the mention and logs its channel, thread, and reason. The adapter handles
+denied users or channels before publication. Slack thread
+`query.subscribe`, `/unbound-mentions`, and the adapter's subscriber registry
+are removed. Per-mention session creation waits for a concrete use case;
+GitHub query populations retain their `poll` and `subscribe` contract.
 
-A GitHub watcher reads the core subscription list each cycle and keeps its
-API cache, rate budget, and watch state private. GitHub `observe` remains
-callable without a watcher service, using its own credentials, process-local
-rate budget, and App token cache. GitHub pull-request query populations keep
-their `poll` form and webhook appearances.
+The GitHub watcher receives core subscriptions by stdio snapshot and deltas
+and keeps its API cache, rate budget, and watch state private. GitHub
+`observe` remains callable without a watcher service, using its own
+credentials, process-local rate budget, and App token cache.
 
 Build-less script executables are the primary v1 form. They must carry their
 interpreter through a shebang. Built binaries are the additional case for
@@ -308,7 +318,7 @@ user config, and those copies drift away from the plugin revision recorded in
 the lockfile.
 
 Executable adapters are invoked from TOML hooks through normal command lines.
-Core does not gain a plugin-specific process protocol in this design. A plugin
+Resident services use the generic JSON-lines stdio protocol above. A plugin
 may ship effect, resource, or task config that calls a binary in `bin/`; the
 loader resolves those executable paths so a reference becomes a stable
 absolute path.

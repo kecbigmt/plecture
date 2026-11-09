@@ -64,12 +64,20 @@ Process fan-out that shares the parent's own store (`plect serve` spawning a
 `app/internal/effect.ExecHook` (a task's setup/cleanup/health/capture,
 including a terminal-multiplexer pane's long-lived shell) and
 `app/internal/channel` (a channel delivery) use `IsolatedEnv`.
-`app/internal/effect.RunHook` (resource subscribe/unsubscribe, resource
-observe/finalize), `app/internal/population`'s resource-observer
-poll/subscribe query, and `app/internal/pluginservice` (a supervised
-service) use `InheritableEnv`: a resource-observer
-query, resource subscription hook, or service may read `XDG_DATA_HOME` for on-disk state of its own,
-unrelated to plect's store.
+`app/internal/effect.RunHook` (resource observe/finalize) and
+`app/internal/population`'s resource-observer poll/subscribe query use
+`InheritableEnv` so an observer or query may read `XDG_DATA_HOME` for its own
+state. `app/internal/pluginservice` builds a supervised service's environment
+from its declared `env_file` and plect runtime values only. It does not inherit
+the supervisor's `XDG_DATA_HOME`, `PLECT_DATA_HOME`, or other environment
+entries. Its private `PLECT_SERVICE_STATE_DIR` is scoped to that service;
+neither the global data home nor config home is passed. A service exchanges
+publish requests, published counts, and subscription snapshots/deltas only
+with its supervising plect process over JSON-lines stdio.
+An action that invokes a service-marked executable keeps its ordinary action
+base and overlays that service's env-file entries and `PLECT_SERVICE_CONFIG`;
+service entries win on duplicate keys. This gives an action no global data-home
+binding from the service.
 
 An `IsolatedEnv` child still needs to run `plect` against the daemon's own
 store — a pane's plugin hooks, or a task instruction that tells the agent to
@@ -195,7 +203,7 @@ classifies every `_json` column by its owning declaration:
 | `populations` | `(project_root, workflow, name)` primary key | none | `state.json` `populations` map key and value |
 | `population_members` | `(project_root, workflow, name, resource_id)` primary key, `populations(project_root, workflow, name)` foreign key, and `resource_id` referencing `resources(id)`; nullable `session_name` | item, generation, timestamps, flags, `decision_kind`/`decision_reason` | `PopulationState.Members` |
 | `population_member_blockers` | `(project_root, workflow, name, resource_id, position)` primary key; foreign key to `population_members` | one blocker reason per row | `PopulationMember.LastBlockers` |
-| `subscriptions` | `(session_id, resource_id)` primary key; session and resource foreign keys; session deletion cascades | `source` (`runtime`, `dispatch`, or `node`), `inputs` JSON, `created_at` | core subscription admission |
+| `subscriptions` | `(session_id, resource_id, source)` primary key; session and resource foreign keys; session deletion cascades | `source` CHECK IN `runtime`/`dispatch`/`node`, `inputs` JSON, `created_at` | core subscription admission |
 | `session_channel_health` | `(session_id, kind)` primary key; session foreign key; `kind` CHECK IN `validation`/`delivery` | consecutive failures, first/last failure time, last channel/error, escalation time | `Session.ChannelValidationHealth`/`ChannelDeliveryHealth` |
 | `up_reservations` | `child_session_name` primary key; nullable `parent_session_name`, `virtual_root`, `pid`, `reserved_at` | none | `state.json` `up_reservations` |
 | `events` | `id` primary key; `(session_id, sequence)` unique and references `sessions(id)`; `direction` CHECK IN `inbound`/`outbound`/`internal`; `metadata_json` CHECK `json_valid` | type, source, direction, summary, body, metadata, and recorded time | each `log.jsonl` record |
@@ -222,9 +230,15 @@ second tombstone marker exists. `chain_attempts` stores one non-empty cap
 refusal fingerprint per `(session_id, instance, chain_id)`, so
 compare-and-set and conditional revert run in an immediate transaction.
 `subscriptions` is the sole durable delivery membership authority. A
-resource-addressed publish reads its rows and appends to each subscriber's
-event log. Session destroy removes its rows while retaining its tombstone;
-deleting that session row also cascades to them.
+resource-addressed publish groups rows by `(session_id, resource_id)` and
+appends once to each session's event log. `runtime` rows are written by an
+explicit subscribe and removed only by an explicit unsubscribe or destroy;
+`dispatch` rows are written by session up for its entry resource and removed
+on destroy; `node` rows are held while any live node in that session binds the
+resource. Repeating a write for one source is idempotent. The
+`max_subscribers` check counts distinct session ids, not source rows. Session
+destroy removes its rows while retaining its tombstone; deleting that session
+row also cascades to them.
 
 `Session.Message` is not a stored field on any table: a session's
 self-reported status line is derived from the most recent

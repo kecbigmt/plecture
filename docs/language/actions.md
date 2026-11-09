@@ -1,8 +1,9 @@
 # Actions
 
 An action is a lifecycle execution: an effect's `setup` or `cleanup`, a health
-or terminal probe, a resource's `observe`, `finalize`, `subscribe`, or
-`unsubscribe`, and a channel's delivery.
+or terminal probe, a resource's `observe` or `finalize`, a resource query's
+`poll` or `subscribe`, and a channel's delivery. Core manages resource
+subscriptions without resource subscribe/unsubscribe actions.
 
 Every action declares a `type`: `exec` and `shell` everywhere, and `noop`,
 legal only under `[health.alive]`.

@@ -16,11 +16,22 @@ keep separate subscription registries, sweep logic, and event fan-out. Core
 already manages node subscriptions and subscription retries, so these stores
 answer the same lifecycle question in different places.
 
-A deployment can run one dispatcher for mentions of a bot, create a worker
-session for each new thread, and create review sessions for matching GitHub
-pull requests. It can use several Slack bots. The subscription and delivery
-contract must serve all of these without making a service's private state an
-authority over session membership.
+A deployment can run one dispatcher for mentions of a bot and create review
+sessions for matching GitHub pull requests. It can use several Slack bots.
+The subscription and delivery contract must serve these without making a
+service's private state an authority over session membership.
+
+### Local transport threat model
+
+Browser content on the same host and other OS users must not reach a service's
+local control surface or credentials. Code running as the same OS user as
+plect is outside this boundary: it can read that user's files and process
+environments, and containing it requires a separate user or sandbox. Services
+have no local listener; their only control channel is private stdio with the
+plect process that supervises them. Service env files are owner-readable only,
+and `PLECT_SERVICE_CONFIG` names a mode-`0600` file inside the service's private
+state directory. No group- or world-readable
+credential file is an acceptable transport.
 
 ## Supersession scope
 
@@ -127,49 +138,78 @@ channel_id = "C0456"
 allowed_user_ids = ["U0456"]
 ```
 
-The service keeps its API cache, rate budget, and per-resource watch state in
-`<data-home>/services/<name>/`, a private mode-`0700` directory supplied as
-`PLECT_SERVICE_STATE_DIR`. No service exposes a local API for hooks or
-actions; the service calls `plect` for subscription lookup and event
-publication. Its inbound provider connection is separate from this contract.
-An executable marked `service = true` receives the selected
-service's `env_file` entries and the validated service config on *every*
-invocation, including node, channel, and hook actions. Plect writes that
-config as JSON to a private file and passes its path in
-`PLECT_SERVICE_CONFIG`. Since one executable can name only one service, this
-binding is unambiguous. Slack thread creation, posts, status, and streaming
-call the provider Web API directly using these credentials; workflow
-`base_url` inputs are removed.
+The adapter rejects duplicate `channel_id` values across its bots, so an
+outbound call selects one bot from the thread's channel. The service keeps its
+API cache, rate budget, and per-resource watch state in a private mode-`0700`
+directory supplied as `PLECT_SERVICE_STATE_DIR`. It receives no global data-
+or config-home path and never invokes the plect CLI.
+
+The service writes JSON-lines requests to stdout, including
+`{"op":"publish","resource":...,"type":...,"summary":...,"body":...,"metadata":...}`.
+Its supervising plect process writes replies and notifications to the
+service's stdin: `{"op":"published","delivered":N}` replies to a publish,
+and `{"op":"subscriptions","resource_type":...,"add":[...],"remove":[...]}`
+gives a full subscription snapshot when the service starts and deltas
+thereafter on the same ordered stream. The service writes logs to stderr.
+Nothing calls into the service;
+its provider connection is separate from this local control channel.
+
+An executable marked `service = true` receives its declaration's `env_file`
+entries and validated config on *every* invocation, including node, channel,
+and hook actions. Plect writes the config as JSON to a private file and sets
+`PLECT_SERVICE_CONFIG` to its path. The supervised process receives only its
+env-file values and plect runtime values. An action invocation keeps its
+ordinary action environment, then overlays that service's env-file values and
+`PLECT_SERVICE_CONFIG`; the service values win on duplicate keys. An action
+invoking a service-marked executable without a declaration fails with an
+error naming the executable. Since one executable can name only one service,
+the binding is unambiguous. Slack thread creation, posts, status, and
+streaming call the provider Web API directly using these credentials;
+workflow `base_url` inputs are removed.
 
 ### Core subscription and delivery contract
 
-Core owns a `subscriptions` table keyed by `(session_id, resource_id)` with
-`source` (`runtime`, `dispatch`, or `node`), `inputs` JSON, and `created_at`.
-Destroying a session removes its subscriptions while retaining its tombstone;
-rows also cascade if the session row is deleted. `plect subscribe <resource-id>`
-records the calling session's subscription and runs no resource hook;
-`plect unsubscribe <id>` removes that session's row for resource identifier
-`<id>`. `plect subscription list [--session] [--resource-type] --json` exposes
-the durable rows to services. The
-subscription remains through session down/up. Resource `subscribe` and
-`unsubscribe` hooks and `subscription_retries` are removed; resource
-`observe` remains. A resource may set `max_subscribers`; admission beyond the
-bound fails. Core is provider-neutral: it stores resource identifiers and
-session references, then fans out events.
+Core owns a `subscriptions` table keyed by
+`(session_id, resource_id, source)`, with `source` equal to `runtime`,
+`dispatch`, or `node`, `inputs`
+JSON, and `created_at`. Each source records a separate reason for one
+session-resource binding:
 
-`plect event publish --resource <id>` appends an event to every subscriber's
-log and reports the delivered count, including a member admitted by an
-undelivered-publish population when there were no existing subscribers. The
-publish operation uses the same durable subscription table as admission and
-listing. A failed admission or append is reported, not treated as zero
-delivery.
+- `plect subscribe <resource-id>` writes the calling session's `runtime` row.
+  A repeated subscribe for that source is idempotent.
+- `plect up <url>` writes a `dispatch` row for the session's entry resource,
+  including when a chain or query population brings up that session. The row
+  remains through down/up and is removed on session destroy.
+- A node with `subscription` writes a `node` row when it starts. The row stays
+  while any live node in that session binds the same resource and is removed
+  when the last such node ends.
+
+`plect unsubscribe <id>` removes only the calling session's `runtime` row for
+resource `<id>`; it cannot remove a `dispatch` or `node` reason. Destroying a
+session removes all its rows while retaining its tombstone, and deleting the
+session row also cascades.
+`plect subscription list [--session] [--resource-type] --json` exposes the
+rows to operators; services receive
+the same membership as a startup snapshot and later stdio deltas. A resource
+may set `max_subscribers`; the limit counts distinct sessions per resource,
+not rows, so another source for an already-subscribed session does not use a
+second slot. Resource `subscribe` and `unsubscribe` hooks and
+`subscription_retries` are removed; `observe` remains.
+
+`plect event publish --resource <id>` and a service's stdio `publish` request
+append the event once per distinct `(session_id, resource_id)` subscription
+and report the delivered session count. A failed append is reported, not
+treated as zero delivery. Core is provider-neutral: it stores resource
+identifiers and session references, then fans out events.
 
 The Slack bot user is a resource named `slack://<team_id>/<bot_user_id>`. Its
-`max_subscribers` is 1. A dispatcher session subscribes explicitly with
-`plect subscribe slack://T0123/U0123`; the subscription persists even while
-the session is down. Mentions use `user.emit`, so no channel `include` change
-or workflow `subscription` field is needed. These resource definitions show
-the relevant contract; their `observe` actions retain the ordinary resource
+`max_subscribers` is 1. Bringing up a session with this entry resource writes
+its `dispatch` row; a session with another entry resource can use
+`plect subscribe slack://T0123/U0123` to write a `runtime` row. Both persist
+while the session is down. Mentions use `user.emit`, so no channel `include`
+change or workflow-level `subscription` field is needed. These resource
+definitions show the relevant contract; their `observe` actions retain the
+ordinary resource
 status surface:
 
 ```toml
@@ -197,29 +237,18 @@ bin = "slack-adapter"
 args = ["resource", "observe", "--resource", { from = "resource.id" }]
 ```
 
-For a message that passes the adapter's user and channel allow check, the
-adapter publishes to its thread resource. A thread subscriber or matching
-undelivered-publish population makes the delivered count positive and ends
-routing. On zero delivery, the adapter publishes to its bot-user resource. A
-positive delivered count ends routing; zero delivery drops the message with a
-log line naming the channel, thread, and reason. Denial replies come from the
-adapter, before routing.
+For a message that passes that bot's user and channel allow check, the adapter
+publishes `user.emit` to the thread resource through stdio. A positive
+delivered count ends routing. On zero delivery it publishes to the bot-user
+resource; zero delivery there drops the mention with a log line naming the
+channel, thread, and reason. Denial replies come from the adapter before
+routing. There is no population routing step.
 
-### Undelivered-publish populations
+### Workflows and populations
 
-A population chooses exactly one source form: `resource_observer` plus
-`[query]`, or `resource = "<resource type>"` plus `where = "<expression over
-match.*>"`. Both forms together fail loading. The second form consumes a
-resource-addressed publish that reaches zero subscribers and whose resource
-match values satisfy `where`. In one core step, it creates the member session,
-subscribes it to that resource, and delivers the triggering event. It does not
-refetch history with `--catch-up-through`. The existing membership lifecycle,
-including `expire_after`, tombstones, and `population_members`, applies. A
-GitHub pull-request population using `query.poll` remains supported.
-
-An orchestrator uses the bot resource; a worker uses a Slack thread. The
-orchestrator's explicit bot subscription receives mentions only after no
-thread subscriber or population takes them:
+An orchestrator may use the bot user as its entry resource; a separately
+created worker may use a Slack thread. Bringing either up writes its
+`dispatch` subscription:
 
 ```toml
 [orchestrator]
@@ -229,30 +258,38 @@ resource = "slack_bot_user"
 [thread_worker]
 kind = "workflow"
 resource = "slack_thread"
-
-[[thread_worker.populations]]
-name = "new_mentions"
-resource = "slack_thread"
-where = "match.channel_id == 'C0123'"
-expire_after = "8h"
 ```
 
-The operator brings up the orchestrator for `slack://T0123/U0123` and runs
-`plect subscribe slack://T0123/U0123` in that session. The worker population
-then creates a session for a new thread, stores its subscription, and appends
-the initiating `user.emit` before any later thread mention. A subsequent
-mention follows the existing thread subscription. An unmatched new thread
-falls through to the bot resource. The adapter is not a population registry;
-core owns admission, membership, and delivery.
+Populations retain their query `uses` (`poll` or `subscribe`) and `[query]`
+contract. A GitHub poll population still creates review sessions for labeled
+pull requests:
 
-GitHub watcher reads `plect subscription list --resource-type
-<github-resource-type> --json` each cycle and keeps its API cache, rate
-budget, and per-resource watch state privately. It no longer owns a
-`subscriptions.json` file. Standalone GitHub `observe` remains callable
-without a watcher service; it uses the action process's own credentials,
-process-local rate budget, and App token cache. A poll population can still
-use the GitHub resource query to create review sessions for labeled pull
-requests, and the watcher uses core subscriptions to deliver updates.
+```toml
+[pull_review]
+kind = "workflow"
+resource = "pull_request"
+
+[[pull_review.populations]]
+name = "labeled_pulls"
+uses = ["poll"]
+poll_every = "5m"
+
+[pull_review.populations.query]
+repositories = ["example/project"]
+labels = ["agent-review"]
+state = "open"
+draft = false
+```
+
+The Slack thread resource's `query.subscribe` and the adapter's
+`/unbound-mentions` and `subscribe unbound-mentions` paths are removed.
+Creating a session for every new mention thread is deferred until a concrete
+use case calls for it. The GitHub watcher learns subscription membership from
+the stdio startup snapshot and deltas and keeps its API cache, rate budget,
+and per-resource watch state privately; it no longer owns
+`subscriptions.json`. Standalone GitHub `observe` remains callable without a
+watcher service and uses the action process's own credentials, process-local
+rate budget, and App token cache.
 
 ### Service listing and scope
 
@@ -272,20 +309,19 @@ Code. It has no resident service declaration.
 
 ## Consequences
 
-The implementation has two stages. Stage 1 adds the core subscription table,
-resource-addressed publish, `max_subscribers`, service-config passing, the
-one-process Slack adapter, and the bot-user resource. The existing thread
-population keeps its `/unbound-mentions` path during this stage only. Stage 2
-adds the undelivered-publish population source, migrates the thread
-population, and removes the old feed and `subscribe unbound-mentions` path.
-Neither stage makes the transitional path a permanent compatibility API.
+The implementation has one stage: the core subscription table, source-scoped
+rows and deduplicated delivery, resource-addressed publish, `max_subscribers`,
+the stdio service protocol, service-config passing, the one-process Slack
+adapter, and the bot-user resource arrive together with removal of the Slack
+unbound-mention feed. Populations retain their existing contract.
 
 The implementation removes plugin-owned service declarations, resource
-subscription hooks and retries, Slack subscriber and instance registries, and
-GitHub `subscriptions.json`. It adds schema and conformance fixtures and
-behavior tests for subscription admission, limits, persistence, fan-out,
-zero-delivery population admission, service config on every invocation, and
-failure paths. The breaking change ships with a backup-first procedure in
+subscription hooks and retries, Slack subscriber and instance registries,
+the #742 `--state-dir` split and bot-scoped `mentions` resource, and GitHub
+`subscriptions.json`. It adds schema and conformance fixtures and behavior
+tests for source overlap, subscriber limits, persistence, delivery once per
+session/resource, stdio snapshots and deltas, service config on every
+invocation, and failure paths. The breaking change ships with a backup-first procedure in
 `docs/migrations/` and a one-time migration of existing subscription rows in
 the same implementation PR; there is no compatibility shim.
 

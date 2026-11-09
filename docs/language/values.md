@@ -112,11 +112,9 @@ receiving everything and relying on a later check to reject the rest.
 | Resource `name` | `match.<capture>` |
 | Resource `observe` | `resource.id` |
 | Resource `finalize` | `resource.id`, `session.name`, `resource.revision`, `judges` |
-| Resource query poll | `inputs.<key>` |
-| Resource query subscribe | `inputs.<key>`, `population.id` |
-| Resource query unregister | `inputs.<key>`, `population.id` |
+| Resource query means | `inputs.<key>` |
 | Workflow public `outputs` | `nodes.<id>.outputs.<key>`, `session.inputs.<key>` |
-| Workflow population session `inputs` | `resource.id`; `item.<key>` and `query.<key>` for query sources; `match.<key>` for undelivered-publish sources |
+| Workflow population session `inputs` | `resource.id`, `item.<key>` |
 | Workflow `display` | `workflow.outputs.<key>`, `session.inputs.<key>` |
 | Workflow node `inputs` | `nodes.<id>.outputs.<key>`, `workflow.outputs.<key>`, `session.*`, `session.inputs.<key>` |
 | Workflow event-channel `inputs` | same as workflow node inputs |
@@ -131,14 +129,6 @@ receiving everything and relying on a later check to reject the rest.
 | Task `done_when`, chain `when` | `resource.state.<key>`, `self.state.<key>` |
 | Task instruction body | `resource.id`, `resource.state.<key>`, `self.state.<key>`, `inputs.<key>`, `session.*`, `workflow.outputs.<key>` |
 | Chain `inputs`, chain `resource` | `task.session`, `task.instance`, `task.workflow`, `task.done_when.pending_judge_ids`, `resource.state.<key>`, `self.state.<key>` |
-
-In a query population's session inputs, `query.<key>` reads that
-population's literal query parameter. It is unavailable for an
-undelivered-publish population, which uses resource match captures instead.
-`population.id` is a stable identity for a resident population, independent of
-its query process or connection. A subscribe action can use it to register a
-durable feed consumer and explicitly unregister that consumer when the
-population is removed.
 
 Where a surface observes `session.*`, `session.tag` is the tag the session was
 created with, and is absent for an untagged session. It is the recorded tag

@@ -53,8 +53,9 @@ A node may declare `subscription = { from = "self.outputs.<key>" }` to bind
 its session to the resource identifier produced at that output. This is a
 single projection, separate from the node's setup inputs; it reads no other
 node or value root. After setup produces the node, core stores a subscription
-row with source `node`. After cleanup, core removes it when no entry resource,
-task, or other live node still needs that identifier. Admission fails if the
+row with source `node`. After cleanup, core removes it when no other live node
+in that session binds the same resource. An entry-resource `dispatch` row or
+explicit `runtime` row remains independent. Admission fails if the
 resource's `max_subscribers` bound is reached. Omitting `subscription` leaves
 the node's output available without binding delivery.
 
@@ -407,9 +408,8 @@ timeout. An omitted cap is unlimited.
 
 ## Populations and chains
 
-A population belongs to a workflow and uses its entry resource type. A
-`resource` field in an undelivered-publish population must name that same
-type; it cannot declare an independently authoritative resource.
+A population belongs to a workflow and therefore derives its resource type
+from the workflow. It cannot declare an independently authoritative resource.
 A population is deployment policy, declared only in user-owned global or
 trusted selected-project configuration. Its identity is its stable
 configuration-selection context, the containing workflow's resolved address,
@@ -421,41 +421,17 @@ mutation or destruction.
 | Field | Meaning |
 |---|---|
 | `name` | Required stable identifier, unique within the workflow. |
-| `query` | Literal parameters validated by the entry resource's query input schema; required with `uses`. |
-| `uses` | Non-empty query means, such as `poll` or `subscribe`; required with `query`. |
-| `resource` | Entry resource type for an undelivered-publish source; required with `where`. |
-| `where` | Expression over `match.*` captures; required with `resource`. |
+| `query` | Required literal parameters validated by the entry resource's query input schema. |
+| `uses` | Required, non-empty query means, such as `poll` or `subscribe`. |
 | `session.task` | Optional caller-selected initial task, compatible with the entry resource. |
-| `session.inputs` | Optional values over literals and `resource.id`, plus `item.*`/`query.*` for query sources or `match.*` for undelivered publishes. |
+| `session.inputs` | Optional values over literals, `resource.id`, and `item.*` properties. |
 | `session.destroy.force` | Whether automatic destruction uses force; default false. |
 | `poll_every` | Required positive duration when `uses` selects `poll`; forbidden otherwise. |
 | `expire_after` | Required positive quiescence duration without `poll`; forbidden with it. |
 | `auto_down` | Permits capacity-pressure down selection; default false. |
 | `auto_destroy` | Permits guarded destruction; default false, which records a dry run. |
 
-Exactly one source form is required: the workflow's resource observer with
-`query` and `uses`, or `resource` with `where`. Combining the forms fails
-loading. The
-second source accepts a resource-addressed publish only when it has zero
-subscribers and the resource's captures satisfy `where`. Core creates the
-member session, subscribes it, and appends that event in one step. It does not
-refetch event history. `session.inputs` may project a literal query parameter
-as `query.<key>` only for the query source form.
-
-```toml
-[thread_worker]
-kind = "workflow"
-resource = "slack_thread"
-
-[[thread_worker.populations]]
-name = "new_mentions"
-resource = "slack_thread"
-where = "match.channel_id == 'C0123'"
-expire_after = "8h"
-```
-
-For a query population, `uses` is the sole authority for query means. A
-population naming only `poll`
+`uses` is the sole authority for query means. A population naming only `poll`
 does not start subscribe even if the resource declares it; one naming only
 `subscribe` does not poll. No default permits a later plugin-added means to
 start in an existing deployment.
@@ -615,9 +591,7 @@ neither turns the issue into the session's entry resource.
 - `workdir` is a projection from a node output declared by this workflow.
 - A `workdir` resolves to an absolute local filesystem directory path.
 - Node dependencies plus derived default-workdir edges have no cycle.
-- A population uses its containing workflow's resource. It has exactly one
-  source form: `query`/`uses` or `resource`/`where`; the latter names the entry
-  resource type and reads only declared `match.*` captures.
+- A population uses its containing workflow's resource and its query contract.
 - An initial task is caller-selected and compatible with its concrete binding.
 - Workflow public outputs satisfy `outputs_schema` and bind only declared node
   outputs or allowed session inputs.
