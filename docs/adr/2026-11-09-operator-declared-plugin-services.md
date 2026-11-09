@@ -21,6 +21,19 @@ uses that registry, but the local HTTP endpoint has no authentication. The
 resident service boundary therefore needs both an operator-owned instance
 declaration and a protected local API.
 
+### Local API threat model
+
+The local API must reject requests from web content in a browser running on
+the same host. Agents can direct a headless Chromium at arbitrary pages, and a
+page can try DNS rebinding or a simple cross-origin POST to a loopback API.
+Other OS users on the host must also be unable to call the API.
+
+Code running as the same OS user as plect is outside this boundary. An agent
+session with a shell or plugin code under that user can read service env files
+and `/proc/<pid>/environ`, and can use any socket the user owns. Containing
+such code requires a separate OS user or a sandbox, which is a separate
+decision.
+
 ## Supersession scope
 
 This decision replaces these decisions of
@@ -98,24 +111,36 @@ env_file = "/etc/plect/service-env/slack-secondary.env"
 
 Each service gets a private state directory derived from `name`, under
 `<data-home>/services/<name>/`, and a Unix socket path `api.sock` in
-that directory. plect creates the directory with mode `0700` and passes
-`PLECT_SERVICE_STATE_DIR` and `PLECT_SERVICE_SOCKET` to the child. It also
-passes `PLECT_BUS_SOCKET` and, when needed, `PLECT_BUS_TOKEN` for the local
+that directory. plect creates the directory with mode `0700`; the adapter
+creates the socket with owner-only mode `0600` before accepting connections.
+plect passes `PLECT_SERVICE_STATE_DIR` and `PLECT_SERVICE_SOCKET` to the child.
+It also passes `PLECT_BUS_SOCKET` and, when needed, `PLECT_BUS_TOKEN` for the local
 event bus. A service's own `env_file` can set its adapter-specific config and
 secrets but cannot override these `PLECT_*` runtime values. If the resolved
 socket path exceeds the platform's Unix socket limit, loading fails with an
 actionable path error. The service name is the stable state identity; renaming
 it starts a distinct instance with distinct state.
 
-Local APIs used by hooks, including the Slack adapter API, listen on that Unix
-socket. The parent directory is private and the socket is accessible only to
-its owner. The Slack adapter's bot-specific instance registry publishes the
-socket path after the listener is ready; the `mentions` hook dials the socket
-identified by team and bot, retaining the existing bot-identity check. Thread
-hooks also use a configured socket path. Missing or stale registry entries fail
-the hook for retry; they do not route it to an unprotected TCP fallback. A
-provider's public ingress, such as a webhook receiver, keeps its own external
-authentication and is not this local hook API.
+Local APIs used by hooks, including the Slack adapter API, listen only on that
+Unix socket. The browser's network APIs cannot dial a Unix socket, so DNS
+rebinding and cross-origin POSTs have no TCP listener to reach. The directory
+and socket modes exclude other OS users. No loopback proxy is supplied, since
+one would reopen the browser path.
+
+Every caller of the local API uses a Unix-socket client: plect's HTTP event
+channels use a socket-path binding and dial the socket, resource hooks use the
+adapter's socket client, and local tools such as a `factory-reply`-style caller
+take a socket path. These clients run as the service-owning OS user; a caller
+under another user needs a separately designed mediation boundary, not wider
+socket permissions. The Slack adapter's bot-specific instance registry
+publishes the socket path after the listener is ready; the `mentions` hook
+dials the socket identified by team and bot, retaining the existing
+bot-identity check. Thread hooks and channels use a configured instance socket
+path. Missing or stale registry entries fail the hook for retry; they do not
+route it to an unprotected TCP fallback. `github-watcher` has no inbound local
+HTTP API in its bus-delivery mode; any future hook-facing API follows the same
+socket rule. A provider's public ingress, such as a webhook receiver, keeps
+its own external authentication and is not this local hook API.
 
 `plect service list` displays declared services with name, executable, state,
 pid, and restarts. `--all` also displays one `available` row for each

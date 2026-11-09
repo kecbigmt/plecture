@@ -237,10 +237,14 @@ Service logs do not write into per-session event logs.
 
 Updating a plugin restarts declared services that use it. Each child receives
 only its env file and plect runtime values, including a private state directory
-and `api.sock` path under `<data-home>/services/<name>/`. The local
-adapter API listens on that owner-accessible Unix socket. The Slack instance
-registry maps team and bot identity to socket path for `mentions` hooks; thread
-hooks use a configured socket path. A stale or missing mapping fails for retry.
+and `api.sock` path under `<data-home>/services/<name>/`. The directory has
+mode `0700` and the socket has mode `0600`. Local adapter APIs listen only on
+that socket, so browsers cannot reach them through loopback and other OS users
+cannot connect. HTTP event channels use a socket-path binding; resource hooks
+and local tools use a socket client. The Slack instance registry maps team and
+bot identity to socket path for `mentions` hooks; thread hooks and channels use
+a configured socket path. A stale or missing mapping fails for retry. Code
+running as the same OS user can connect and is outside this access boundary.
 
 Build-less script executables are the primary v1 form. They must carry their
 interpreter through a shebang. Built binaries are the additional case for

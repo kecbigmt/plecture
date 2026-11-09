@@ -89,9 +89,10 @@ its executable checks its own required inputs.
 `restart` is `on-failure` by default or `never`. `health` defaults to and only
 accepts `{ type = "process" }`. Unknown keys, duplicate names, unresolved or
 unmarked executables, and invalid values fail configuration loading. The
-service gets a private state directory and owner-accessible Unix API socket
-under `<data-home>/services/<name>/`; hooks find the correct Slack
-socket through the bot-specific instance registry.
+service gets a private state directory (mode `0700`) and Unix API socket
+(mode `0600`) under `<data-home>/services/<name>/`; hooks find the correct
+Slack socket through the bot-specific instance registry. Local API callers,
+including channels and tools, use Unix-socket clients.
 
 `plect service list` shows declared name, executable, state, pid, and restart
 count. With `--all`, an enabled service-marked executable with no declaration
