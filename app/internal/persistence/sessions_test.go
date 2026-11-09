@@ -403,7 +403,7 @@ func TestAllSessions_MatchesGetSessionAcrossParentsChildrenTasksAndChannelHealth
 		Tasks: map[string]*contract.TaskState{
 			"impl": {
 				Scope: contract.TaskScopeSession, Status: contract.TaskStatusProduced, TaskID: "impl-def",
-				Layers: []contract.LayerState{{EffectID: "layer1", Status: contract.TaskStatusProduced}},
+				Layers: []contract.LayerState{{EffectID: "layer1", Status: contract.TaskStatusProduced, SetupAt: now}},
 				DoneWhen: &contract.DoneWhenState{
 					HeartbeatTicks:  3,
 					LastFingerprint: "abc123",
@@ -432,7 +432,7 @@ func TestAllSessions_MatchesGetSessionAcrossParentsChildrenTasksAndChannelHealth
 		Nodes: map[string]*contract.TaskState{
 			"setup": {
 				Scope: contract.TaskScopeRun, Status: contract.TaskStatusProduced, TaskID: "setup-def-b",
-				Layers: []contract.LayerState{{EffectID: "childB-only", Status: contract.TaskStatusProduced}},
+				Layers: []contract.LayerState{{EffectID: "childB-only", Status: contract.TaskStatusProduced, SetupAt: now}},
 			},
 		},
 	}
@@ -934,6 +934,7 @@ func TestPutSessionAndGetSession_EveryFieldRoundTrips(t *testing.T) {
 					{
 						EffectID: "inner", Status: contract.TaskStatusFailed,
 						Error:    "boom",
+						SetupAt:  earlier,
 						FailedAt: now,
 					},
 				},
@@ -1022,11 +1023,9 @@ func TestPutSessionAndGetSession_EveryFieldRoundTrips(t *testing.T) {
 	}
 }
 
-// TestPutSession_FreshSessionAndTaskLeaveEveryJSONColumnNull proves the
-// L1 rule holds without a record_json grab-bag: a session/instance with
-// nothing beyond its columns writes NULL to every _json column rather than
-// an empty-object/array placeholder.
-func TestPutSession_FreshSessionAndTaskLeaveEveryJSONColumnNull(t *testing.T) {
+// A session/instance with nothing beyond its columns writes {} to every
+// NOT NULL _json column, and reads each back as a nil map.
+func TestPutSession_FreshSessionAndTaskWriteEmptyObjects(t *testing.T) {
 	db := migratedTestDB(t)
 	ctx := context.Background()
 	now := time.Now().UTC()
@@ -1034,50 +1033,48 @@ func TestPutSession_FreshSessionAndTaskLeaveEveryJSONColumnNull(t *testing.T) {
 	session := &domain.Session{
 		Name: "bare", CreatedAt: now, UpdatedAt: now,
 		Tasks: map[string]*contract.TaskState{
-			"initial": {Scope: contract.TaskScopeSession, Status: contract.TaskStatusProduced, TaskID: "work"},
+			"initial": {Scope: contract.TaskScopeSession, Status: contract.TaskStatusProduced, TaskID: "work", Inputs: map[string]any{}},
 		},
 	}
 	if err := db.PutSession(ctx, session); err != nil {
 		t.Fatalf("PutSession: %v", err)
 	}
 
-	var inputsJSON sql.NullString
+	var inputsJSON string
+	var taskColumns []string
 	if err := db.WithReadTx(ctx, func(tx *sql.Tx) error {
-		row, err := sqlcgen.New(tx).GetLiveSession(ctx, "bare")
+		q := sqlcgen.New(tx)
+		row, err := q.GetLiveSession(ctx, "bare")
 		if err != nil {
 			return err
 		}
 		inputsJSON = row.InputsJson
-		return nil
-	}); err != nil {
-		t.Fatalf("read raw session row: %v", err)
-	}
-	if inputsJSON.Valid {
-		t.Errorf("sessions.inputs_json = %q, want NULL", inputsJSON.String)
-	}
-
-	var taskInputsJSON, taskOutputsJSON, taskStateJSON sql.NullString
-	if err := db.WithReadTx(ctx, func(tx *sql.Tx) error {
-		sessionID, err := sqlcgen.New(tx).SessionIDByLiveName(ctx, "bare")
-		if err != nil {
-			return err
-		}
-		rows, err := sqlcgen.New(tx).ListTaskInstances(ctx, sessionID)
+		rows, err := q.ListTaskInstances(ctx, row.ID)
 		if err != nil {
 			return err
 		}
 		if len(rows) != 1 {
 			t.Fatalf("task_instances rows = %d, want 1", len(rows))
 		}
-		taskInputsJSON = rows[0].InputsJson
-		taskOutputsJSON = rows[0].OutputsJson
-		taskStateJSON = rows[0].StateJson
+		taskColumns = []string{rows[0].InputsJson, rows[0].OutputsJson, rows[0].StateJson}
 		return nil
 	}); err != nil {
-		t.Fatalf("read raw task instance row: %v", err)
+		t.Fatalf("read raw rows: %v", err)
 	}
-	if taskInputsJSON.Valid || taskOutputsJSON.Valid || taskStateJSON.Valid {
-		t.Errorf("task_instances json columns = inputs:%v outputs:%v state:%v, want all NULL", taskInputsJSON, taskOutputsJSON, taskStateJSON)
+	if inputsJSON != "{}" {
+		t.Errorf("sessions.inputs_json = %q, want {}", inputsJSON)
+	}
+	if want := []string{"{}", "{}", "{}"}; !reflect.DeepEqual(taskColumns, want) {
+		t.Errorf("task_instances inputs/outputs/state = %q, want %q", taskColumns, want)
+	}
+
+	got, err := db.GetSession(ctx, "bare")
+	if err != nil {
+		t.Fatal(err)
+	}
+	task := got.Tasks["initial"]
+	if got.Inputs != nil || task.Inputs != nil || task.Outputs != nil || task.State != nil {
+		t.Errorf("read back session inputs %#v, task inputs %#v outputs %#v state %#v, want all nil", got.Inputs, task.Inputs, task.Outputs, task.State)
 	}
 }
 

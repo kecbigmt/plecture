@@ -2,6 +2,9 @@ package persistence
 
 import (
 	"context"
+	"database/sql"
+	"reflect"
+	"strings"
 	"testing"
 	"time"
 
@@ -160,7 +163,7 @@ func TestPutSession_NewExecutionRefusesAConcurrentWritersUnreleasedRow(t *testin
 		"a": {
 			Scope: contract.TaskScopeSession, Status: contract.TaskStatusProduced, TaskID: "work",
 			Outputs:      map[string]any{"from": "writer-a"},
-			Layers:       []contract.LayerState{{EffectID: "outer", Status: contract.TaskStatusProduced}},
+			Layers:       []contract.LayerState{{EffectID: "outer", Status: contract.TaskStatusProduced, SetupAt: now}},
 			DependsOn:    []string{"dep"},
 			NewExecution: true,
 		},
@@ -174,7 +177,7 @@ func TestPutSession_NewExecutionRefusesAConcurrentWritersUnreleasedRow(t *testin
 		"a": {
 			Scope: contract.TaskScopeSession, Status: contract.TaskStatusProduced, TaskID: "work",
 			Outputs:      map[string]any{"from": "writer-b"},
-			Layers:       []contract.LayerState{{EffectID: "different", Status: contract.TaskStatusProduced}},
+			Layers:       []contract.LayerState{{EffectID: "different", Status: contract.TaskStatusProduced, SetupAt: now}},
 			NewExecution: true,
 		},
 	}}
@@ -592,5 +595,96 @@ func TestPutSession_TaskStateDirectoryRoundTripsForNodesAndDynamicInstances(t *t
 	}
 	if gotDir := updated.Tasks["bare"].Directory; gotDir != "/work/late-instance" {
 		t.Errorf("updated task instance Directory = %q, want /work/late-instance", gotDir)
+	}
+}
+
+func TestPutSession_NodeWithoutDoneWhenStoresSQLNull(t *testing.T) {
+	db := migratedTestDB(t)
+	ctx := context.Background()
+	now := time.Now().UTC()
+	doneWhen := &contract.DoneWhenState{HeartbeatTicks: 2, LastAction: "wait"}
+	if err := db.PutSession(ctx, &domain.Session{
+		Name: "s1", CreatedAt: now, UpdatedAt: now,
+		Nodes: map[string]*contract.TaskState{
+			"absent":  {Scope: contract.TaskScopeSession, Status: contract.TaskStatusProduced, TaskID: "work"},
+			"present": {Scope: contract.TaskScopeSession, Status: contract.TaskStatusProduced, TaskID: "work", DoneWhen: doneWhen},
+		},
+	}); err != nil {
+		t.Fatalf("PutSession: %v", err)
+	}
+
+	stored := map[string]sql.NullString{}
+	rows, err := db.write.QueryContext(ctx, `SELECT node_id, done_when_json FROM node_executions`)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer rows.Close()
+	for rows.Next() {
+		var node string
+		var column sql.NullString
+		if err := rows.Scan(&node, &column); err != nil {
+			t.Fatal(err)
+		}
+		stored[node] = column
+	}
+	if err := rows.Err(); err != nil {
+		t.Fatal(err)
+	}
+	if stored["absent"].Valid {
+		t.Errorf("done_when_json for a node without done_when = %q, want SQL NULL", stored["absent"].String)
+	}
+	if !stored["present"].Valid {
+		t.Error("done_when_json for a node with done_when is NULL, want its document")
+	}
+
+	got, err := db.GetSession(ctx, "s1")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got.Nodes["absent"].DoneWhen != nil {
+		t.Errorf("absent DoneWhen = %+v, want nil", got.Nodes["absent"].DoneWhen)
+	}
+	if !reflect.DeepEqual(got.Nodes["present"].DoneWhen, doneWhen) {
+		t.Errorf("present DoneWhen = %+v, want %+v", got.Nodes["present"].DoneWhen, doneWhen)
+	}
+}
+
+func TestPutSession_RefusesALayerWithoutSetupTimeAndWritesNothing(t *testing.T) {
+	now := time.Now().UTC()
+	unset := []contract.LayerState{{EffectID: "outer", Status: contract.TaskStatusProduced}}
+	for _, tc := range []struct {
+		name  string
+		place func(s *domain.Session)
+		want  string
+	}{
+		{"node execution layer", func(s *domain.Session) {
+			s.Nodes = map[string]*contract.TaskState{"agent": {Scope: contract.TaskScopeSession, Status: contract.TaskStatusProduced, TaskID: "agent", SetupAt: now, Layers: unset}}
+		}, "node execution layer 0 (outer) has no setup time"},
+		{"task instance layer", func(s *domain.Session) {
+			s.Tasks = map[string]*contract.TaskState{"initial": {Scope: contract.TaskScopeSession, Status: contract.TaskStatusProduced, TaskID: "work", SetupAt: now, Layers: unset}}
+		}, "task instance layer 0 (outer) has no setup time"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			db := migratedTestDB(t)
+			ctx := context.Background()
+			if err := db.PutSession(ctx, &domain.Session{Name: "s1", Workflow: "before", CreatedAt: now, UpdatedAt: now}); err != nil {
+				t.Fatalf("seed: %v", err)
+			}
+
+			next := &domain.Session{Name: "s1", Workflow: "after", CreatedAt: now, UpdatedAt: now}
+			tc.place(next)
+			err := db.PutSession(ctx, next)
+			if err == nil || !strings.Contains(err.Error(), tc.want) {
+				t.Fatalf("PutSession = %v, want an error containing %q", err, tc.want)
+			}
+
+			got, err := db.GetSession(ctx, "s1")
+			if err != nil {
+				t.Fatal(err)
+			}
+			if got.Workflow != "before" || len(got.Nodes) != 0 || len(got.Tasks) != 0 {
+				t.Errorf("after the refused write: workflow %q, nodes %v, tasks %v; want the seeded session unchanged", got.Workflow, got.Nodes, got.Tasks)
+			}
+		})
 	}
 }

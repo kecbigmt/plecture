@@ -20,8 +20,8 @@ func nestedTasks(composed map[string]any, innerOutputs map[string]any, layerEnv 
 			Status:  contract.TaskStatusProduced,
 			Outputs: composed,
 			Layers: []contract.LayerState{
-				{EffectID: "team_runtime", Status: contract.TaskStatusProduced, Env: layerEnv},
-				{EffectID: "runtime", Status: contract.TaskStatusProduced, Outputs: innerOutputs},
+				{EffectID: "team_runtime", Status: contract.TaskStatusProduced, SetupAt: time.Now(), Env: layerEnv},
+				{EffectID: "runtime", Status: contract.TaskStatusProduced, SetupAt: time.Now(), Outputs: innerOutputs},
 			},
 			SetupAt: time.Now(),
 		},

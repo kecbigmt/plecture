@@ -40,14 +40,13 @@ type NodeExecution struct {
 	NodeID                  string
 	Sequence                int64
 	TaskID                  sql.NullString
-	Name                    sql.NullString
 	Scope                   string
 	Status                  string
 	ResourceID              sql.NullString
 	SubscriptionID          sql.NullString
-	InputsJson              sql.NullString
-	OutputsJson             sql.NullString
-	StateJson               sql.NullString
+	InputsJson              string
+	OutputsJson             string
+	StateJson               string
 	ResourceObservationJson sql.NullString
 	ResourceObservedAt      sql.NullString
 	DoneWhenJson            sql.NullString
@@ -71,13 +70,13 @@ type NodeExecutionLayer struct {
 	Position             int64
 	EffectID             string
 	Status               string
-	InputsJson           sql.NullString
-	LocalsJson           sql.NullString
-	OutputsJson          sql.NullString
-	EnvJson              sql.NullString
-	HeartbeatTicks       sql.NullInt64
-	HeartbeatEscalations sql.NullInt64
-	SetupAt              sql.NullString
+	InputsJson           string
+	LocalsJson           string
+	OutputsJson          string
+	EnvJson              string
+	HeartbeatTicks       int64
+	HeartbeatEscalations int64
+	SetupAt              string
 	FailedAt             sql.NullString
 	CleanedAt            sql.NullString
 	Error                sql.NullString
@@ -153,7 +152,7 @@ type Session struct {
 	ProjectRoot              string
 	PopulationWorkflow       sql.NullString
 	PopulationName           sql.NullString
-	InputsJson               sql.NullString
+	InputsJson               string
 	HealthLastCheckedAt      sql.NullString
 	HealthLastActivityAt     sql.NullString
 	HealthLastFingerprint    sql.NullString
@@ -226,9 +225,9 @@ type TaskInstance struct {
 	Sequence                int64
 	ResourceID              sql.NullString
 	Named                   bool
-	InputsJson              sql.NullString
-	OutputsJson             sql.NullString
-	StateJson               sql.NullString
+	InputsJson              string
+	OutputsJson             string
+	StateJson               string
 	ResourceObservationJson sql.NullString
 	ResourceObservedAt      sql.NullString
 	ExtraDoneWhenJson       sql.NullString
@@ -246,13 +245,13 @@ type TaskInstanceLayer struct {
 	Position             int64
 	EffectID             string
 	Status               string
-	InputsJson           sql.NullString
-	LocalsJson           sql.NullString
-	OutputsJson          sql.NullString
-	EnvJson              sql.NullString
-	HeartbeatTicks       sql.NullInt64
-	HeartbeatEscalations sql.NullInt64
-	SetupAt              sql.NullString
+	InputsJson           string
+	LocalsJson           string
+	OutputsJson          string
+	EnvJson              string
+	HeartbeatTicks       int64
+	HeartbeatEscalations int64
+	SetupAt              string
 	FailedAt             sql.NullString
 	CleanedAt            sql.NullString
 	Error                sql.NullString

@@ -706,3 +706,29 @@ func TestMigrate_UpgradesPastAWorkflowNodeThatNoLiveSessionHolds(t *testing.T) {
 		}
 	}
 }
+
+type rowCheck struct {
+	query string
+	want  []string
+}
+
+func queryStrings(t *testing.T, ctx context.Context, db *DB, query string) []string {
+	t.Helper()
+	rows, err := db.write.QueryContext(ctx, query)
+	if err != nil {
+		t.Fatalf("%s: %v", query, err)
+	}
+	defer rows.Close()
+	var got []string
+	for rows.Next() {
+		var value string
+		if err := rows.Scan(&value); err != nil {
+			t.Fatalf("scan %s: %v", query, err)
+		}
+		got = append(got, value)
+	}
+	if err := rows.Err(); err != nil {
+		t.Fatalf("iterate %s: %v", query, err)
+	}
+	return got
+}

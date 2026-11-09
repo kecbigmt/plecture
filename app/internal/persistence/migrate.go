@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"io/fs"
 	"os"
+	"strings"
 	"time"
 
 	"github.com/pressly/goose/v3"
@@ -85,6 +86,12 @@ func (db *DB) Migrate(ctx context.Context) error {
 		// process speculatively wrote is removed rather than left behind.
 		return removeMarker(gate.markerPath)
 	}
+	if err := db.refuseLayersWithoutSetupTime(ctx, current, target); err != nil {
+		if removeErr := removeMarker(gate.markerPath); removeErr != nil {
+			return fmt.Errorf("%w (also failed to remove the marker recorded on intent: %v)", err, removeErr)
+		}
+		return err
+	}
 	if err := db.refuseUnreleasedWorkflowNodes(ctx, current, target); err != nil {
 		if removeErr := removeMarker(gate.markerPath); removeErr != nil {
 			return fmt.Errorf("%w (also failed to remove the marker recorded on intent: %v)", err, removeErr)
@@ -132,9 +139,10 @@ func removeMarker(path string) error {
 }
 
 const (
-	firstReleasedVersion    = 20260907002408
-	nodeExecutionsVersion   = 20260907085032
-	workdirDirectoryVersion = 20261106000000
+	firstReleasedVersion          = 20260907002408
+	nodeExecutionsVersion         = 20260907085032
+	workdirDirectoryVersion       = 20261106000000
+	tightenNullableColumnsVersion = 20261108120000
 )
 
 const workdirDirectoryRefusal = "destroy live sessions that still hold a workspace provider with the previous release, then upgrade; see docs/migrations/resource-and-workspace-effects-migration.md"
@@ -163,6 +171,50 @@ func (db *DB) refuseUnreleasedWorkflowNodes(ctx context.Context, current, target
 		return fmt.Errorf("persistence: upgrade refused, no migration applied: %s", workdirDirectoryRefusal)
 	}
 	return nil
+}
+
+// The tightening migration copies a missing layer setup time from the
+// layer's owner, and no other value would be true. When the owner has none
+// either, the refusal happens here: the migration's own NOT NULL failure
+// would only come after every earlier pending migration had committed.
+func (db *DB) refuseLayersWithoutSetupTime(ctx context.Context, current, target int64) error {
+	if current < firstReleasedVersion || current >= tightenNullableColumnsVersion || target < tightenNullableColumnsVersion {
+		return nil
+	}
+	type layerTable struct{ name, owner, join string }
+	tables := []layerTable{
+		{"node_execution_layers", "node_executions", "o.id = l.execution_id"},
+		{"task_instance_layers", "task_instances", "o.id = l.task_instance_id"},
+	}
+	if current < nodeExecutionsVersion {
+		tables[0] = layerTable{"node_instance_layers", "node_instances", "o.session_id = l.session_id AND o.node_id = l.node_id"}
+	}
+	if current < workdirDirectoryVersion {
+		// The workdir-directory migration deletes these before the tightening runs.
+		tables[0].join += " AND o.node_id <> '@workflow'"
+	}
+	var unfilled []string
+	for _, table := range tables {
+		var n int
+		if err := db.write.QueryRowContext(ctx, `SELECT count(*) FROM `+table.name+` l JOIN `+table.owner+` o ON `+table.join+`
+			WHERE l.setup_at IS NULL AND o.setup_at IS NULL`).Scan(&n); err != nil {
+			return fmt.Errorf("persistence: count %s rows with no setup time: %w", table.name, err)
+		}
+		if n > 0 {
+			unfilled = append(unfilled, fmt.Sprintf("%s.setup_at is NULL in %d %s whose %s row has no setup_at to copy", table.name, n, plural(n, "row", "rows"), table.owner))
+		}
+	}
+	if len(unfilled) > 0 {
+		return fmt.Errorf("persistence: upgrade refused, no migration applied: %s; set or delete those rows with the previous release, then upgrade; see docs/migrations/nullable-column-tightening.md", strings.Join(unfilled, "; "))
+	}
+	return nil
+}
+
+func plural(n int, one, many string) string {
+	if n == 1 {
+		return one
+	}
+	return many
 }
 
 // migrateLocked applies pending migrations without acquiring any lock

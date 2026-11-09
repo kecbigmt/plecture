@@ -16,7 +16,7 @@ func seedBareSessionForTest(t *testing.T, db *DB, name string) string {
 	q := sqlcgen.New(db.write)
 	id := newULID()
 	if err := q.InsertSession(context.Background(), sqlcgen.InsertSessionParams{
-		ID: id, Name: name, Status: contract.SessionStatusDown, CreatedAt: "2024-01-01T00:00:00Z", UpdatedAt: "2024-01-01T00:00:00Z",
+		ID: id, Name: name, Status: contract.SessionStatusDown, InputsJson: "{}", CreatedAt: "2024-01-01T00:00:00Z", UpdatedAt: "2024-01-01T00:00:00Z",
 	}); err != nil {
 		t.Fatalf("seed session %q: %v", name, err)
 	}
@@ -62,22 +62,26 @@ func TestSchema_RejectsOutOfSetScopeAndStatus(t *testing.T) {
 	}
 
 	if _, err := q.InsertNodeExecution(ctx, sqlcgen.InsertNodeExecutionParams{
+		InputsJson: "{}", OutputsJson: "{}", StateJson: "{}",
 		ID: newULID(), SessionID: sessionID, NodeID: "n1", Scope: "bogus", Status: "produced",
 	}); err == nil || !strings.Contains(err.Error(), "CHECK constraint failed") {
 		t.Fatalf("InsertNodeExecution with bogus scope: err = %v, want a CHECK constraint failure", err)
 	}
 	if _, err := q.InsertNodeExecution(ctx, sqlcgen.InsertNodeExecutionParams{
+		InputsJson: "{}", OutputsJson: "{}", StateJson: "{}",
 		ID: newULID(), SessionID: sessionID, NodeID: "n1", Scope: "session", Status: "bogus",
 	}); err == nil || !strings.Contains(err.Error(), "CHECK constraint failed") {
 		t.Fatalf("InsertNodeExecution with bogus status: err = %v, want a CHECK constraint failure", err)
 	}
 
 	if _, err := q.UpsertTaskInstance(ctx, sqlcgen.UpsertTaskInstanceParams{
+		InputsJson: "{}", OutputsJson: "{}", StateJson: "{}",
 		ID: newULID(), SessionID: sessionID, InstanceName: "i1", Scope: "bogus", Status: "produced",
 	}); err == nil || !strings.Contains(err.Error(), "CHECK constraint failed") {
 		t.Fatalf("UpsertTaskInstance with bogus scope: err = %v, want a CHECK constraint failure", err)
 	}
 	if _, err := q.UpsertTaskInstance(ctx, sqlcgen.UpsertTaskInstanceParams{
+		InputsJson: "{}", OutputsJson: "{}", StateJson: "{}",
 		ID: newULID(), SessionID: sessionID, InstanceName: "i1", Scope: "session", Status: "bogus",
 	}); err == nil || !strings.Contains(err.Error(), "CHECK constraint failed") {
 		t.Fatalf("UpsertTaskInstance with bogus status: err = %v, want a CHECK constraint failure", err)
@@ -94,6 +98,7 @@ func TestSchema_RejectsOutOfSetJudgeActionAndRelation(t *testing.T) {
 	sessionID := seedBareSessionForTest(t, db, "s1")
 
 	if _, err := q.UpsertTaskInstance(ctx, sqlcgen.UpsertTaskInstanceParams{
+		InputsJson: "{}", OutputsJson: "{}", StateJson: "{}",
 		ID: "task1", SessionID: sessionID, InstanceName: "i1", Scope: "session", Status: "produced",
 	}); err != nil {
 		t.Fatalf("seed task instance: %v", err)
@@ -155,18 +160,18 @@ func TestSchema_RejectsTwoLiveSessionsWithSameName(t *testing.T) {
 	q := sqlcgen.New(db.write)
 
 	if err := q.InsertSession(ctx, sqlcgen.InsertSessionParams{
-		ID: "id1", Name: "dup", Status: contract.SessionStatusDown, CreatedAt: "2024-01-01T00:00:00Z", UpdatedAt: "2024-01-01T00:00:00Z",
+		ID: "id1", Name: "dup", Status: contract.SessionStatusDown, InputsJson: "{}", CreatedAt: "2024-01-01T00:00:00Z", UpdatedAt: "2024-01-01T00:00:00Z",
 	}); err != nil {
 		t.Fatalf("seed first live session: %v", err)
 	}
 	if _, err := db.write.ExecContext(ctx,
-		"INSERT INTO sessions (id, name, status, workflow, created_at, updated_at) VALUES ('id2', 'dup', 'down', '', '2024-01-01T00:00:00Z', '2024-01-01T00:00:00Z')"); err == nil {
+		"INSERT INTO sessions (id, name, status, workflow, inputs_json, created_at, updated_at) VALUES ('id2', 'dup', 'down', '', '{}', '2024-01-01T00:00:00Z', '2024-01-01T00:00:00Z')"); err == nil {
 		t.Fatal("insert of a second live row with the same name succeeded, want a unique-index failure")
 	}
 
 	// A destroyed row does not block a second live row with the same name.
 	if _, err := db.write.ExecContext(ctx,
-		"INSERT INTO sessions (id, name, status, destroyed_at, workflow, created_at, updated_at) VALUES ('id3', 'dup', 'destroyed', '2024-01-01T00:00:00Z', '', '2024-01-01T00:00:00Z', '2024-01-01T00:00:00Z')"); err != nil {
+		"INSERT INTO sessions (id, name, status, destroyed_at, workflow, inputs_json, created_at, updated_at) VALUES ('id3', 'dup', 'destroyed', '2024-01-01T00:00:00Z', '', '{}', '2024-01-01T00:00:00Z', '2024-01-01T00:00:00Z')"); err != nil {
 		t.Fatalf("insert of a destroyed row with a name already live: %v, want success", err)
 	}
 }

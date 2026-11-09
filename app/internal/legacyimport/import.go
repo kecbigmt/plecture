@@ -4,8 +4,10 @@ import (
 	"context"
 	"fmt"
 	"io"
+	"maps"
 	"os"
 	"path/filepath"
+	"slices"
 	"sort"
 	"strings"
 
@@ -98,6 +100,11 @@ func Run(ctx context.Context, opts Options) (*Report, error) {
 	}
 
 	allNames := sortedSessionNames(sf.Sessions)
+	for _, name := range allNames {
+		if err := fillLayerSetupTimes(sf.Sessions[name]); err != nil {
+			return report, fmt.Errorf("legacyimport: session %q: %w", name, err)
+		}
+	}
 
 	if !opts.DryRun {
 		if _, err := os.Stat(report.DBPath); err == nil {
@@ -379,6 +386,34 @@ func validateCounts(ctx context.Context, db *persistence.DB, allNames []string, 
 		}
 		if len(evs) != len(sl.Events) {
 			return fmt.Errorf("validate: session %q has %d events in the built database, want %d", name, len(evs), len(sl.Events))
+		}
+	}
+	return nil
+}
+
+// A legacy layer can lack the setup time the store requires. Its instance's
+// setup time is the only true value to copy, the same rule the schema
+// migration applies to a stored layer, so an instance without one refuses.
+func fillLayerSetupTimes(s *domain.Session) error {
+	if s == nil {
+		return nil
+	}
+	for _, states := range []map[string]*contract.TaskState{s.Nodes, s.Tasks} {
+		for _, key := range slices.Sorted(maps.Keys(states)) {
+			ts := states[key]
+			if ts == nil {
+				continue
+			}
+			for i := range ts.Layers {
+				layer := &ts.Layers[i]
+				if !layer.SetupAt.IsZero() {
+					continue
+				}
+				if ts.SetupAt.IsZero() {
+					return fmt.Errorf("%q layer %d (%s) has no setup time, and neither does %q to copy one from", key, i, layer.EffectID, key)
+				}
+				layer.SetupAt = ts.SetupAt
+			}
 		}
 	}
 	return nil

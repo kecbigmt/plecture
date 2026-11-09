@@ -7,37 +7,40 @@ import (
 	contract "github.com/kecbigmt/plecture/contracts/state"
 )
 
-// marshalJSONMap encodes m for a nullable _json column: a nil/empty map is
-// SQL NULL, matching formatTimeNull/nullString's absence convention.
-func marshalJSONMap(m map[string]any) (sql.NullString, error) {
+// marshalJSONObject writes a nil map as {} too, so a NOT NULL object column
+// has one spelling of "no entries".
+func marshalJSONObject[V any](m map[string]V) (string, error) {
 	if len(m) == 0 {
-		return sql.NullString{}, nil
+		return "{}", nil
 	}
 	data, err := json.Marshal(m)
 	if err != nil {
-		return sql.NullString{}, err
+		return "", err
 	}
-	return sql.NullString{String: string(data), Valid: true}, nil
+	return string(data), nil
 }
 
-// unmarshalJSONMap is marshalJSONMap's inverse.
-func unmarshalJSONMap(s sql.NullString) (map[string]any, error) {
-	if !s.Valid {
-		return nil, nil
-	}
-	var m map[string]any
-	if err := json.Unmarshal([]byte(s.String), &m); err != nil {
+// unmarshalJSONObject reads {} back as a nil map, not an empty one: readers
+// test a map against nil to tell "never produced" from "produced".
+func unmarshalJSONObject[V any](s string) (map[string]V, error) {
+	var m map[string]V
+	if err := json.Unmarshal([]byte(s), &m); err != nil {
 		return nil, err
+	}
+	if len(m) == 0 {
+		return nil, nil
 	}
 	return m, nil
 }
 
-// marshalJSONValue treats a nil pointer/interface as genuinely absent.
-func marshalJSONValue(v any) (sql.NullString, error) {
-	if v == nil {
+// marshalJSONPointer takes a typed pointer rather than any: a typed-nil
+// pointer boxed in an interface is a non-nil interface, and would be stored
+// as the JSON text null instead of SQL NULL.
+func marshalJSONPointer[T any](p *T) (sql.NullString, error) {
+	if p == nil {
 		return sql.NullString{}, nil
 	}
-	data, err := json.Marshal(v)
+	data, err := json.Marshal(p)
 	if err != nil {
 		return sql.NullString{}, err
 	}
@@ -50,22 +53,6 @@ func unmarshalJSONValue(s sql.NullString, out any) error {
 		return nil
 	}
 	return json.Unmarshal([]byte(s.String), out)
-}
-
-// nullInt always reports Valid: a layer's heartbeat counters are a
-// legitimate 0, not an absent fact worth a NULL.
-func nullInt(v int) sql.NullInt64 {
-	return sql.NullInt64{Int64: int64(v), Valid: true}
-}
-
-// processColumn stores a process identity as one JSON document, and a nil
-// identity as NULL rather than the JSON null a typed-nil pointer would
-// marshal to.
-func processColumn(p *contract.ProcessIdentity) (sql.NullString, error) {
-	if p == nil {
-		return sql.NullString{}, nil
-	}
-	return marshalJSONValue(p)
 }
 
 func processFromColumn(s sql.NullString) (*contract.ProcessIdentity, error) {
