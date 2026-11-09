@@ -167,15 +167,15 @@ Executable entry fields:
 | `service` | no | Boolean marker for an executable suitable for resident supervision; defaults to `false` and never starts a process. |
 
 An enabled plugin can make a resident executable available without starting it.
-Only user-owned service declarations start a process. For example,
-`<config-home>/services/resident.toml` contains:
+Only user-owned service declarations start a process. In these examples,
+`<config-home>` is `/srv/plect/config`; its `services/resident.toml` contains:
 
 ```toml
 [[services]]
 name = "github-watcher"
 executable = "official/github/github-watcher"
 args = ["serve"]
-env_file = "/etc/plect/service-env/github-watcher.env"
+env_file = "/srv/plect/config/service-env/github-watcher.env"
 ```
 
 One Slack App uses one instance:
@@ -184,7 +184,7 @@ One Slack App uses one instance:
 [[services]]
 name = "slack-primary"
 executable = "official/slack/slack-adapter"
-env_file = "/etc/plect/service-env/slack-primary.env"
+env_file = "/srv/plect/config/service-env/slack-primary.env"
 ```
 
 Two Slack Apps use two declarations of the same executable, with separate
@@ -194,12 +194,12 @@ credential files and state directories:
 [[services]]
 name = "slack-primary"
 executable = "official/slack/slack-adapter"
-env_file = "/etc/plect/service-env/slack-primary.env"
+env_file = "/srv/plect/config/service-env/slack-primary.env"
 
 [[services]]
 name = "slack-secondary"
 executable = "official/slack/slack-adapter"
-env_file = "/etc/plect/service-env/slack-secondary.env"
+env_file = "/srv/plect/config/service-env/slack-secondary.env"
 ```
 
 Each env file uses literal `KEY=VALUE` lines. For the two Slack instances,
@@ -240,11 +240,41 @@ only its env file and plect runtime values, including a private state directory
 and `api.sock` path under `<data-home>/services/<name>/`. The directory has
 mode `0700` and the socket has mode `0600`. Local adapter APIs listen only on
 that socket, so browsers cannot reach them through loopback and other OS users
-cannot connect. HTTP event channels use a socket-path binding; resource hooks
-and local tools use a socket client. The Slack instance registry maps team and
-bot identity to socket path for `mentions` hooks; thread hooks and channels use
-a configured socket path. A stale or missing mapping fails for retry. Code
-running as the same OS user can connect and is outside this access boundary.
+cannot connect. Code running as the same OS user can connect and is outside
+this access boundary.
+
+plect derives `PLECT_RENDEZVOUS_DIR` from its resolved data home as
+`<data-home>/rendezvous/` and supplies that same value to service children and
+all action processes it starts, including resource hooks. It creates the
+directory with mode `0700`; a conflicting `PLECT_*` runtime key in an env
+file is a load error. The private service state dir stores instance data,
+while plugin-owned subpaths of the rendezvous dir hold state shared with hooks.
+The Slack adapter publishes team-and-bot registry entries with socket paths
+under `<rendezvous-dir>/slack/instances/`; its `mentions` hook reads there.
+The adapter uses `PLECT_SERVICE_STATE_DIR` for its subscriber and stream
+ledgers when the operator sets no state path.
+
+The GitHub watcher and its subscribe/unsubscribe hooks share
+`<rendezvous-dir>/github-watcher/subscriptions.json`. Its `gh-api` helper and
+`github-issue-pr` observer use that directory for the shared rate budget and
+App token cache. These lookups do not depend on separately resolved `HOME`,
+`XDG_STATE_HOME`, or `XDG_DATA_HOME`. Hook-side GitHub credentials are
+configured independently of the watcher's service env file.
+
+The Slack `slack`, `stream`, and `status` channels are `exec` channels that
+invoke `curl --unix-socket` with an absolute `socket_path` input and a fixed
+`http://localhost` request URL. Its thread and mentions resource hooks,
+`slack_thread` task, and local tools use the same socket transport. The
+`thread` resource's query input and `slack_thread` task input are required
+absolute `socket_path` strings. Channel inputs also require an absolute
+`socket_path` string; `base_url` is not accepted for local APIs. A missing
+input fails config validation; a relative path fails the local request.
+
+The `mentions` hook finds its socket from the registry. The thread hook uses
+an operator-set `SLACK_ADAPTER_SOCKET_PATH` in its own environment for its
+default instance; a user-owned resource overlay can pass `--socket <path>`.
+An unset path or stale registry mapping fails for retry. No new core channel
+primitive is defined.
 
 Build-less script executables are the primary v1 form. They must carry their
 interpreter through a shebang. Built binaries are the additional case for

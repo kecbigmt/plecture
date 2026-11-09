@@ -49,13 +49,14 @@ configuration, and each instance supplies its own environment.
 ## User services
 
 Each `<config-home>/services/*.toml` file contains one or more service tables.
-One Slack App uses one table:
+In these examples, `<config-home>` is `/srv/plect/config`. One Slack App uses
+one table:
 
 ```toml
 [[services]]
 name = "slack-primary"
 executable = "official/slack/slack-adapter"
-env_file = "/etc/plect/service-env/slack-primary.env"
+env_file = "/srv/plect/config/service-env/slack-primary.env"
 ```
 
 Two Slack Apps use two tables, each with distinct credentials and state:
@@ -64,12 +65,12 @@ Two Slack Apps use two tables, each with distinct credentials and state:
 [[services]]
 name = "slack-primary"
 executable = "official/slack/slack-adapter"
-env_file = "/etc/plect/service-env/slack-primary.env"
+env_file = "/srv/plect/config/service-env/slack-primary.env"
 
 [[services]]
 name = "slack-secondary"
 executable = "official/slack/slack-adapter"
-env_file = "/etc/plect/service-env/slack-secondary.env"
+env_file = "/srv/plect/config/service-env/slack-secondary.env"
 restart = "never"
 health = { type = "process" }
 ```
@@ -90,9 +91,14 @@ its executable checks its own required inputs.
 accepts `{ type = "process" }`. Unknown keys, duplicate names, unresolved or
 unmarked executables, and invalid values fail configuration loading. The
 service gets a private state directory (mode `0700`) and Unix API socket
-(mode `0600`) under `<data-home>/services/<name>/`; hooks find the correct
-Slack socket through the bot-specific instance registry. Local API callers,
-including channels and tools, use Unix-socket clients.
+(mode `0600`) under `<data-home>/services/<name>/`. plect supplies
+`PLECT_RENDEZVOUS_DIR` as `<data-home>/rendezvous/` to services and all action
+processes it starts; service env files cannot override it. The Slack registry
+under that directory maps team and bot to socket path. The GitHub watcher and
+its hooks share a subscription store, rate budget, and App token cache under
+the same directory. Local API
+callers use Unix-socket clients; Slack channels remain `exec` channels invoking
+`curl --unix-socket` with an absolute `socket_path` input.
 
 `plect service list` shows declared name, executable, state, pid, and restart
 count. With `--all`, an enabled service-marked executable with no declaration
