@@ -1,5 +1,6 @@
 ---
 supersedes: 2026-08-16-plugin-service-lifecycle
+superseded_by: 2026-11-09-operator-declared-plugin-services
 ---
 
 # Plugin boundary contracts and event rendezvous

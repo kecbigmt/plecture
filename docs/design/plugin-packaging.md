@@ -3,8 +3,8 @@
 This document defines the plugin model for distributing reusable Plecture
 configuration and executable adapters. The goal is to reduce bootstrap cost
 without moving tool, or domain knowledge into core.
-The plugin service lifecycle decision is recorded in
-[`../adr/2026-08-17-plugin-boundary-contracts.md`](../adr/2026-08-17-plugin-boundary-contracts.md).
+The service lifecycle decision is recorded in
+[`../adr/2026-11-09-operator-declared-plugin-services.md`](../adr/2026-11-09-operator-declared-plugin-services.md).
 
 The design keeps two concepts: catalog and plugin. A catalog is a trusted
 distribution unit: a subtree of a source repository marked by `catalog.toml`.
@@ -109,7 +109,7 @@ shipped config needs neither.
 `plugin.toml` is the only required plugin-local file:
 
 ```toml
-schema_version = 2
+schema_version = 3
 version = "0.3.0"
 plect_min_version = "0.8.0"
 description = "GitHub worktree effect, resource observation, and workflow support."
@@ -118,6 +118,7 @@ description = "GitHub worktree effect, resource observation, and workflow suppor
 name = "github-watcher"
 path = "bin/github-watcher"
 build = "go -C src build -o ../bin/github-watcher ./cmd/github-watcher"
+service = true
 
 [[executables]]
 name = "github-worktree"
@@ -149,7 +150,6 @@ Plugin metadata fields:
 | `plect_min_version` | yes | Minimum plect version required to load the plugin. |
 | `description` | no | Human-readable summary for list/show commands. |
 | `executables` | no | Relative paths for scripts or binaries shipped by the plugin. |
-| `services` | no | Daemon declarations supervised by `plect serve`. |
 
 The catalog-relative path listed in `catalog.toml` is the plugin identity. Full
 identity is `<catalog-alias>/<relative-path>`, such as `official/github` or
@@ -164,51 +164,69 @@ Executable entry fields:
 | `name` | yes | Stable executable identity inside the plugin. |
 | `path` | yes | Relative executable path. In the primary script case, this points at a file already present in the source tree. |
 | `build` | no | Command run at add/update time to produce a compiled executable from plugin source. |
+| `service` | no | Boolean marker for an executable suitable for resident supervision; defaults to `false` and never starts a process. |
 
-Service entries declare plugin-owned daemons supervised by `plect serve`:
+An enabled plugin can make a resident executable available without starting it.
+Only user-owned service declarations start a process. For example,
+`<config-home>/services/resident.toml` contains:
 
 ```toml
 [[services]]
 name = "github-watcher"
-executable = "github-watcher"
+executable = "official/github/github-watcher"
 args = ["serve"]
-restart = "on-failure"
-health = { type = "process" }
+env_file = "/etc/plect/service-env/github-watcher.env"
 ```
 
-A session runtime plugin can declare its daemons the same way:
+One Slack App uses one instance:
 
 ```toml
 [[services]]
-name = "channel-server"
-executable = "channel-server"
-restart = "on-failure"
-health = { type = "process" }
-
-[[services]]
-name = "slack-adapter"
-executable = "slack-adapter"
-args = ["serve"]
-required_env = ["SLACK_BOT_TOKEN"]
-restart = "on-failure"
-health = { type = "process" }
+name = "slack-primary"
+executable = "official/slack/slack-adapter"
+env_file = "/etc/plect/service-env/slack-primary.env"
 ```
 
-Service entry fields:
+Two Slack Apps use two declarations of the same executable, with separate
+credential files and state directories:
+
+```toml
+[[services]]
+name = "slack-primary"
+executable = "official/slack/slack-adapter"
+env_file = "/etc/plect/service-env/slack-primary.env"
+
+[[services]]
+name = "slack-secondary"
+executable = "official/slack/slack-adapter"
+env_file = "/etc/plect/service-env/slack-secondary.env"
+```
+
+Each env file uses literal `KEY=VALUE` lines. For the two Slack instances,
+their files supply distinct `SLACK_BOT_TOKEN` and `SLACK_APP_TOKEN` values.
+Plugin manifests contain no `[[services]]`; such a table is a load error.
+
+User service entry fields:
 
 | Field | Required | Meaning |
 |---|---:|---|
-| `name` | yes | Stable service identity inside the plugin. Full identity is `<catalog-alias>/<plugin-path>/<service-name>`. |
-| `executable` | yes | Name of one executable declared by the same plugin. Services cannot name another plugin's executable. |
+| `name` | yes | Operator-chosen service identity, unique across user config; lowercase letters, digits, hyphens, starts with a letter, at most 64 characters. |
+| `executable` | yes | Fully qualified `<catalog>/<plugin>/<executable>` of an enabled plugin executable marked `service = true`. |
 | `args` | no | Argument vector passed after the executable path. |
-| `env` | no | Non-secret environment literals supplied to the child process. |
-| `required_env` | no | Environment variable names that must be present in user-owned configuration or the supervisor environment before the service can start. |
-| `restart` | no | Restart policy. `on-failure` restarts crashed children with bounded backoff; `never` leaves the service stopped after exit. |
-| `health` | no | Health policy. `type = "process"` treats a running child as healthy. Future health kinds must be technology-agnostic. |
+| `env_file` | yes | Absolute path to a private operator-owned `KEY=VALUE` file. |
+| `restart` | no | `on-failure` (default) or `never`. |
+| `health` | no | `{ type = "process" }` (default and sole supported kind). |
 
-The plugin service supervisor starts services for enabled plugins when
-`plect serve` starts, stops them when the resident process stops, and restarts
-service processes according to their restart policy. Service status is
+The loader rejects unknown service keys, duplicate names, a missing or
+unmarked executable, relative or unreadable env files, duplicate or malformed
+env entries, and env files readable by other users. `args` is an array of
+strings; `restart` and `health` have the values above. An empty file supplies
+no operator environment entries. Neither plugin metadata nor a service
+declaration can interpolate environment variables.
+
+The supervisor starts declared services when `plect serve` starts, stops them
+when the resident process stops, and restarts service processes according to
+their restart policy. Service status is
 resident-global and records service id,
 running state, pid, restart count, last exit, last error, last health result,
 plugin id, and the lock coordinate or content hash that produced the running
@@ -217,7 +235,12 @@ process.
 Service logs are attached to the resident process log with the service id.
 Service logs do not write into per-session event logs.
 
-Updating a service-owning plugin restarts its services.
+Updating a plugin restarts declared services that use it. Each child receives
+only its env file and plect runtime values, including a private state directory
+and `api.sock` path under `<data-home>/services/<name>/`. The local
+adapter API listens on that owner-accessible Unix socket. The Slack instance
+registry maps team and bot identity to socket path for `mentions` hooks; thread
+hooks use a configured socket path. A stale or missing mapping fails for retry.
 
 Build-less script executables are the primary v1 form. They must carry their
 interpreter through a shebang. Built binaries are the additional case for
@@ -709,8 +732,19 @@ Add and update commands:
 - `plect plugin verify` re-hashes cached plugin directories and fails if any
   differ from the lockfile.
 - `plect plugin list` shows selected, resolved, locked, and compatibility state.
-- `plect plugin show <alias>/<path>` shows metadata, executables, services,
-  compatibility, and lock coordinates.
+- `plect service list` shows declared services with name, executable, state,
+  pid, and restart count. `--all` also lists unused service-marked executables
+  from enabled plugins as `available`, with empty name and pid.
+
+For the two-instance Slack example, when the watcher executable is available
+but no watcher service is declared, `plect service list --all` can display:
+
+```text
+NAME             EXECUTABLE                           STATE      PID    RESTARTS
+slack-primary    official/slack/slack-adapter         running    4102   0
+slack-secondary  official/slack/slack-adapter         running    4103   1
+                 official/github/github-watcher       available
+```
 
 Non-interactive contexts fail instead of prompting for first-seen catalog
 registrations. Any override flag must be explicit and visible in command
