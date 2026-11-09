@@ -354,9 +354,6 @@ func (a *Adapter) handleSubscribeDelete(w http.ResponseWriter, req *http.Request
 	w.WriteHeader(http.StatusNoContent)
 }
 
-// mentionBotMatches guards against a mention hook that reached the wrong
-// instance: every App's adapter shares the workspace's team id, so only the
-// bot user id tells this adapter's mentions apart from another App's.
 func (a *Adapter) mentionBotMatches(w http.ResponseWriter, botUserID string) bool {
 	if a.botUserID == "" {
 		http.Error(w, "this adapter has not learned its bot user id from auth.test", http.StatusServiceUnavailable)

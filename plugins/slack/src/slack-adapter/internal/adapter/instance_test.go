@@ -16,8 +16,6 @@ import (
 	"github.com/slack-go/slack/slackevents"
 )
 
-// fakeAuthTestServer answers auth.test with the bot identity its bearer
-// token names, standing in for two Slack Apps installed in one workspace.
 func fakeAuthTestServer(t *testing.T, botsByToken map[string]string) {
 	t.Helper()
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, req *http.Request) {

@@ -478,8 +478,6 @@ denied_channel_message = "Use the other channel."
 	}
 }
 
-// Two Slack Apps installed in one workspace share the team id, so the
-// shipped mentions resource must give each App's bot its own resource name.
 func TestShippedCatalog_SlackMentionsResourceIsScopedByBot(t *testing.T) {
 	cfg := loadShippedCatalog(t, "official")
 	defs, err := cfg.LoadResourceDefs("")

@@ -36,8 +36,6 @@ type Config struct {
 
 const defaultListenAddr = "127.0.0.1:7890"
 
-// LoadConfig reads the config file the flag names, else the one
-// SLACK_ADAPTER_CONFIG names, else ~/.config/slack-adapter/config.toml.
 func LoadConfig(flagPath string) *Config {
 	cfg := &Config{}
 

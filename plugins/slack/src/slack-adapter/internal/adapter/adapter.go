@@ -39,8 +39,6 @@ type Adapter struct {
 // slackAPIURL is a variable only so tests can stand in for Slack's API.
 var slackAPIURL = "https://slack.com/api/"
 
-// New creates an adapter whose ledger and stream state live in stateDir;
-// an empty stateDir disables persistence.
 func New(cfg *Config, stateDir string, logger *slog.Logger) (*Adapter, error) {
 	subscribersPath, streamsPath := "", ""
 	if stateDir != "" {

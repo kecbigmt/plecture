@@ -19,9 +19,9 @@ import (
 var threadResourcePattern = regexp.MustCompile(`^/archives/([A-Z0-9]+)/p(\d{16})$`)
 var mentionResourcePattern = regexp.MustCompile(`^[A-Z0-9]+$`)
 
-// ParseMentionResource reads slack://<team_id>/<bot_user_id>/mentions. The
-// bot user id is part of the identity because several Apps installed in one
-// workspace share its team id, each with its own adapter and subscribers.
+// The bot user id is part of a mention resource's identity because several
+// Apps installed in one workspace share its team id, each with its own
+// adapter and subscribers.
 func ParseMentionResource(resource string) (teamID, botUserID string, err error) {
 	u, err := url.Parse(resource)
 	if err != nil || u.Scheme != "slack" || !mentionResourcePattern.MatchString(u.Host) || u.RawQuery != "" || u.Fragment != "" || u.User != nil {

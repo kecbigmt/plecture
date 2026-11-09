@@ -180,8 +180,6 @@ func TestParseServerFlags(t *testing.T) {
 	}
 }
 
-// mentionEndpoint records the bot_user_id each mention subscribe and
-// unsubscribe request addressed, standing in for one resident adapter.
 func mentionEndpoint(t *testing.T, seen *[]string) *httptest.Server {
 	t.Helper()
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, req *http.Request) {

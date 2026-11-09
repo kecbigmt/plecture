@@ -8,10 +8,6 @@ import (
 	"path/filepath"
 )
 
-// ResolveStateDir returns the directory holding one adapter instance's
-// subscribers.json and streams.json: the flag value, else
-// SLACK_ADAPTER_STATE_DIR, else $XDG_STATE_HOME/slack-adapter, else
-// ~/.local/state/slack-adapter. Empty disables persistence.
 func ResolveStateDir(flagValue string) string {
 	if flagValue != "" {
 		return flagValue
