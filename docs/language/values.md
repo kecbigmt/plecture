@@ -112,11 +112,11 @@ receiving everything and relying on a later check to reject the rest.
 | Resource `name` | `match.<capture>` |
 | Resource `observe` | `resource.id` |
 | Resource `finalize` | `resource.id`, `session.name`, `resource.revision`, `judges` |
-| Resource `subscribe` | `session.name`, `resource.id`, `resource.inputs.<key>` |
-| Resource `unsubscribe` | `session.name`, `resource.id`, `resource.inputs.<key>` |
+| Resource `subscribe` | `session.name`, `session.inputs.<key>`, `resource.id`, `resource.inputs.<key>` |
+| Resource `unsubscribe` | `session.name`, `session.inputs.<key>`, `resource.id`, `resource.inputs.<key>` |
 | Resource query means | `inputs.<key>` |
 | Workflow public `outputs` | `nodes.<id>.outputs.<key>`, `session.inputs.<key>` |
-| Workflow population session `inputs` | `resource.id`, `item.<key>` |
+| Workflow population session `inputs` | `resource.id`, `item.<key>`, `query.<key>` |
 | Workflow `display` | `workflow.outputs.<key>`, `session.inputs.<key>` |
 | Workflow node `inputs` | `nodes.<id>.outputs.<key>`, `workflow.outputs.<key>`, `session.*`, `session.inputs.<key>` |
 | Workflow event-channel `inputs` | same as workflow node inputs |
@@ -131,6 +131,14 @@ receiving everything and relying on a later check to reject the rest.
 | Task `done_when`, chain `when` | `resource.state.<key>`, `self.state.<key>` |
 | Task instruction body | `resource.id`, `resource.state.<key>`, `self.state.<key>`, `inputs.<key>`, `session.*`, `workflow.outputs.<key>` |
 | Chain `inputs`, chain `resource` | `task.session`, `task.instance`, `task.workflow`, `task.done_when.pending_judge_ids`, `resource.state.<key>`, `self.state.<key>` |
+
+An action argument `{ from = "service.socket", name = { from = "inputs.service" } }`
+resolves a declared service name to its Unix socket at invocation. `name` may
+instead project from `session.inputs.<key>` where that root is available. The
+name must identify one loaded `[[services]]` declaration; no caller supplies a
+socket path. In a population's session inputs, `query.<key>` reads that
+population's literal query parameter, so a service name selected for a query
+can also bind the created session's hooks and tasks.
 
 Where a surface observes `session.*`, `session.tag` is the tag the session was
 created with, and is absent for an untagged session. It is the recorded tag

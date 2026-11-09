@@ -37,7 +37,7 @@ service = true
 | `version` | The package's own version. |
 | `plect_min_version` | The lowest `plect` this plugin loads against. |
 | `description` | What the package is for. |
-| `[[executables]]` | `name`, `path`, optional `build`, and optional boolean `service` (default `false`). |
+| `[[executables]]` | `name`, `path`, optional `build`, optional boolean `service` (default `false`), and optional `config_schema` path for a service executable. |
 
 An executable's `name` is what a `bin` reference resolves; `path` is relative to
 the plugin root. `build` is literal shell, run at install or update time rather
@@ -57,6 +57,11 @@ one table:
 name = "slack-primary"
 executable = "official/slack/slack-adapter"
 env_file = "/srv/plect/config/service-env/slack-primary.env"
+
+[services.config]
+channel_id = "C0123"
+mention_session = "operations/_orchestrator"
+allowed_user_ids = ["U0123"]
 ```
 
 Two Slack Apps use two tables, each with distinct credentials and state:
@@ -67,12 +72,21 @@ name = "slack-primary"
 executable = "official/slack/slack-adapter"
 env_file = "/srv/plect/config/service-env/slack-primary.env"
 
+[services.config]
+channel_id = "C0123"
+mention_session = "operations/_orchestrator"
+allowed_user_ids = ["U0123"]
+
 [[services]]
 name = "slack-secondary"
 executable = "official/slack/slack-adapter"
 env_file = "/srv/plect/config/service-env/slack-secondary.env"
 restart = "never"
 health = { type = "process" }
+
+[services.config]
+channel_id = "C0456"
+allowed_user_ids = ["U0456"]
 ```
 
 `name` is a unique operator-chosen identity across all service files. It begins
@@ -87,18 +101,75 @@ unreadable files, and relative paths are errors. Interpolation is not allowed.
 The service receives only env-file entries and plect-provided runtime values;
 its executable checks its own required inputs.
 
+`[services.config]` is optional plugin-specific, non-secret configuration.
+A service executable that uses it declares a plugin-relative `config_schema`
+path in its manifest. plect validates the table against that JSON Schema,
+writes it privately under the instance state directory, and passes its path
+as `--config`. A table without a schema or a schema violation fails loading;
+core does not interpret the settings. Secrets go in `env_file` only. For a
+Slack service, `mention_session` may be omitted: the adapter then puts
+unbound mentions on its existing feed for a per-thread population. When set,
+it publishes those mentions to the named session. Existing thread subscribers
+receive their thread mentions first in either case. A population may name an
+instance with `mention_session` set, but its feed has no unbound mentions.
+Both modes can be configured on different instances.
+
 `restart` is `on-failure` by default or `never`. `health` defaults to and only
 accepts `{ type = "process" }`. Unknown keys, duplicate names, unresolved or
 unmarked executables, and invalid values fail configuration loading. The
 service gets a private state directory (mode `0700`) and Unix API socket
 (mode `0600`) under `<data-home>/services/<name>/`. plect supplies
-`PLECT_RENDEZVOUS_DIR` as `<data-home>/rendezvous/` to services and all action
-processes it starts; service env files cannot override it. The Slack registry
-under that directory maps team and bot to socket path. The GitHub watcher and
-its hooks share a subscription store, rate budget, and App token cache under
-the same directory. Local API
-callers use Unix-socket clients; Slack channels remain `exec` channels invoking
-`curl --unix-socket` with an absolute `socket_path` input.
+`PLECT_SERVICE_STATE_DIR` and `PLECT_SERVICE_SOCKET` to the service; env files
+cannot override these runtime values. Service state stays private. Hooks,
+channels, tasks, and service-backed population queries name a declared
+service; plect resolves the name to its socket for the action. Unknown literal
+names fail config validation; dynamic unknown names and stopped services fail
+requests for retry. Slack channels remain `exec` channels invoking
+`curl --unix-socket` with the resolved path.
+
+For a per-thread Slack population, the query names the instance with no
+`mention_session` and passes the same name to its sessions:
+
+```toml
+[[thread_work.populations]]
+name = "mentions"
+uses = ["subscribe"]
+expire_after = "8h"
+
+[thread_work.populations.query]
+service = "slack-secondary"
+channel_ids = ["C0456"]
+
+[thread_work.populations.session.inputs]
+service = { from = "query.service" }
+```
+
+The query consumes that service's unbound-mention feed. Each created session
+subscribes to its thread on the same service. A per-PR population instead
+polls matching pull requests and uses a webhook receiver for early arrivals;
+its sessions name the GitHub watcher service for subscription delivery:
+
+```toml
+[[pull_review.populations]]
+name = "labeled_pulls"
+uses = ["poll", "subscribe"]
+poll_every = "5m"
+
+[pull_review.populations.query]
+service = "github-reviews"
+repositories = ["example/project"]
+labels = ["agent-review"]
+state = "open"
+draft = false
+
+[pull_review.populations.session.inputs]
+service = { from = "query.service" }
+```
+
+`github-reviews` is a declared `official/github/github-watcher` service.
+The polling helper uses its token and rate budget API; GitHub is the
+membership authority. Each review session's subscribe/unsubscribe hooks
+use the same service's socket API.
 
 `plect service list` shows declared name, executable, state, pid, and restart
 count. With `--all`, an enabled service-marked executable with no declaration
@@ -150,4 +221,7 @@ reference written inside a plugin is relative.
 - `schema_version` and `plugins` are required in a catalog manifest.
 - An executable `name` is unique within a manifest.
 - A service's `executable` names a declared executable.
+- A service config table requires the executable's `config_schema` and must
+  satisfy it; the schema path stays within the plugin package and declares
+  no secret settings.
 - A plugin's `plect_min_version` must not exceed the running `plect`.

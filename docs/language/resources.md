@@ -29,6 +29,12 @@ resource binding. Query inputs are separate: a population supplies the literal
 object required by `[resource.query.inputs_schema]`, and query actions see it
 as `inputs.*`, not `resource.inputs.*`.
 
+Subscribe and unsubscribe actions can read a bound session's
+`session.inputs.<key>` to select a declared service. This does not populate
+the resource action input object; the service name is resolved by plect when
+the action runs. Query actions use their own literal `inputs.<key>` service
+name for the same resolution.
+
 ```toml
 [issue]
 kind  = "resource"

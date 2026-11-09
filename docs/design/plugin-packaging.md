@@ -165,6 +165,23 @@ Executable entry fields:
 | `path` | yes | Relative executable path. In the primary script case, this points at a file already present in the source tree. |
 | `build` | no | Command run at add/update time to produce a compiled executable from plugin source. |
 | `service` | no | Boolean marker for an executable suitable for resident supervision; defaults to `false` and never starts a process. |
+| `config_schema` | no | Path to the JSON Schema for a service executable's non-secret `[services.config]`; required when that table is used. |
+
+For example, the Slack executable marks its schema:
+
+```toml
+[[executables]]
+name = "slack-adapter"
+path = "bin/slack-adapter"
+service = true
+config_schema = "config/service.schema.json"
+```
+
+Its schema requires `channel_id` as a string. Optional `mention_session` is a
+session name string; optional `allowed_user_ids` is an array of strings. It
+rejects unknown keys and secret settings. A deployment that has a
+`mention_session` delivers unbound mentions to that session; one without it
+keeps the unbound feed for a population.
 
 An enabled plugin can make a resident executable available without starting it.
 Only user-owned service declarations start a process. In these examples,
@@ -185,6 +202,11 @@ One Slack App uses one instance:
 name = "slack-primary"
 executable = "official/slack/slack-adapter"
 env_file = "/srv/plect/config/service-env/slack-primary.env"
+
+[services.config]
+channel_id = "C0123"
+mention_session = "operations/_orchestrator"
+allowed_user_ids = ["U0123"]
 ```
 
 Two Slack Apps use two declarations of the same executable, with separate
@@ -196,10 +218,19 @@ name = "slack-primary"
 executable = "official/slack/slack-adapter"
 env_file = "/srv/plect/config/service-env/slack-primary.env"
 
+[services.config]
+channel_id = "C0123"
+mention_session = "operations/_orchestrator"
+allowed_user_ids = ["U0123"]
+
 [[services]]
 name = "slack-secondary"
 executable = "official/slack/slack-adapter"
 env_file = "/srv/plect/config/service-env/slack-secondary.env"
+
+[services.config]
+channel_id = "C0456"
+allowed_user_ids = ["U0456"]
 ```
 
 Each env file uses literal `KEY=VALUE` lines. For the two Slack instances,
@@ -216,6 +247,7 @@ User service entry fields:
 | `env_file` | yes | Absolute path to a private operator-owned `KEY=VALUE` file. |
 | `restart` | no | `on-failure` (default) or `never`. |
 | `health` | no | `{ type = "process" }` (default and sole supported kind). |
+| `config` | no | Plugin-specific non-secret table validated against the executable's `config_schema`. |
 
 The loader rejects unknown service keys, duplicate names, a missing or
 unmarked executable, relative or unreadable env files, duplicate or malformed
@@ -223,6 +255,12 @@ env entries, and env files readable by other users. `args` is an array of
 strings; `restart` and `health` have the values above. An empty file supplies
 no operator environment entries. Neither plugin metadata nor a service
 declaration can interpolate environment variables.
+
+`config_schema` is a plugin-relative path inside the package. The loader
+rejects a config table without a schema and a table that fails its schema.
+The schema cannot declare secret fields. plect writes the validated table to
+a private file in the instance state directory and passes `--config` with
+that path to the service. Core treats the table as opaque.
 
 The supervisor starts declared services when `plect serve` starts, stops them
 when the resident process stops, and restarts service processes according to
@@ -243,38 +281,29 @@ that socket, so browsers cannot reach them through loopback and other OS users
 cannot connect. Code running as the same OS user can connect and is outside
 this access boundary.
 
-plect derives `PLECT_RENDEZVOUS_DIR` from its resolved data home as
-`<data-home>/rendezvous/` and supplies that same value to service children and
-all action processes it starts, including resource hooks. It creates the
-directory with mode `0700`; a conflicting `PLECT_*` runtime key in an env
-file is a load error. The private service state dir stores instance data,
-while plugin-owned subpaths of the rendezvous dir hold state shared with hooks.
-The Slack adapter publishes team-and-bot registry entries with socket paths
-under `<rendezvous-dir>/slack/instances/`; its `mentions` hook reads there.
-The adapter uses `PLECT_SERVICE_STATE_DIR` for its subscriber and stream
-ledgers when the operator sets no state path.
-
-The GitHub watcher and its subscribe/unsubscribe hooks share
-`<rendezvous-dir>/github-watcher/subscriptions.json`. Its `gh-api` helper and
-`github-issue-pr` observer use that directory for the shared rate budget and
-App token cache. These lookups do not depend on separately resolved `HOME`,
-`XDG_STATE_HOME`, or `XDG_DATA_HOME`. Hook-side GitHub credentials are
-configured independently of the watcher's service env file.
+The private service state dir stores instance data. No directory is shared
+with action processes. The Slack adapter keeps its subscriber and mention
+state there; the GitHub watcher keeps subscriptions, rate budget, and token
+cache there. A conflicting `PLECT_*` runtime key in an env file is a load
+error. Hooks and query helpers use the named service's socket API for state
+they need. GitHub watcher exposes subscribe and unsubscribe operations there.
 
 The Slack `slack`, `stream`, and `status` channels are `exec` channels that
-invoke `curl --unix-socket` with an absolute `socket_path` input and a fixed
-`http://localhost` request URL. Its thread and mentions resource hooks,
-`slack_thread` task, and local tools use the same socket transport. The
-`thread` resource's query input and `slack_thread` task input are required
-absolute `socket_path` strings. Channel inputs also require an absolute
-`socket_path` string; `base_url` is not accepted for local APIs. A missing
-input fails config validation; a relative path fails the local request.
+invoke `curl --unix-socket` with a plect-resolved service socket and a fixed
+`http://localhost` request URL. Their inputs, the `thread` query input, and
+the `slack_thread` task input name a service. Thread subscribe/unsubscribe
+hooks use the workflow's service input. A population query names its service
+literally and copies that name to each created session's workflow input. The
+GitHub watcher hooks resolve
+their service the same way. An unknown literal name fails config validation;
+a dynamic unknown name or stopped service fails a request for retry. No new
+channel primitive is defined.
 
-The `mentions` hook finds its socket from the registry. The thread hook uses
-an operator-set `SLACK_ADAPTER_SOCKET_PATH` in its own environment for its
-default instance; a user-owned resource overlay can pass `--socket <path>`.
-An unset path or stale registry mapping fails for retry. No new core channel
-primitive is defined.
+Slack's optional `mention_session` selects delivery of unbound mentions to
+one existing session. When unset, unbound mentions enter the service's feed
+for a per-thread `subscribe` population. Existing thread subscribers take
+precedence in either mode. Slack models unbound mentions as a service feed
+and threads as resources with session subscriptions.
 
 Build-less script executables are the primary v1 form. They must carry their
 interpreter through a shebang. Built binaries are the additional case for

@@ -16,11 +16,11 @@ other's credentials. Enabling a plugin can start a resident process; a later
 explicit `plect plugin update` then replaces the code of that already-running
 process without a separate service declaration.
 
-The Slack adapter supports multiple instances at the executable level and
-publishes a bot-specific address in its instance registry. The `mentions` hook
-uses that registry, but the local HTTP endpoint has no authentication. The
-resident service boundary therefore needs both an operator-owned instance
-declaration and a protected local API.
+The Slack adapter supports multiple instances at the executable level. Its
+local HTTP endpoint has no authentication. Deployments also use both a single
+mention dispatcher and populations that create one session per mentioned
+thread or labeled pull request. The resident service boundary must support
+both delivery policies and protect its local APIs.
 
 ### Local API threat model
 
@@ -78,36 +78,23 @@ interpolation are rejected. A service receives only these entries and the
 runtime values plect supplies for its own APIs and instance paths. It does not
 inherit the supervisor environment. Operators put any required `PATH`, `HOME`,
 credential, or provider-specific setting in that service's file. The executable
-validates its own required inputs; there is no `required_env` gate.
+validates its own required inputs; there is no `required_env` gate. A
+conflicting `PLECT_*` runtime key in an env file is a load error.
 
-plect supplies one `PLECT_RENDEZVOUS_DIR` rooted at
-`<data-home>/rendezvous/` to every service and action process it starts,
-including resource hooks and plugin executables. That value is computed by
-plect from its resolved data home for all callers; neither an env file nor the
-supervisor environment can override it. A conflicting `PLECT_*` runtime key in
-an env file is a load error. plect creates the directory with mode `0700`.
-Plugins choose subpaths for state shared between a resident process and its
-hooks. Per-service private state stays under `PLECT_SERVICE_STATE_DIR`; the
-rendezvous directory holds cross-process lookups and shared stores. It does not
-choose an instance's private state.
+An optional `[services.config]` table holds plugin-specific, non-secret
+settings. The service-marked executable declares a `config_schema` path in its
+manifest. plect validates the table against that schema, writes the validated
+config to a private file in the service state directory, and passes its path
+as `--config` to the service. Core does not interpret the table. Credentials
+belong only in `env_file`; a service schema must not declare secret fields.
 
-The Slack adapter writes its bot-specific instance registry under
-`<rendezvous-dir>/slack/instances/`. Its `mentions` hook reads that exact
-registry, keyed by team and bot, and dials the recorded socket path. Registry
-location never depends on either process's `HOME` or `XDG_STATE_HOME`. The
-adapter uses `PLECT_SERVICE_STATE_DIR` for its subscriber and stream ledgers
-when the operator sets no state path, independent of the shared registry.
-
-The GitHub watcher's `serve`, `subscribe`, and `unsubscribe` commands use one
-`subscriptions.json` under `<rendezvous-dir>/github-watcher/`, including when
-the latter commands run as hooks. The watcher's `gh-api` helper and the
-`github-issue-pr` observer use that same directory for their shared rate
-budget and App token cache. These paths do not depend on separately resolved
-`HOME` or `XDG_DATA_HOME` values. These are plugin-chosen subpaths; core knows
-neither provider name. The implementation migrates existing shared stores
-with a backup instead of creating an empty store while subscriptions remain.
-The rendezvous directory conveys no credentials: hook-side GitHub auth is
-configured independently of the watcher's service env file.
+No directory or data store is shared between a service and action processes.
+The Slack adapter owns its subscriber and unbound-mention state in its private
+service directory. The GitHub watcher owns its subscription registry, rate
+budget, and token cache there. Hooks, channels, tasks, and population queries
+use the selected service's Unix socket to access that state. The watcher
+exposes subscription and token/rate-budget operations needed by its hooks and
+query helpers through that socket; hooks do not write `subscriptions.json`.
 
 `restart` defaults to `on-failure`, with `never` available. `health` defaults
 to `{ type = "process" }`; that is the only health kind in this decision.
@@ -124,6 +111,11 @@ For one Slack App, the user file contains one block:
 name = "slack-primary"
 executable = "official/slack/slack-adapter"
 env_file = "/srv/plect/config/service-env/slack-primary.env"
+
+[services.config]
+channel_id = "C0123"
+mention_session = "operations/_orchestrator"
+allowed_user_ids = ["U0123"]
 ```
 
 For two Apps, the file contains two blocks that reference the same executable
@@ -135,11 +127,30 @@ name = "slack-primary"
 executable = "official/slack/slack-adapter"
 env_file = "/srv/plect/config/service-env/slack-primary.env"
 
+[services.config]
+channel_id = "C0123"
+mention_session = "operations/_orchestrator"
+allowed_user_ids = ["U0123"]
+
 [[services]]
 name = "slack-secondary"
 executable = "official/slack/slack-adapter"
 env_file = "/srv/plect/config/service-env/slack-secondary.env"
+
+[services.config]
+channel_id = "C0456"
+allowed_user_ids = ["U0456"]
 ```
+
+`mention_session` is optional for each Slack instance. When set, an unbound
+mention is published to that session with `plect event publish`. When unset,
+the mention enters that instance's existing unbound-mention feed for a
+`subscribe` population. A population may still name an instance with
+`mention_session` set, but its feed receives no unbound mentions. The two
+delivery policies may coexist across instances. A mention in a thread
+with an existing session subscriber goes to that subscriber first, regardless
+of `mention_session`; it does not become unbound. The bot-scoped `mentions`
+resource and instance registry are removed.
 
 Each service gets a private state directory derived from `name`, under
 `<data-home>/services/<name>/`, and a Unix socket path `api.sock` in
@@ -163,31 +174,85 @@ one would reopen the browser path.
 
 Every caller of the local API uses a Unix-socket client. The shipped Slack
 `slack`, `stream`, and `status` channels remain `exec` channels invoking
-`curl`: their configured `base_url` input becomes a `socket_path` input, and
-their argv adds `--unix-socket <socket_path>` while the request URL becomes a
-fixed `http://localhost/<endpoint>` transport placeholder. Slack's
-`thread` and `mentions` resource hooks, the `slack_thread` task, and local
-tools such as a `factory-reply`-style caller use the adapter's socket client
-or `curl --unix-socket` with the selected path. The `thread` resource's
-`base_url` query input becomes an absolute `socket_path` string. The
-`slack_thread` task likewise takes an absolute `socket_path` input. These are
-plugin-side config and client changes; no new core channel primitive is
-introduced. All clients run as the service-owning OS user; a caller
-under another user needs a separately designed mediation boundary, not wider
-socket permissions. The Slack adapter's bot-specific instance registry
-publishes the socket path after the listener is ready; the `mentions` hook
-dials the socket identified by team and bot, retaining the existing
-bot-identity check. The thread subscribe/unsubscribe hook reads the
-operator-set `SLACK_ADAPTER_SOCKET_PATH` in the hook environment for its
-default instance; an unset value fails the hook, and a user-owned resource
-overlay can pass `--socket <path>` to select another socket. It never takes a
-path from the service's private env file. Channels and tasks receive their
-instance socket path from their configured inputs. Missing or stale registry
-entries fail the hook for retry; they do not route it to an unprotected TCP
-fallback. `github-watcher` has no inbound local
-HTTP API in its bus-delivery mode; any future hook-facing API follows the same
-socket rule. A provider's public ingress, such as a webhook receiver, keeps
-its own external authentication and is not this local hook API.
+`curl`: their configured `base_url` input becomes a service-name input,
+and their argv adds `--unix-socket` with the path resolved by plect while the
+request URL becomes a fixed `http://localhost/<endpoint>` transport
+placeholder. The `thread` resource's query input and the `slack_thread` task
+input likewise name a service. Thread subscribe/unsubscribe hooks resolve the
+service named by the workflow input that selected it. A population's literal
+`query.service` selects its instance; the population-created session receives
+that name as a workflow input, so its resource hooks and task use the same
+instance. A manual session must supply the workflow's service input. The
+GitHub watcher subscription hooks use the same rule. plect resolves a name
+against the loaded `[[services]]` table and projects its socket path into the
+action; an unknown literal name fails config validation, while a dynamic
+unknown name or stopped service fails the request for retry. A path supplied
+by an action or user input is not an
+authority. These are generic core name-resolution mechanics and plugin-side
+client changes, with no new channel primitive. All clients run as the
+service-owning OS user; a caller under another user needs a separately
+designed mediation boundary, not wider socket permissions. A provider's
+public ingress, such as a webhook receiver, keeps its own external
+authentication and is not this local hook API.
+
+A per-thread population binds its query to the Slack service whose
+`mention_session` is unset:
+
+```toml
+[[thread_work.populations]]
+name = "mentions"
+uses = ["subscribe"]
+expire_after = "8h"
+
+[thread_work.populations.query]
+service = "slack-secondary"
+channel_ids = ["C0456"]
+
+[thread_work.populations.session.inputs]
+service = { from = "query.service" }
+```
+
+The `thread.query.subscribe` action reads that service's `/unbound-mentions`
+feed through its resolved socket. It yields one thread resource per mention;
+the created session's thread subscription receives the initiating mention
+through the adapter's pending-mention catch-up. This is a subscribe-only
+population because mentions have no absence snapshot.
+
+A per-PR population can use the same declared-service model:
+
+```toml
+[[services]]
+name = "github-reviews"
+executable = "official/github/github-watcher"
+args = ["serve"]
+env_file = "/srv/plect/config/service-env/github-reviews.env"
+```
+
+The pull-review workflow declares:
+
+```toml
+[[pull_review.populations]]
+name = "labeled_pulls"
+uses = ["poll", "subscribe"]
+poll_every = "5m"
+
+[pull_review.populations.query]
+service = "github-reviews"
+repositories = ["example/project"]
+labels = ["agent-review"]
+state = "open"
+draft = false
+
+[pull_review.populations.session.inputs]
+service = { from = "query.service" }
+```
+
+The GitHub query polls matching pull requests and uses the externally
+authenticated webhook receiver for early appearances. Its polling helper
+resolves `github-reviews` for the watcher's token and rate budget API; GitHub
+remains the membership authority. Each created review session's resource
+subscription resolves the same service and calls its socket API. The watcher
+retains its subscription state privately.
 
 `plect service list` displays declared services with name, executable, state,
 pid, and restarts. `--all` also displays one `available` row for each
@@ -224,15 +289,12 @@ breaking change ships with a `docs/migrations/` procedure that begins with a
 backup and gives one user-config block reproducing each resident shipped
 service:
 `slack-adapter` and `github-watcher`. The Slack block needs neither `HOME` nor
-`XDG_STATE_HOME` when its config and state paths are explicit; the shared
-registry uses `PLECT_RENDEZVOUS_DIR`. The watcher block supplies `HOME` for
-`gh` authentication and `XDG_CONFIG_HOME` if the operator uses a nondefault
-`gh` config home. Its subscription, rate-budget, and token-cache paths use
-`PLECT_RENDEZVOUS_DIR`, so `XDG_DATA_HOME` is not needed for those paths.
-Hook-side GitHub authentication remains an explicit separate setup; the
-service env file does not supply its credentials. The migration backs up and
-moves the existing Slack registry and watcher shared data before starting the
-new services. Its `channel-server` section
+`XDG_STATE_HOME` when its config and state paths are explicit. The watcher
+block supplies `HOME` for `gh` authentication and `XDG_CONFIG_HOME` if the
+operator uses a nondefault `gh` config home. Its subscriptions, rate budget,
+and token cache live in its private service state directory. The migration
+backs up and moves existing subscriber and watcher state before starting the
+new services; hook processes switch to the socket API. Its `channel-server` section
 explains that Claude Code already starts it per session and needs no resident
 declaration. There is no compatibility shim.
 
@@ -241,11 +303,16 @@ declaration. There is no compatibility shim.
 ### Per-service shared secrets for local HTTP
 
 HTTP bearer tokens would preserve the adapter's TCP transport, but each hook
-needs a reliable way to retrieve the right instance's token. Publishing tokens
-in the instance registry duplicates secret material on disk; pointing hooks
-back at service env files couples them to operator credential storage. Unix
-socket permissions already give same-user hooks the necessary local access,
-while registry records can contain only a path.
+needs a reliable way to retrieve the right instance's token. Pointing hooks
+at service env files couples them to operator credential storage. Unix socket
+permissions already give same-user hooks the necessary local access.
+
+### Shared rendezvous directory
+
+A shared directory for services and action processes would reopen the
+per-service boundary through shared files and require a new cross-plugin
+namespace. Service-name resolution gives callers the right socket without
+sharing state.
 
 ### Deriving a TCP port from the service name
 

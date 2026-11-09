@@ -434,6 +434,11 @@ mutation or destruction.
 | `auto_down` | Permits capacity-pressure down selection; default false. |
 | `auto_destroy` | Permits guarded destruction; default false, which records a dry run. |
 
+`session.inputs` may project a literal query parameter as `query.<key>`.
+When a query names a service, this binds each created session to the same
+service without repeating the name in the population declaration. Resource
+subscription hooks can then resolve that session input to the service socket.
+
 `uses` is the sole authority for query means. A population naming only `poll`
 does not start subscribe even if the resource declares it; one naming only
 `subscribe` does not poll. No default permits a later plugin-added means to
