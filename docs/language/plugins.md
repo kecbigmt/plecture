@@ -60,7 +60,7 @@ env_file = "/srv/plect/config/service-env/slack-primary.env"
 
 [services.config]
 channel_id = "C0123"
-mention_session = "operations/_orchestrator"
+catchall_mentions = { workflow = "orchestrator", resource = "owner:operations" }
 allowed_user_ids = ["U0123"]
 ```
 
@@ -74,7 +74,7 @@ env_file = "/srv/plect/config/service-env/slack-primary.env"
 
 [services.config]
 channel_id = "C0123"
-mention_session = "operations/_orchestrator"
+catchall_mentions = { workflow = "orchestrator", resource = "owner:operations" }
 allowed_user_ids = ["U0123"]
 
 [[services]]
@@ -107,17 +107,23 @@ path in its manifest. plect validates the table against that JSON Schema,
 writes it privately under the instance state directory, and passes its path
 as `--config`. A table without a schema or a schema violation fails loading;
 core does not interpret the settings. Secrets go in `env_file` only. For a
-Slack service, `mention_session` may be omitted. It is the one
-default-recipient field: a mention goes first to subscribed thread sessions,
-then to every durably registered unbound-mention population whose
-`channel_ids` contains its channel, then to `mention_session` if set. Without
-any recipient, the adapter drops the mention and logs its channel, thread,
-and reason. Registrations persist consumer identity, channel filter, pending
-mentions, and delivery watermark across disconnects. The population
-acknowledges each item after recording its appearance durably; removing the
-population explicitly unregisters it. A default and registrations may
-coexist on one instance. A later user filter or failed admission does not
-fall through to the default.
+Slack service, `catchall_mentions` may be omitted. Its value is an object with
+required string `workflow` and `resource` keys and no other keys. The
+examples use `owner:operations`, resolved by the `orchestrator` workflow's
+entry resource from the `owner:<owner>` form. The resource identifier
+resolves to the workflow's entry resource type and selects its untagged
+session. An unresolved or incompatible target fails adapter startup. It is
+the one default-recipient field: a mention goes first to subscribed thread
+sessions, then to every durably registered unbound-mention population whose
+`channel_ids` contains its channel, then to `catchall_mentions` if set. The
+adapter brings the target session up if down or creates it if absent, then
+delivers `user.emit` without task setup. Without any recipient, it drops the
+mention and logs its channel, thread, and reason. Registrations persist
+consumer identity, channel filter, pending mentions, and delivery watermark
+across disconnects. The population acknowledges each item after recording
+its appearance durably; removing the population explicitly unregisters it.
+A default and registrations may coexist on one instance. A later user filter
+or failed admission does not fall through to the default.
 
 `restart` is `on-failure` by default or `never`. `health` defaults to and only
 accepts `{ type = "process" }`. Unknown keys, duplicate names, unresolved or

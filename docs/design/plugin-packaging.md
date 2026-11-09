@@ -177,12 +177,35 @@ service = true
 config_schema = "config/service.schema.json"
 ```
 
-Its schema requires `channel_id` as a string. Optional `mention_session` is a
-session name string; optional `allowed_user_ids` is an array of strings. It
-rejects unknown keys. Plugin authors keep secrets out of the schema because
-plect cannot identify an arbitrary field as secret. `mention_session` is the single
+Its schema requires `channel_id` as a string. Optional `catchall_mentions` is
+an object requiring string `workflow` and `resource` fields, with no other
+fields; optional `allowed_user_ids` is an array of strings. The schema rejects
+unknown keys. Plugin authors keep secrets out of the schema because plect
+cannot identify an arbitrary field as secret. `catchall_mentions` is the single
 default-recipient field, used when no population registration matches the
-mention's channel.
+mention's channel. In the examples, the `orchestrator` workflow's entry
+resource resolves `owner:operations` using the `owner:<owner>` form.
+
+```json
+{
+  "type": "object",
+  "required": ["channel_id"],
+  "additionalProperties": false,
+  "properties": {
+    "channel_id": { "type": "string" },
+    "catchall_mentions": {
+      "type": "object",
+      "required": ["workflow", "resource"],
+      "additionalProperties": false,
+      "properties": {
+        "workflow": { "type": "string" },
+        "resource": { "type": "string" }
+      }
+    },
+    "allowed_user_ids": { "type": "array", "items": { "type": "string" } }
+  }
+}
+```
 
 An enabled plugin can make a resident executable available without starting it.
 Only user-owned service declarations start a process. In these examples,
@@ -206,7 +229,7 @@ env_file = "/srv/plect/config/service-env/slack-primary.env"
 
 [services.config]
 channel_id = "C0123"
-mention_session = "operations/_orchestrator"
+catchall_mentions = { workflow = "orchestrator", resource = "owner:operations" }
 allowed_user_ids = ["U0123"]
 ```
 
@@ -221,7 +244,7 @@ env_file = "/srv/plect/config/service-env/slack-primary.env"
 
 [services.config]
 channel_id = "C0123"
-mention_session = "operations/_orchestrator"
+catchall_mentions = { workflow = "orchestrator", resource = "owner:operations" }
 allowed_user_ids = ["U0123"]
 
 [[services]]
@@ -310,8 +333,11 @@ channel primitive is defined.
 
 Slack routes a mention first to a subscribed thread session, then to every
 durably registered unbound-mention population whose `channel_ids` matches
-its channel, then to optional `mention_session`. With no recipient, it drops
-the mention and logs channel, thread, and reason. A registration persists
+its channel, then to optional `catchall_mentions`. That target resolves an
+untagged session under its workflow and resource, brings it up or creates it,
+and delivers the mention as `user.emit` without setting up a task. The adapter
+rejects an unresolved or incompatible target before accepting mentions. With
+no recipient, it drops the mention and logs channel, thread, and reason. A registration persists
 consumer identity, channel filter, pending mentions, and delivery watermark
 in the service's private state. It survives a disconnected reader; the
 adapter replays pending mentions on reconnect until the population durably

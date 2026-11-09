@@ -126,7 +126,7 @@ env_file = "/srv/plect/config/service-env/slack-primary.env"
 
 [services.config]
 channel_id = "C0123"
-mention_session = "operations/_orchestrator"
+catchall_mentions = { workflow = "orchestrator", resource = "owner:operations" }
 allowed_user_ids = ["U0123"]
 ```
 
@@ -141,7 +141,7 @@ env_file = "/srv/plect/config/service-env/slack-primary.env"
 
 [services.config]
 channel_id = "C0123"
-mention_session = "operations/_orchestrator"
+catchall_mentions = { workflow = "orchestrator", resource = "owner:operations" }
 allowed_user_ids = ["U0123"]
 
 [[services]]
@@ -154,15 +154,23 @@ channel_id = "C0456"
 allowed_user_ids = ["U0456"]
 ```
 
-`mention_session` is the one optional default-recipient field for each Slack
-instance. A mention is routed in this order:
+`catchall_mentions` is the one optional default-recipient field for each Slack
+instance. It is an object with exactly two required strings: `workflow` names
+a loaded workflow and `resource` is a concrete identifier recognized by that
+workflow's entry resource. The examples use `owner:operations`, which the
+dispatcher workflow's entry resource resolves from the `owner:<owner>` form.
+The target selects the untagged session derived from the resource. The plugin
+schema rejects missing or extra target keys. The adapter validates the
+workflow and resource binding before accepting mentions; an unresolved or
+incompatible target fails service start. A mention is routed in this order:
 
 1. A subscribed thread session receives it. This includes sessions created by
    a per-thread population and handles their follow-up mentions.
 2. Each durably registered unbound-mention population whose `channel_ids`
    includes the mention's channel receives it through the feed.
-3. If no registration matches and `mention_session` is set, the adapter
-   publishes the mention to that session with `plect event publish`.
+3. If no registration matches and `catchall_mentions` is set, plect resolves
+   that target's session, brings it up if down or creates it if absent, then
+   delivers the mention as `user.emit`. No task is set up.
 4. Otherwise the adapter drops it and logs its channel, thread, and reason.
 
 The adapter persists each population consumer's identity, channel filter,
@@ -175,7 +183,7 @@ unregister action with the old service name and stable consumer identity when
 removing a population; closing its connection does not unregister it. An
 unregister failure retains the registration for retry and reports the failure.
 Overlapping registrations each receive the mention. A registration can
-coexist with `mention_session` on one instance. The default receives only
+coexist with `catchall_mentions` on one instance. The default receives only
 mentions for which no registration matches. A population's later user filter
 or failed admission does not send the mention back to the default. The
 bot-scoped `mentions` resource and instance registry are removed.
@@ -285,34 +293,11 @@ remains the membership authority. Each created review session's resource
 subscription resolves the same service and calls its socket API. The watcher
 retains its subscription state privately.
 
-### Open question: default-recipient target
-
-Should step 3 keep `mention_session`, or replace it with a target that can
-resolve and wake a session? The recommended candidate for the owner's decision
-is one target field containing a workflow and resource, for example
-`{ workflow = "orchestrator", resource = "owner:example" }`. The dispatcher
-resolves the session for that pair, brings it up if down or creates it if
-absent, then delivers each mention as `user.emit`. No task is set up by
-default; an optional task belongs in the target only when a concrete use case
-needs one. Session resolution, admission, wake, event delivery, and retry
-semantics require a separate decision before replacing `mention_session`.
-
-Alternatives for the owner are:
-
-- Keep `mention_session` as the existing-session address. It is simple, but
-  does not create or wake a missing or down dispatcher session.
-- Require workflow, resource, and task in the target. It makes task setup
-  obligatory even when the mention only needs delivery to a running session.
-- Use a population with a constant resource or session key. The
-  [standing-session dispatch decision](2026-09-05-standing-session-dispatch.md)
-  keeps one session present per matching resource; query items carry identity
-  and appearance context, not mention content. Repeated mentions of the same
-  resource do not deliver `user.emit` or set up new work, so this does not
-  replace the dispatcher target.
-
-The owner has not chosen a replacement. This ADR keeps `mention_session` as
-the single default-recipient field; a later decision replaces that field
-without adding a parallel one.
+The adapter retains a default-routed mention until session admission and
+`user.emit` delivery succeed. A failed up or publish is retried against the
+same target; it does not fall through to the drop step or create a second
+session. `catchall_mentions` has no task field. A task can be added in a later
+decision when a concrete use case needs it.
 
 `plect service list` displays declared services with name, executable, state,
 pid, and restarts. `--all` also displays one `available` row for each
@@ -375,6 +360,24 @@ explains that Claude Code already starts it per session and needs no resident
 declaration. There is no compatibility shim.
 
 ## Alternatives considered
+
+### Existing-session default recipient
+
+A session-name target is simpler, but cannot create or wake a missing or down
+dispatcher session.
+
+### Required task in the default target
+
+Requiring workflow, resource, and task would set up work for every mention,
+even when delivery to a session is sufficient. No current consumer needs a
+default task.
+
+### Constant-resource population
+
+The [standing-session dispatch decision](2026-09-05-standing-session-dispatch.md)
+keeps one session present per matching resource. Query items carry identity
+and appearance context, not mention content. Repeated appearances of one
+resource do not deliver each mention as `user.emit`.
 
 ### Per-service shared secrets for local HTTP
 
