@@ -112,13 +112,11 @@ receiving everything and relying on a later check to reject the rest.
 | Resource `name` | `match.<capture>` |
 | Resource `observe` | `resource.id` |
 | Resource `finalize` | `resource.id`, `session.name`, `resource.revision`, `judges` |
-| Resource `subscribe` | `session.name`, `session.inputs.<key>`, `resource.id`, `resource.inputs.<key>` |
-| Resource `unsubscribe` | `session.name`, `session.inputs.<key>`, `resource.id`, `resource.inputs.<key>` |
 | Resource query poll | `inputs.<key>` |
 | Resource query subscribe | `inputs.<key>`, `population.id` |
 | Resource query unregister | `inputs.<key>`, `population.id` |
 | Workflow public `outputs` | `nodes.<id>.outputs.<key>`, `session.inputs.<key>` |
-| Workflow population session `inputs` | `resource.id`, `item.<key>`, `query.<key>` |
+| Workflow population session `inputs` | `resource.id`; `item.<key>` and `query.<key>` for query sources; `match.<key>` for undelivered-publish sources |
 | Workflow `display` | `workflow.outputs.<key>`, `session.inputs.<key>` |
 | Workflow node `inputs` | `nodes.<id>.outputs.<key>`, `workflow.outputs.<key>`, `session.*`, `session.inputs.<key>` |
 | Workflow event-channel `inputs` | same as workflow node inputs |
@@ -134,13 +132,9 @@ receiving everything and relying on a later check to reject the rest.
 | Task instruction body | `resource.id`, `resource.state.<key>`, `self.state.<key>`, `inputs.<key>`, `session.*`, `workflow.outputs.<key>` |
 | Chain `inputs`, chain `resource` | `task.session`, `task.instance`, `task.workflow`, `task.done_when.pending_judge_ids`, `resource.state.<key>`, `self.state.<key>` |
 
-An action argument `{ from = "service.socket", name = { from = "inputs.service" } }`
-resolves a declared service name to its Unix socket at invocation. `name` may
-instead project from `session.inputs.<key>` where that root is available. The
-name must identify one loaded `[[services]]` declaration; no caller supplies a
-socket path. In a population's session inputs, `query.<key>` reads that
-population's literal query parameter, so a service name selected for a query
-can also bind the created session's hooks and tasks.
+In a query population's session inputs, `query.<key>` reads that
+population's literal query parameter. It is unavailable for an
+undelivered-publish population, which uses resource match captures instead.
 `population.id` is a stable identity for a resident population, independent of
 its query process or connection. A subscribe action can use it to register a
 durable feed consumer and explicitly unregister that consumer when the

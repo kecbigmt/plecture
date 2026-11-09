@@ -162,190 +162,133 @@ Executable entry fields:
 | Field | Required | Meaning |
 |---|---:|---|
 | `name` | yes | Stable executable identity inside the plugin. |
-| `path` | yes | Relative executable path. In the primary script case, this points at a file already present in the source tree. |
-| `build` | no | Command run at add/update time to produce a compiled executable from plugin source. |
-| `service` | no | Boolean marker for an executable suitable for resident supervision; defaults to `false` and never starts a process. |
-| `config_schema` | no | Path to the JSON Schema for a service executable's non-secret `[services.config]`; required when that table is used. |
+| `path` | yes | Relative path to the script or built binary. |
+| `build` | no | Command run at add/update time to produce a binary. |
+| `service` | no | Marks a resident-capable executable; defaults to `false` and starts nothing. |
+| `config_schema` | no | Inline JSON Schema for non-secret `[services.config]`; required when that table is used. |
 
-For example, the Slack executable marks its schema:
+A Slack executable declares its service configuration schema inline:
 
 ```toml
 [[executables]]
 name = "slack-adapter"
 path = "bin/slack-adapter"
 service = true
-config_schema = "config/service.schema.json"
+
+[executables.config_schema]
+type = "object"
+required = ["bots"]
+additionalProperties = false
+
+[executables.config_schema.properties.bots]
+type = "array"
+minItems = 1
+
+[executables.config_schema.properties.bots.items]
+type = "object"
+required = ["app_token_env", "bot_token_env", "channel_id", "allowed_user_ids"]
+additionalProperties = false
+
+[executables.config_schema.properties.bots.items.properties]
+app_token_env = { type = "string" }
+bot_token_env = { type = "string" }
+channel_id = { type = "string" }
+allowed_user_ids = { type = "array", items = { type = "string" } }
 ```
 
-Its schema requires `channel_id` as a string. Optional `catchall_mentions` is
-an object requiring string `workflow` and `resource` fields, with no other
-fields; optional `allowed_user_ids` is an array of strings. The schema rejects
-unknown keys. Plugin authors keep secrets out of the schema because plect
-cannot identify an arbitrary field as secret. `catchall_mentions` is the single
-default-recipient field, used when no population registration matches the
-mention's channel. In the examples, the `orchestrator` workflow's entry
-resource resolves `owner:operations` using the `owner:<owner>` form.
+The schema requires at least one bot. Each bot requires the four fields shown;
+unknown fields fail validation. The two token fields name variables in the
+service's `env_file`, not token values. Plugin authors keep secret values out
+of service config because plect cannot infer whether an arbitrary field is
+secret.
 
-```json
-{
-  "type": "object",
-  "required": ["channel_id"],
-  "additionalProperties": false,
-  "properties": {
-    "channel_id": { "type": "string" },
-    "catchall_mentions": {
-      "type": "object",
-      "required": ["workflow", "resource"],
-      "additionalProperties": false,
-      "properties": {
-        "workflow": { "type": "string" },
-        "resource": { "type": "string" }
-      }
-    },
-    "allowed_user_ids": { "type": "array", "items": { "type": "string" } }
-  }
-}
-```
-
-An enabled plugin can make a resident executable available without starting it.
-Only user-owned service declarations start a process. In these examples,
-`<config-home>` is `/srv/plect/config`; its `services/resident.toml` contains:
+Only user-owned service declarations start a process. In this example,
+`<config-home>` is `/srv/plect/config`. One Slack service serves two bots:
 
 ```toml
 [[services]]
-name = "github-watcher"
-executable = "official/github/github-watcher"
-args = ["serve"]
-env_file = "/srv/plect/config/service-env/github-watcher.env"
-```
-
-One Slack App uses one instance:
-
-```toml
-[[services]]
-name = "slack-primary"
+name = "slack"
 executable = "official/slack/slack-adapter"
-env_file = "/srv/plect/config/service-env/slack-primary.env"
+env_file = "/srv/plect/config/service-env/slack.env"
 
 [services.config]
+[[services.config.bots]]
+app_token_env = "SLACK_APP_TOKEN_PRIMARY"
+bot_token_env = "SLACK_BOT_TOKEN_PRIMARY"
 channel_id = "C0123"
-catchall_mentions = { workflow = "orchestrator", resource = "owner:operations" }
-allowed_user_ids = ["U0123"]
-```
-
-Two Slack Apps use two declarations of the same executable, with separate
-credential files and state directories:
-
-```toml
-[[services]]
-name = "slack-primary"
-executable = "official/slack/slack-adapter"
-env_file = "/srv/plect/config/service-env/slack-primary.env"
-
-[services.config]
-channel_id = "C0123"
-catchall_mentions = { workflow = "orchestrator", resource = "owner:operations" }
 allowed_user_ids = ["U0123"]
 
-[[services]]
-name = "slack-secondary"
-executable = "official/slack/slack-adapter"
-env_file = "/srv/plect/config/service-env/slack-secondary.env"
-
-[services.config]
+[[services.config.bots]]
+app_token_env = "SLACK_APP_TOKEN_SECONDARY"
+bot_token_env = "SLACK_BOT_TOKEN_SECONDARY"
 channel_id = "C0456"
 allowed_user_ids = ["U0456"]
 ```
 
-Each env file uses literal `KEY=VALUE` lines. For the two Slack instances,
-their files supply distinct `SLACK_BOT_TOKEN` and `SLACK_APP_TOKEN` values.
 Plugin manifests contain no `[[services]]`; such a table is a load error.
-
-User service entry fields:
+User service entry fields are:
 
 | Field | Required | Meaning |
 |---|---:|---|
 | `name` | yes | Operator-chosen service identity, unique across user config; lowercase letters, digits, hyphens, starts with a letter, at most 64 characters. |
-| `executable` | yes | Fully qualified `<catalog>/<plugin>/<executable>` of an enabled plugin executable marked `service = true`. |
+| `executable` | yes | Fully qualified `<catalog>/<plugin>/<executable>` of an enabled plugin executable marked `service = true`. Only one declaration may name an executable. |
 | `args` | no | Argument vector passed after the executable path. |
 | `env_file` | yes | Absolute path to a private operator-owned `KEY=VALUE` file. |
 | `restart` | no | `on-failure` (default) or `never`. |
 | `health` | no | `{ type = "process" }` (default and sole supported kind). |
-| `config` | no | Plugin-specific non-secret table validated against the executable's `config_schema`. |
+| `config` | no | Plugin-specific non-secret table validated against the executable's inline `config_schema`. |
 
-The loader rejects unknown service keys, duplicate names, a missing or
-unmarked executable, relative or unreadable env files, duplicate or malformed
-env entries, and env files readable by other users. `args` is an array of
-strings; `restart` and `health` have the values above. An empty file supplies
-no operator environment entries. Neither plugin metadata nor a service
-declaration can interpolate environment variables.
+The loader rejects unknown service keys, duplicate names or executable
+bindings, a missing or unmarked executable, relative or unreadable env files,
+duplicate or malformed env entries, and env files readable by other users.
+Neither plugin metadata nor a service declaration interpolates environment
+variables. A conflicting `PLECT_*` runtime key in an env file is a load error.
+Core validates the config against the inline schema, then treats it as opaque.
 
-`config_schema` is a plugin-relative path inside the package. The loader
-rejects a config table without a schema and a table that fails its schema.
-The schema cannot declare secret fields. plect writes the validated table to
-a private file in the instance state directory and passes `--config` with
-that path to the service. Core treats the table as opaque.
+The supervisor starts declared services with `plect serve`, applies their
+restart policy, and records state, pid, restart count, last exit, last error,
+health result, and producing plugin content. Service logs attach to the
+resident process log rather than a session event log. An explicit
+`plect plugin update` authorizes restarting an already-declared service when
+its executable changes.
 
-The supervisor starts declared services when `plect serve` starts, stops them
-when the resident process stops, and restarts service processes according to
-their restart policy. Service status is
-resident-global and records service id,
-running state, pid, restart count, last exit, last error, last health result,
-plugin id, and the lock coordinate or content hash that produced the running
-process.
+Each service receives only its env-file values and plect runtime values. Its
+private state directory is `<data-home>/services/<name>/` with mode `0700`,
+supplied as `PLECT_SERVICE_STATE_DIR`. When a node, channel, or hook runs an
+executable marked `service = true`, plect gives that invocation the same
+service env values and a private JSON config file named by
+`PLECT_SERVICE_CONFIG`. One service per executable makes that binding unique.
+Slack outbound actions call the provider Web API directly, with no workflow
+`base_url` input. The service calls plect for subscription listing and event
+publication; core holds the membership and delivery authority.
 
-Service logs are attached to the resident process log with the service id.
-Service logs do not write into per-session event logs.
+Core stores subscriptions keyed by session and resource, including their
+source, inputs, and creation time. `plect subscribe` and `plect unsubscribe`
+change this table, and `plect subscription list [--session] [--resource-type] --json`
+exposes it to services. `plect event publish --resource <id>` delivers
+to every subscriber and reports the delivered count. A resource can bound
+admission with `max_subscribers`; the Slack bot-user resource
+`slack://<team_id>/<bot_user_id>` sets it to one. Subscriptions survive
+session down/up; destroy removes them, and deleting the session row cascades.
+Resources retain `observe` but have
+no subscribe or unsubscribe hooks.
 
-Updating a plugin restarts declared services that use it. Each child receives
-only its env file and plect runtime values, including a private state directory
-and `api.sock` path under `<data-home>/services/<name>/`. The directory has
-mode `0700` and the socket has mode `0600`. Local adapter APIs listen only on
-that socket, so browsers cannot reach them through loopback and other OS users
-cannot connect. Code running as the same OS user can connect and is outside
-this access boundary.
+For an allowed mention, the Slack adapter publishes `user.emit` to the thread
+resource. If it reaches no subscriber, core admits a matching
+undelivered-publish population and delivers the event to its new member.
+Otherwise the adapter publishes to the bot-user resource; with no recipient it
+drops and logs the channel, thread, and reason. The adapter handles denied
+users or channels before publication. A dispatcher subscribes explicitly to
+the bot-user resource. A thread worker population uses `resource =
+"slack_thread"` and a `where` expression over `match.*`, instead of a query.
+The population's resource type equals its workflow entry resource type; a
+population cannot declare a second authoritative type.
 
-The private service state dir stores instance data. No directory is shared
-with action processes. The Slack adapter keeps its subscriber and mention
-state there; the GitHub watcher keeps subscriptions, rate budget, and token
-cache there. A conflicting `PLECT_*` runtime key in an env file is a load
-error. Hooks and query helpers use the named service's socket API for state
-they need. GitHub watcher exposes subscribe and unsubscribe operations there.
-
-GitHub issue and pull-request observation is standalone and works with no
-watcher service declaration. Its action uses its own credentials and a
-process-local rate budget and App token cache; it does not open the watcher's
-private state or call `github-watcher gh-api`. Resident population query
-helpers name a watcher service and use its socket for token and rate-budget
-operations. Standalone observations can mint extra App tokens and do not
-coordinate rate limits with the watcher.
-
-The Slack `slack`, `stream`, and `status` channels are `exec` channels that
-invoke `curl --unix-socket` with a plect-resolved service socket and a fixed
-`http://localhost` request URL. Their inputs, the `thread` query input, and
-the `slack_thread` task input name a service. Thread subscribe/unsubscribe
-hooks use the workflow's service input. A population query names its service
-literally and copies that name to each created session's workflow input. The
-GitHub watcher hooks resolve
-their service the same way. An unknown literal name fails config validation;
-a dynamic unknown name or stopped service fails a request for retry. No new
-channel primitive is defined.
-
-Slack routes a mention first to a subscribed thread session, then to every
-durably registered unbound-mention population whose `channel_ids` matches
-its channel, then to optional `catchall_mentions`. That target resolves an
-untagged session under its workflow and resource, brings it up or creates it,
-and delivers the mention as `user.emit` without setting up a task. The adapter
-rejects an unresolved or incompatible target before accepting mentions. With
-no recipient, it drops the mention and logs channel, thread, and reason. A registration persists
-consumer identity, channel filter, pending mentions, and delivery watermark
-in the service's private state. It survives a disconnected reader; the
-adapter replays pending mentions on reconnect until the population durably
-records each appearance and acknowledges it. Removing a population explicitly
-unregisters it. The default-recipient field may coexist with registrations
-on the same service. A later user filter or failed admission does not fall
-through to the default. Slack models the feed as service state and threads as
-resources with session subscriptions.
+A GitHub watcher reads the core subscription list each cycle and keeps its
+API cache, rate budget, and watch state private. GitHub `observe` remains
+callable without a watcher service, using its own credentials, process-local
+rate budget, and App token cache. GitHub pull-request query populations keep
+their `poll` form and webhook appearances.
 
 Build-less script executables are the primary v1 form. They must carry their
 interpreter through a shebang. Built binaries are the additional case for
@@ -841,14 +784,13 @@ Add and update commands:
   pid, and restart count. `--all` also lists unused service-marked executables
   from enabled plugins as `available`, with empty name and pid.
 
-For the two-instance Slack example, when the watcher executable is available
+For the Slack service example, when the watcher executable is available
 but no watcher service is declared, `plect service list --all` can display:
 
 ```text
-NAME             EXECUTABLE                           STATE      PID    RESTARTS
-slack-primary    official/slack/slack-adapter         running    4102   0
-slack-secondary  official/slack/slack-adapter         running    4103   1
-                 official/github/github-watcher       available
+NAME   EXECUTABLE                         STATE      PID    RESTARTS
+slack  official/slack/slack-adapter       running    4102   0
+       official/github/github-watcher     available
 ```
 
 Non-interactive contexts fail instead of prompting for first-seen catalog

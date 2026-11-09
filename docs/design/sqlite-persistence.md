@@ -195,6 +195,7 @@ classifies every `_json` column by its owning declaration:
 | `populations` | `(project_root, workflow, name)` primary key | none | `state.json` `populations` map key and value |
 | `population_members` | `(project_root, workflow, name, resource_id)` primary key, `populations(project_root, workflow, name)` foreign key, and `resource_id` referencing `resources(id)`; nullable `session_name` | item, generation, timestamps, flags, `decision_kind`/`decision_reason` | `PopulationState.Members` |
 | `population_member_blockers` | `(project_root, workflow, name, resource_id, position)` primary key; foreign key to `population_members` | one blocker reason per row | `PopulationMember.LastBlockers` |
+| `subscriptions` | `(session_id, resource_id)` primary key; session and resource foreign keys; session deletion cascades | `source` (`runtime`, `dispatch`, or `node`), `inputs` JSON, `created_at` | core subscription admission |
 | `session_channel_health` | `(session_id, kind)` primary key; session foreign key; `kind` CHECK IN `validation`/`delivery` | consecutive failures, first/last failure time, last channel/error, escalation time | `Session.ChannelValidationHealth`/`ChannelDeliveryHealth` |
 | `up_reservations` | `child_session_name` primary key; nullable `parent_session_name`, `virtual_root`, `pid`, `reserved_at` | none | `state.json` `up_reservations` |
 | `events` | `id` primary key; `(session_id, sequence)` unique and references `sessions(id)`; `direction` CHECK IN `inbound`/`outbound`/`internal`; `metadata_json` CHECK `json_valid` | type, source, direction, summary, body, metadata, and recorded time | each `log.jsonl` record |
@@ -220,12 +221,10 @@ is a session tombstone. Its child rows reconstruct `contract.Tombstone`; no
 second tombstone marker exists. `chain_attempts` stores one non-empty cap
 refusal fingerprint per `(session_id, instance, chain_id)`, so
 compare-and-set and conditional revert run in an immediate transaction.
-`subscription_retries` stores deduplicated failed `subscribe` and
-`unsubscribe` intents by `(session_id, action, resource_id)`, `resource_id`
-referencing `resources(id)`. A teardown retry
-uses the destroyed incarnation id, and a sweep drops its stale subscribe
-intent or retries its unsubscribe intent without involving a same-name live
-replacement.
+`subscriptions` is the sole durable delivery membership authority. A
+resource-addressed publish reads its rows and appends to each subscriber's
+event log. Session destroy removes its rows while retaining its tombstone;
+deleting that session row also cascades to them.
 
 `Session.Message` is not a stored field on any table: a session's
 self-reported status line is derived from the most recent
@@ -591,14 +590,12 @@ one such row, found by its `locator`.
 A row is recorded in the same write transaction as the first row that refers
 to it. Its release is a schema rule: the `resource_references` view lists every
 reference — `sessions`, `task_instances`, `node_executions` (`resource_id` and
-`subscription_id`), `population_members` and `subscription_retries` — and an
+`subscription_id`), `population_members` and `subscriptions` — and an
 `AFTER DELETE` and an `AFTER UPDATE OF` trigger on each of those tables delete
 the row once the view no longer names it, so the write that removes the last
-reference releases the row whichever code issued it. A pending
-retry counts, because an `unsubscribe` retry still names its resource after the
-binding that subscribed it is gone; a task cleanup queues that retry in the
-write that removes the binding, so the row is never released in between. A
-destroyed session's retained row keeps its resource. The observation a node or
+reference releases the row whichever code issued it. A subscription keeps its
+resource live until the row is removed. A destroyed session's retained row
+keeps its resource. The observation a node or
 task recorded (`resource_observation_json`) stays on that node or task row: it
 is what was observed when that row was evaluated, not a property of the
 resource.
