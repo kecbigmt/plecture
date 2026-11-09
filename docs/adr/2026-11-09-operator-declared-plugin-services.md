@@ -287,17 +287,32 @@ retains its subscription state privately.
 
 ### Open question: default-recipient target
 
-Should the single `mention_session` field become a target described by
-workflow, resource, and task, so the adapter can start or reuse the session
-that workflow resolves for the resource and set up a task with the mention?
-The recommendation for this ADR is to keep `mention_session` as one field
-until that behavior is specified separately. A population with one constant
-session key covers only a fixed resource and repeated appearances. A target
-that chooses a resource and sets up a task for each mention has additional
-session admission, task identity, and retry semantics; calling it a
-population would hide those decisions. If the owner chooses the richer
-target, replace this one field and specify those semantics in a subsequent
-decision, without adding a parallel default-recipient field.
+Should step 3 keep `mention_session`, or replace it with a target that can
+resolve and wake a session? The recommended candidate for the owner's decision
+is one target field containing a workflow and resource, for example
+`{ workflow = "orchestrator", resource = "owner:example" }`. The dispatcher
+resolves the session for that pair, brings it up if down or creates it if
+absent, then delivers each mention as `user.emit`. No task is set up by
+default; an optional task belongs in the target only when a concrete use case
+needs one. Session resolution, admission, wake, event delivery, and retry
+semantics require a separate decision before replacing `mention_session`.
+
+Alternatives for the owner are:
+
+- Keep `mention_session` as the existing-session address. It is simple, but
+  does not create or wake a missing or down dispatcher session.
+- Require workflow, resource, and task in the target. It makes task setup
+  obligatory even when the mention only needs delivery to a running session.
+- Use a population with a constant resource or session key. The
+  [standing-session dispatch decision](2026-09-05-standing-session-dispatch.md)
+  keeps one session present per matching resource; query items carry identity
+  and appearance context, not mention content. Repeated mentions of the same
+  resource do not deliver `user.emit` or set up new work, so this does not
+  replace the dispatcher target.
+
+The owner has not chosen a replacement. This ADR keeps `mention_session` as
+the single default-recipient field; a later decision replaces that field
+without adding a parallel one.
 
 `plect service list` displays declared services with name, executable, state,
 pid, and restarts. `--all` also displays one `available` row for each
