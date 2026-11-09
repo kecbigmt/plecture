@@ -14,7 +14,12 @@ adapter does not connect to an agent socket.
 
 ## Configuration
 
-### config file (`~/.config/slack-adapter/config.toml`)
+### config file
+
+The adapter reads the file `--config <path>` names, else the one
+`SLACK_ADAPTER_CONFIG` names, else `~/.config/slack-adapter/config.toml`. Only
+the default file may be absent; a named file that does not exist stops
+startup.
 
 ```toml
 slack_bot_token = "xoxb-..."
@@ -28,11 +33,37 @@ on_unbound_mention = "/path/to/dispatch-command" # optional; see below
 ```
 
 `on_unbound_mention` can also be set via `SLACK_ADAPTER_ON_UNBOUND_MENTION`,
-subject to the same config-file-wins-over-env-var rule as the credential
-fields above.
+and `listen_addr` via `SLACK_ADAPTER_LISTEN_ADDR`, subject to the same
+config-file-wins-over-env-var rule as the credential fields above.
 
 Outbound-only operation requires only `slack_bot_token`. Requests that omit
 `channel_id` require the optional configured default.
+
+### One adapter per Slack App
+
+Each Slack App needs its own adapter process, because one bot token and one
+Socket Mode connection belong to one App. Give each process its own config
+file, state directory, and listen address:
+
+```bash
+slack-adapter --config ~/.config/slack-adapter/app-a.toml --state-dir ~/.local/state/slack-adapter/app-a
+slack-adapter --config ~/.config/slack-adapter/app-b.toml --state-dir ~/.local/state/slack-adapter/app-b
+```
+
+`--state-dir` falls back to `SLACK_ADAPTER_STATE_DIR`, then to
+`$XDG_STATE_HOME/slack-adapter` (default `~/.local/state/slack-adapter`).
+With no flags and none of these variables, the adapter uses the same config
+file, state files, and listen address as a single-instance host.
+
+At startup, once its listen address is bound, each adapter writes
+`<team_id>-<bot_user_id>.json` with that address to
+`$XDG_STATE_HOME/slack-adapter/instances/` (default
+`~/.local/state/slack-adapter/instances/`). This directory ignores
+`--state-dir`: the `mentions` resource hook runs with plect's environment, so
+it finds the adapter for the bot its resource names there, and falls back to
+its own configured `listen_addr` when the bot has no entry. An adapter
+rejects a mention subscription or unsubscription for any other bot with
+`409`, or with `503` until `auth.test` has told it its own bot user id.
 
 ### Thread status
 
@@ -216,9 +247,14 @@ failed fetch or publish leaves the pending mention for a later subscription
 retry. The released request's optional `catch_up_through` field remains
 accepted for sessions running frozen declarations.
 
+A mention subscription is `{session_name, thread_ts: "mentions", team_id,
+bot_user_id}`; both ids must be this adapter's own.
+
 The inputs-free resource hooks call `slack-adapter resource subscribe` and
-`unsubscribe`. They parse the thread permalink in `resource.id`, read the
-resident service's `listen_addr`, and invoke this API.
+`unsubscribe`. The thread hook parses the permalink in `resource.id`, reads
+the resident service's `listen_addr`, and invokes this API. The mentions hook
+finds its adapter through the instance directory described under "One
+adapter per Slack App".
 
 ### POST /status
 
@@ -329,7 +365,9 @@ CLI client built on this feed.
 
 ### DELETE /subscribe?session_name=...&thread_ts=...
 
-Removes one pair and returns `204` even if it was absent. With only
+Removes one pair and returns `204` even if it was absent. Removing a mention
+subscription (`thread_ts=mentions`) also requires `bot_user_id`, checked like
+a mention subscription's. With only
 `session_name`, it removes every registration for that session. A `plect
 down` leaves session-scoped node subscriptions intact; node cleanup or session
 destroy removes them through the resource's unsubscribe action.
@@ -352,9 +390,9 @@ Both event types carry `channel_id` and `thread_ts` metadata.
 
 ## Persistence
 
-The adapter writes a version 2 ledger to
-`$XDG_STATE_HOME/slack-adapter/subscribers.json` (default
-`~/.local/state/slack-adapter/subscribers.json`) with an atomic rename on
+The adapter writes a version 2 ledger to `subscribers.json` in its state
+directory (default `$XDG_STATE_HOME/slack-adapter`, else
+`~/.local/state/slack-adapter`) with an atomic rename on
 each mutation. Startup reloads it, then `plect ls --json` sweeps entries for
 destroyed sessions. Down sessions remain subscribed. The adapter refuses to
 start if `subscribers.json` is unreadable, corrupt, or not version 2. Convert a

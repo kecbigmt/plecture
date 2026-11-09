@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"io"
 	"log/slog"
+	"net"
 	"net/http"
 	"os"
 	"os/signal"
@@ -24,7 +25,32 @@ func main() {
 			os.Exit(runResourceCommand(os.Args[2:], os.Stdout, os.Stderr))
 		}
 	}
-	runServer()
+	flags, err := parseServerFlags(os.Args[1:], os.Stderr)
+	if err != nil {
+		os.Exit(2)
+	}
+	runServer(flags)
+}
+
+type serverFlags struct {
+	configPath string
+	stateDir   string
+}
+
+func parseServerFlags(args []string, errOut io.Writer) (serverFlags, error) {
+	var flags serverFlags
+	fs := flag.NewFlagSet("slack-adapter", flag.ContinueOnError)
+	fs.SetOutput(errOut)
+	fs.StringVar(&flags.configPath, "config", "", "config file (default $SLACK_ADAPTER_CONFIG, else ~/.config/slack-adapter/config.toml)")
+	fs.StringVar(&flags.stateDir, "state-dir", "", "directory for subscribers.json and streams.json (default $SLACK_ADAPTER_STATE_DIR, else $XDG_STATE_HOME/slack-adapter)")
+	if err := fs.Parse(args); err != nil {
+		return serverFlags{}, err
+	}
+	if fs.NArg() > 0 {
+		fmt.Fprintf(errOut, "slack-adapter: unexpected argument %q\n", fs.Arg(0))
+		return serverFlags{}, fmt.Errorf("unexpected argument %q", fs.Arg(0))
+	}
+	return flags, nil
 }
 
 // runSubscribeCommand implements `slack-adapter subscribe unbound-mentions`.
@@ -100,13 +126,13 @@ func runResourceCommand(args []string, out, errOut io.Writer) int {
 		fmt.Fprintln(out, "{}")
 		return 0
 	}
-	cfg := adapter.LoadConfig()
-	baseURL := "http://" + cfg.ListenAddr
+	cfg := adapter.LoadConfig("")
 	var err error
-	if _, parseErr := adapter.ParseMentionResource(*resource); parseErr == nil {
+	if team, bot, parseErr := adapter.ParseMentionResource(*resource); parseErr == nil {
+		baseURL := adapter.MentionBaseURL(adapter.InstanceRegistryDir(), team, bot, cfg.ListenAddr)
 		err = adapter.MentionSubscription(context.Background(), nil, baseURL, args[0], *session, *resource)
 	} else {
-		err = adapter.ThreadSubscription(context.Background(), nil, baseURL, args[0], *session, *resource, *through)
+		err = adapter.ThreadSubscription(context.Background(), nil, "http://"+cfg.ListenAddr, args[0], *session, *resource, *through)
 	}
 	if err != nil {
 		fmt.Fprintln(errOut, "slack-adapter resource:", err)
@@ -115,18 +141,18 @@ func runResourceCommand(args []string, out, errOut io.Writer) int {
 	return 0
 }
 
-func runServer() {
+func runServer(flags serverFlags) {
 	logger := slog.New(slog.NewJSONHandler(os.Stderr, &slog.HandlerOptions{Level: slog.LevelInfo})).
 		With("component", "slack-adapter")
 
-	cfg := adapter.LoadConfig()
+	cfg := adapter.LoadConfig(flags.configPath)
 
 	if err := cfg.ValidateStartup(); err != nil {
 		logger.Error(err.Error())
 		os.Exit(1)
 	}
 
-	a, err := adapter.New(cfg, logger)
+	a, err := adapter.New(cfg, adapter.ResolveStateDir(flags.stateDir), logger)
 	if err != nil {
 		logger.Error("load subscriber state", "error", err)
 		os.Exit(1)
@@ -149,10 +175,20 @@ func runServer() {
 	defer cancel()
 
 	// Start HTTP + WebSocket server
-	server := &http.Server{Addr: cfg.ListenAddr, Handler: mux}
+	listener, err := net.Listen("tcp", cfg.ListenAddr)
+	if err != nil {
+		logger.Error("listen", "addr", cfg.ListenAddr, "error", err)
+		os.Exit(1)
+	}
+	// Registering only after the address is bound keeps a hook from being
+	// routed to an instance that never came up on it.
+	if err := a.RegisterInstance(adapter.InstanceRegistryDir(), cfg.ListenAddr); err != nil {
+		logger.Warn("instance not registered; a mentions hook for this bot falls back to its own configured listen_addr", "error", err)
+	}
+	server := &http.Server{Handler: mux}
 	go func() {
 		logger.Info("listening", "addr", cfg.ListenAddr)
-		if err := server.ListenAndServe(); err != nil && err != http.ErrServerClosed {
+		if err := server.Serve(listener); err != nil && err != http.ErrServerClosed {
 			logger.Error("http server error", "error", err)
 			os.Exit(1)
 		}

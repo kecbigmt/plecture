@@ -477,3 +477,32 @@ denied_channel_message = "Use the other channel."
 		t.Fatalf("populations = %+v", populations)
 	}
 }
+
+// Two Slack Apps installed in one workspace share the team id, so the
+// shipped mentions resource must give each App's bot its own resource name.
+func TestShippedCatalog_SlackMentionsResourceIsScopedByBot(t *testing.T) {
+	cfg := loadShippedCatalog(t, "official")
+	defs, err := cfg.LoadResourceDefs("")
+	if err != nil {
+		t.Fatalf("LoadResourceDefs: %v", err)
+	}
+	def, ok := defs["official.slack.mentions"]
+	if !ok {
+		t.Fatalf("official.slack.mentions not declared; have %d resources", len(defs))
+	}
+	tests := []struct {
+		id      string
+		want    string
+		matched bool
+	}{
+		{id: "slack://T1/UA/mentions", want: "slack/T1-UA-mentions", matched: true},
+		{id: "slack://T1/UB/mentions", want: "slack/T1-UB-mentions", matched: true},
+		{id: "slack://T1/mentions", matched: false},
+	}
+	for _, tt := range tests {
+		name, matched, err := def.InstanceName(tt.id)
+		if err != nil || matched != tt.matched || name != tt.want {
+			t.Errorf("InstanceName(%q) = %q, %v, %v; want %q, %v", tt.id, name, matched, err, tt.want, tt.matched)
+		}
+	}
+}

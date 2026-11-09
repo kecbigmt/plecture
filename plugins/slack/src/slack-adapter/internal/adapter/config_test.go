@@ -19,7 +19,7 @@ func TestLoadConfig_NoConfigFileUsesDefaultsSilently(t *testing.T) {
 	slog.SetDefault(slog.New(slog.NewTextHandler(&logs, nil)))
 	defer slog.SetDefault(prev)
 
-	cfg := LoadConfig()
+	cfg := LoadConfig("")
 
 	if cfg.ListenAddr != "127.0.0.1:7890" {
 		t.Errorf("ListenAddr = %q, want default", cfg.ListenAddr)
@@ -46,7 +46,7 @@ func TestLoadConfig_MalformedConfigFileFallsBackAndWarns(t *testing.T) {
 	slog.SetDefault(slog.New(slog.NewTextHandler(&logs, nil)))
 	defer slog.SetDefault(prev)
 
-	cfg := LoadConfig()
+	cfg := LoadConfig("")
 
 	if cfg.ListenAddr != "127.0.0.1:7890" {
 		t.Errorf("ListenAddr = %q, want default", cfg.ListenAddr)
@@ -63,7 +63,7 @@ func TestLoadConfig_EnvVarsFillCredentialsWhenConfigFileAbsent(t *testing.T) {
 	t.Setenv("SLACK_APP_TOKEN", "xapp-env")
 	t.Setenv("SLACK_CHANNEL_ID", "C-env")
 
-	cfg := LoadConfig()
+	cfg := LoadConfig("")
 
 	if cfg.SlackBotToken != "xoxb-env" {
 		t.Errorf("SlackBotToken = %q, want the env var value", cfg.SlackBotToken)
@@ -81,7 +81,7 @@ func TestLoadConfig_OnUnboundMentionEnvVarFillsWhenConfigFileAbsent(t *testing.T
 	t.Setenv("HOME", tmpHome)
 	t.Setenv("SLACK_ADAPTER_ON_UNBOUND_MENTION", "/path/to/dispatch-command")
 
-	cfg := LoadConfig()
+	cfg := LoadConfig("")
 
 	if cfg.OnUnboundMention != "/path/to/dispatch-command" {
 		t.Errorf("OnUnboundMention = %q, want the env var value", cfg.OnUnboundMention)
@@ -102,7 +102,7 @@ func TestLoadConfig_ConfigFileTakesPriorityOverEnvVars(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	cfg := LoadConfig()
+	cfg := LoadConfig("")
 
 	// config.toml is the file a user already fully controls; an env var
 	// (typically supplied for resident-supervised startup) only fills a field
@@ -217,7 +217,7 @@ func TestValidateStartup_RejectsRetiredStatusLoadingMessagesKey(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	cfg := LoadConfig()
+	cfg := LoadConfig("")
 	err := cfg.ValidateStartup()
 	if err == nil {
 		t.Fatal("ValidateStartup() error = nil, want rejection of the retired status_loading_messages key")
@@ -240,8 +240,108 @@ func TestValidateStartup_AllowsConfigWithoutStatusLoadingMessages(t *testing.T) 
 		t.Fatal(err)
 	}
 
-	cfg := LoadConfig()
+	cfg := LoadConfig("")
 	if err := cfg.ValidateStartup(); err != nil {
 		t.Fatalf("ValidateStartup() error = %v, want nil for a config without status_loading_messages", err)
+	}
+}
+
+func writeConfigFile(t *testing.T, path, body string) {
+	t.Helper()
+	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(path, []byte(body), 0o644); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func TestLoadConfig_ConfigPathPrecedence(t *testing.T) {
+	tests := []struct {
+		name      string
+		flagPath  string
+		envPath   string
+		wantToken string
+	}{
+		{name: "no flag and no env reads the home config", wantToken: "xoxb-home"},
+		{name: "env names another file", envPath: "env.toml", wantToken: "xoxb-env"},
+		{name: "flag wins over env", flagPath: "flag.toml", envPath: "env.toml", wantToken: "xoxb-flag"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			home := t.TempDir()
+			t.Setenv("HOME", home)
+			t.Setenv("SLACK_BOT_TOKEN", "")
+			dir := t.TempDir()
+			writeConfigFile(t, filepath.Join(home, ".config", "slack-adapter", "config.toml"), "slack_bot_token = \"xoxb-home\"\n")
+			writeConfigFile(t, filepath.Join(dir, "env.toml"), "slack_bot_token = \"xoxb-env\"\n")
+			writeConfigFile(t, filepath.Join(dir, "flag.toml"), "slack_bot_token = \"xoxb-flag\"\n")
+			env, flagPath := "", ""
+			if tt.envPath != "" {
+				env = filepath.Join(dir, tt.envPath)
+			}
+			if tt.flagPath != "" {
+				flagPath = filepath.Join(dir, tt.flagPath)
+			}
+			t.Setenv("SLACK_ADAPTER_CONFIG", env)
+
+			cfg := LoadConfig(flagPath)
+
+			if cfg.SlackBotToken != tt.wantToken {
+				t.Errorf("SlackBotToken = %q, want %q", cfg.SlackBotToken, tt.wantToken)
+			}
+			if err := cfg.ValidateStartup(); err != nil {
+				t.Errorf("ValidateStartup() = %v, want nil", err)
+			}
+		})
+	}
+}
+
+func TestValidateStartup_RejectsAMissingExplicitConfigPath(t *testing.T) {
+	missing := filepath.Join(t.TempDir(), "absent.toml")
+	tests := []struct {
+		name     string
+		flagPath string
+		envPath  string
+	}{
+		{name: "flag", flagPath: missing},
+		{name: "env", envPath: missing},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Setenv("HOME", t.TempDir())
+			t.Setenv("SLACK_ADAPTER_CONFIG", tt.envPath)
+			t.Setenv("SLACK_BOT_TOKEN", "xoxb-env")
+
+			err := LoadConfig(tt.flagPath).ValidateStartup()
+
+			if err == nil || !strings.Contains(err.Error(), missing) {
+				t.Fatalf("ValidateStartup() = %v, want an error naming %s", err, missing)
+			}
+		})
+	}
+}
+
+func TestLoadConfig_ListenAddrEnvFillsOnlyWhenConfigOmitsIt(t *testing.T) {
+	tests := []struct {
+		name   string
+		config string
+		env    string
+		want   string
+	}{
+		{name: "default", want: "127.0.0.1:7890"},
+		{name: "env fills an omitted key", env: "127.0.0.1:7891", want: "127.0.0.1:7891"},
+		{name: "config wins over env", config: "listen_addr = \"127.0.0.1:7892\"\n", env: "127.0.0.1:7891", want: "127.0.0.1:7892"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			path := filepath.Join(t.TempDir(), "config.toml")
+			writeConfigFile(t, path, tt.config)
+			t.Setenv("SLACK_ADAPTER_LISTEN_ADDR", tt.env)
+
+			if got := LoadConfig(path).ListenAddr; got != tt.want {
+				t.Errorf("ListenAddr = %q, want %q", got, tt.want)
+			}
+		})
 	}
 }

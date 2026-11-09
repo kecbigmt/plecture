@@ -31,16 +31,27 @@ type Config struct {
 	// silently ignores a key this struct doesn't declare, so ValidateStartup
 	// checks this instead of letting the key quietly do nothing.
 	hasRetiredStatusLoadingMessages bool
+	missingConfigPath               string
 }
 
-func LoadConfig() *Config {
-	cfg := &Config{
-		ListenAddr: "127.0.0.1:7890",
-	}
+const defaultListenAddr = "127.0.0.1:7890"
 
-	home, err := os.UserHomeDir()
-	if err == nil {
-		configPath := filepath.Join(home, ".config", "slack-adapter", "config.toml")
+// LoadConfig reads the config file the flag names, else the one
+// SLACK_ADAPTER_CONFIG names, else ~/.config/slack-adapter/config.toml.
+func LoadConfig(flagPath string) *Config {
+	cfg := &Config{}
+
+	configPath := flagPath
+	if configPath == "" {
+		configPath = os.Getenv("SLACK_ADAPTER_CONFIG")
+	}
+	explicit := configPath != ""
+	if !explicit {
+		if home, err := os.UserHomeDir(); err == nil {
+			configPath = filepath.Join(home, ".config", "slack-adapter", "config.toml")
+		}
+	}
+	if configPath != "" {
 		if _, statErr := os.Stat(configPath); statErr == nil {
 			// An absent config.toml is a normal all-env-vars setup, but a
 			// present-and-unparsable one is a user mistake that would
@@ -56,6 +67,11 @@ func LoadConfig() *Config {
 					}
 				}
 			}
+		} else if explicit {
+			// Only the default path may be absent: an instance pointed at a
+			// file that is not there would otherwise start as some other
+			// instance's env-var-only configuration.
+			cfg.missingConfigPath = configPath
 		}
 	}
 
@@ -70,11 +86,18 @@ func LoadConfig() *Config {
 	fillFromEnv(&cfg.SlackAppToken, "SLACK_APP_TOKEN")
 	fillFromEnv(&cfg.ChannelID, "SLACK_CHANNEL_ID")
 	fillFromEnv(&cfg.OnUnboundMention, "SLACK_ADAPTER_ON_UNBOUND_MENTION")
+	fillFromEnv(&cfg.ListenAddr, "SLACK_ADAPTER_LISTEN_ADDR")
+	if cfg.ListenAddr == "" {
+		cfg.ListenAddr = defaultListenAddr
+	}
 
 	return cfg
 }
 
 func (c *Config) ValidateStartup() error {
+	if c.missingConfigPath != "" {
+		return fmt.Errorf("config file %s does not exist", c.missingConfigPath)
+	}
 	if c.SlackBotToken == "" {
 		return errors.New("slack_bot_token must be set in config")
 	}

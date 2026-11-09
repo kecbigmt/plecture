@@ -152,3 +152,97 @@ func TestRunResourceCommandRegistersAndRemovesThread(t *testing.T) {
 		t.Fatalf("methods = %v", methods)
 	}
 }
+
+func TestParseServerFlags(t *testing.T) {
+	tests := []struct {
+		name       string
+		args       []string
+		wantConfig string
+		wantState  string
+		wantErr    bool
+	}{
+		{name: "no flags", args: nil},
+		{name: "both flags", args: []string{"--config", "/etc/a.toml", "--state-dir", "/var/a"}, wantConfig: "/etc/a.toml", wantState: "/var/a"},
+		{name: "unknown flag", args: []string{"--listen", ":1"}, wantErr: true},
+		{name: "positional argument", args: []string{"serve"}, wantErr: true},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			var errOut bytes.Buffer
+			got, err := parseServerFlags(tt.args, &errOut)
+			if (err != nil) != tt.wantErr {
+				t.Fatalf("err = %v, wantErr %v", err, tt.wantErr)
+			}
+			if err == nil && (got.configPath != tt.wantConfig || got.stateDir != tt.wantState) {
+				t.Fatalf("flags = %+v, want config %q state %q", got, tt.wantConfig, tt.wantState)
+			}
+		})
+	}
+}
+
+// mentionEndpoint records the bot_user_id each mention subscribe and
+// unsubscribe request addressed, standing in for one resident adapter.
+func mentionEndpoint(t *testing.T, seen *[]string) *httptest.Server {
+	t.Helper()
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, req *http.Request) {
+		if req.Method == http.MethodPost {
+			var body struct {
+				BotUserID string `json:"bot_user_id"`
+			}
+			if err := json.NewDecoder(req.Body).Decode(&body); err != nil {
+				t.Error(err)
+			}
+			*seen = append(*seen, "subscribe "+body.BotUserID)
+			return
+		}
+		*seen = append(*seen, "unsubscribe "+req.URL.Query().Get("bot_user_id"))
+	}))
+	t.Cleanup(server.Close)
+	return server
+}
+
+func writeRegistryEntry(t *testing.T, stateHome, team, bot, addr string) {
+	t.Helper()
+	dir := filepath.Join(stateHome, "slack-adapter", "instances")
+	if err := os.MkdirAll(dir, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	raw, _ := json.Marshal(map[string]string{"team_id": team, "bot_user_id": bot, "listen_addr": addr})
+	if err := os.WriteFile(filepath.Join(dir, team+"-"+bot+".json"), raw, 0o600); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func TestRunResourceCommandRoutesEachMentionsResourceToItsOwnAdapter(t *testing.T) {
+	var seenA, seenB, seenDefault []string
+	serverA := mentionEndpoint(t, &seenA)
+	serverB := mentionEndpoint(t, &seenB)
+	serverDefault := mentionEndpoint(t, &seenDefault)
+	home, stateHome := t.TempDir(), t.TempDir()
+	t.Setenv("HOME", home)
+	t.Setenv("XDG_STATE_HOME", stateHome)
+	t.Setenv("SLACK_ADAPTER_CONFIG", "")
+	t.Setenv("SLACK_ADAPTER_STATE_DIR", "")
+	t.Setenv("SLACK_ADAPTER_LISTEN_ADDR", serverDefault.Listener.Addr().String())
+	writeRegistryEntry(t, stateHome, "T1", "UA", serverA.Listener.Addr().String())
+	writeRegistryEntry(t, stateHome, "T1", "UB", serverB.Listener.Addr().String())
+
+	for _, resource := range []string{"slack://T1/UA/mentions", "slack://T1/UB/mentions", "slack://T1/UC/mentions"} {
+		for _, action := range []string{"subscribe", "unsubscribe"} {
+			var out, errOut bytes.Buffer
+			if code := runResourceCommand([]string{action, "--resource", resource, "--session", "one"}, &out, &errOut); code != 0 {
+				t.Fatalf("%s %s exit = %d: %s", action, resource, code, errOut.String())
+			}
+		}
+	}
+
+	for _, tc := range []struct {
+		name string
+		got  []string
+		bot  string
+	}{{"first adapter", seenA, "UA"}, {"second adapter", seenB, "UB"}, {"unregistered bot falls back to the configured address", seenDefault, "UC"}} {
+		if want := []string{"subscribe " + tc.bot, "unsubscribe " + tc.bot}; !reflect.DeepEqual(tc.got, want) {
+			t.Errorf("%s saw %v, want %v", tc.name, tc.got, want)
+		}
+	}
+}
