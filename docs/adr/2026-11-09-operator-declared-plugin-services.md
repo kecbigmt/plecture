@@ -86,7 +86,8 @@ settings. The service-marked executable declares a `config_schema` path in its
 manifest. plect validates the table against that schema, writes the validated
 config to a private file in the service state directory, and passes its path
 as `--config` to the service. Core does not interpret the table. Credentials
-belong only in `env_file`; a service schema must not declare secret fields.
+belong only in `env_file`. Plugin authors must keep secret settings out of the
+schema; plect cannot infer whether an arbitrary schema field is a secret.
 
 No directory or data store is shared between a service and action processes.
 The Slack adapter owns its subscriber and unbound-mention registration state
@@ -96,6 +97,16 @@ population queries use the selected service's Unix socket to access that
 state. The watcher exposes subscription and token/rate-budget operations
 needed by its hooks and query helpers through that socket; hooks do not write
 `subscriptions.json`.
+
+GitHub resource `observe` remains callable without a session or a declared
+watcher service. Its `github-issue-pr` action does not resolve a service and
+does not use `github-watcher gh-api` or the watcher's private cache. It makes
+GitHub requests with the action process's separately configured credentials,
+using a process-local rate budget and App token cache when App auth is used.
+The action does not read or write `$XDG_DATA_HOME/github-watcher`. The issue
+and pull-request observer declarations stop passing `--watcher-bin`. Query
+helpers are different: a resident population explicitly names its watcher
+service and uses its socket for token and rate-budget operations.
 
 `restart` defaults to `on-failure`, with `never` available. `health` defaults
 to `{ type = "process" }`; that is the only health kind in this decision.
@@ -319,7 +330,23 @@ separate environment. The supervisor keeps one host-owned resident process,
 The implementation removes manifest `[[services]]` and `required_env`, adds
 user service config loading, updates the supervisor and CLI, and adds schema
 and conformance fixtures for the user-service and manifest changes. The
-breaking change ships with a `docs/migrations/` procedure that begins with a
+`service.socket`, `query.<key>`, `population.id`, and query `unregister`
+language additions need schema, conformance fixtures, and behavior tests for
+unknown literal names, unknown dynamic names, stopped services, replay,
+acknowledgement, and unregister failures. The Slack `thread` query replaces
+`base_url` with required `service` in its input schema; the GitHub pull-request
+query adds required `service` to its input schema. Both schemas reject unknown
+keys. The evaluator retains the removed population's query inputs and service
+name until explicit unregister succeeds. Its subscribe protocol sends an
+acknowledgement to the query process's stdin only after an appearance with an
+opaque `delivery_id` is recorded durably. The query process forwards that
+acknowledgement to the service socket; writing an item to stdout alone is not
+an acknowledgement. The Slack thread query item schema adds the required
+`delivery_id` string. The GitHub observer loses shared rate-limit coordination
+with the watcher and may mint an additional App token for each process
+invocation. That cost preserves standalone observation when no watcher service
+exists and avoids shared files.
+The breaking change ships with a `docs/migrations/` procedure that begins with a
 backup and gives one user-config block reproducing each resident shipped
 service:
 `slack-adapter` and `github-watcher`. The Slack block needs neither `HOME` nor
@@ -347,6 +374,14 @@ A shared directory for services and action processes would reopen the
 per-service boundary through shared files and require a new cross-plugin
 namespace. Service-name resolution gives callers the right socket without
 sharing state.
+
+### Requiring a watcher for observation
+
+Binding every GitHub `observe` action to a watcher service would make
+standalone `plect resource status` depend on an optional resident process.
+Choosing an ambient default watcher would reintroduce a second service-name
+authority outside the resource contract. Process-local auth and rate state
+keep observation independent at the stated extra-token and coordination cost.
 
 ### Deriving a TCP port from the service name
 

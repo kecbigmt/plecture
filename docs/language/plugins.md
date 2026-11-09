@@ -177,6 +177,13 @@ service = { from = "query.service" }
 The polling helper uses its token and rate budget API; GitHub is the
 membership authority. Each review session's subscribe/unsubscribe hooks
 use the same service's socket API.
+Standalone issue and pull-request observation needs no watcher service. It
+uses action-process credentials and a process-local rate budget and App token
+cache, so it can mint another token and does not share rate-limit coordination
+with a resident watcher. The Slack thread query schema requires `service` and
+`channel_ids` and does not accept `base_url`; the GitHub pull-request query
+schema requires `service`, `repositories`, `labels`, `state`, and `draft`.
+Both reject unknown keys.
 
 `plect service list` shows declared name, executable, state, pid, and restart
 count. With `--all`, an enabled service-marked executable with no declaration
@@ -229,6 +236,7 @@ reference written inside a plugin is relative.
 - An executable `name` is unique within a manifest.
 - A service's `executable` names a declared executable.
 - A service config table requires the executable's `config_schema` and must
-  satisfy it; the schema path stays within the plugin package and declares
-  no secret settings.
+  satisfy it; the schema path stays within the plugin package.
+- Plugin authors keep secret settings out of service config schemas; plect
+  cannot identify secret fields by name or type.
 - A plugin's `plect_min_version` must not exceed the running `plect`.

@@ -179,7 +179,8 @@ config_schema = "config/service.schema.json"
 
 Its schema requires `channel_id` as a string. Optional `mention_session` is a
 session name string; optional `allowed_user_ids` is an array of strings. It
-rejects unknown keys and secret settings. `mention_session` is the single
+rejects unknown keys. Plugin authors keep secrets out of the schema because
+plect cannot identify an arbitrary field as secret. `mention_session` is the single
 default-recipient field, used when no population registration matches the
 mention's channel.
 
@@ -287,6 +288,14 @@ state there; the GitHub watcher keeps subscriptions, rate budget, and token
 cache there. A conflicting `PLECT_*` runtime key in an env file is a load
 error. Hooks and query helpers use the named service's socket API for state
 they need. GitHub watcher exposes subscribe and unsubscribe operations there.
+
+GitHub issue and pull-request observation is standalone and works with no
+watcher service declaration. Its action uses its own credentials and a
+process-local rate budget and App token cache; it does not open the watcher's
+private state or call `github-watcher gh-api`. Resident population query
+helpers name a watcher service and use its socket for token and rate-budget
+operations. Standalone observations can mint extra App tokens and do not
+coordinate rate limits with the watcher.
 
 The Slack `slack`, `stream`, and `status` channels are `exec` channels that
 invoke `curl --unix-socket` with a plect-resolved service socket and a fixed

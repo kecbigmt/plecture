@@ -116,6 +116,7 @@ receiving everything and relying on a later check to reject the rest.
 | Resource `unsubscribe` | `session.name`, `session.inputs.<key>`, `resource.id`, `resource.inputs.<key>` |
 | Resource query poll | `inputs.<key>` |
 | Resource query subscribe | `inputs.<key>`, `population.id` |
+| Resource query unregister | `inputs.<key>`, `population.id` |
 | Workflow public `outputs` | `nodes.<id>.outputs.<key>`, `session.inputs.<key>` |
 | Workflow population session `inputs` | `resource.id`, `item.<key>`, `query.<key>` |
 | Workflow `display` | `workflow.outputs.<key>`, `session.inputs.<key>` |

@@ -94,9 +94,15 @@ A query whose subscribe source durably registers a consumer also declares an
 `unregister` action. Both actions receive the query's literal `inputs.*` and
 stable `population.id`. Closing a subscribe connection retains registration;
 the population evaluator runs `unregister` when removing the population.
-Unregister failure is reported and retried without silently activating a
-different delivery route. A durable source replays an appearance until the
-evaluator records it durably and acknowledges it through the source protocol.
+The evaluator retains the old query inputs and service name until that action
+succeeds. Unregister failure is reported and retried without silently
+activating a different delivery route. A durable subscribe item includes an
+opaque `delivery_id` declared in its item schema. After recording that
+appearance durably, the evaluator writes one JSON line
+`{"ack":"<delivery_id>"}` to the subscribe process's stdin. The process
+forwards the acknowledgement to its service. A crash before acknowledgement
+causes replay; duplicate appearances are handled idempotently. Writing an
+item to stdout alone never advances the service's delivery watermark.
 
 ## Validation rules
 
@@ -112,5 +118,6 @@ evaluator records it durably and acknowledges it through the source protocol.
 - Query inputs satisfy the query input schema independently of action inputs.
 - A query has its shared schemas and at least one means.
 - A query that registers a durable subscribe consumer declares `unregister`.
+- A durable subscribe item's schema requires a string `delivery_id`.
 - A task's resource type matches the concrete resource to which its instance
   is bound.
