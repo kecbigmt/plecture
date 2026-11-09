@@ -179,16 +179,15 @@ func TestBrokerDoesNotOverwriteOldLedger(t *testing.T) {
 }
 
 func TestAdapterRejectsOldLedgerAtStartup(t *testing.T) {
-	stateHome := t.TempDir()
-	t.Setenv("XDG_STATE_HOME", stateHome)
-	path := SubscribersStatePath()
+	stateDir := t.TempDir()
+	path := filepath.Join(stateDir, "subscribers.json")
 	if err := os.MkdirAll(filepath.Dir(path), 0o700); err != nil {
 		t.Fatal(err)
 	}
 	if err := os.WriteFile(path, []byte(`{"subscribers":[]}`), 0o600); err != nil {
 		t.Fatal(err)
 	}
-	_, err := New(&Config{}, nil)
+	_, err := New(&Config{}, stateDir, nil)
 	if err == nil || !strings.Contains(err.Error(), "unsupported subscriber state version") {
 		t.Fatalf("startup error = %v", err)
 	}

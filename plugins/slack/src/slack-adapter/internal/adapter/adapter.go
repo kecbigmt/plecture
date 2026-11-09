@@ -5,7 +5,6 @@ import (
 	"fmt"
 	"log/slog"
 	"net/url"
-	"os"
 	"path/filepath"
 	"strings"
 
@@ -37,39 +36,20 @@ type Adapter struct {
 	mentions          *mentionStream
 }
 
-// SubscribersStatePath resolves $XDG_STATE_HOME/slack-adapter/subscribers.json,
-// falling back to ~/.local/state/.../subscribers.json. Empty disables persistence.
-func SubscribersStatePath() string {
-	if stateHome := os.Getenv("XDG_STATE_HOME"); stateHome != "" {
-		return filepath.Join(stateHome, "slack-adapter", "subscribers.json")
-	}
-	home, err := os.UserHomeDir()
-	if err != nil {
-		return ""
-	}
-	return filepath.Join(home, ".local", "state", "slack-adapter", "subscribers.json")
-}
+// slackAPIURL is a variable only so tests can stand in for Slack's API.
+var slackAPIURL = "https://slack.com/api/"
 
-// StreamStatePath resolves $XDG_STATE_HOME/slack-adapter/streams.json,
-// falling back to ~/.local/state/.../streams.json. Empty disables persistence.
-func StreamStatePath() string {
-	if stateHome := os.Getenv("XDG_STATE_HOME"); stateHome != "" {
-		return filepath.Join(stateHome, "slack-adapter", "streams.json")
+func New(cfg *Config, stateDir string, logger *slog.Logger) (*Adapter, error) {
+	subscribersPath, streamsPath := "", ""
+	if stateDir != "" {
+		subscribersPath = filepath.Join(stateDir, "subscribers.json")
+		streamsPath = filepath.Join(stateDir, "streams.json")
 	}
-	home, err := os.UserHomeDir()
-	if err != nil {
-		return ""
-	}
-	return filepath.Join(home, ".local", "state", "slack-adapter", "streams.json")
-}
-
-// New creates a new Adapter.
-func New(cfg *Config, logger *slog.Logger) (*Adapter, error) {
-	broker := NewBroker(SubscribersStatePath(), logger)
+	broker := NewBroker(subscribersPath, logger)
 	if broker.loadErr != nil {
 		return nil, broker.loadErr
 	}
-	options := []slack.Option{}
+	options := []slack.Option{slack.OptionAPIURL(slackAPIURL)}
 	if cfg.SlackAppToken != "" {
 		options = append(options, slack.OptionAppLevelToken(cfg.SlackAppToken))
 	}
@@ -78,7 +58,7 @@ func New(cfg *Config, logger *slog.Logger) (*Adapter, error) {
 	a := &Adapter{
 		cfg:        cfg,
 		api:        api,
-		sessionAPI: newSlackSessionClient(cfg.SlackBotToken, "https://slack.com/api/", nil),
+		sessionAPI: newSlackSessionClient(cfg.SlackBotToken, slackAPIURL, nil),
 		broker:     broker,
 		logger:     logger,
 	}
@@ -108,7 +88,7 @@ func New(cfg *Config, logger *slog.Logger) (*Adapter, error) {
 		a.teamID = resp.TeamID
 		a.botUserID = resp.UserID
 	}
-	a.streamManager = NewStreamManagerWithStatePath(a, a.poster, logger, StreamStatePath())
+	a.streamManager = NewStreamManagerWithStatePath(a, a.poster, logger, streamsPath)
 
 	return a, nil
 }

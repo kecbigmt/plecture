@@ -64,24 +64,32 @@ func TestMentionResourceDeliversAcrossThreadsAndReloadsWatermark(t *testing.T) {
 
 func TestMentionResourceSubscriptionRoutesAndUnsubscribes(t *testing.T) {
 	a := newTestAdapter(&Config{})
-	a.teamID = "T123"
+	a.teamID, a.botUserID = "T123", "UBOT"
 	server := httptest.NewServer(http.HandlerFunc(a.HandleSubscribe))
 	defer server.Close()
-	for _, resource := range []string{"slack://T123/mentions/other", "slack://T123/mentions?channel=C1", "slack://T123/mentions#fragment", "slack://T123:42/mentions"} {
+	for _, resource := range []string{
+		"slack://T123/mentions",
+		"slack://T123/UBOT/mentions/other",
+		"slack://T123/UBOT/mentions?channel=C1",
+		"slack://T123/UBOT/mentions#fragment",
+		"slack://T123:42/UBOT/mentions",
+		"slack://T123/ubot/mentions",
+		"slack://T123//mentions",
+	} {
 		if err := MentionSubscription(context.Background(), server.Client(), server.URL, "subscribe", "one", resource); err == nil {
 			t.Fatalf("accepted invalid resource %q", resource)
 		}
 	}
-	if err := MentionSubscription(context.Background(), server.Client(), server.URL, "subscribe", "one", "slack://T999/mentions"); err == nil {
+	if err := MentionSubscription(context.Background(), server.Client(), server.URL, "subscribe", "one", "slack://T999/UBOT/mentions"); err == nil {
 		t.Fatal("accepted resource for another team")
 	}
-	if err := MentionSubscription(context.Background(), server.Client(), server.URL, "subscribe", "one", "slack://T123/mentions"); err != nil {
+	if err := MentionSubscription(context.Background(), server.Client(), server.URL, "subscribe", "one", "slack://T123/UBOT/mentions"); err != nil {
 		t.Fatal(err)
 	}
 	if got := a.broker.ListMentions(); len(got) != 1 || got[0].SessionName != "one" {
 		t.Fatalf("subscriptions = %+v", got)
 	}
-	if err := MentionSubscription(context.Background(), server.Client(), server.URL, "unsubscribe", "one", "slack://T123/mentions"); err != nil {
+	if err := MentionSubscription(context.Background(), server.Client(), server.URL, "unsubscribe", "one", "slack://T123/UBOT/mentions"); err != nil {
 		t.Fatal(err)
 	}
 	if got := a.broker.ListMentions(); len(got) != 0 {

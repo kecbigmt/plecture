@@ -102,17 +102,22 @@ id   = "thread_dir"
 uses = "official.slack.thread_dir"
 ```
 
-The `mentions` resource matches `slack://<team_id>/mentions`, where
-`team_id` is the Slack workspace ID returned by `auth.test`. Subscribe an
-existing session with `plect subscribe slack://T01234567/mentions --session
-<session-name>`. Every app mention the bot receives through a `message` or
+The `mentions` resource matches `slack://<team_id>/<bot_user_id>/mentions`,
+where `team_id` is the Slack workspace ID and `bot_user_id` the App's bot user
+ID, both as returned by `auth.test`; it names the resource
+`slack/<team_id>-<bot_user_id>-mentions`. The bot user ID keeps two Apps
+installed in one workspace, each with its own adapter (see "One adapter per
+Slack App" in `src/slack-adapter/README.md`), from sharing one resource.
+Subscribe an existing session with `plect subscribe
+slack://T01234567/U01234567/mentions --session <session-name>`. Every app mention the bot receives through a `message` or
 `app_mention` event then appends a
 `user.emit` to that session's event log, including when the session is down.
 Each event includes the thread root, replies since that session's previous
 mention in the thread, and the mention. Its metadata includes `channel_id`,
 `thread_ts`, and `mention_ts`. A thread subscription remains independent; a
-plain reply reaches thread subscribers only. `plect unsubscribe` removes the
-mention subscription, and session destroy removes it automatically.
+plain reply reaches thread subscribers only. The resource's unsubscribe action
+removes the mention subscription, and session destroy removes it
+automatically.
 
 ## Thread contract
 

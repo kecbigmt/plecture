@@ -12,6 +12,7 @@ type subscribeRequest struct {
 	ChannelID      string `json:"channel_id"`
 	SessionName    string `json:"session_name"`
 	TeamID         string `json:"team_id,omitempty"`
+	BotUserID      string `json:"bot_user_id,omitempty"`
 	CatchUpThrough string `json:"catch_up_through,omitempty"`
 	// Released requests carry socket_path; ignore it until one release after v0.2.11.
 	SocketPath string `json:"socket_path,omitempty"`
@@ -285,12 +286,15 @@ func (a *Adapter) handleSubscribePost(w http.ResponseWriter, req *http.Request) 
 			http.Error(w, "invalid mention subscription", http.StatusBadRequest)
 			return
 		}
+		if !a.mentionBotMatches(w, body.BotUserID) {
+			return
+		}
 		sub := a.broker.Subscribe(Subscriber{ThreadTS: mentionSubscriptionKey, SessionName: body.SessionName})
 		w.Header().Set("Content-Type", "application/json")
 		json.NewEncoder(w).Encode(sub)
 		return
 	}
-	if body.ThreadTS == "" || body.ChannelID == "" || body.SessionName == "" || body.TeamID != "" {
+	if body.ThreadTS == "" || body.ChannelID == "" || body.SessionName == "" || body.TeamID != "" || body.BotUserID != "" {
 		http.Error(w, "thread_ts, channel_id, and session_name are required", http.StatusBadRequest)
 		return
 	}
@@ -327,6 +331,9 @@ func (a *Adapter) handleSubscribePost(w http.ResponseWriter, req *http.Request) 
 func (a *Adapter) handleSubscribeDelete(w http.ResponseWriter, req *http.Request) {
 	session := req.URL.Query().Get("session_name")
 	thread := req.URL.Query().Get("thread_ts")
+	if thread == mentionSubscriptionKey && !a.mentionBotMatches(w, req.URL.Query().Get("bot_user_id")) {
+		return
+	}
 	if session == "" {
 		if thread == "" {
 			http.Error(w, "session_name or thread_ts is required", http.StatusBadRequest)
@@ -345,6 +352,18 @@ func (a *Adapter) handleSubscribeDelete(w http.ResponseWriter, req *http.Request
 		a.broker.Unsubscribe(session, thread)
 	}
 	w.WriteHeader(http.StatusNoContent)
+}
+
+func (a *Adapter) mentionBotMatches(w http.ResponseWriter, botUserID string) bool {
+	if a.botUserID == "" {
+		http.Error(w, "this adapter has not learned its bot user id from auth.test", http.StatusServiceUnavailable)
+		return false
+	}
+	if botUserID != a.botUserID {
+		http.Error(w, "mention resource names bot "+strconv.Quote(botUserID)+", but this adapter is bot "+strconv.Quote(a.botUserID), http.StatusConflict)
+		return false
+	}
+	return true
 }
 
 // HandleUnboundMentions handles GET /unbound-mentions: a raw feed of every
