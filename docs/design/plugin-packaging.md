@@ -254,13 +254,17 @@ resident process log rather than a session event log. An explicit
 its executable changes.
 
 Each supervised service receives only its env-file values and plect runtime
-values. Its private state directory is `<data-home>/services/<name>/` with mode
-`0700`, supplied as `PLECT_SERVICE_STATE_DIR`; authoritative per-resource watch
-state lives there. It receives neither the global data home nor config home.
-No service listens for local control requests.
+values. `PLECT_DATA_DIR` names the mode-`0700` directory
+`<data-home>/plugins/<plugin>/` for authoritative service state, such as
+per-resource watch state and once-per-thread denial records. Plect passes it
+only to the service process, never to actions; the service inherits neither
+`XDG_*` nor `HOME` from the supervisor. It receives neither the global data
+home nor config home. Plugins never receive `PLECT_CONFIG_HOME`,
+`PLECT_DATA_HOME`, or `PLECT_CACHE_HOME`. No service listens for local control
+requests.
 Browser content on the same host and other OS users cannot reach a local
 listener; same-user code is outside this boundary. The env file is
-owner-readable, and the JSON config file is private.
+owner-readable, and validated service config contains no secrets.
 
 A service writes JSON-lines `publish` requests to stdout, each with an `id`.
 Its supervising plect writes a result such as
@@ -277,12 +281,12 @@ plugin's services and actions, including `observe`. It holds only disposable
 tokens, ETags, conditional-request state, and rate backoff. Plect never reads
 its contents and may delete the directory wholesale; the plugin handles
 locking. Correctness does not depend on the cache. The service's authoritative
-watch state stays in `PLECT_SERVICE_STATE_DIR`.
+watch state stays in `PLECT_DATA_DIR`.
 
 When a node, channel, or hook runs an executable marked `service = true`,
 plect overlays that service's env-file values on the action's ordinary env
-and supplies its validated JSON config through private
-`PLECT_SERVICE_CONFIG`. Service values win duplicate keys. No declaration for
+and sets `PLECT_SERVICE_CONFIG` to its validated non-secret JSON value.
+Service values win duplicate keys. No declaration for
 that executable is an invocation error naming it. One service per executable
 makes the binding unique. Slack outbound actions call the provider Web API
 directly, with no workflow `base_url` input.
@@ -310,7 +314,7 @@ are removed. Per-mention session creation waits for a concrete use case;
 GitHub query populations retain their `poll` and `subscribe` contract.
 
 The GitHub watcher receives core subscriptions by stdio snapshot and deltas
-and keeps its per-resource watch state in `PLECT_SERVICE_STATE_DIR`. GitHub
+and keeps its per-resource watch state in `PLECT_DATA_DIR`. GitHub
 `observe` remains callable without a watcher service, using its own
 credentials. Both invocations share disposable App token and rate budget
 caches through `PLECT_CACHE_DIR`.

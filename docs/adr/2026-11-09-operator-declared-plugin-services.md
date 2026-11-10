@@ -28,10 +28,10 @@ local control surface or credentials. Code running as the same OS user as
 plect is outside this boundary: it can read that user's files and process
 environments, and containing it requires a separate user or sandbox. Services
 have no local listener; their only control channel is private stdio with the
-plect process that supervises them. Service env files are owner-readable only,
-and `PLECT_SERVICE_CONFIG` names a mode-`0600` file inside the service's private
-state directory. No group- or world-readable
-credential file is an acceptable transport.
+plect process that supervises them. Service env files are owner-readable only;
+validated `[services.config]` contains no secrets and reaches the process as
+JSON in `PLECT_SERVICE_CONFIG`. No group- or world-readable credential file is
+an acceptable transport.
 
 ## Supersession scope
 
@@ -139,10 +139,18 @@ allowed_user_ids = ["U0456"]
 ```
 
 The adapter rejects duplicate `channel_id` values across its bots, so an
-outbound call selects one bot from the thread's channel. Authoritative
-per-resource watch state stays in the private mode-`0700` directory supplied
-as `PLECT_SERVICE_STATE_DIR`. It receives no global data- or config-home path
-and never invokes the plect CLI.
+outbound call selects one bot from the thread's channel. Plect supplies
+`PLECT_DATA_DIR` to the supervised service process only, set to the mode-`0700`
+`<data-home>/plugins/<plugin>/` directory. The data home resolves from
+`--data-home`, then `PLECT_DATA_HOME`, then `$XDG_DATA_HOME/plect`, then
+`~/.local/share/plect`. The directory holds authoritative service state such
+as GitHub per-resource last-seen state and Slack once-per-thread denial
+records. Actions never receive it. The service needs this directory because it
+does not inherit `XDG_*` or `HOME` from the supervisor. It receives no global
+data- or config-home path and never invokes the plect CLI. Plugins receive
+neither `PLECT_CONFIG_HOME`, `PLECT_DATA_HOME`, nor `PLECT_CACHE_HOME`; their
+directory bindings are `PLECT_DATA_DIR` for services and `PLECT_CACHE_DIR` for
+all executable invocations.
 
 Every invocation of a plugin executable, including a supervised service or a
 node, channel, or hook action such as `observe`, receives `PLECT_CACHE_DIR` set
@@ -171,8 +179,8 @@ its provider connection is separate from this local control channel.
 
 An executable marked `service = true` receives its declaration's `env_file`
 entries and validated config on *every* invocation, including node, channel,
-and hook actions. Plect writes the config as JSON to a private file and sets
-`PLECT_SERVICE_CONFIG` to its path. The supervised process receives only its
+and hook actions. Plect sets `PLECT_SERVICE_CONFIG` to the validated config
+JSON itself, which contains no secrets. The supervised process receives only its
 env-file values and plect runtime values. An action invocation keeps its
 ordinary action environment, then overlays that service's env-file values and
 `PLECT_SERVICE_CONFIG`; the service values win on duplicate keys. An action
@@ -309,7 +317,7 @@ The Slack thread resource's `query.subscribe` and the adapter's
 Creating a session for every new mention thread is deferred until a concrete
 use case calls for it. The GitHub watcher learns subscription membership from
 the stdio startup snapshot and deltas and keeps per-resource watch state in
-its private service state directory; it no longer owns `subscriptions.json`.
+`PLECT_DATA_DIR`; it no longer owns `subscriptions.json`.
 Standalone GitHub `observe` remains callable without a watcher service and
 uses its own credentials. Both invocations share disposable App token and rate
 budget caches through `PLECT_CACHE_DIR`.
@@ -335,8 +343,9 @@ Code. It has no resident service declaration.
 The implementation has one stage: the core subscription table, transactional
 task binding and cleanup, source-scoped rows and deduplicated delivery,
 resource-addressed publish, `max_subscribers`, the stdio service protocol,
-service-config passing, plugin-scoped disposable caching, the one-process Slack
-adapter, and the bot-user resource arrive together with removal of the Slack
+service-config passing, plugin-scoped authoritative data and disposable cache
+directories, the one-process Slack adapter, and the bot-user resource arrive
+together with removal of the Slack
 unbound-mention feed. Populations retain their existing contract.
 
 The implementation removes plugin-owned service declarations, resource
