@@ -18,7 +18,7 @@ func writeCatalogManifest(t *testing.T, dir, content string) {
 
 func writeMinimalPlugin(t *testing.T, dir string) {
 	t.Helper()
-	writeManifest(t, dir, "schema_version = 2\nplect_min_version = \"0.1.0\"\n")
+	writeManifest(t, dir, "schema_version = 3\nplect_min_version = \"0.1.0\"\n")
 }
 
 func TestLoadCatalogManifest_Valid(t *testing.T) {

@@ -16,6 +16,7 @@ import (
 	"fmt"
 	"os"
 	"os/exec"
+	"strings"
 	"syscall"
 	"time"
 
@@ -53,6 +54,7 @@ type ExecRequest struct {
 	Dir             string
 	Stdin           []byte
 	Env             []string
+	PluginEnv       []string
 	IsolateDataHome bool
 }
 
@@ -129,6 +131,17 @@ func runHostCmd(ctx context.Context, req ExecRequest, outBuf, errBuf *bytes.Buff
 		}
 	}
 	cmd.Env = append(base, req.Env...)
+	if req.PluginEnv != nil {
+		clean := cmd.Env[:0]
+		for _, kv := range cmd.Env {
+			key, _, _ := strings.Cut(kv, "=")
+			if key == "PLECT_CONFIG_HOME" || key == "PLECT_DATA_HOME" || key == "PLECT_CACHE_HOME" || key == "PLECT_DATA_DIR" || key == "PLECT_CACHE_DIR" {
+				continue
+			}
+			clean = append(clean, kv)
+		}
+		cmd.Env = append(clean, req.PluginEnv...)
+	}
 	// Put the child in its own process group and, on cancellation, kill the
 	// whole group rather than just the direct child. A shell script's own
 	// children (e.g. "sleep 5" spawned by "bash -c") don't die with their
@@ -175,18 +188,34 @@ var defaultExecutor Executor = hostExecutor{}
 // isolation policy (see docs/design/sqlite-persistence.md, "Data-home
 // resolution").
 func requestFor(execution *lang.Execution, workDir string, env []string, isolateDataHome bool) ExecRequest {
-	return ExecRequest{Argv: execution.Argv, Stdin: execution.Stdin, Dir: workDir, Env: env, IsolateDataHome: isolateDataHome}
+	return ExecRequest{Argv: execution.Argv, Stdin: execution.Stdin, Dir: workDir, Env: env, PluginEnv: execution.PluginEnv, IsolateDataHome: isolateDataHome}
 }
 
 // ExecHook runs one resolved execution through the swappable defaultExecutor
 // rather than the pinned alwaysHostExecutor — see the two vars' docs. env
 // carries a nesting chain's KEY=VALUE additions; empty for a plain task.
 func ExecHook(ctx context.Context, execution *lang.Execution, workDir string, env ...string) (stdout, stderr []byte, err error) {
-	return defaultExecutor.Run(ctx, requestFor(execution, workDir, env, true))
+	req := requestFor(execution, workDir, env, true)
+	if execution.Prepare != nil {
+		private, err := execution.Prepare()
+		if err != nil {
+			return nil, nil, err
+		}
+		req.PluginEnv = append(req.PluginEnv, private...)
+	}
+	return defaultExecutor.Run(ctx, req)
 }
 
 // RunHook runs one resolved execution on the host, unconditionally: the path
 // resource observe/finalize take.
 func RunHook(ctx context.Context, execution *lang.Execution, workDir string) (stdout, stderr []byte, err error) {
-	return alwaysHostExecutor.Run(ctx, requestFor(execution, workDir, nil, false))
+	req := requestFor(execution, workDir, nil, false)
+	if execution.Prepare != nil {
+		private, err := execution.Prepare()
+		if err != nil {
+			return nil, nil, err
+		}
+		req.PluginEnv = append(req.PluginEnv, private...)
+	}
+	return alwaysHostExecutor.Run(ctx, req)
 }

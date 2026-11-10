@@ -27,7 +27,7 @@ func writeInitCatalogFixture(t *testing.T, pluginPaths ...string) string {
 		if err := os.MkdirAll(pluginDir, 0o755); err != nil {
 			t.Fatal(err)
 		}
-		content := "schema_version = 2\nplect_min_version = \"0.0.0\"\n"
+		content := "schema_version = 3\nplect_min_version = \"0.0.0\"\n"
 		if err := os.WriteFile(filepath.Join(pluginDir, "plugin.toml"), []byte(content), 0o644); err != nil {
 			t.Fatal(err)
 		}
@@ -54,7 +54,7 @@ func writeInitCatalogFixtureWithSubdir(t *testing.T, dirName string, pluginPaths
 		if err := os.MkdirAll(pluginDir, 0o755); err != nil {
 			t.Fatal(err)
 		}
-		content := "schema_version = 2\nplect_min_version = \"0.0.0\"\n"
+		content := "schema_version = 3\nplect_min_version = \"0.0.0\"\n"
 		if err := os.WriteFile(filepath.Join(pluginDir, "plugin.toml"), []byte(content), 0o644); err != nil {
 			t.Fatal(err)
 		}

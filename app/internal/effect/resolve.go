@@ -16,7 +16,8 @@ import (
 // Capabilities owns its own session/task-DAG context; this package never
 // sees that context, only the two closures derived from it.
 type Capabilities struct {
-	Bin func(ref string) (string, error)
+	Bin        func(ref string) (string, error)
+	BinRuntime func(path string) (lang.BinRuntime, error)
 	// Terminal resolves one terminal verb into the shell command a
 	// consuming script runs. dir is the private run directory Resolve
 	// materializes for this resolution, threaded through so a
@@ -31,7 +32,7 @@ type Capabilities struct {
 // a bare lang.Eval (rather than a full Resolve) does not have to re-derive
 // this wiring itself.
 func (c Capabilities) Eval(roots lang.Roots, dir string) lang.Eval {
-	e := lang.Eval{Roots: roots, Bin: c.Bin}
+	e := lang.Eval{Roots: roots, Bin: c.Bin, BinRuntime: c.BinRuntime}
 	if c.Terminal != nil {
 		e.Terminal = func(verb string) (string, error) { return c.Terminal(dir, verb) }
 	}

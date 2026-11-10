@@ -38,17 +38,21 @@ schema_version = 2
 plugins = ["svc"]
 `)
 	writeIntegrationFile(t, filepath.Join(catalogDir, "svc", "plugin.toml"), `
-schema_version = 2
+schema_version = 3
 plect_min_version = "0.0.0"
 
 [[executables]]
 name = "svc"
 path = "bin/svc"
-
-[[services]]
-name = "svc"
-executable = "svc"
+service = true
+[executables.config_schema]
+type = "object"
 `)
+	envFile := filepath.Join(tmpHome, "svc.env")
+	if err := os.WriteFile(envFile, nil, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	writeIntegrationFile(t, filepath.Join(tmpHome, ".config", "plect", "services", "svc.toml"), "[[services]]\nname = \"svc\"\nexecutable = \"local/svc/svc\"\nenv_file = \""+envFile+"\"\n")
 
 	writeIntegrationFile(t, filepath.Join(tmpHome, ".config", "plect", "catalogs.toml"), `
 schema_version = 2
@@ -66,7 +70,7 @@ plugins = ["svc"]
 	go sup.Run(ctx)
 
 	waitFor(t, 2*time.Second, func() bool {
-		st, ok := sup.Status.Get("local/svc/svc")
+		st, ok := sup.Status.Get("svc")
 		return ok && st.Running
 	})
 }

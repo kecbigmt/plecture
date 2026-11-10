@@ -28,7 +28,7 @@ schema_version = 2
 plugins = ["okf"]
 `)
 	writeFile(t, filepath.Join(catalogDir, "okf", "plugin.toml"), `
-schema_version = 2
+schema_version = 3
 plect_min_version = "0.0.0"
 `)
 	writeFile(t, filepath.Join(catalogDir, "okf", "config", "tasks", "okf.toml"), `
@@ -80,7 +80,7 @@ schema_version = 2
 plugins = ["okf"]
 `)
 	writeFile(t, filepath.Join(catalogDir, "okf", "plugin.toml"), `
-schema_version = 2
+schema_version = 3
 plect_min_version = "0.0.0"
 `)
 
@@ -133,7 +133,7 @@ schema_version = 2
 plugins = ["okf"]
 `)
 	writeFile(t, filepath.Join(catalogDir, "okf", "plugin.toml"), `
-schema_version = 2
+schema_version = 3
 plect_min_version = "0.0.0"
 `)
 

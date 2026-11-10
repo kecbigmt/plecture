@@ -1,4 +1,4 @@
-schema_version = 2
+schema_version = 3
 version = "0.1.0"
 # No plect release has been tagged yet (pre-1.0, no version tags exist), and
 # every source build reports itself as "0.0.0-dev" — a nonzero floor here
@@ -21,6 +21,10 @@ build = "go -C src build -o ../bin/github-issue-pr ./cmd/github-issue-pr"
 name = "github-watcher"
 path = "bin/github-watcher"
 build = "go -C src build -o ../bin/github-watcher ./cmd/github-watcher"
+service = true
+
+[executables.config_schema]
+type = "object"
 
 # Verifies GitHub webhook deliveries and streams matching pull-request
 # appearances. Not declared under [[services]]: exposing its endpoint and
@@ -62,9 +66,3 @@ path = "scripts/gh-app-guard"
 # single GitHub App installation instead, and fails startup loud if that
 # configuration is incomplete or the mint fails, rather than staying
 # process-healthy with every fetch dying.
-[[services]]
-name = "github-watcher"
-executable = "github-watcher"
-args = ["serve"]
-restart = "on-failure"
-health = { type = "process" }

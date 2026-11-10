@@ -11,7 +11,11 @@ import (
 // DefaultCacheRoot returns the root resolved catalog snapshots are
 // materialized under (see cachehome.Resolve).
 func DefaultCacheRoot() (string, error) {
-	return cachehome.Resolve()
+	root, err := cachehome.Resolve()
+	if err != nil {
+		return "", err
+	}
+	return filepath.Join(root, "catalogs"), nil
 }
 
 // SourceDigest is the content-addressing key for a catalog's cache

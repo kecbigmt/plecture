@@ -1800,64 +1800,12 @@
               },
               "build": {
                 "type": "string"
-              }
-            }
-          }
-        },
-        "services": {
-          "type": "array",
-          "items": {
-            "type": "object",
-            "additionalProperties": false,
-            "required": [
-              "name",
-              "executable"
-            ],
-            "properties": {
-              "name": {
-                "type": "string"
               },
-              "executable": {
-                "$ref": "#/$defs/executableName"
+              "service": {
+                "type": "boolean"
               },
-              "args": {
-                "type": "array",
-                "items": {
-                  "type": "string"
-                }
-              },
-              "env": {
-                "type": "object",
-                "additionalProperties": {
-                  "type": "string"
-                }
-              },
-              "required_env": {
-                "type": "array",
-                "items": {
-                  "type": "string"
-                }
-              },
-              "restart": {
-                "enum": [
-                  "never",
-                  "on-failure",
-                  "always"
-                ]
-              },
-              "health": {
-                "type": "object",
-                "additionalProperties": false,
-                "required": [
-                  "type"
-                ],
-                "properties": {
-                  "type": {
-                    "enum": [
-                      "process"
-                    ]
-                  }
-                }
+              "config_schema": {
+                "type": "object"
               }
             }
           }
