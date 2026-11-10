@@ -258,7 +258,8 @@ values. `PLECT_DATA_DIR` names the mode-`0700` directory
 `<data-home>/plugins/<plugin>/` for authoritative service state, such as
 per-resource watch state and once-per-thread denial records. Plect passes it
 only to the service process, never to actions; the service inherits neither
-`XDG_*` nor `HOME` from the supervisor. It receives neither the global data
+`XDG_*` nor `HOME` from the supervisor. Plect does not rewrite any `XDG_*`
+values the service's env file supplies. It receives neither the global data
 home nor config home. Plugins never receive `PLECT_CONFIG_HOME`,
 `PLECT_DATA_HOME`, or `PLECT_CACHE_HOME`. No service listens for local control
 requests.
@@ -266,7 +267,10 @@ Browser content on the same host and other OS users cannot reach a local
 listener; same-user code is outside this boundary. The env file is
 owner-readable, and validated service config contains no secrets.
 
-A service writes JSON-lines `publish` requests to stdout, each with an `id`.
+A service first reads `{"op":"config","config":{...}}` from its supervisor
+on stdin, before any other traffic. The value is validated non-secret
+`[services.config]`. It writes JSON-lines `publish` requests to stdout, each
+with an `id`.
 Its supervising plect writes a result such as
 `{"op":"published","id":"request-1","delivered":1}` or an error such as
 `{"op":"error","id":"request-1","code":...,"message":...}` on stdin,
@@ -285,8 +289,9 @@ watch state stays in `PLECT_DATA_DIR`.
 
 When a node, channel, or hook runs an executable marked `service = true`,
 plect overlays that service's env-file values on the action's ordinary env
-and sets `PLECT_SERVICE_CONFIG` to its validated non-secret JSON value.
-Service values win duplicate keys. No declaration for
+and exposes validated config only through explicit argument, stdin, or shell
+binding references such as `{ from = "service.config" }`. No config environment
+variable is set. Service env-file values win duplicate keys. No declaration for
 that executable is an invocation error naming it. One service per executable
 makes the binding unique. Slack outbound actions call the provider Web API
 directly, with no workflow `base_url` input.

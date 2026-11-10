@@ -47,6 +47,10 @@ assignees = { type = "string" }
 
 `args` elements are values: literals, projections, computations, JSON
 serializations, or capability tags.
+When `bin` names a service-marked executable, an explicit argument may read
+its validated non-secret config with `{ from = "service.config" }` or a
+declared sub-path. Plect supplies no config environment variable. The same
+projection is available in `stdin` and shell `bind` values for that executable.
 
 `stdin` writes one value to the process's standard input instead of its argv.
 It exists for data that must not be visible in the process table, and for data

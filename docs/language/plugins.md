@@ -94,8 +94,10 @@ Slack schema requires a nonempty `bots` array; each bot requires string
 in `env_file`; their values remain there. The adapter rejects duplicate
 `channel_id` values across bots. On every service executable invocation,
 including a node, channel, or hook action, plect overlays the service env
-values on the action's ordinary environment and sets `PLECT_SERVICE_CONFIG`
-to the validated non-secret config JSON itself. Service values win
+values on the action's ordinary environment. The service reads its validated
+non-secret config as the first stdio message; actions access it only through
+explicit argument, stdin, or shell binding references to `service.config` or
+a sub-path. No config environment variable is set. Service env-file values win
 duplicate keys; an undeclared service executable fails invocation by name.
 
 `restart` defaults to `on-failure` and may be `never`. `health` defaults to
@@ -105,19 +107,20 @@ mode-`0700` `<data-home>/plugins/<plugin>/` directory for authoritative state;
 actions never receive it. The data home resolves from `--data-home`, then
 `PLECT_DATA_HOME`, then `$XDG_DATA_HOME/plect`, then `~/.local/share/plect`.
 The service inherits neither `XDG_*` nor `HOME` from the supervisor and gets
-no global data or config home. Plugins receive none of `PLECT_CONFIG_HOME`,
-`PLECT_DATA_HOME`, or `PLECT_CACHE_HOME`. The service writes JSON-lines
-`publish` requests to stdout; its supervising plect
-echoes each request's required `id` in a result such as
+no global data or config home. Plect leaves any `XDG_*` values in the env file
+untouched. Plugins receive none of `PLECT_CONFIG_HOME`, `PLECT_DATA_HOME`, or
+`PLECT_CACHE_HOME`. The first message on the service's stdin is
+`{"op":"config","config":{...}}`, before any other traffic. The service
+writes JSON-lines `publish` requests to stdout; its supervising plect echoes
+each request's required `id` in a result such as
 `{"op":"published","id":"request-1","delivered":1}` or an error such as
 `{"op":"error","id":"request-1","code":...,"message":...}`. It sends a full
 `subscriptions` snapshot to stdin at start, followed by add/remove deltas;
 these notifications carry no `id`. Logs go to stderr. It never calls the
 plect CLI. No local control listener exists. Browser content on the same host
 and other OS users cannot reach one; same-user code is outside this boundary.
-The env file is owner-readable and `PLECT_SERVICE_CONFIG` contains only
-validated non-secret JSON. Slack outbound actions call the provider Web API
-directly.
+The env file is owner-readable; validated service config contains no secrets.
+Slack outbound actions call the provider Web API directly.
 
 Every plugin executable invocation receives `PLECT_CACHE_DIR` set to
 `<cache-home>/plugins/<plugin>/`, including services and node, channel, and

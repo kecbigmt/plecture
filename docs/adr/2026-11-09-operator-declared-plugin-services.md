@@ -29,9 +29,9 @@ plect is outside this boundary: it can read that user's files and process
 environments, and containing it requires a separate user or sandbox. Services
 have no local listener; their only control channel is private stdio with the
 plect process that supervises them. Service env files are owner-readable only;
-validated `[services.config]` contains no secrets and reaches the process as
-JSON in `PLECT_SERVICE_CONFIG`. No group- or world-readable credential file is
-an acceptable transport.
+validated `[services.config]` contains no secrets and reaches the service as
+the first stdio message. No group- or world-readable credential file is an
+acceptable transport.
 
 ## Supersession scope
 
@@ -146,11 +146,12 @@ outbound call selects one bot from the thread's channel. Plect supplies
 `~/.local/share/plect`. The directory holds authoritative service state such
 as GitHub per-resource last-seen state and Slack once-per-thread denial
 records. Actions never receive it. The service needs this directory because it
-does not inherit `XDG_*` or `HOME` from the supervisor. It receives no global
+does not inherit the supervisor's environment. Plect does not rewrite any
+`XDG_*` values supplied by the service's env file. It receives no global
 data- or config-home path and never invokes the plect CLI. Plugins receive
 neither `PLECT_CONFIG_HOME`, `PLECT_DATA_HOME`, nor `PLECT_CACHE_HOME`; their
-directory bindings are `PLECT_DATA_DIR` for services and `PLECT_CACHE_DIR` for
-all executable invocations.
+only plect-provided environment bindings are `PLECT_DATA_DIR` for services and
+`PLECT_CACHE_DIR` for all executable invocations.
 
 Every invocation of a plugin executable, including a supervised service or a
 node, channel, or hook action such as `observe`, receives `PLECT_CACHE_DIR` set
@@ -165,7 +166,10 @@ membership and the service's authoritative per-resource watch state are never
 shared through the cache. The GitHub watcher and standalone `observe` share an
 App token cache and rate budget there.
 
-The service writes JSON-lines requests to stdout, including
+The first message plect writes to a service's stdin is
+`{"op":"config","config":{...}}`, carrying the validated non-secret
+`[services.config]`. No other traffic precedes it. The service writes
+JSON-lines requests to stdout, including
 `{"op":"publish","id":"request-1","resource":...,"type":...,"summary":...,"body":...,"metadata":...}`.
 Every request carries an `id`. Its supervising plect process writes replies
 to the service's stdin with the same `id`: a result such as
@@ -178,12 +182,13 @@ Nothing calls into the service;
 its provider connection is separate from this local control channel.
 
 An executable marked `service = true` receives its declaration's `env_file`
-entries and validated config on *every* invocation, including node, channel,
-and hook actions. Plect sets `PLECT_SERVICE_CONFIG` to the validated config
-JSON itself, which contains no secrets. The supervised process receives only its
-env-file values and plect runtime values. An action invocation keeps its
-ordinary action environment, then overlays that service's env-file values and
-`PLECT_SERVICE_CONFIG`; the service values win on duplicate keys. An action
+entries on *every* invocation, including node, channel, and hook actions.
+The supervised process receives its validated config through the first stdio
+message. An action receives config only when its definition explicitly refers
+to `service.config` or a sub-path in an argument, stdin value, or shell binding,
+using the ordinary value mechanism. No config environment variable is set.
+An action invocation keeps its ordinary action environment, then overlays the
+service's env-file values; the service values win on duplicate keys. An action
 invoking a service-marked executable without a declaration fails with an
 error naming the executable. Since one executable can name only one service,
 the binding is unambiguous. Slack thread creation, posts, status, and
@@ -363,6 +368,13 @@ and failure paths. The breaking change ships with a backup-first procedure in
 `subscription_retries`, and `pending_delivery.json` into the new subscription
 table, or drops a row with a logged reason. It ships in the same implementation
 PR; there is no compatibility shim.
+
+`PLECT_CACHE_HOME` and `--cache-home` name plect's cache root, with catalog
+snapshots under its `catalogs/` child and disposable plugin caches under
+`plugins/<plugin>/`. They formerly named the catalog cache directory itself.
+Operators setting either override point it one level higher; the backup-first
+procedure is in [the cache-home migration](../migrations/plugin-cache-home-root.md).
+No compatibility path interprets the old value.
 
 ## Alternatives considered
 

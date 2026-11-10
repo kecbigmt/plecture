@@ -69,18 +69,22 @@ including a terminal-multiplexer pane's long-lived shell) and
 `InheritableEnv` so an observer or query may read `XDG_DATA_HOME` for its own
 state. `app/internal/pluginservice` builds a supervised service's environment
 from its declared `env_file` and plect runtime values only. It does not inherit
-the supervisor's `XDG_*`, `HOME`, or other environment entries. It receives
-`PLECT_DATA_DIR` set to
+the supervisor's `XDG_*`, `HOME`, or other environment entries, and does not
+rewrite any `XDG_*` values in the env file. It receives `PLECT_DATA_DIR` set to
 `<data-home>/plugins/<plugin>/`, a mode-`0700` directory for authoritative
 service state, only in its supervised process. Actions never receive it.
 Plugins receive none of `PLECT_CONFIG_HOME`, `PLECT_DATA_HOME`, or
-`PLECT_CACHE_HOME`. A service exchanges
-publish requests with IDs, correlated replies or errors, and subscription
-snapshots/deltas only with its supervising plect process over JSON-lines stdio.
+`PLECT_CACHE_HOME`. A service first receives validated non-secret config as
+`{"op":"config","config":{...}}` on stdin, before any other traffic. It then
+exchanges publish requests with IDs, correlated replies or errors, and
+subscription snapshots/deltas only with its supervising plect process over
+JSON-lines stdio.
 An action that invokes a service-marked executable keeps its ordinary action
-base and overlays that service's env-file entries and the validated non-secret
-config JSON in `PLECT_SERVICE_CONFIG`; service entries win on duplicate keys.
-This gives an action no global data-home binding from the service.
+base and overlays that service's env-file entries; service entries win on
+duplicate keys. Validated config reaches the action only through an explicit
+argument, stdin, or shell binding reference to `service.config` or a sub-path.
+No config environment variable is set. This gives an action no global
+data-home binding from the service.
 
 Every plugin executable invocation receives `PLECT_CACHE_DIR` for its plugin's
 mode-`0700` disposable cache. The directory is under
