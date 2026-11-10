@@ -3,7 +3,6 @@ package watcher
 import (
 	"bufio"
 	"bytes"
-	"context"
 	"encoding/json"
 	"fmt"
 	"log/slog"
@@ -18,8 +17,6 @@ import (
 	"strings"
 	"time"
 
-	"github.com/kecbigmt/plecture/contracts/event"
-	"github.com/kecbigmt/plecture/plugins/github/src/internal/procexec"
 	"github.com/kecbigmt/plecture/plugins/github/src/internal/ratebudget"
 )
 
@@ -27,7 +24,6 @@ import (
 // generic event.Source/event.Type fields — the shared contracts/event
 // package stays provider-agnostic and does not know these names.
 const (
-	sourceGitHub     = "github"
 	typeGitHubPrefix = "github." // github.<change type>
 )
 
@@ -97,27 +93,13 @@ type WatchStore interface {
 	ResetFailStreak(sessionName, resource string) error
 	GetCache(key string) (etag, body string, ok bool)
 	SetCache(key, etag, body string) error
-	UnsubscribeResource(sessionName, resource string) error
 }
 
 type Poller struct {
-	Store  WatchStore
-	Logger *slog.Logger
-	// Bus, when set, is the plect event bus the watcher publishes github.* events
-	// to (the P4 delivery path). When set it takes precedence over NotifyURL:
-	// the plect session dispatcher, not POST /notify, fans the change out through
-	// workflow channels. Leaving it nil keeps the legacy /notify path.
-	Bus       *event.Client
-	NotifyURL string // slack-adapter /notify endpoint; empty disables delivery
-	GhBin     string // gh binary; default "gh"
-	PlectBin  string // plect binary Sweep uses to list live sessions; default "plect"
-	// PlectListTimeout bounds Sweep's `plect ls --json` call; default
-	// defaultPlectListTimeout. Exposed mainly for tests.
-	PlectListTimeout time.Duration
-	// Runner executes Sweep's `plect ls --json` subprocess. Defaults to
-	// procexec.Default (real process, context-bounded — see plectListTimeout).
-	Runner procexec.Runner
-	HTTP   *http.Client
+	Store           WatchStore
+	Logger          *slog.Logger
+	PublishResource func(session, resource, eventType, summary string, metadata map[string]string) error
+	GhBin           string // gh binary; default "gh"
 	// Guard is the shared cross-process GitHub API rate budget:
 	// every gh api call below checks it before running and reports 403/429
 	// responses to it, so a burst hit by one poll tick backs off every other
@@ -134,13 +116,6 @@ func (p *Poller) gh() string {
 		return p.GhBin
 	}
 	return "gh"
-}
-
-func (p *Poller) httpClient() *http.Client {
-	if p.HTTP != nil {
-		return p.HTTP
-	}
-	return &http.Client{Timeout: 10 * time.Second}
 }
 
 func (p *Poller) guard() *ratebudget.Guard {
@@ -175,10 +150,17 @@ func (p *Poller) Tick() {
 	sort.Strings(names)
 
 	fetched := map[string]*Observed{} // fetch key → observation (nil = fetch failed)
+	processedResources := map[string]bool{}
 	for _, name := range names {
 		sub := subs[name]
 		if sub == nil {
 			continue
+		}
+		if p.PublishResource != nil {
+			if processedResources[sub.Resource] {
+				continue
+			}
+			processedResources[sub.Resource] = true
 		}
 		key := fetchKey(sub)
 		obs, ok := fetched[key]
@@ -633,9 +615,6 @@ func classifyCheck(c statusCheck) string {
 	}
 }
 
-// apply diffs the observation against the subscription's baseline, notifies the
-// delivery path, persists the new baseline, and — once the resource has
-// reached a terminal state — drops the subscription.
 func (p *Poller) apply(sub *Subscription, obs *Observed) {
 	current := outputsFor(obs)
 	changes := diff(sub.Last, current)
@@ -655,29 +634,6 @@ func (p *Poller) apply(sub *Subscription, obs *Observed) {
 		p.Logger.Info("observed github change", "session", sub.SessionName, "keys", sortedKeys(changes))
 	}
 
-	// A closed/merged resource can never produce another meaningful
-	// transition. Dropping it here — the moment it's observed, whether or
-	// not this tick also carried a diff — is what actually bounds the
-	// registry's steady-state size; a periodic sweep would leave it polling
-	// (and warn-spamming) until the daemon's next restart.
-	if !isTerminalState(obs) {
-		return
-	}
-	if err := p.Store.UnsubscribeResource(sub.SessionName, sub.Resource); err != nil {
-		p.Logger.Warn("drop terminal subscription", "session", sub.SessionName, "resource", sub.Resource, "error", err)
-		return
-	}
-	p.Logger.Info("subscription dropped: resource reached a terminal state", "session", sub.SessionName, "resource", sub.Resource, "state", obs.State)
-}
-
-// isTerminalState reports whether obs's own resource (not a linked PR — an
-// issue subscription that happens to link a merged PR may still want issue
-// updates) has reached a state nothing further can change.
-func isTerminalState(obs *Observed) bool {
-	if obs.Kind == "pull" {
-		return obs.State == "closed" || obs.State == "merged"
-	}
-	return obs.State == "closed"
 }
 
 // outputsFor flattens an observation into the value set used for change
@@ -799,67 +755,12 @@ func shortSHA(sha string) string {
 	return sha
 }
 
-// notify delivers one change. With Bus set it publishes a github.* event to the
-// plect event bus (P4); otherwise it POSTs to slack-adapter's /notify (legacy).
-// Either way the resulting Slack-thread + channel-server delivery is the same;
-// the bus path just removes the direct adapter coupling (and the hook chain).
 func (p *Poller) notify(sub *Subscription, c change) {
-	if p.Bus != nil {
-		p.publish(sub, c)
+	if p.PublishResource == nil {
 		return
 	}
-	if p.NotifyURL == "" {
-		return
-	}
-	body, _ := json.Marshal(map[string]any{
-		"session_name":          sub.SessionName,
-		"change_type":           c.Type,
-		"summary":               c.Summary,
-		"url":                   sub.Resource,
-		"notify_channel_server": true,
-		"notify_slack":          true,
-	})
-	resp, err := p.httpClient().Post(p.NotifyURL, "application/json", bytes.NewReader(body))
-	if err != nil {
-		p.Logger.Warn("notify failed", "session", sub.SessionName, "error", err)
-		return
-	}
-	defer resp.Body.Close()
-	if resp.StatusCode >= 300 {
-		p.Logger.Warn("notify rejected", "session", sub.SessionName, "status", resp.StatusCode)
-	}
-}
-
-// publish appends a github.<change_type> event to the session's bus log. The
-// type suffix carries the change kind (the slack-adapter subscriber recovers it
-// and applies the same emoji/"[GitHub …]" framing the old /notify did); the
-// resource URL rides in metadata so a session funneling several PRs identifies
-// which one changed. Direction is inbound — the origin
-// (GitHub) is outside this session, the same "external origin" rule
-// service.EventPublish applies via PLECT_SESSION_NAME — so a quiet standing
-// goal's tick backoff resets when a subscribed resource changes. A
-// publish failure is logged, not fatal: the baseline still advances, matching
-// the at-most-once /notify behavior (the durable log, not a retry, is the
-// safety net).
-//
-// The payload is intentionally minimal — type, summary, metadata.url,
-// metadata.resource — and carries no other structured facts
-// 2): the event is a trigger, not the source of truth. Consumers re-read
-// current values from resource observe / dynamic outputs, never from this
-// payload.
-func (p *Poller) publish(sub *Subscription, c change) {
-	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
-	defer cancel()
-	_, _, err := p.Bus.Publish(ctx, event.Event{
-		SessionName: sub.SessionName,
-		Type:        typeGitHubPrefix + c.Type,
-		Source:      sourceGitHub,
-		Direction:   event.Inbound,
-		Summary:     c.Summary,
-		Metadata:    map[string]string{"url": sub.Resource, "resource": sub.Resource},
-	})
-	if err != nil {
-		p.Logger.Warn("bus publish failed", "session", sub.SessionName, "type", c.Type, "error", err)
+	if err := p.PublishResource(sub.SessionName, sub.Resource, typeGitHubPrefix+c.Type, c.Summary, map[string]string{"url": sub.Resource, "resource": sub.Resource}); err != nil {
+		p.Logger.Warn("publish resource failed", "resource", sub.Resource, "type", c.Type, "error", err)
 	}
 }
 

@@ -75,3 +75,13 @@ func TestSubscriptionDeltasReportAddedAndRemovedRows(t *testing.T) {
 		t.Fatalf("delta = %+v", delta)
 	}
 }
+
+func TestSubscriptionDeltasReportUpdatedInputs(t *testing.T) {
+	before := persistence.Subscription{SessionID: "s1", Session: "work", Resource: contract.Resource{ID: "r1", Type: "issue"}, Source: "runtime", InputsJSON: `{"branch":"old"}`}
+	after := before
+	after.InputsJSON = `{"branch":"new"}`
+	delta := subscriptionDeltas([]persistence.Subscription{before}, []persistence.Subscription{after})["issue"]
+	if len(delta.remove) != 1 || len(delta.add) != 1 || delta.remove[0].InputsJSON != before.InputsJSON || delta.add[0].InputsJSON != after.InputsJSON {
+		t.Fatalf("updated inputs delta = %+v", delta)
+	}
+}
