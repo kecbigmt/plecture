@@ -110,11 +110,7 @@ func mergeTasks(store *state.Store, sessionName string, session *domain.Session)
 }
 
 func mergeTasksWithSubscriptions(cfg *config.Config, store *state.Store, sessionName string, session *domain.Session, subscriptions map[string]*contract.Resource) error {
-	var resources []contract.Resource
-	for _, resource := range distinctResources(subscriptions) {
-		resources = append(resources, *resource)
-	}
-	if err := store.UpdateWithSubscriptionRetries(sessionName, func(s *domain.Session) error {
+	if err := store.Update(sessionName, func(s *domain.Session) error {
 		if s.Nodes == nil {
 			s.Nodes = make(map[string]*contract.TaskState)
 		}
@@ -129,7 +125,7 @@ func mergeTasksWithSubscriptions(cfg *config.Config, store *state.Store, session
 		}
 		s.UpdatedAt = session.UpdatedAt
 		return nil
-	}, retrySubscribe, resources); err != nil {
+	}); err != nil {
 		return err
 	}
 	return refreshNodeIdentities(store, sessionName, session)

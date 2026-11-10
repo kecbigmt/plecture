@@ -25,7 +25,7 @@ var kindFields = map[Kind]map[string]bool{
 		"inputs_schema", "inputs_schema_file", "max_up_children", "name",
 		"nodes", "outputs", "outputs_schema", "populations", "resource", "tick", "workdir"),
 	KindResource: fieldSet(
-		"finalize", "match", "name", "observe", "query", "state_schema", "state_schema_file", "subscribe", "unsubscribe", "inputs_schema"),
+		"finalize", "match", "name", "observe", "query", "state_schema", "state_schema_file", "max_subscribers", "inputs_schema"),
 }
 
 // retiredWorkflowFields are the workflow fields that named a workspace

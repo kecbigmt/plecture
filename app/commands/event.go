@@ -28,12 +28,13 @@ var (
 	eventLimit     int
 	eventSubtree   string
 
-	evPubType    string
-	evPubSource  string
-	evPubDir     string
-	evPubSummary string
-	evPubBody    string
-	evPubMeta    []string
+	evPubType     string
+	evPubSource   string
+	evPubDir      string
+	evPubSummary  string
+	evPubBody     string
+	evPubMeta     []string
+	evPubResource string
 )
 
 var eventCmd = &cobra.Command{
@@ -108,10 +109,15 @@ var eventShowCmd = &cobra.Command{
 }
 
 var eventPublishCmd = &cobra.Command{
-	Use:   "publish <url|session>",
-	Short: "Publish an event to a session",
-	Long:  "Publish an event to a session. The target session must already exist; publishing to an unknown name errors rather than creating one.",
-	Args:  cobra.ExactArgs(1),
+	Use:   "publish [url|session]",
+	Short: "Publish an event to a session or resource subscribers",
+	Long:  "Publish an event to a session, or use --resource to deliver once to each subscribed session.",
+	Args: func(cmd *cobra.Command, args []string) error {
+		if evPubResource != "" && len(args) == 0 || evPubResource == "" && len(args) == 1 {
+			return nil
+		}
+		return fmt.Errorf("pass one session or --resource <id>")
+	},
 	RunE: func(cmd *cobra.Command, args []string) error {
 		cfg, err := config.Load()
 		if err != nil {
@@ -122,14 +128,26 @@ var eventPublishCmd = &cobra.Command{
 		if err != nil {
 			return err
 		}
-		ev, err := service.EventPublish(cfg, store, args[0], service.EventPublishParams{
+		params := service.EventPublishParams{
 			Type:      evPubType,
 			Source:    evPubSource,
 			Direction: event.Direction(evPubDir),
 			Summary:   evPubSummary,
 			Body:      evPubBody,
 			Metadata:  meta,
-		})
+		}
+		if evPubResource != "" {
+			count, err := service.EventPublishResource(cfg, store, evPubResource, params)
+			if err != nil {
+				return err
+			}
+			if eventJSON {
+				return printJSON(map[string]any{"delivered": count})
+			}
+			fmt.Fprintf(cmd.OutOrStdout(), "Delivered to %d sessions\n", count)
+			return nil
+		}
+		ev, err := service.EventPublish(cfg, store, args[0], params)
 		if err != nil {
 			return err
 		}
@@ -276,6 +294,7 @@ func init() {
 	eventListCmd.Flags().StringVar(&eventSubtree, "subtree", "", "Cross-session view: list events for the session tree rooted at this url|session (root + descendants), in time order (no session arg)")
 
 	eventPublishCmd.Flags().StringVar(&evPubType, "type", "", "Event type (required, e.g. user.emit)")
+	eventPublishCmd.Flags().StringVar(&evPubResource, "resource", "", "Deliver to sessions subscribed to this resource")
 	eventPublishCmd.Flags().StringVar(&evPubSource, "source", "", "Event source (default: cli)")
 	eventPublishCmd.Flags().StringVar(&evPubDir, "direction", "", "Direction (inbound|outbound|internal)")
 	eventPublishCmd.Flags().StringVar(&evPubSummary, "summary", "", "One-line summary")

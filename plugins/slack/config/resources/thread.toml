@@ -14,16 +14,6 @@ type = "exec"
 bin  = "slack-adapter"
 args = ["resource", "observe", "--resource", { from = "resource.id" }]
 
-[thread.subscribe]
-type = "exec"
-bin = "slack-adapter"
-args = ["resource", "subscribe", "--session", { from = "session.name" }, "--resource", { from = "resource.id" }]
-
-[thread.unsubscribe]
-type = "exec"
-bin = "slack-adapter"
-args = ["resource", "unsubscribe", "--session", { from = "session.name" }, "--resource", { from = "resource.id" }]
-
 [thread.query.subscribe]
 type = "exec"
 bin  = "slack-adapter"

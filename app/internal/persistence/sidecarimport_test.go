@@ -30,10 +30,6 @@ func TestImportSidecars_MovesRowsByIncarnationAndRetiresEventsTree(t *testing.T)
 	if err := db.PutSession(ctx, &domain.Session{Name: "gone", CreatedAt: now, UpdatedAt: now}); err != nil {
 		t.Fatal(err)
 	}
-	goneID, err := db.EventStreamID(ctx, "gone")
-	if err != nil {
-		t.Fatal(err)
-	}
 	if err := db.DestroySession(ctx, "gone", now); err != nil {
 		t.Fatal(err)
 	}
@@ -64,19 +60,16 @@ func TestImportSidecars_MovesRowsByIncarnationAndRetiresEventsTree(t *testing.T)
 	if err != nil || won || previous != "cap|target" {
 		t.Fatalf("imported chain attempt = previous %q won %v err %v", previous, won, err)
 	}
-	destroyed, err := db.DestroyedSubscriptionRetries(ctx)
+	live, err := db.ListSubscriptions(ctx, "live", "")
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(destroyed) != 1 || destroyed[0].SessionID != goneID || destroyed[0].Action != subscriptionRetryUnsubscribe {
-		t.Fatalf("destroyed subscription retries = %+v, want gone unsubscribe", destroyed)
+	if len(live) != 1 || live[0].SessionID != liveID || live[0].Source != "runtime" {
+		t.Fatalf("live subscriptions = %+v, want one runtime row", live)
 	}
-	live, err := db.SubscriptionRetriesForLiveSession(ctx, "live")
-	if err != nil {
-		t.Fatal(err)
-	}
-	if len(live) != 1 || live[0].SessionID != liveID || live[0].Action != subscriptionRetrySubscribe {
-		t.Fatalf("live subscription retries = %+v, want live subscribe", live)
+	gone, err := db.ListSubscriptions(ctx, "gone", "")
+	if err != nil || len(gone) != 0 {
+		t.Fatalf("destroyed subscriptions = %+v, err = %v", gone, err)
 	}
 	if _, err := os.Stat(filepath.Join(dir, "pending_delivery.json")); !os.IsNotExist(err) {
 		t.Fatalf("pending sidecar still exists: %v", err)
@@ -218,9 +211,9 @@ func TestEnsureCurrentImportsPostCutoverSidecars(t *testing.T) {
 		t.Fatalf("ensure current with sidecar: %v", err)
 	}
 	defer db.Close()
-	retries, err := db.SubscriptionRetriesForLiveSession(ctx, "live")
-	if err != nil || len(retries) != 1 || retries[0].Action != subscriptionRetrySubscribe {
-		t.Fatalf("subscription retries = %+v, err=%v", retries, err)
+	rows, err := db.ListSubscriptions(ctx, "live", "")
+	if err != nil || len(rows) != 1 || rows[0].Source != "runtime" {
+		t.Fatalf("subscriptions = %+v, err=%v", rows, err)
 	}
 	if _, err := os.Stat(path); !os.IsNotExist(err) {
 		t.Fatalf("sidecar still exists: %v", err)

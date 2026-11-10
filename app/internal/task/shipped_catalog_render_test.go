@@ -69,12 +69,12 @@ func TestShippedSlackReviewExampleSubscribesThroughThreadResource(t *testing.T) 
 		t.Fatalf("load shipped resources: %v", err)
 	}
 	const permalink = "https://example.slack.com/archives/C123/p1234567890123456"
-	address, resource, matched, err := MatchResourceDef(resources, permalink)
+	address, _, matched, err := MatchResourceDef(resources, permalink)
 	if err != nil {
 		t.Fatalf("match Slack thread permalink: %v", err)
 	}
-	if !matched || address != "official.slack.thread" || resource.Subscribe == nil {
-		t.Fatalf("thread permalink matches resource %q (matched=%v, subscribe=%v)", address, matched, resource.Subscribe != nil)
+	if !matched || address != "official.slack.thread" {
+		t.Fatalf("thread permalink matches resource %q (matched=%v)", address, matched)
 	}
 }
 

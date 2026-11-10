@@ -167,15 +167,6 @@ name = { from = "match.id" }
 type = "exec"
 command = "true"
 
-[source.subscribe]
-type   = "shell"
-script = '''
-printf 'subscribe scope=%%s\n' "$scope" >> %[1]q
-'''
-
-[source.subscribe.bind]
-scope = { from = "resource.inputs.scope", default = "absent" }
-
 [source.inputs_schema]
 type = "object"
 additionalProperties = false
@@ -261,7 +252,7 @@ type = "noop"
 		t.Fatal(err)
 	}
 	got := strings.Split(strings.TrimSpace(string(raw)), "\n")
-	want := []string{"poll scope=all", "subscribe scope=absent"}
+	want := []string{"poll scope=all"}
 	if strings.Join(got, "|") != strings.Join(want, "|") {
 		t.Errorf("action log = %q, want the query to see its own inputs and subscribe only the empty action object %q", got, want)
 	}

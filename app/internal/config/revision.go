@@ -9,13 +9,11 @@ import (
 	"maps"
 	"net/url"
 	"path/filepath"
-	"regexp"
 	"slices"
 	"strings"
 	"sync"
 
 	"github.com/kecbigmt/plecture/app/internal/domain"
-	"github.com/kecbigmt/plecture/app/internal/lang"
 	"github.com/kecbigmt/plecture/app/internal/plugins"
 )
 
@@ -273,9 +271,6 @@ func (c *Config) CaptureWorkflowRevision(projectRoot, name string) (WorkflowRevi
 		}
 		effects[key] = def
 	}
-	if err := c.validateKnownNodeSubscriptions(projectRoot, wf, effects); err != nil {
-		return WorkflowRevision{}, err
-	}
 	tasks, err := c.LoadTaskDocuments(projectRoot)
 	if err != nil {
 		return WorkflowRevision{}, err
@@ -316,49 +311,6 @@ func (c *Config) CaptureWorkflowRevision(projectRoot, name string) (WorkflowRevi
 		return WorkflowRevision{}, err
 	}
 	return revision, nil
-}
-
-func (c *Config) validateKnownNodeSubscriptions(projectRoot string, wf WorkflowFile, effects map[string]TaskDefinition) error {
-	var resources map[string]ResourceDef
-	for _, node := range wf.Nodes {
-		if node.Subscription == "" {
-			continue
-		}
-		def, ok := effects[node.Uses]
-		if !ok {
-			continue
-		}
-		properties, _ := def.OutputsSchema["properties"].(map[string]any)
-		property, _ := properties[node.Subscription].(map[string]any)
-		id, _ := property["const"].(string)
-		if id == "" {
-			continue
-		}
-		if resources == nil {
-			var err error
-			resources, err = c.LoadResourceDefs(projectRoot)
-			if err != nil {
-				return err
-			}
-		}
-		for _, resource := range resources {
-			matched, err := regexp.MatchString(resource.Match, id)
-			if err != nil {
-				return fmt.Errorf("resource %q match: %w", resource.ID, err)
-			}
-			if !matched || resource.Subscribe == nil || resource.InputsSchema == nil {
-				continue
-			}
-			schema, err := lang.CompileSchema(resource.InputsSchema, "", "plect:resource:"+resource.ID+":inputs")
-			if err != nil {
-				return fmt.Errorf("node %q subscription resource %q inputs schema: %w", node.ID, resource.ID, err)
-			}
-			if err := schema.Validate(map[string]any{}); err != nil {
-				return fmt.Errorf("node %q subscription resource %q requires action inputs: %w", node.ID, resource.ID, err)
-			}
-		}
-	}
-	return nil
 }
 
 func freezeEffectSchemas(def TaskDefinition) (TaskDefinition, error) {

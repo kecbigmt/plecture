@@ -77,16 +77,6 @@ resource   = { type = "string", format = "uri" }
 owner      = { type = "string" }
 repository = { type = "string" }
 
-[pull_request.subscribe]
-type = "exec"
-bin = "github-watcher"
-args = ["subscribe", "--session", { from = "session.name" }, "--resource", { from = "resource.id" }]
-
-[pull_request.unsubscribe]
-type = "exec"
-bin = "github-watcher"
-args = ["unsubscribe", "--session", { from = "session.name" }, "--resource", { from = "resource.id" }]
-
 [pull_request.state_schema]
 type     = "object"
 required = ["resource_kind", "checks_status", "revision", "pr_url", "mergeable_state", "review_decision"]

@@ -41,7 +41,8 @@ CREATE TABLE resources (
     type TEXT NOT NULL,
     name TEXT NOT NULL,
     locator TEXT NOT NULL,
-    created_at TEXT NOT NULL
+    created_at TEXT NOT NULL,
+    max_subscribers INTEGER CHECK (max_subscribers IS NULL OR max_subscribers > 0)
 );
 
 CREATE UNIQUE INDEX resources_name ON resources(name);
@@ -115,15 +116,16 @@ CREATE TABLE chain_attempts (
     PRIMARY KEY (session_id, instance, chain_id)
 );
 
--- Failed provider subscribe/unsubscribe intents await an opportunistic retry.
-CREATE TABLE subscription_retries (
+CREATE TABLE subscriptions (
     session_id TEXT NOT NULL REFERENCES sessions(id) ON DELETE CASCADE,
-    action TEXT NOT NULL CHECK (action IN ('subscribe', 'unsubscribe')),
     resource_id TEXT NOT NULL REFERENCES resources(id),
-    PRIMARY KEY (session_id, action, resource_id)
+    source TEXT NOT NULL CHECK (source IN ('runtime', 'dispatch', 'task', 'node')),
+    inputs_json TEXT NOT NULL CHECK (json_valid(inputs_json) AND json_type(inputs_json) = 'object'),
+    created_at TEXT NOT NULL,
+    PRIMARY KEY (session_id, resource_id, source)
 );
 
-CREATE INDEX subscription_retries_resource_idx ON subscription_retries(resource_id);
+CREATE INDEX subscriptions_resource_idx ON subscriptions(resource_id);
 
 -- Static workflow-DAG nodes' identity only; see node_executions below.
 CREATE TABLE node_instances (
@@ -403,7 +405,11 @@ UNION ALL SELECT resource_id FROM task_instances WHERE resource_id IS NOT NULL
 UNION ALL SELECT resource_id FROM node_executions WHERE resource_id IS NOT NULL
 UNION ALL SELECT subscription_id FROM node_executions WHERE subscription_id IS NOT NULL
 UNION ALL SELECT resource_id FROM population_members
-UNION ALL SELECT resource_id FROM subscription_retries;
+UNION ALL SELECT resource_id FROM subscriptions;
+
+CREATE TRIGGER subscriptions_release_resource AFTER DELETE ON subscriptions BEGIN
+    DELETE FROM resources WHERE id = OLD.resource_id AND NOT EXISTS (SELECT 1 FROM resource_references WHERE resource_id = OLD.resource_id);
+END;
 
 CREATE TRIGGER sessions_release_resource AFTER DELETE ON sessions BEGIN
     DELETE FROM resources WHERE id = OLD.resource_id AND NOT EXISTS (SELECT 1 FROM resource_references WHERE resource_id = OLD.resource_id);
@@ -436,13 +442,5 @@ CREATE TRIGGER population_members_release_resource AFTER DELETE ON population_me
 END;
 
 CREATE TRIGGER population_members_release_replaced_resource AFTER UPDATE OF resource_id ON population_members BEGIN
-    DELETE FROM resources WHERE id = OLD.resource_id AND NOT EXISTS (SELECT 1 FROM resource_references WHERE resource_id = OLD.resource_id);
-END;
-
-CREATE TRIGGER subscription_retries_release_resource AFTER DELETE ON subscription_retries BEGIN
-    DELETE FROM resources WHERE id = OLD.resource_id AND NOT EXISTS (SELECT 1 FROM resource_references WHERE resource_id = OLD.resource_id);
-END;
-
-CREATE TRIGGER subscription_retries_release_replaced_resource AFTER UPDATE OF resource_id ON subscription_retries BEGIN
     DELETE FROM resources WHERE id = OLD.resource_id AND NOT EXISTS (SELECT 1 FROM resource_references WHERE resource_id = OLD.resource_id);
 END;

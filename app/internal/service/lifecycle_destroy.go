@@ -69,7 +69,6 @@ func destroyUnlocked(cfg *config.Config, store *state.Store, params DestroyParam
 	if len(retired) > 0 && !params.Force {
 		return nil, retiredRevisionRefusal(session, "`destroy`")
 	}
-	flushPendingDeliveryLogged(cfg, store, sessionName)
 	// Tearing down an existing session is a per-session write; clamp it to the
 	// active guard so a guarded orchestrator can't destroy another owner's
 	// session it can see via `plect ls`. Create guards on the way in; this
@@ -186,12 +185,6 @@ func destroyUnlocked(cfg *config.Config, store *state.Store, params DestroyParam
 
 	if err := eventlog.NewStore(store.Dir()).ClearChainAttempts(session.ID); err != nil {
 		result.CleanupWarnings = append(result.CleanupWarnings, fmt.Sprintf("chain-attempt bookkeeping cleanup: %v", err))
-	}
-
-	// After the delete, so unwireDeliveryOnTeardown's fresh read sees the
-	// session as gone rather than skipping the unsubscribe as still needed.
-	if _, errMsg := unwireDeliveryOnTeardown(cfg, store, sessionName, session.ProjectRoot, session.Resource, session.ID); errMsg != "" {
-		result.CleanupWarnings = append(result.CleanupWarnings, fmt.Sprintf("resource delivery unsubscribe: %s", errMsg))
 	}
 
 	return result, nil
