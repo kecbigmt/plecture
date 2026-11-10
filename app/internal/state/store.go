@@ -57,6 +57,42 @@ func (s *Store) Dir() string {
 	return s.dir
 }
 
+func (s *Store) AddSubscription(session string, resource *contract.Resource, source string, inputs map[string]any, maxSubscribers int) error {
+	db, err := s.dbHandle()
+	if err != nil {
+		return err
+	}
+	return db.AddSubscription(context.Background(), session, resource, source, inputs, maxSubscribers)
+}
+
+func (s *Store) RemoveSubscription(session, locator, source string) error {
+	return s.RemoveSubscriptionByIdentity(session, locator, "", source)
+}
+
+func (s *Store) RemoveSubscriptionByIdentity(session, locator, name, source string) error {
+	db, err := s.dbHandle()
+	if err != nil {
+		return err
+	}
+	return db.RemoveSubscriptionByIdentity(context.Background(), session, locator, name, source)
+}
+
+func (s *Store) ListSubscriptions(session, resourceType string) ([]persistence.Subscription, error) {
+	db, err := s.dbHandle()
+	if err != nil {
+		return nil, err
+	}
+	return db.ListSubscriptions(context.Background(), session, resourceType)
+}
+
+func (s *Store) SubscriptionSessions(locator, name string) ([]string, error) {
+	db, err := s.dbHandle()
+	if err != nil {
+		return nil, err
+	}
+	return db.SubscriptionSessions(context.Background(), locator, name)
+}
+
 // dbHandle opens and migrates the database on first use (via
 // persistence.EnsureCurrentShared, the same gated entry point every plect
 // command goes through), sharing the connection pool with any eventlog.Store
@@ -160,14 +196,6 @@ func (s *Store) Update(name string, fn func(*domain.Session) error) error {
 	// *Error), and this is the read-modify-write primitive they call
 	// through, so this seam must not obscure that type.
 	return db.UpdateSession(context.Background(), name, fn)
-}
-
-func (s *Store) UpdateWithSubscriptionRetries(name string, fn func(*domain.Session) error, action string, resources []contract.Resource) error {
-	db, err := s.dbHandle()
-	if err != nil {
-		return fmt.Errorf("state: update %q: %w", name, err)
-	}
-	return db.UpdateSessionWithSubscriptionRetries(context.Background(), name, fn, action, resources)
 }
 
 // PruneReleasedNode reports whether name's node_id row was pruned; see

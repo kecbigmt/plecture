@@ -12,8 +12,6 @@ func TestSurfaceRootsMatchValuesTable(t *testing.T) {
 		foreign []string
 	}{
 		{surfaceResourceName, []string{"match.owner", "match.repo"}, []string{"session.name", "inputs.owner"}},
-		{surfaceResourceSubscribe, []string{"session.name", "resource.id", "resource.inputs.token"}, []string{"inputs.x", "workspace.dir", "session.branch"}},
-		{surfaceResourceUnsubscribe, []string{"session.name", "resource.id", "resource.inputs.token"}, []string{"inputs.x", "workspace.dir", "session.branch"}},
 		{surfaceResourceObserve, []string{"resource.id"}, []string{"resource.revision", "judges", "session.name", "workspace.dir", "workspace.branch"}},
 		{surfaceResourceQuery, []string{"inputs.scope"}, []string{"resource.inputs.token", "resource.id"}},
 		{surfaceResourceFinalize, []string{"resource.id", "session.name", "resource.revision", "judges"}, []string{"workspace.dir", "effect.instance", "inputs.x"}},

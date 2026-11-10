@@ -26,16 +26,6 @@ type    = "exec"
 command = "sh"
 args    = ["-c", 'printf "{\"status\":\"open\"}"']
 
-[ticket.subscribe]
-type    = "exec"
-command = "sh"
-args    = ["-c", 'touch "$HOME/subscribed"']
-
-[ticket.unsubscribe]
-type    = "exec"
-command = "sh"
-args    = ["-c", 'test -e "$HOME/unsubscribe-works" || exit 3; touch "$HOME/unsubscribed"']
-
 [ticket.finalize]
 type    = "exec"
 command = "sh"
@@ -73,8 +63,9 @@ func TestProjectResource_ASessionCreatedFromTheRootResolvesItFromTheRecordedRoot
 	if session.ProjectRoot != root {
 		t.Errorf("ProjectRoot = %q, want %q", session.ProjectRoot, root)
 	}
-	if _, err := os.Stat(filepath.Join(f.home, "subscribed")); err != nil {
-		t.Errorf("the project resource's subscribe hook did not run for the bound entry: %v", err)
+	rows, err := f.store.ListSubscriptions("ticket-7", "ticket")
+	if err != nil || len(rows) != 2 || rows[0].Source != "dispatch" || rows[1].Source != "task" {
+		t.Fatalf("entry subscriptions = %+v, err = %v", rows, err)
 	}
 
 	observations, err := ObserveSessionResources(f.cfg, f.store, "ticket-7")
@@ -123,27 +114,5 @@ func TestProjectResource_IsNotVisibleOutsideItsRoot(t *testing.T) {
 	}
 	if s, _ := f.store.GetE("ticket-7"); s != nil {
 		t.Errorf("session ticket-7 created in context %q", s.ProjectRoot)
-	}
-}
-
-func TestProjectResource_ADestroyedSessionsQueuedUnsubscribeResolvesItFromTheRecordedRoot(t *testing.T) {
-	f := newWDFixture(t, wdWorkdirWorkflow)
-	root := prProjectResource(t, f)
-	if _, err := Up(f.cfg, f.store, UpParams{Identifier: prTicketURL, ProjectRoot: root}); err != nil {
-		t.Fatalf("Up: %v", err)
-	}
-	result, err := Destroy(f.cfg, f.store, DestroyParams{Identifier: "ticket-7"})
-	if err != nil {
-		t.Fatalf("Destroy: %v", err)
-	}
-	if len(result.CleanupWarnings) == 0 {
-		t.Fatal("precondition: the unsubscribe hook must fail at destroy so a retry is queued")
-	}
-	wdWrite(t, filepath.Join(f.home, "unsubscribe-works"), "")
-
-	sweepOrphanedPendingDeliveries(f.cfg, f.store)
-
-	if _, err := os.Stat(filepath.Join(f.home, "unsubscribed")); err != nil {
-		t.Errorf("the queued retry did not run the project resource's unsubscribe hook: %v", err)
 	}
 }

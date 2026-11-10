@@ -10,7 +10,9 @@ import (
 	"path/filepath"
 	"sort"
 	"strings"
+	"time"
 
+	"github.com/kecbigmt/plecture/app/internal/persistence/sqlcgen"
 	contract "github.com/kecbigmt/plecture/contracts/state"
 )
 
@@ -123,12 +125,12 @@ func readSidecars(dir string) ([]sidecarChainAttempt, []sidecarRetry, sidecarFil
 		}
 		for session, resources := range pending.Subscribe {
 			for _, resourceID := range resources {
-				retries = append(retries, sidecarRetry{session: session, action: subscriptionRetrySubscribe, resourceID: resourceID})
+				retries = append(retries, sidecarRetry{session: session, action: "subscribe", resourceID: resourceID})
 			}
 		}
 		for session, resources := range pending.Unsubscribe {
 			for _, resourceID := range resources {
-				retries = append(retries, sidecarRetry{session: session, action: subscriptionRetryUnsubscribe, resourceID: resourceID})
+				retries = append(retries, sidecarRetry{session: session, action: "unsubscribe", resourceID: resourceID})
 			}
 		}
 		files.paths = append(files.paths, pendingPath)
@@ -231,12 +233,26 @@ func importSidecarsTx(ctx context.Context, tx *sql.Tx, chains []sidecarChainAtte
 		return id, nil
 	}
 	for _, retry := range retries {
+		if retry.action == "unsubscribe" {
+			continue
+		}
 		id, err := resolve(retry.session)
 		if err != nil {
 			return err
 		}
-		if err := queueSubscriptionRetryTx(ctx, tx, id, retry.action, &contract.Resource{Locator: retry.resourceID}); err != nil {
-			return fmt.Errorf("import subscription retry: %w", err)
+		var live bool
+		if err := tx.QueryRowContext(ctx, `SELECT status <> 'destroyed' FROM sessions WHERE id = ?`, id).Scan(&live); err != nil {
+			return err
+		}
+		if !live {
+			continue
+		}
+		resource := &contract.Resource{Locator: retry.resourceID}
+		if err := recordResourceTx(ctx, sqlcgen.New(tx), resource); err != nil {
+			return fmt.Errorf("import pending subscription: %w", err)
+		}
+		if _, err := tx.ExecContext(ctx, `INSERT INTO subscriptions (session_id, resource_id, source, inputs_json, created_at) VALUES (?, ?, 'runtime', '{}', ?) ON CONFLICT DO NOTHING`, id, resource.ID, formatTime(time.Now())); err != nil {
+			return fmt.Errorf("import pending subscription: %w", err)
 		}
 	}
 	for _, attempt := range chains {

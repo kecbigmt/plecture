@@ -235,11 +235,17 @@ func (v Validation) validateResource(def *Definition, pos Position) error {
 	if err := v.action(def.Body, "finalize", surfaceResourceFinalize, pos); err != nil {
 		return err
 	}
-	if err := v.action(def.Body, "subscribe", surfaceResourceSubscribe, pos); err != nil {
-		return err
-	}
-	if err := v.action(def.Body, "unsubscribe", surfaceResourceUnsubscribe, pos); err != nil {
-		return err
+	if raw, ok := def.Body["max_subscribers"]; ok {
+		valid := false
+		switch n := raw.(type) {
+		case int64:
+			valid = n > 0
+		case int:
+			valid = n > 0
+		}
+		if !valid {
+			return newDiag(CodeFieldType, LayerStructural, childPos(pos, "max_subscribers"), "max_subscribers is a positive integer")
+		}
 	}
 	return v.validateObserverQuery(def, pos)
 }

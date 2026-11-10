@@ -8,23 +8,17 @@ import (
 	"strings"
 
 	"github.com/kecbigmt/plecture/app/internal/config"
-	"github.com/kecbigmt/plecture/app/internal/effect"
 	"github.com/kecbigmt/plecture/app/internal/lang"
 	"github.com/kecbigmt/plecture/app/internal/state"
+	contract "github.com/kecbigmt/plecture/contracts/state"
 )
 
-// SubscribeParams are the inputs to Subscribe. ResourceID is the opaque
-// resource the caller wants this session to receive events from. SessionName
-// defaults to the ambient pane env ($PLECT_SESSION_NAME, exported by the
-// interactive-agent task) when left empty, so a running agent can `plect
-// subscribe <url>` without naming itself.
 type SubscribeParams struct {
 	ResourceID  string
 	SessionName string
 	Inputs      map[string]any
 }
 
-// Subscribe binds a session to a resource through its declaration's hook.
 func Subscribe(cfg *config.Config, store *state.Store, params SubscribeParams) error {
 	if strings.TrimSpace(params.ResourceID) == "" {
 		return &Error{Code: ErrInvalidInput, Message: "resource id is required"}
@@ -40,10 +34,6 @@ func Subscribe(cfg *config.Config, store *state.Store, params SubscribeParams) e
 	if err := validateSessionName(sessionName); err != nil {
 		return err
 	}
-	// The subscriber must be a real session: the watcher delivers events into
-	// its event log, so a typo'd --session would create a ghost subscription
-	// publishing to a name nothing reads. The env-default path always names
-	// the caller's own (existing) session; this guards the explicit override.
 	session, err := store.GetE(sessionName)
 	if err != nil {
 		return err
@@ -60,14 +50,48 @@ func Subscribe(cfg *config.Config, store *state.Store, params SubscribeParams) e
 		return &Error{Code: ErrInvalidInput, Message: err.Error()}
 	}
 
-	if hookErr := effect.RunResourceSubscribe(def, effect.SubscribeHookVars{
-		ResourceID:  params.ResourceID,
-		Inputs:      params.Inputs,
-		SessionName: sessionName,
-		Plugins:     cfg.Plugins,
-		SourcePath:  def.SourcePath,
-	}); hookErr != nil {
-		return &Error{Code: ErrExecutionFailed, Message: hookErr.Error()}
+	name, matched, err := def.InstanceName(params.ResourceID)
+	if err != nil {
+		return &Error{Code: ErrInvalidInput, Message: err.Error()}
+	}
+	if !matched {
+		return &Error{Code: ErrInvalidInput, Message: fmt.Sprintf("resource %q does not match its declaration", params.ResourceID)}
+	}
+	resource := &contract.Resource{Type: def.ID, Name: name, Locator: params.ResourceID}
+	if err := store.AddSubscription(sessionName, resource, "runtime", params.Inputs, def.MaxSubscribers); err != nil {
+		return &Error{Code: ErrExecutionFailed, Message: err.Error()}
+	}
+	return nil
+}
+
+func Unsubscribe(cfg *config.Config, store *state.Store, params SubscribeParams) error {
+	sessionName := params.SessionName
+	if sessionName == "" {
+		sessionName = os.Getenv("PLECT_SESSION_NAME")
+	}
+	if sessionName == "" {
+		return &Error{Code: ErrInvalidInput, Message: "no session in scope: run inside a plect session pane (PLECT_SESSION_NAME) or pass --session"}
+	}
+	if err := validateSessionName(sessionName); err != nil {
+		return err
+	}
+	name := ""
+	if session, err := store.GetE(sessionName); err != nil {
+		return err
+	} else if session != nil && cfg != nil {
+		matched, err := matchResourceDefs(cfg, session.ProjectRoot, params.ResourceID)
+		if err != nil {
+			return err
+		}
+		if len(matched) == 1 {
+			name, _, err = matched[0].InstanceName(params.ResourceID)
+			if err != nil {
+				return err
+			}
+		}
+	}
+	if err := store.RemoveSubscriptionByIdentity(sessionName, params.ResourceID, name, "runtime"); err != nil {
+		return &Error{Code: ErrExecutionFailed, Message: err.Error()}
 	}
 	return nil
 }
@@ -92,8 +116,6 @@ func validateSubscriptionInputs(def config.ResourceDef, inputs map[string]any) e
 	return nil
 }
 
-// matchResourceDefs keeps all matches, including declarations without hooks,
-// so a missing hook cannot hide an ambiguous resource type.
 func matchResourceDefs(cfg *config.Config, projectRoot, resource string) ([]config.ResourceDef, error) {
 	defs, err := cfg.LoadResourceDefs(projectRoot)
 	if err != nil {
@@ -119,8 +141,7 @@ func matchResourceDefs(cfg *config.Config, projectRoot, resource string) ([]conf
 	return matched, nil
 }
 
-// resourceDefForSubscription requires exactly one matching declaration with
-// a subscribe hook.
+// resourceDefForSubscription requires exactly one matching declaration.
 func resourceDefForSubscription(cfg *config.Config, projectRoot, resource string) (config.ResourceDef, error) {
 	matched, err := matchResourceDefs(cfg, projectRoot, resource)
 	if err != nil {
@@ -130,11 +151,7 @@ func resourceDefForSubscription(cfg *config.Config, projectRoot, resource string
 	case 0:
 		return config.ResourceDef{}, &Error{Code: ErrInvalidInput, Message: fmt.Sprintf("no resource declaration matches %q", resource)}
 	case 1:
-		def := matched[0]
-		if def.Subscribe == nil {
-			return config.ResourceDef{}, &Error{Code: ErrInvalidInput, Message: fmt.Sprintf("resource %q does not support subscribe", def.ID)}
-		}
-		return def, nil
+		return matched[0], nil
 	default:
 		names := make([]string, len(matched))
 		for i, p := range matched {

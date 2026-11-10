@@ -29,24 +29,11 @@ type TaskCleanupParams struct {
 // absent (a no-op success — `cleanup` is idempotent, mirroring `docker rm` of a
 // gone container being the safe default for a `cleanup; setup` dispatcher).
 type TaskCleanupResult struct {
-	SessionName string `json:"session_name"`
-	Instance    string `json:"instance"`
-	Found       bool   `json:"found"`
-	// Unsubscribed is true only when reclaiming this instance also ran an
-	// unsubscribe hook that dropped its bound resource's event-delivery
-	// registration — not merely when nothing needed unregistering.
-	Unsubscribed bool `json:"unsubscribed,omitempty"`
-	// Resource is the instance's own bound resource, reported alongside
-	// Unsubscribed/UnsubscribeError so a caller can say what was (or wasn't)
-	// dropped.
-	Resource string `json:"resource,omitempty"`
-	// UnsubscribeError carries a failed unsubscribe attempt's message. Never
-	// fails TaskCleanup itself: the instance and its own cleanup script
-	// already succeeded by the time this runs. The failure is also queued
-	// for a durable retry (see queuePendingUnsubscribe) since the reclaimed
-	// instance record itself is gone and so is no longer a retry handle —
-	// this field is what lets the caller learn about it now, immediately.
-	UnsubscribeError string `json:"unsubscribe_error,omitempty"`
+	SessionName  string `json:"session_name"`
+	Instance     string `json:"instance"`
+	Found        bool   `json:"found"`
+	Unsubscribed bool   `json:"unsubscribed,omitempty"`
+	Resource     string `json:"resource,omitempty"`
 }
 
 // TaskCleanup tears down a single dynamic instance: it runs that instance's
@@ -79,7 +66,6 @@ func TaskCleanup(cfg *config.Config, store *state.Store, params TaskCleanupParam
 		return nil, err
 	}
 	params.Observer = withNodeResultRecording(store, resolvedName, params.Observer)
-	flushPendingDeliveryLogged(cfg, store, resolvedName)
 
 	st := session.Tasks[params.Instance]
 	if st == nil {
@@ -128,28 +114,24 @@ func TaskCleanup(cfg *config.Config, store *state.Store, params TaskCleanupParam
 		return nil, &Error{Code: ErrExecutionFailed, Message: errors.Join(cleanupErr, persistErr).Error()}
 	}
 
-	// The unsubscribe is queued in the write that removes the binding, so the
-	// retry holds the resource row before the removal could release it.
-	var pending []contract.Resource
-	if domain.Locator(st.Resource) != "" {
-		pending = append(pending, *st.Resource)
-	}
-	if err := store.UpdateWithSubscriptionRetries(resolvedName, func(s *domain.Session) error {
+	removedTaskReason := st.Resource != nil
+	if err := store.Update(resolvedName, func(s *domain.Session) error {
 		delete(s.Tasks, params.Instance)
+		for _, other := range s.Tasks {
+			if other != nil && sameResource(other.Resource, st.Resource) {
+				removedTaskReason = false
+				break
+			}
+		}
 		s.UpdatedAt = time.Now()
 		return nil
-	}, retryUnsubscribe, pending); err != nil {
+	}); err != nil {
 		return nil, &Error{Code: ErrExecutionFailed, Message: fmt.Sprintf("failed to save session state: %v", err)}
 	}
 	recordLifecycle(store, resolvedName, "task_cleanup", fmt.Sprintf("reclaimed %s", params.Instance))
 
 	result := &TaskCleanupResult{SessionName: resolvedName, Instance: params.Instance, Found: true, Resource: domain.Locator(st.Resource)}
-	result.Unsubscribed, result.UnsubscribeError = unwireDeliveryOnTeardown(cfg, store, resolvedName, session.ProjectRoot, st.Resource, "")
-	if len(pending) > 0 && result.UnsubscribeError == "" {
-		if err := dequeuePendingUnsubscribe(store, resolvedName, pending[0]); err != nil {
-			result.UnsubscribeError = fmt.Sprintf("could not clear the queued unsubscribe retry: %v", err)
-		}
-	}
+	result.Unsubscribed = removedTaskReason
 	return result, nil
 }
 

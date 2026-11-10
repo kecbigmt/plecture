@@ -118,12 +118,6 @@ func (db *DB) FindSessionsByAlias(ctx context.Context, alias string) ([]*domain.
 // the result back in one transaction. A session is destroyed the same
 // way: fn sets Status to SessionStatusDestroyed on the same row.
 func (db *DB) UpdateSession(ctx context.Context, name string, fn func(*domain.Session) error) error {
-	return db.UpdateSessionWithSubscriptionRetries(ctx, name, fn, "", nil)
-}
-
-// A committed node binding needs a durable retry if the process exits before
-// its subscribe hook runs.
-func (db *DB) UpdateSessionWithSubscriptionRetries(ctx context.Context, name string, fn func(*domain.Session) error, action string, resources []contract.Resource) error {
 	return db.WithImmediateTx(ctx, func(tx *sql.Tx) error {
 		row, err := sqlcgen.New(tx).GetLiveSession(ctx, name)
 		if err != nil {
@@ -144,11 +138,6 @@ func (db *DB) UpdateSessionWithSubscriptionRetries(ctx context.Context, name str
 			return err
 		}
 
-		for i := range resources {
-			if err := queueSubscriptionRetryTx(ctx, tx, s.ID, action, &resources[i]); err != nil {
-				return err
-			}
-		}
 		return db.writeSessionTx(ctx, tx, s)
 	})
 }
@@ -301,6 +290,21 @@ func (db *DB) PurgeSessionByName(ctx context.Context, name string) error {
 
 func (db *DB) writeSessionTx(ctx context.Context, tx *sql.Tx, s *domain.Session) error {
 	q := sqlcgen.New(tx)
+	limits := map[string]int{}
+	rememberLimit := func(r *contract.Resource) {
+		if r != nil && r.MaxSubscribers > 0 {
+			limits[r.Name] = r.MaxSubscribers
+		}
+	}
+	rememberLimit(s.Resource)
+	for _, states := range []map[string]*contract.TaskState{s.Tasks, s.Nodes} {
+		for _, task := range states {
+			if task != nil {
+				rememberLimit(task.Resource)
+				rememberLimit(task.Subscription)
+			}
+		}
+	}
 	if err := writeWorkflowRevisionTx(ctx, tx, s); err != nil {
 		return err
 	}
@@ -398,6 +402,18 @@ func (db *DB) writeSessionTx(ctx context.Context, tx *sql.Tx, s *domain.Session)
 
 	if err := db.writeTasksTx(ctx, tx, candidateID, s.Nodes, s.Tasks); err != nil {
 		return err
+	}
+	for name, max := range limits {
+		if _, err := tx.ExecContext(ctx, `UPDATE resources SET max_subscribers = ? WHERE name = ?`, max, name); err != nil {
+			return fmt.Errorf("record resource %q max_subscribers: %w", name, err)
+		}
+	}
+	entryResourceID := ""
+	if s.Resource != nil {
+		entryResourceID = s.Resource.ID
+	}
+	if err := reconcileSubscriptionsTx(ctx, tx, candidateID, status == contract.SessionStatusDestroyed, entryResourceID); err != nil {
+		return fmt.Errorf("reconcile session %q subscriptions: %w", s.Name, err)
 	}
 	return writeChannelHealthTx(ctx, q, candidateID, s.ChannelValidationHealth, s.ChannelDeliveryHealth)
 }

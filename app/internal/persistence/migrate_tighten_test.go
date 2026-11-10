@@ -109,8 +109,8 @@ func TestMigrate_TighteningBackfillsEveryNullItReplaces(t *testing.T) {
 		t.Errorf("node_executions still has a name column")
 	}
 
-	// The release triggers are recreated: dropping the last reference to a
-	// resource still releases it.
+	// The release triggers account for both the session binding and its subscription.
+	execAll(t, db, `DELETE FROM subscriptions WHERE session_id = 's-live'`)
 	execAll(t, db, `UPDATE sessions SET resource_id = NULL WHERE id = 's-live'`)
 	if n := scanOne(t, db, `SELECT count(*) FROM resources`); n != "0" {
 		t.Errorf("resources after releasing the last reference = %s, want 0", n)
