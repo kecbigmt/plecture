@@ -103,12 +103,24 @@ and only accepts `{ type = "process" }`. The supervised service gets only its
 `env_file` and plect runtime values. It receives a private state directory
 through `PLECT_SERVICE_STATE_DIR`, not a global data or config home. The
 service writes JSON-lines `publish` requests to stdout; its supervising plect
-writes `published` counts and a full `subscriptions` snapshot to stdin at
-start, followed by add/remove deltas. Logs go to stderr. It never calls the
+echoes each request's required `id` in a result such as
+`{"op":"published","id":"request-1","delivered":1}` or an error such as
+`{"op":"error","id":"request-1","code":...,"message":...}`. It sends a full
+`subscriptions` snapshot to stdin at start, followed by add/remove deltas;
+these notifications carry no `id`. Logs go to stderr. It never calls the
 plect CLI. No local control listener exists. Browser content on the same host
 and other OS users cannot reach one; same-user code is outside this boundary.
 The env file is owner-readable and `PLECT_SERVICE_CONFIG` names a private
 file. Slack outbound actions call the provider Web API directly.
+
+Every plugin executable invocation receives `PLECT_CACHE_DIR` set to
+`<cache-home>/plugins/<plugin>/`, including services and node, channel, and
+hook actions such as `observe`. The directory has mode `0700`; its contents
+are disposable, may be deleted wholesale by plect, and require plugin-owned
+locking. Core never reads them. The cache home resolves from `--cache-home`,
+then `PLECT_CACHE_HOME`, then `$XDG_CACHE_HOME/plect`, then `~/.cache/plect`.
+Authoritative subscription membership stays in core, and per-resource watch
+state stays in the service's `PLECT_SERVICE_STATE_DIR`.
 
 Core keys subscriptions by `(session, resource, source)`. `plect subscribe`
 adds an idempotent `runtime` row; `plect unsubscribe` removes only that row.
@@ -131,8 +143,9 @@ in [workflows](workflows.md).
 
 The GitHub watcher receives subscription snapshots and deltas through stdio.
 Standalone issue and pull-request observation needs no watcher service; it
-uses action-process credentials and a process-local rate budget and App token
-cache. GitHub query populations retain their poll form.
+uses action-process credentials. The watcher and standalone `observe` share
+disposable App token and rate budget caches through `PLECT_CACHE_DIR`. GitHub
+query populations retain their poll form.
 
 `plect service list` shows declared name, executable, state, pid, and restart
 count. With `--all`, an enabled service-marked executable with no declaration

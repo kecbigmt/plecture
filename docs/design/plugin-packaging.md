@@ -255,18 +255,29 @@ its executable changes.
 
 Each supervised service receives only its env-file values and plect runtime
 values. Its private state directory is `<data-home>/services/<name>/` with mode
-`0700`, supplied as `PLECT_SERVICE_STATE_DIR`; it receives neither the global
-data home nor config home. No service listens for local control requests.
+`0700`, supplied as `PLECT_SERVICE_STATE_DIR`; authoritative per-resource watch
+state lives there. It receives neither the global data home nor config home.
+No service listens for local control requests.
 Browser content on the same host and other OS users cannot reach a local
 listener; same-user code is outside this boundary. The env file is
 owner-readable, and the JSON config file is private.
 
-A service writes JSON-lines `publish` requests to stdout. Its supervising
-plect writes `published` counts and a full `subscriptions` snapshot on stdin
-at service start, then subscription add/remove deltas. Service logs go to
-stderr. The service never invokes the plect CLI. Core holds subscription
-membership and event delivery; services keep provider API cache, rate budget,
-and watch state privately.
+A service writes JSON-lines `publish` requests to stdout, each with an `id`.
+Its supervising plect writes a result such as
+`{"op":"published","id":"request-1","delivered":1}` or an error such as
+`{"op":"error","id":"request-1","code":...,"message":...}` on stdin,
+echoing the request `id`. It also sends a full `subscriptions` snapshot at
+service start, then add/remove deltas; these notifications have no `id`.
+Service logs go to stderr. The service never invokes the plect CLI. Core holds
+subscription membership and event delivery.
+
+Every invocation of an executable from a plugin receives `PLECT_CACHE_DIR` as
+`<cache-home>/plugins/<plugin>/`, a mode-`0700` directory shared by that
+plugin's services and actions, including `observe`. It holds only disposable
+tokens, ETags, conditional-request state, and rate backoff. Plect never reads
+its contents and may delete the directory wholesale; the plugin handles
+locking. Correctness does not depend on the cache. The service's authoritative
+watch state stays in `PLECT_SERVICE_STATE_DIR`.
 
 When a node, channel, or hook runs an executable marked `service = true`,
 plect overlays that service's env-file values on the action's ordinary env
@@ -299,9 +310,10 @@ are removed. Per-mention session creation waits for a concrete use case;
 GitHub query populations retain their `poll` and `subscribe` contract.
 
 The GitHub watcher receives core subscriptions by stdio snapshot and deltas
-and keeps its API cache, rate budget, and watch state private. GitHub
+and keeps its per-resource watch state in `PLECT_SERVICE_STATE_DIR`. GitHub
 `observe` remains callable without a watcher service, using its own
-credentials, process-local rate budget, and App token cache.
+credentials. Both invocations share disposable App token and rate budget
+caches through `PLECT_CACHE_DIR`.
 
 Build-less script executables are the primary v1 form. They must carry their
 interpreter through a shebang. Built binaries are the additional case for
@@ -503,9 +515,9 @@ the global `tasks/`, `workflows/`, `resources/`, and
 cache and runtime state resolve independently of the config home, each
 through its own flag/env pair: `--data-home`/`PLECT_DATA_HOME`/
 `$XDG_DATA_HOME/plect`/`~/.local/share/plect` for runtime state, and
-`--cache-home`/`PLECT_CACHE_HOME`/`$XDG_CACHE_HOME/plect/catalogs`/
-`~/.cache/plect/catalogs` for the resolved catalog snapshots this section
-describes.
+`--cache-home`/`PLECT_CACHE_HOME`/`$XDG_CACHE_HOME/plect`/
+`~/.cache/plect` for cache data. Resolved catalog snapshots live in its
+`catalogs/` child; per-plugin disposable runtime caches live in `plugins/`.
 
 Example:
 

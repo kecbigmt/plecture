@@ -139,16 +139,31 @@ allowed_user_ids = ["U0456"]
 ```
 
 The adapter rejects duplicate `channel_id` values across its bots, so an
-outbound call selects one bot from the thread's channel. The service keeps its
-API cache, rate budget, and per-resource watch state in a private mode-`0700`
-directory supplied as `PLECT_SERVICE_STATE_DIR`. It receives no global data-
-or config-home path and never invokes the plect CLI.
+outbound call selects one bot from the thread's channel. Authoritative
+per-resource watch state stays in the private mode-`0700` directory supplied
+as `PLECT_SERVICE_STATE_DIR`. It receives no global data- or config-home path
+and never invokes the plect CLI.
+
+Every invocation of a plugin executable, including a supervised service or a
+node, channel, or hook action such as `observe`, receives `PLECT_CACHE_DIR` set
+to `<cache-home>/plugins/<plugin>/`. Plect creates that plugin-scoped directory
+with mode `0700`. The cache home resolves from `--cache-home`, then
+`PLECT_CACHE_HOME`, then `$XDG_CACHE_HOME/plect`, then `~/.cache/plect`.
+Catalog snapshots live under `<cache-home>/catalogs/`. The plugin cache holds
+only disposable data such as tokens, ETags, and rate backoff; correctness cannot
+depend on it. Plect never reads its contents and may delete it wholesale on a
+plugin update or cleanup. Plugins own their cache locking. Core subscription
+membership and the service's authoritative per-resource watch state are never
+shared through the cache. The GitHub watcher and standalone `observe` share an
+App token cache and rate budget there.
 
 The service writes JSON-lines requests to stdout, including
-`{"op":"publish","resource":...,"type":...,"summary":...,"body":...,"metadata":...}`.
-Its supervising plect process writes replies and notifications to the
-service's stdin: `{"op":"published","delivered":N}` replies to a publish,
-and `{"op":"subscriptions","resource_type":...,"add":[...],"remove":[...]}`
+`{"op":"publish","id":"request-1","resource":...,"type":...,"summary":...,"body":...,"metadata":...}`.
+Every request carries an `id`. Its supervising plect process writes replies
+to the service's stdin with the same `id`: a result such as
+`{"op":"published","id":"request-1","delivered":N}`, or
+`{"op":"error","id":"request-1","code":...,"message":...}`. Notifications
+carry no `id`: `{"op":"subscriptions","resource_type":...,"add":[...],"remove":[...]}`
 gives a full subscription snapshot when the service starts and deltas
 thereafter on the same ordered stream. The service writes logs to stderr.
 Nothing calls into the service;
@@ -293,11 +308,11 @@ The Slack thread resource's `query.subscribe` and the adapter's
 `/unbound-mentions` and `subscribe unbound-mentions` paths are removed.
 Creating a session for every new mention thread is deferred until a concrete
 use case calls for it. The GitHub watcher learns subscription membership from
-the stdio startup snapshot and deltas and keeps its API cache, rate budget,
-and per-resource watch state privately; it no longer owns
-`subscriptions.json`. Standalone GitHub `observe` remains callable without a
-watcher service and uses the action process's own credentials, process-local
-rate budget, and App token cache.
+the stdio startup snapshot and deltas and keeps per-resource watch state in
+its private service state directory; it no longer owns `subscriptions.json`.
+Standalone GitHub `observe` remains callable without a watcher service and
+uses its own credentials. Both invocations share disposable App token and rate
+budget caches through `PLECT_CACHE_DIR`.
 
 ### Service listing and scope
 
@@ -320,7 +335,7 @@ Code. It has no resident service declaration.
 The implementation has one stage: the core subscription table, transactional
 task binding and cleanup, source-scoped rows and deduplicated delivery,
 resource-addressed publish, `max_subscribers`, the stdio service protocol,
-service-config passing, the one-process Slack
+service-config passing, plugin-scoped disposable caching, the one-process Slack
 adapter, and the bot-user resource arrive together with removal of the Slack
 unbound-mention feed. Populations retain their existing contract.
 
@@ -332,13 +347,13 @@ resource, and GitHub
 tests for overlapping task, dispatch, runtime, and node sources, concurrent
 task setup and cleanup, subscriber limits, persistence, delivery once per
 session/resource, stdio snapshots and deltas, service config on every
-invocation, and failure paths. The breaking change ships with a backup-first procedure in
-`docs/migrations/` and a one-time migration of existing subscription rows in
-the same implementation PR; there is no compatibility shim.
-
-Standalone GitHub `observe` can mint an App token on each invocation and
-cannot remember rate backoff between processes. An observe-private cache
-directory is the recommended follow-up for this remaining cost.
+invocation, cache isolation and reuse, request/reply correlation and errors,
+and failure paths. The breaking change ships with a backup-first procedure in
+`docs/migrations/`. Its one-time migration maps existing GitHub watcher
+`subscriptions.json` rows, Slack adapter `subscribers.json` rows,
+`subscription_retries`, and `pending_delivery.json` into the new subscription
+table, or drops a row with a logged reason. It ships in the same implementation
+PR; there is no compatibility shim.
 
 ## Alternatives considered
 

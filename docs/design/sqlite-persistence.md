@@ -72,12 +72,21 @@ from its declared `env_file` and plect runtime values only. It does not inherit
 the supervisor's `XDG_DATA_HOME`, `PLECT_DATA_HOME`, or other environment
 entries. Its private `PLECT_SERVICE_STATE_DIR` is scoped to that service;
 neither the global data home nor config home is passed. A service exchanges
-publish requests, published counts, and subscription snapshots/deltas only
-with its supervising plect process over JSON-lines stdio.
+publish requests with IDs, correlated replies or errors, and subscription
+snapshots/deltas only with its supervising plect process over JSON-lines stdio.
 An action that invokes a service-marked executable keeps its ordinary action
 base and overlays that service's env-file entries and `PLECT_SERVICE_CONFIG`;
 service entries win on duplicate keys. This gives an action no global data-home
 binding from the service.
+
+Every plugin executable invocation receives `PLECT_CACHE_DIR` for its plugin's
+mode-`0700` disposable cache. The directory is under
+`<cache-home>/plugins/<plugin>/`; `<cache-home>` resolves from `--cache-home`,
+then `PLECT_CACHE_HOME`, then `$XDG_CACHE_HOME/plect`, then `~/.cache/plect`.
+The plugin owns cache locking. Plect neither reads the contents nor treats
+them as authoritative, and may delete them wholesale. Core subscription
+membership stays in `storage.db`; per-resource watch state stays in
+`PLECT_SERVICE_STATE_DIR`.
 
 An `IsolatedEnv` child still needs to run `plect` against the daemon's own
 store — a pane's plugin hooks, or a task instruction that tells the agent to
