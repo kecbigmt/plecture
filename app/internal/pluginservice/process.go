@@ -10,6 +10,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"reflect"
 	"sort"
 	"strings"
 	"sync"
@@ -113,15 +114,13 @@ func runProcess(ctx context.Context, decl Declaration, logger *slog.Logger, wait
 			return err
 		}
 		initial = rows
-		if len(rows) == 0 {
-			_ = write(map[string]any{"op": "subscriptions", "resource_type": "", "add": []any{}, "remove": []any{}})
+		if rows == nil {
+			rows = []persistence.Subscription{}
 		}
-		for kind, add := range subscriptionGroups(rows) {
-			if err := write(map[string]any{"op": "subscriptions", "resource_type": kind, "add": add, "remove": []string{}}); err != nil {
-				_ = cmd.Process.Kill()
-				_ = cmd.Wait()
-				return err
-			}
+		if err := write(map[string]any{"op": "subscriptions", "resource_type": "", "add": rows, "remove": []persistence.Subscription{}}); err != nil {
+			_ = cmd.Process.Kill()
+			_ = cmd.Wait()
+			return err
 		}
 	}
 	stopPoll := make(chan struct{})
@@ -161,14 +160,6 @@ func runProcess(ctx context.Context, decl Declaration, logger *slog.Logger, wait
 		return scanErr
 	}
 	return err
-}
-
-func subscriptionGroups(rows []persistence.Subscription) map[string][]persistence.Subscription {
-	groups := map[string][]persistence.Subscription{}
-	for _, row := range rows {
-		groups[row.Resource.Type] = append(groups[row.Resource.Type], row)
-	}
-	return groups
 }
 
 func pollSubscriptions(ctx context.Context, stop <-chan struct{}, previous []persistence.Subscription, list func(context.Context) ([]persistence.Subscription, error), write func(any) error, logger *slog.Logger, id string) {
@@ -216,14 +207,14 @@ func subscriptionDeltas(before, after []persistence.Subscription) map[string]sub
 	}
 	deltas := map[string]subscriptionDelta{}
 	for id, row := range old {
-		if _, ok := newRows[id]; !ok {
+		if next, ok := newRows[id]; !ok || !reflect.DeepEqual(row, next) {
 			delta := deltas[row.Resource.Type]
 			delta.remove = append(delta.remove, row)
 			deltas[row.Resource.Type] = delta
 		}
 	}
 	for id, row := range newRows {
-		if _, ok := old[id]; !ok {
+		if previous, ok := old[id]; !ok || !reflect.DeepEqual(row, previous) {
 			delta := deltas[row.Resource.Type]
 			delta.add = append(delta.add, row)
 			deltas[row.Resource.Type] = delta
@@ -279,26 +270,12 @@ func (w *serviceLogWriter) logLine(line string) {
 	w.logger.Info(line, "service", w.id, "stream", w.stream)
 }
 
-// buildEnv merges decl.Env on top of the supervisor's own environment,
-// de-duplicated and sorted so a key declared in both places has one
-// unambiguous value regardless of libc environ merge behavior. Secrets
-// (e.g. a chat platform's bot token) are expected to already be present in the
-// supervisor's own environment — plugin.toml's `env` field carries only
-// non-secret literals, per the plugin service lifecycle ADR.
-//
-// The supervisor's own PLECT_DATA_HOME and PLECT_CACHE_HOME are dropped
-// before overrides apply, unless plugin.toml's own `env` table rebinds one
-// explicitly. XDG_DATA_HOME and XDG_CACHE_HOME are left alone: an existing
-// service may already depend on inheriting them for its own unrelated
-// on-disk state — see datahome.InheritableEnv.
-func buildEnv(overrides map[string]string, dirs ...string) []string {
+func buildEnv(overrides map[string]string, dataDir, cacheDir string) []string {
 	merged := make(map[string]string, len(overrides))
 	for k, v := range overrides {
 		merged[k] = v
 	}
-	if len(dirs) == 2 {
-		merged["PLECT_DATA_DIR"], merged["PLECT_CACHE_DIR"] = dirs[0], dirs[1]
-	}
+	merged["PLECT_DATA_DIR"], merged["PLECT_CACHE_DIR"] = dataDir, cacheDir
 	keys := make([]string, 0, len(merged))
 	for k := range merged {
 		keys = append(keys, k)
@@ -309,16 +286,4 @@ func buildEnv(overrides map[string]string, dirs ...string) []string {
 		out[i] = k + "=" + merged[k]
 	}
 	return out
-}
-
-// missingRequiredEnv returns the subset of required not already set in the
-// supervisor's own environment.
-func missingRequiredEnv(required []string) []string {
-	var missing []string
-	for _, name := range required {
-		if os.Getenv(name) == "" {
-			missing = append(missing, name)
-		}
-	}
-	return missing
 }

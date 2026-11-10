@@ -134,8 +134,7 @@ restart, within one refresh interval.`,
 
 		go live.Run(ctx)
 
-		// Plugin-declared [[services]] (a plugin-owned daemon such as a chat
-		// relay or an issue-tracker watcher) are supervised the same way:
+		// Operator-declared [[services]] are supervised the same way:
 		// started and stopped with the resident process, restarted on crash
 		// or on the owning plugin's content change. Polls config.LoadPlugins() itself rather
 		// than live.Get()/cfg.Plugins: services only need the mounted

@@ -18,7 +18,7 @@ import (
 // process is running is picked up without restarting the process itself.
 type PluginSource func() ([]plugins.Mounted, *plugins.Lockfile, error)
 
-// Supervisor starts every plugin-declared [[services]] entry when Run
+// Supervisor starts every operator-declared [[services]] entry when Run
 // begins, restarts a crashed child according to its restart policy with
 // bounded backoff, restarts a service when its owning plugin's content hash
 // changes, and stops every service when ctx ends. One service's failure —

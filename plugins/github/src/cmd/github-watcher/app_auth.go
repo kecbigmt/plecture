@@ -28,7 +28,6 @@ const (
 	envRepo           = "GITHUB_WATCHER_APP_REPO"
 	envPrivateKeyPath = "GITHUB_WATCHER_APP_PRIVATE_KEY_PATH"
 	envBaseURL        = "GITHUB_WATCHER_APP_BASE_URL"
-	envCachePath      = "GITHUB_WATCHER_APP_CACHE_PATH"
 )
 
 // appAuthConfig is validated enough to attempt a mint; the mint itself can
@@ -59,12 +58,7 @@ func appAuthFromEnv(dataDir string) (*appAuthConfig, error) {
 	if baseURL == "" {
 		baseURL = githubapp.DefaultBaseURL
 	}
-	cachePath := os.Getenv(envCachePath)
-	if cachePath == "" {
-		// Shares ghAPIDataDir's directory so serve and gh-api locate the same
-		// token cache the same way they already locate the same rate budget.
-		cachePath = filepath.Join(dataDir, ".app-token-cache.json")
-	}
+	cachePath := filepath.Join(dataDir, ".app-token-cache.json")
 	return &appAuthConfig{
 		appID:          appID,
 		installationID: installationID,

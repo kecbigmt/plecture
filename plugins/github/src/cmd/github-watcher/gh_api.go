@@ -14,42 +14,17 @@ import (
 	"github.com/kecbigmt/plecture/plugins/github/src/internal/ratebudget"
 )
 
-// cmdGhAPI is `github-watcher gh-api [--data-dir <dir>] <gh api args...>`:
-// the cross-process helper the github config layer (providers/github.toml,
-// the GitHub resource definitions) invokes instead of calling `gh api` directly, so
-// its setup/observe scripts share the same rate budget as the poll loop —
-// a 403/429 seen by either blocks the other until the backoff window
-// elapses, instead of each retrying independently and re-tripping the
-// secondary rate limit. --data-dir, when given, must come first and must
-// match the poll loop's own --data-dir; there is no other flag of gh-api's
-// own to parse, since every remaining argument belongs to `gh api` and must
-// reach it unexamined (gh's own flags must never be parsed by plect code).
 func cmdGhAPI(args []string) error {
-	dataDir := ""
-	if len(args) >= 2 && args[0] == "--data-dir" {
-		dataDir, args = args[1], args[2:]
+	cacheDir := os.Getenv("PLECT_CACHE_DIR")
+	if cacheDir == "" {
+		return fmt.Errorf("PLECT_CACHE_DIR is required")
 	}
-	guard := ratebudget.NewGuard(ghAPIDataDir(dataDir))
-	tokenFn, err := appAuthTokenFunc(ghAPIDataDir(dataDir))
+	guard := ratebudget.NewGuard(cacheDir)
+	tokenFn, err := appAuthTokenFunc(cacheDir)
 	if err != nil {
 		return err
 	}
 	return runGhAPI(guard, tokenFn, os.Stdin, os.Stdout, os.Stderr, args)
-}
-
-// ghAPIDataDir mirrors NewStore's default so `github-watcher gh-api` and
-// `github-watcher serve` share one budget file without every config-layer
-// caller having to pass --data-dir explicitly.
-func ghAPIDataDir(dataDir string) string {
-	if dataDir != "" {
-		return dataDir
-	}
-	xdgDataHome := os.Getenv("XDG_DATA_HOME")
-	if xdgDataHome == "" {
-		home, _ := os.UserHomeDir()
-		xdgDataHome = home + "/.local/share"
-	}
-	return xdgDataHome + "/github-watcher"
 }
 
 // runGhAPI runs `gh api` gated by the shared rate budget: a pending backoff
