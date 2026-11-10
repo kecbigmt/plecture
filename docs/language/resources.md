@@ -50,8 +50,11 @@ and session. A resource does not own a task's state or judge evidence.
 records an idempotent `runtime` row for the calling session. It runs no
 resource hook. `plect unsubscribe <id>` removes only that session's `runtime`
 row for resource `<id>`. `plect up <url>` records a `dispatch` row for the
-session's entry resource; a node with `subscription` records a `node` row while
-any live node binds the resource. Source rows overlap without replacing one
+session's entry resource. A task instance bound to a resource records a `task`
+row until the last task in that session bound to it is cleaned up. A node with
+`subscription` records a `node` row while any live node binds the resource.
+Task binding and subscription admission, or cleanup and removal, use one
+database transaction. Source rows overlap without replacing one
 another. Subscriptions survive session down/up. Destroying a session removes
 them; they also cascade if its retained session row is deleted. Core records
 `inputs` JSON and `created_at` for each row. A `max_subscribers` limit counts

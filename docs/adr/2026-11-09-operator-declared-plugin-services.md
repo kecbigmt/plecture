@@ -171,8 +171,8 @@ workflow `base_url` inputs are removed.
 
 Core owns a `subscriptions` table keyed by
 `(session_id, resource_id, source)`, with `source` equal to `runtime`,
-`dispatch`, or `node`, `inputs`
-JSON, and `created_at`. Each source records a separate reason for one
+`dispatch`, `task`, or `node`, plus `inputs` JSON and `created_at`. Each source
+records a separate reason for one
 session-resource binding:
 
 - `plect subscribe <resource-id>` writes the calling session's `runtime` row.
@@ -180,13 +180,19 @@ session-resource binding:
 - `plect up <url>` writes a `dispatch` row for the session's entry resource,
   including when a chain or query population brings up that session. The row
   remains through down/up and is removed on session destroy.
+- Binding a task instance to a resource, including through `plect up
+  --task-resource` or `plect task setup --resource`, writes a `task` row. It
+  remains while any task instance in that session binds the resource and is
+  removed when the last such task is cleaned up. Every write that changes
+  task-resource bindings reconciles the row with the stored task instances
+  in the same database transaction, including admission and cleanup.
 - A node with `subscription` writes a `node` row when it starts. The row stays
   while any live node in that session binds the same resource and is removed
   when the last such node ends.
 
 `plect unsubscribe <id>` removes only the calling session's `runtime` row for
-resource `<id>`; it cannot remove a `dispatch` or `node` reason. Destroying a
-session removes all its rows while retaining its tombstone, and deleting the
+resource `<id>`; it cannot remove a `dispatch`, `task`, or `node` reason.
+Destroying a session removes all its rows while retaining its tombstone, and deleting the
 session row also cascades.
 `plect subscription list [--session] [--resource-type] --json` exposes the
 rows to operators; services receive
@@ -194,7 +200,9 @@ the same membership as a startup snapshot and later stdio deltas. A resource
 may set `max_subscribers`; the limit counts distinct sessions per resource,
 not rows, so another source for an already-subscribed session does not use a
 second slot. Resource `subscribe` and `unsubscribe` hooks and
-`subscription_retries` are removed; `observe` remains.
+`subscription_retries` are removed; `observe` remains. The transaction
+replaces the delivery lock and retry queue used for task binding and cleanup
+decisions. Other source rows keep delivery active when a task is cleaned up.
 
 `plect event publish --resource <id>` and a service's stdio `publish` request
 append the event once per distinct `(session_id, resource_id)` subscription
@@ -309,17 +317,20 @@ Code. It has no resident service declaration.
 
 ## Consequences
 
-The implementation has one stage: the core subscription table, source-scoped
-rows and deduplicated delivery, resource-addressed publish, `max_subscribers`,
-the stdio service protocol, service-config passing, the one-process Slack
+The implementation has one stage: the core subscription table, transactional
+task binding and cleanup, source-scoped rows and deduplicated delivery,
+resource-addressed publish, `max_subscribers`, the stdio service protocol,
+service-config passing, the one-process Slack
 adapter, and the bot-user resource arrive together with removal of the Slack
 unbound-mention feed. Populations retain their existing contract.
 
 The implementation removes plugin-owned service declarations, resource
-subscription hooks and retries, Slack subscriber and instance registries,
-the #742 `--state-dir` split and bot-scoped `mentions` resource, and GitHub
+subscription hooks, the delivery lock and retry queue, Slack subscriber and
+instance registries, the #742 `--state-dir` split and bot-scoped `mentions`
+resource, and GitHub
 `subscriptions.json`. It adds schema and conformance fixtures and behavior
-tests for source overlap, subscriber limits, persistence, delivery once per
+tests for overlapping task, dispatch, runtime, and node sources, concurrent
+task setup and cleanup, subscriber limits, persistence, delivery once per
 session/resource, stdio snapshots and deltas, service config on every
 invocation, and failure paths. The breaking change ships with a backup-first procedure in
 `docs/migrations/` and a one-time migration of existing subscription rows in

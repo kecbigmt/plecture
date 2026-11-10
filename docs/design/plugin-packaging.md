@@ -279,8 +279,11 @@ directly, with no workflow `base_url` input.
 Core stores subscriptions keyed by `(session, resource, source)`. An explicit
 `plect subscribe` writes a `runtime` row and `plect unsubscribe` removes only
 that row. `plect up <url>` writes a `dispatch` row for the entry resource;
-session destroy removes it. A node with `subscription` writes a `node` row
-while at least one such node binds the resource. The limit in
+session destroy removes it. A resource-bound task writes a `task` row while
+any task instance in that session remains bound to the resource. Task binding
+or cleanup and the row change use one database transaction. A node with
+`subscription` writes a `node` row while at least one such node binds the
+resource. The limit in
 `max_subscribers` counts distinct sessions, and an event is delivered once per
 session/resource even when several source rows exist. `plect event publish
 --resource <id>` and a service's stdio `publish` request both use this table.

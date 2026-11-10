@@ -189,7 +189,7 @@ classifies every `_json` column by its owning declaration:
 
 | Table | Key and relational columns | JSON or scalar payload | Source |
 | --- | --- | --- | --- |
-| `resources` | `id` primary key (opaque; see "Resources"); `type`; `name` unique across types; `locator`; `created_at` | none | each distinct resource a session, task, node, population member or delivery retry refers to |
+| `resources` | `id` primary key (opaque; see "Resources"); `type`; `name` unique across types; `locator`; `created_at` | none | each distinct resource a session, task, node, population member or subscription refers to |
 | `sessions` | `id` (ULID) primary key; `name` (unique only among live rows — see "Session identity and lifecycle"); `status`, nullable `destroyed_at`; nullable `parent_session_id` and `root_session_id`, each referencing `sessions(id)`; `project_root` (the configuration context, `''` for global only); nullable `resource_id` referencing `resources(id)`; nullable `tag`, `alias`, `population_workflow`, `population_name` (with `project_root` they reference `populations(project_root, workflow, name)`); nullable lifecycle-configuration digest baseline; `workflow`, `created_at`, `updated_at` | inputs, health, tick backoff | `state.json` `sessions` entries |
 | `node_instances` | `(session_id, node_id)` primary key; session foreign key; no other columns | none — purely the logical node's identity | `state.json` `sessions.*.tasks` entries with `dynamic` unset (keys only) |
 | `node_executions` | `id` (ULID, minted per setup attempt) primary key; `(session_id, node_id)` foreign key to `node_instances`; `sequence`; nullable `task_id`, `resource_id` and `subscription_id` (each referencing `resources(id)`; `subscription_id` is the resource the node's subscription output bound); `scope`, `status`, nullable `finalized_at`; release outcome and unavailable reason; at most one unreleased row per `(session_id, node_id)` — see "Node execution identity" | inputs, outputs, state, observed value, `done_when` (rare, not relationally queried), setup-time cleanup facts, nullable `directory` (the directory the setup ran in; `NULL` when setup ran with no explicit directory), error, lifecycle timestamps | `state.json` `sessions.*.tasks` entries with `dynamic` unset (per-attempt facts) |
@@ -203,7 +203,7 @@ classifies every `_json` column by its owning declaration:
 | `populations` | `(project_root, workflow, name)` primary key | none | `state.json` `populations` map key and value |
 | `population_members` | `(project_root, workflow, name, resource_id)` primary key, `populations(project_root, workflow, name)` foreign key, and `resource_id` referencing `resources(id)`; nullable `session_name` | item, generation, timestamps, flags, `decision_kind`/`decision_reason` | `PopulationState.Members` |
 | `population_member_blockers` | `(project_root, workflow, name, resource_id, position)` primary key; foreign key to `population_members` | one blocker reason per row | `PopulationMember.LastBlockers` |
-| `subscriptions` | `(session_id, resource_id, source)` primary key; session and resource foreign keys; session deletion cascades | `source` CHECK IN `runtime`/`dispatch`/`node`, `inputs` JSON, `created_at` | core subscription admission |
+| `subscriptions` | `(session_id, resource_id, source)` primary key; session and resource foreign keys; session deletion cascades | `source` CHECK IN `runtime`/`dispatch`/`task`/`node`, `inputs` JSON, `created_at` | core subscription admission |
 | `session_channel_health` | `(session_id, kind)` primary key; session foreign key; `kind` CHECK IN `validation`/`delivery` | consecutive failures, first/last failure time, last channel/error, escalation time | `Session.ChannelValidationHealth`/`ChannelDeliveryHealth` |
 | `up_reservations` | `child_session_name` primary key; nullable `parent_session_name`, `virtual_root`, `pid`, `reserved_at` | none | `state.json` `up_reservations` |
 | `events` | `id` primary key; `(session_id, sequence)` unique and references `sessions(id)`; `direction` CHECK IN `inbound`/`outbound`/`internal`; `metadata_json` CHECK `json_valid` | type, source, direction, summary, body, metadata, and recorded time | each `log.jsonl` record |
@@ -213,8 +213,6 @@ classifies every `_json` column by its owning declaration:
 
 `storage.db` is the durable authority. Its SQLite sidecars and persistence
 gate files remain beside it because SQLite and the gate own their lifecycle.
-The only per-session file is a delivery-decision flock; it serializes a
-provider hook and carries no durable fact.
 
 | File | Reason |
 | --- | --- |
@@ -222,7 +220,6 @@ provider hook and carries no durable fact.
 | `storage.db.access.lock`, `storage.db.coordination.lock`, `storage.db.handle.lock`, `storage.db.migration.json` | The persistence migration access gate's lock and diagnostic state. |
 | `backups/<UTC timestamp>-v<from version>/` | A copy of the store taken before a migration; see "Pre-migration backups and restore". |
 | `restore-displaced/<UTC timestamp>/` | The files a restore replaced; kept for the operator to inspect and delete. |
-| `delivery-locks/<escaped-session>.lock` | OS-level mutual exclusion for one provider delivery decision; it is a `flock`, not durable state. |
 
 The retained `sessions` row with `status = 'destroyed'` and `destroyed_at`
 is a session tombstone. Its child rows reconstruct `contract.Tombstone`; no
@@ -234,9 +231,14 @@ resource-addressed publish groups rows by `(session_id, resource_id)` and
 appends once to each session's event log. `runtime` rows are written by an
 explicit subscribe and removed only by an explicit unsubscribe or destroy;
 `dispatch` rows are written by session up for its entry resource and removed
-on destroy; `node` rows are held while any live node in that session binds the
-resource. Repeating a write for one source is idempotent. The
-`max_subscribers` check counts distinct session ids, not source rows. Session
+on destroy; `task` rows are held while any task instance in that session binds
+the resource; `node` rows are held while any live node in that session binds
+the resource. Every write that changes task-resource bindings reconciles
+`task` rows with the distinct `(session_id, resource_id)` pairs in task
+instances that have not been cleaned up, in the same transaction. Repeating a
+write for one
+source is idempotent. The `max_subscribers` check counts distinct session ids,
+not source rows. Session
 destroy removes its rows while retaining its tombstone; deleting that session
 row also cascades to them.
 
@@ -1116,7 +1118,7 @@ following runtime paths.
 | `events/<escaped-session>/.gen` | Read one trimmed non-empty stream identifier when present and reuse it as the imported session row's `id`; otherwise mint a fresh id after recording that no old page cursor survives cutover. |
 | `events/<escaped-session>/.cursor.<consumer>` | Parse a non-negative decimal boundary, validate it against the log boundary index, map `<consumer>` to its `event_cursors.kind` (`dispatcher` imports as `delivery`, `tick-reactor` imports as `tick`), and import the translated position. |
 | `events/<escaped-session>/tombstone.json`, `events/<escaped-session>/chain_attempts.json`, `events/<escaped-session>/.lock`, `pending_delivery.json`, `pending_delivery.json.lock` | The legacy importer does not copy these post-cutover sidecars. The storage opener imports the sidecars from the active database directory in one idempotent pass, then removes them and the retired `events/` tree. A source name resolves to its live incarnation or its latest destroyed incarnation; no match aborts without removing a source file. A chain-attempt generation that identifies another existing session also aborts. |
-| `delivery-locks/<escaped-session>.lock` | Confirm no lock is held; do not copy it. The delivery decision keeps its service-level `flock`. |
+| `delivery-locks/<escaped-session>.lock` | Confirm no lock is held; do not copy it. Resource delivery decisions use database transactions. |
 
 The importer inserts every `populations` row before any `sessions` row that
 references it: `sessions.population_workflow`/`population_name` is a

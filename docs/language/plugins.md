@@ -113,8 +113,10 @@ file. Slack outbound actions call the provider Web API directly.
 Core keys subscriptions by `(session, resource, source)`. `plect subscribe`
 adds an idempotent `runtime` row; `plect unsubscribe` removes only that row.
 `plect up <url>` adds a `dispatch` row for the entry resource, removed on
-session destroy. A node `subscription` adds a `node` row while any live node
-binds that resource. A resource's `max_subscribers` counts distinct sessions,
+session destroy. A resource-bound task adds a `task` row while any task
+instance in that session remains bound to the resource. A node `subscription`
+adds a `node` row while any live node binds that resource. A resource's
+`max_subscribers` counts distinct sessions,
 and delivery happens once per session/resource. Core publishes to subscribed
 sessions and sends each service subscription snapshots and deltas by stdio.
 

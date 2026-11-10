@@ -31,6 +31,9 @@ binding. `plect up` may omit it, creating an environment a person may use.
 `plect up --task <task>` binds the entry identifier unless `--task-resource`
 names another concrete resource; an incompatible selection fails before the
 session is created. The task becomes the session's `initial` instance.
+The binding records a `task` subscription to that resource until the last
+bound task instance in the session is cleaned up. It coexists with an entry
+resource's `dispatch` subscription.
 Repeating the same selection keeps that instance, and a different selection
 fails until the existing instance is cleaned.
 Chains and populations use the same one-task selection surface, not a workflow
@@ -54,8 +57,8 @@ its session to the resource identifier produced at that output. This is a
 single projection, separate from the node's setup inputs; it reads no other
 node or value root. After setup produces the node, core stores a subscription
 row with source `node`. After cleanup, core removes it when no other live node
-in that session binds the same resource. An entry-resource `dispatch` row or
-explicit `runtime` row remains independent. Admission fails if the
+in that session binds the same resource. A `dispatch`, `task`, or `runtime` row
+remains independent. Admission fails if the
 resource's `max_subscribers` bound is reached. Omitting `subscription` leaves
 the node's output available without binding delivery.
 
