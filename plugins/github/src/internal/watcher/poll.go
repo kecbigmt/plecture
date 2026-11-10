@@ -90,8 +90,18 @@ type Observed struct {
 }
 
 // Poller drives one tick of the watch loop.
+type WatchStore interface {
+	All() (map[string]*Subscription, error)
+	SetLast(sessionName, resource string, last map[string]string) error
+	IncrementFailStreak(sessionName, resource string) (int, error)
+	ResetFailStreak(sessionName, resource string) error
+	GetCache(key string) (etag, body string, ok bool)
+	SetCache(key, etag, body string) error
+	UnsubscribeResource(sessionName, resource string) error
+}
+
 type Poller struct {
-	Store  *Store
+	Store  WatchStore
 	Logger *slog.Logger
 	// Bus, when set, is the plect event bus the watcher publishes github.* events
 	// to (the P4 delivery path). When set it takes precedence over NotifyURL:
