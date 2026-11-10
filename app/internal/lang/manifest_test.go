@@ -4,7 +4,7 @@ import "testing"
 
 func TestValidatePluginManifestValid(t *testing.T) {
 	path := writeTemp(t, "plugin.toml", `
-schema_version    = 2
+schema_version    = 3
 version           = "0.1.0"
 plect_min_version = "0.0.0"
 description       = "GitHub workspace provider, resource observation, and watcher subscription."
@@ -22,18 +22,16 @@ path = "scripts/gh-guard"
 name = "github-watcher"
 path = "bin/github-watcher"
 
-[[services]]
-name       = "github-watcher"
-executable = "github-watcher"
-args       = ["serve"]
-restart    = "on-failure"
-health     = { type = "process" }
+service = true
+
+[executables.config_schema]
+type = "object"
 `)
 	m, err := ValidatePluginManifest(path)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
-	if len(m.Executables) != 3 || len(m.Services) != 1 {
+	if len(m.Executables) != 3 || !m.Executables[2].Service {
 		t.Fatalf("unexpected decode: %+v", m)
 	}
 }
@@ -50,7 +48,7 @@ description       = "A manifest with no schema_version."
 
 func TestValidatePluginManifestMissingVersion(t *testing.T) {
 	path := writeTemp(t, "plugin.toml", `
-schema_version    = 2
+schema_version    = 3
 plect_min_version = "0.0.0"
 description       = "A manifest with no version."
 `)
@@ -60,7 +58,7 @@ description       = "A manifest with no version."
 
 func TestValidatePluginManifestMissingDescription(t *testing.T) {
 	path := writeTemp(t, "plugin.toml", `
-schema_version    = 2
+schema_version    = 3
 version           = "0.1.0"
 plect_min_version = "0.0.0"
 `)
@@ -70,7 +68,7 @@ plect_min_version = "0.0.0"
 
 func TestValidatePluginManifestUnknownField(t *testing.T) {
 	path := writeTemp(t, "plugin.toml", `
-schema_version    = 2
+schema_version    = 3
 version           = "0.1.0"
 plect_min_version = "0.0.0"
 description       = "d"
@@ -82,7 +80,7 @@ homepage          = "https://example.invalid"
 
 func TestValidatePluginManifestDuplicateExecutableName(t *testing.T) {
 	path := writeTemp(t, "plugin.toml", `
-schema_version    = 2
+schema_version    = 3
 version           = "0.1.0"
 plect_min_version = "0.0.0"
 description       = "A plugin declaring the same executable name twice."
@@ -103,7 +101,7 @@ path = "scripts/github-worktree"
 
 func TestValidatePluginManifestPlectMinVersionExceedsRunning(t *testing.T) {
 	path := writeTemp(t, "plugin.toml", `
-schema_version    = 2
+schema_version    = 3
 version           = "0.1.0"
 plect_min_version = "999.0.0"
 description       = "A plugin that requires a plect version far newer than any that exists."
@@ -116,7 +114,7 @@ description       = "A plugin that requires a plect version far newer than any t
 
 func TestValidatePluginManifestServiceUnknownExecutable(t *testing.T) {
 	path := writeTemp(t, "plugin.toml", `
-schema_version    = 2
+schema_version    = 3
 version           = "0.1.0"
 plect_min_version = "0.0.0"
 description       = "A plugin whose service names an executable it does not declare."
@@ -132,7 +130,9 @@ restart    = "on-failure"
 health     = { type = "process" }
 `)
 	_, err := ValidatePluginManifest(path)
-	assertDiagnostic(t, err, CodeUnknownRef, LayerSemantic)
+	if err == nil {
+		t.Fatal("expected retired service table error")
+	}
 }
 
 func TestValidateCatalogManifestValid(t *testing.T) {

@@ -44,7 +44,7 @@ func newLocalCatalogGitRepo(t *testing.T) (repoDir, firstCommit, secondCommit st
 		if err := os.MkdirAll(filepath.Join(dir, "okf"), 0o755); err != nil {
 			t.Fatal(err)
 		}
-		content := "schema_version = 2\nplect_min_version = \"" + minVersion + "\"\n"
+		content := "schema_version = 3\nplect_min_version = \"" + minVersion + "\"\n"
 		if err := os.WriteFile(filepath.Join(dir, "okf", "plugin.toml"), []byte(content), 0o644); err != nil {
 			t.Fatal(err)
 		}

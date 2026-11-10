@@ -1,6 +1,7 @@
 package commands
 
 import (
+	"path/filepath"
 	"testing"
 
 	"github.com/kecbigmt/plecture/app/internal/cachehome"
@@ -25,7 +26,7 @@ func TestCacheHomeFlag_OverridesDefaultCacheRoot(t *testing.T) {
 	if err != nil {
 		t.Fatalf("DefaultCacheRoot() error = %v", err)
 	}
-	if got != flagDir {
-		t.Errorf("DefaultCacheRoot() = %q, want %q", got, flagDir)
+	if got != filepath.Join(flagDir, "catalogs") {
+		t.Errorf("DefaultCacheRoot() = %q, want catalogs under %q", got, flagDir)
 	}
 }

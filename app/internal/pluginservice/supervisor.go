@@ -2,9 +2,10 @@ package pluginservice
 
 import (
 	"context"
+	"crypto/sha256"
+	"encoding/json"
 	"fmt"
 	"log/slog"
-	"strings"
 	"time"
 
 	"github.com/kecbigmt/plecture/app/internal/domain"
@@ -24,9 +25,10 @@ type PluginSource func() ([]plugins.Mounted, *plugins.Lockfile, error)
 // a start error, a crash loop, even a panic in this package's own loop —
 // never stops another service or the supervisor itself; see runOne.
 type Supervisor struct {
-	source PluginSource
-	Status *StatusRegistry
-	logger *slog.Logger
+	source   PluginSource
+	Status   *StatusRegistry
+	logger   *slog.Logger
+	Protocol *Protocol
 
 	// Tunables. Production defaults are deliberately more relaxed than
 	// dispatch/reactor's 1s follower poll: services are daemons, not
@@ -55,9 +57,9 @@ func NewSupervisor(source PluginSource) *Supervisor {
 
 // runningService is one currently-active service goroutine.
 type runningService struct {
-	cancel context.CancelFunc
-	done   chan struct{}
-	hash   string
+	cancel    context.CancelFunc
+	done      chan struct{}
+	signature [32]byte
 }
 
 // Run reconciles declared services against currently running ones every
@@ -103,8 +105,14 @@ func (sup *Supervisor) reconcile(ctx context.Context, running map[string]*runnin
 	seen := make(map[string]bool, len(decls))
 	for _, decl := range decls {
 		seen[decl.ID] = true
+		serialized, err := json.Marshal(decl)
+		if err != nil {
+			sup.logger.Error("pluginservice: invalid declaration", "service", decl.ID, "error", err)
+			continue
+		}
+		signature := sha256.Sum256(serialized)
 		if rs, ok := running[decl.ID]; ok {
-			if rs.hash == decl.ContentHash {
+			if rs.signature == signature {
 				continue
 			}
 			// The owning plugin's content changed (a `plect plugin update`
@@ -115,7 +123,7 @@ func (sup *Supervisor) reconcile(ctx context.Context, running map[string]*runnin
 			<-rs.done
 			delete(running, decl.ID)
 		}
-		running[decl.ID] = sup.start(ctx, decl)
+		running[decl.ID] = sup.start(ctx, decl, signature)
 	}
 	for id, rs := range running {
 		if !seen[id] {
@@ -126,14 +134,14 @@ func (sup *Supervisor) reconcile(ctx context.Context, running map[string]*runnin
 	}
 }
 
-func (sup *Supervisor) start(ctx context.Context, decl Declaration) *runningService {
+func (sup *Supervisor) start(ctx context.Context, decl Declaration, signature [32]byte) *runningService {
 	dctx, cancel := context.WithCancel(ctx)
 	done := make(chan struct{})
 	go func() {
 		defer close(done)
 		sup.runOne(dctx, decl)
 	}()
-	return &runningService{cancel: cancel, done: done, hash: decl.ContentHash}
+	return &runningService{cancel: cancel, done: done, signature: signature}
 }
 
 // runOne owns one service's whole lifetime: start, wait, and — per its
@@ -161,20 +169,6 @@ func (sup *Supervisor) runOne(ctx context.Context, decl Declaration) {
 		st.ContentHash = decl.ContentHash
 	})
 
-	if missing := missingRequiredEnv(decl.RequiredEnv); len(missing) > 0 {
-		// Naturally inert, not a failure: e.g. a chat adapter service without
-		// its bot token configured. Checked once per (re)start attempt —
-		// required env is expected to come from the resident process's own
-		// environment, which does not change during the process's lifetime, so
-		// there is nothing to gain by rechecking every poll tick.
-		sup.Status.Update(decl.ID, func(st *Status) {
-			st.Running = false
-			st.Health = domain.HealthUndeclared
-			st.LastError = fmt.Sprintf("missing required environment: %s", strings.Join(missing, ", "))
-		})
-		return
-	}
-
 	restart := decl.Restart
 	if restart == "" {
 		restart = plugins.ServiceRestartOnFailure
@@ -192,7 +186,7 @@ func (sup *Supervisor) runOne(ctx context.Context, decl Declaration) {
 				st.Health = domain.HealthHealthy
 				st.LastError = ""
 			})
-		})
+		}, sup.Protocol)
 
 		if ctx.Err() != nil {
 			// Our own shutdown SIGTERM caused this exit; record it as an

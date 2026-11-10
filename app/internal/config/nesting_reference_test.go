@@ -18,7 +18,7 @@ func nestingCatalog(t *testing.T, published, enabled []string, pluginTasks, user
 	writeFile(t, filepath.Join(catalogDir, "catalog.toml"), "schema_version = 2\nplugins = [\""+strings.Join(published, "\", \"")+"\"]\n")
 	for _, p := range published {
 		writeFile(t, filepath.Join(catalogDir, p, "plugin.toml"), `
-schema_version = 2
+schema_version = 3
 plect_min_version = "0.0.0"
 `)
 	}
