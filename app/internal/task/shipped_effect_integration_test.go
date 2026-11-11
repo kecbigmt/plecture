@@ -269,6 +269,39 @@ func newEffectHarness(t *testing.T, source, declarationsDir string, realScripts 
 	t.Setenv("PLECT_EFFECT_BIN", h.spyDir)
 	t.Setenv("PLECT_EFFECT_LOG", h.argvLog)
 	t.Setenv("PLECT_EFFECT_STATE", h.stateDir)
+	if template, err := os.ReadFile(filepath.Join(source, "testdata", "effects", "service.toml")); err == nil {
+		configHome := filepath.Join(root, "config")
+		serviceDir := filepath.Join(configHome, "services")
+		if err := os.MkdirAll(serviceDir, 0o700); err != nil {
+			t.Fatal(err)
+		}
+		envFile := filepath.Join(configHome, "fixture.env")
+		env, err := os.ReadFile(filepath.Join(source, "testdata", "effects", "service.env"))
+		if err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(envFile, env, 0o600); err != nil {
+			t.Fatal(err)
+		}
+		var executable string
+		for _, entry := range h.mounted.Manifest.Executables {
+			if entry.Service {
+				executable = h.mounted.ID + "/" + entry.Name
+				break
+			}
+		}
+		if executable == "" {
+			t.Fatal("service fixture has no service executable")
+		}
+		declaration := strings.ReplaceAll(string(template), "@EXECUTABLE@", executable)
+		declaration = strings.ReplaceAll(declaration, "@ENV_FILE@", envFile)
+		if err := os.WriteFile(filepath.Join(serviceDir, "fixture.toml"), []byte(declaration), 0o600); err != nil {
+			t.Fatal(err)
+		}
+		t.Setenv("PLECT_CONFIG_HOME", configHome)
+	} else if !os.IsNotExist(err) {
+		t.Fatal(err)
+	}
 
 	h.scrub = []struct{ from, to string }{
 		{h.mounted.Dir, "<plugin>"},
