@@ -160,3 +160,21 @@ func resourceDefForSubscription(cfg *config.Config, projectRoot, resource string
 		return config.ResourceDef{}, &Error{Code: ErrInvalidInput, Message: fmt.Sprintf("resource %q matches multiple resource declarations (%s)", resource, strings.Join(names, ", "))}
 	}
 }
+
+func ResolveSubscriptionResource(cfg *config.Config, projectRoot, locator string) (*contract.Resource, error) {
+	if strings.TrimSpace(locator) == "" {
+		return nil, &Error{Code: ErrInvalidInput, Message: "resource id is required"}
+	}
+	def, err := resourceDefForSubscription(cfg, projectRoot, locator)
+	if err != nil {
+		return nil, err
+	}
+	name, matched, err := def.InstanceName(locator)
+	if err != nil {
+		return nil, &Error{Code: ErrInvalidInput, Message: err.Error()}
+	}
+	if !matched {
+		return nil, &Error{Code: ErrInvalidInput, Message: fmt.Sprintf("resource %q does not match its declaration", locator)}
+	}
+	return &contract.Resource{Type: def.ID, Name: name, Locator: locator, MaxSubscribers: def.MaxSubscribers, MaxSubscribersDeclared: true}, nil
+}

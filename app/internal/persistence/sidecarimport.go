@@ -10,16 +10,7 @@ import (
 	"path/filepath"
 	"sort"
 	"strings"
-	"time"
-
-	"github.com/kecbigmt/plecture/app/internal/persistence/sqlcgen"
-	contract "github.com/kecbigmt/plecture/contracts/state"
 )
-
-type sidecarPendingDelivery struct {
-	Subscribe   map[string][]string `json:"subscribe"`
-	Unsubscribe map[string][]string `json:"unsubscribe"`
-}
 
 type sidecarChainAttempt struct {
 	session     string
@@ -27,12 +18,6 @@ type sidecarChainAttempt struct {
 	chainID     string
 	generation  string
 	fingerprint string
-}
-
-type sidecarRetry struct {
-	session    string
-	action     string
-	resourceID string
 }
 
 type sidecarFiles struct {
@@ -62,7 +47,7 @@ func (db *DB) ImportSidecars(ctx context.Context, dir string) error {
 	}
 	defer unlockAccess()
 
-	chains, retries, files, err := readSidecars(dir)
+	chains, files, err := readSidecars(dir)
 	if err != nil {
 		return err
 	}
@@ -74,7 +59,7 @@ func (db *DB) ImportSidecars(ctx context.Context, dir string) error {
 	if err != nil {
 		return fmt.Errorf("begin sidecar import: %w", err)
 	}
-	if err := importSidecarsTx(ctx, tx, chains, retries, files); err != nil {
+	if err := importSidecarsTx(ctx, tx, chains); err != nil {
 		if rollbackErr := tx.Rollback(); rollbackErr != nil {
 			return fmt.Errorf("%w (rollback also failed: %v)", err, rollbackErr)
 		}
@@ -99,7 +84,8 @@ func (db *DB) ImportSidecars(ctx context.Context, dir string) error {
 
 // retiredSidecarNames are the data-home entries that ImportSidecars moves
 // into the database and then removes.
-var retiredSidecarNames = []string{"pending_delivery.json", "pending_delivery.json.lock", "events"}
+var retiredSidecarNames = []string{"events"}
+var backupSidecarNames = []string{"pending_delivery.json", "pending_delivery.json.lock", "events"}
 
 func sidecarsPresent(dir string) (bool, error) {
 	for _, name := range retiredSidecarNames {
@@ -113,60 +99,33 @@ func sidecarsPresent(dir string) (bool, error) {
 	return false, nil
 }
 
-func readSidecars(dir string) ([]sidecarChainAttempt, []sidecarRetry, sidecarFiles, error) {
+func readSidecars(dir string) ([]sidecarChainAttempt, sidecarFiles, error) {
 	var chains []sidecarChainAttempt
-	var retries []sidecarRetry
 	files := sidecarFiles{}
-	pendingPath := filepath.Join(dir, "pending_delivery.json")
-	if data, err := os.ReadFile(pendingPath); err == nil {
-		var pending sidecarPendingDelivery
-		if err := json.Unmarshal(data, &pending); err != nil {
-			return nil, nil, files, fmt.Errorf("read subscription retries from %s: %w", pendingPath, err)
-		}
-		for session, resources := range pending.Subscribe {
-			for _, resourceID := range resources {
-				retries = append(retries, sidecarRetry{session: session, action: "subscribe", resourceID: resourceID})
-			}
-		}
-		for session, resources := range pending.Unsubscribe {
-			for _, resourceID := range resources {
-				retries = append(retries, sidecarRetry{session: session, action: "unsubscribe", resourceID: resourceID})
-			}
-		}
-		files.paths = append(files.paths, pendingPath)
-	} else if !os.IsNotExist(err) {
-		return nil, nil, files, fmt.Errorf("read subscription retries from %s: %w", pendingPath, err)
-	}
-	if _, err := os.Stat(pendingPath + ".lock"); err == nil {
-		files.paths = append(files.paths, pendingPath+".lock")
-	} else if !os.IsNotExist(err) {
-		return nil, nil, files, fmt.Errorf("stat subscription retry lock: %w", err)
-	}
-
 	eventsRoot := filepath.Join(dir, "events")
 	entries, err := os.ReadDir(eventsRoot)
 	if os.IsNotExist(err) {
-		return chains, retries, files, nil
+		return chains, files, nil
 	}
 	if err != nil {
-		return nil, nil, files, fmt.Errorf("read retired events directory: %w", err)
+		return nil, files, fmt.Errorf("read retired events directory: %w", err)
 	}
 	for _, entry := range entries {
 		if !entry.IsDir() {
-			return nil, nil, files, fmt.Errorf("retired events directory contains unexpected path %s", filepath.Join(eventsRoot, entry.Name()))
+			return nil, files, fmt.Errorf("retired events directory contains unexpected path %s", filepath.Join(eventsRoot, entry.Name()))
 		}
 		session, err := url.PathUnescape(entry.Name())
 		if err != nil {
-			return nil, nil, files, fmt.Errorf("decode retired event directory %q: %w", entry.Name(), err)
+			return nil, files, fmt.Errorf("decode retired event directory %q: %w", entry.Name(), err)
 		}
 		sessionDir := filepath.Join(eventsRoot, entry.Name())
 		entries, err := os.ReadDir(sessionDir)
 		if err != nil {
-			return nil, nil, files, fmt.Errorf("read retired event directory %s: %w", sessionDir, err)
+			return nil, files, fmt.Errorf("read retired event directory %s: %w", sessionDir, err)
 		}
 		for _, file := range entries {
 			if file.IsDir() {
-				return nil, nil, files, fmt.Errorf("retired event directory contains unexpected path %s", filepath.Join(sessionDir, file.Name()))
+				return nil, files, fmt.Errorf("retired event directory contains unexpected path %s", filepath.Join(sessionDir, file.Name()))
 			}
 			path := filepath.Join(sessionDir, file.Name())
 			switch file.Name() {
@@ -175,22 +134,22 @@ func readSidecars(dir string) ([]sidecarChainAttempt, []sidecarRetry, sidecarFil
 			case "chain_attempts.json":
 				data, err := os.ReadFile(path)
 				if err != nil {
-					return nil, nil, files, fmt.Errorf("read chain attempts from %s: %w", path, err)
+					return nil, files, fmt.Errorf("read chain attempts from %s: %w", path, err)
 				}
 				attempts := map[string]string{}
 				if err := json.Unmarshal(data, &attempts); err != nil {
-					return nil, nil, files, fmt.Errorf("read chain attempts from %s: %w", path, err)
+					return nil, files, fmt.Errorf("read chain attempts from %s: %w", path, err)
 				}
 				seen := make(map[string]string, len(attempts))
 				for key, fingerprint := range attempts {
 					parts := strings.Split(key, "\x00")
 					if len(parts) != 3 || parts[0] == "" || parts[1] == "" || parts[2] == "" || fingerprint == "" {
-						return nil, nil, files, fmt.Errorf("read chain attempts from %s: invalid key", path)
+						return nil, files, fmt.Errorf("read chain attempts from %s: invalid key", path)
 					}
 					attemptKey := parts[0] + "\x00" + parts[1]
 					if previous, ok := seen[attemptKey]; ok {
 						if previous != fingerprint {
-							return nil, nil, files, fmt.Errorf("read chain attempts from %s: conflicting fingerprints", path)
+							return nil, files, fmt.Errorf("read chain attempts from %s: conflicting fingerprints", path)
 						}
 						continue
 					}
@@ -203,16 +162,16 @@ func readSidecars(dir string) ([]sidecarChainAttempt, []sidecarRetry, sidecarFil
 					files.paths = append(files.paths, path)
 					continue
 				}
-				return nil, nil, files, fmt.Errorf("retired event directory contains unexpected path %s", path)
+				return nil, files, fmt.Errorf("retired event directory contains unexpected path %s", path)
 			}
 		}
 		files.dirs = append(files.dirs, sessionDir)
 	}
 	files.dirs = append(files.dirs, eventsRoot)
-	return chains, retries, files, nil
+	return chains, files, nil
 }
 
-func importSidecarsTx(ctx context.Context, tx *sql.Tx, chains []sidecarChainAttempt, retries []sidecarRetry, files sidecarFiles) error {
+func importSidecarsTx(ctx context.Context, tx *sql.Tx, chains []sidecarChainAttempt) error {
 	resolved := map[string]string{}
 	resolve := func(name string) (string, error) {
 		if id, ok := resolved[name]; ok {
@@ -231,29 +190,6 @@ func importSidecarsTx(ctx context.Context, tx *sql.Tx, chains []sidecarChainAtte
 		}
 		resolved[name] = id
 		return id, nil
-	}
-	for _, retry := range retries {
-		if retry.action == "unsubscribe" {
-			continue
-		}
-		id, err := resolve(retry.session)
-		if err != nil {
-			return err
-		}
-		var live bool
-		if err := tx.QueryRowContext(ctx, `SELECT status <> 'destroyed' FROM sessions WHERE id = ?`, id).Scan(&live); err != nil {
-			return err
-		}
-		if !live {
-			continue
-		}
-		resource := &contract.Resource{Locator: retry.resourceID}
-		if err := recordResourceTx(ctx, sqlcgen.New(tx), resource); err != nil {
-			return fmt.Errorf("import pending subscription: %w", err)
-		}
-		if _, err := tx.ExecContext(ctx, `INSERT INTO subscriptions (session_id, resource_id, source, inputs_json, created_at) VALUES (?, ?, 'runtime', '{}', ?) ON CONFLICT DO NOTHING`, id, resource.ID, formatTime(time.Now())); err != nil {
-			return fmt.Errorf("import pending subscription: %w", err)
-		}
 	}
 	for _, attempt := range chains {
 		id, err := resolve(attempt.session)

@@ -3,6 +3,7 @@ package service
 import (
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/kecbigmt/plecture/app/internal/config"
@@ -143,5 +144,40 @@ func TestNodeSubscriptionEndsWithReleasedNode(t *testing.T) {
 	rows, err = store.ListSubscriptions("one", "")
 	if err != nil || len(rows) != 0 {
 		t.Fatalf("node subscriptions after release = %+v, err = %v", rows, err)
+	}
+}
+
+func TestRuntimeSubscriptionUsesRemovedDeclarationLimit(t *testing.T) {
+	cfg := subscriptionFixture(t, "max_subscribers = 1")
+	store := state.NewStore(t.TempDir())
+	for _, name := range []string{"first", "second"} {
+		if err := store.Put(&domain.Session{Name: name}); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if err := Subscribe(cfg, store, SubscribeParams{SessionName: "first", ResourceID: "item://one"}); err != nil {
+		t.Fatal(err)
+	}
+	path := filepath.Join(cfg.BaseDir, "resources", "item.toml")
+	original, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(path, []byte(strings.Replace(string(original), "max_subscribers = 1", "", 1)), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := Subscribe(cfg, store, SubscribeParams{SessionName: "second", ResourceID: "item://one"}); err != nil {
+		t.Fatalf("declaration without a limit must admit the second session: %v", err)
+	}
+}
+
+func TestResolveSubscriptionResourceUsesDeclarationIdentity(t *testing.T) {
+	cfg := subscriptionFixture(t, "max_subscribers = 1")
+	resource, err := ResolveSubscriptionResource(cfg, "", "item://one")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if resource.Type != "item" || resource.Name != "one" || resource.MaxSubscribers != 1 {
+		t.Fatalf("resolved resource = %+v", resource)
 	}
 }

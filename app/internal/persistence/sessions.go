@@ -292,7 +292,7 @@ func (db *DB) writeSessionTx(ctx context.Context, tx *sql.Tx, s *domain.Session)
 	q := sqlcgen.New(tx)
 	limits := map[string]int{}
 	rememberLimit := func(r *contract.Resource) {
-		if r != nil && r.MaxSubscribers > 0 {
+		if r != nil && r.MaxSubscribersDeclared {
 			limits[r.Name] = r.MaxSubscribers
 		}
 	}
@@ -404,7 +404,7 @@ func (db *DB) writeSessionTx(ctx context.Context, tx *sql.Tx, s *domain.Session)
 		return err
 	}
 	for name, max := range limits {
-		if _, err := tx.ExecContext(ctx, `UPDATE resources SET max_subscribers = ? WHERE name = ?`, max, name); err != nil {
+		if _, err := tx.ExecContext(ctx, `UPDATE resources SET max_subscribers = ? WHERE name = ?`, sql.NullInt64{Int64: int64(max), Valid: max > 0}, name); err != nil {
 			return fmt.Errorf("record resource %q max_subscribers: %w", name, err)
 		}
 	}
