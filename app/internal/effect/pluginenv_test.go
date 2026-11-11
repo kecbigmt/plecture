@@ -63,7 +63,14 @@ func TestPluginExecutableReceivesSharedCacheAndDeclaredServiceEnv(t *testing.T) 
 	if err := os.Remove(filepath.Join(home, "services", "svc.toml")); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := pluginEnvironment(filepath.Join(home, "bin", "worker"), mounted); err == nil || !strings.Contains(err.Error(), "worker") {
-		t.Fatalf("undeclared service error = %v", err)
+	plain, err := pluginEnvironment(filepath.Join(home, "bin", "worker"), mounted)
+	if err != nil || !slices.Contains(plain, "PLECT_CACHE_DIR="+filepath.Join(home, "cache", "plugins", "local", "work")) {
+		t.Fatalf("undeclared service helper environment = %v, %v", plain, err)
+	}
+	if slices.ContainsFunc(plain, func(s string) bool { return strings.HasPrefix(s, "TOKEN=") }) {
+		t.Fatalf("undeclared service helper received private env: %v", plain)
+	}
+	if _, err := HookEval(lang.Roots{}, mounted, "", lang.Ownership{}).Exec(action); err == nil || !strings.Contains(err.Error(), "service.config") {
+		t.Fatalf("undeclared service config error = %v", err)
 	}
 }

@@ -73,7 +73,7 @@ func PluginRuntime(execPath string, mounted []plugins.Mounted) (lang.BinRuntime,
 					return lang.BinRuntime{Env: env, Config: decl.Config, Prepare: prepare}, nil
 				}
 			}
-			return lang.BinRuntime{Env: env, Prepare: prepare}, nil
+			return lang.BinRuntime{Env: env}, nil
 		}
 	}
 	return lang.BinRuntime{}, nil
