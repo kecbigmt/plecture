@@ -585,15 +585,15 @@ INSERT INTO event_cursors (session_id, kind, next_sequence) VALUES (?, ?, ?)
 ON CONFLICT(session_id, kind) DO UPDATE SET next_sequence = excluded.next_sequence;
 
 -- name: GetResourceByName :one
-SELECT id, type, name, locator, created_at FROM resources WHERE name = ?;
+SELECT id, type, name, locator, created_at, max_subscribers FROM resources WHERE name = ?;
 
 -- name: GetUntypedResourceByLocator :one
-SELECT id, type, name, locator, created_at FROM resources WHERE type = '' AND locator = ? ORDER BY created_at, id LIMIT 1;
+SELECT id, type, name, locator, created_at, max_subscribers FROM resources WHERE type = '' AND locator = ? ORDER BY created_at, id LIMIT 1;
 
 -- name: InsertResource :exec
 INSERT INTO resources (id, type, name, locator, created_at)
 VALUES (?, ?, ?, ?, ?);
 
 -- name: ListResourcesByIDs :many
-SELECT id, type, name, locator, created_at
+SELECT id, type, name, locator, created_at, max_subscribers
 FROM resources WHERE id IN (sqlc.slice(ids));

@@ -83,6 +83,37 @@ func EventPublish(cfg *config.Config, store *state.Store, identifier string, p E
 	return stored, nil
 }
 
+func EventPublishResource(cfg *config.Config, store *state.Store, resourceID string, p EventPublishParams) (int, error) {
+	if resourceID == "" {
+		return 0, &Error{Code: ErrInvalidInput, Message: "resource id is required"}
+	}
+	name := ""
+	if cfg != nil {
+		matched, err := matchResourceDefs(cfg, "", resourceID)
+		if err != nil {
+			return 0, err
+		}
+		if len(matched) == 1 {
+			name, _, err = matched[0].InstanceName(resourceID)
+			if err != nil {
+				return 0, err
+			}
+		}
+	}
+	sessions, err := store.SubscriptionSessions(resourceID, name)
+	if err != nil {
+		return 0, &Error{Code: ErrExecutionFailed, Message: err.Error()}
+	}
+	delivered := 0
+	for _, session := range sessions {
+		if _, err := EventPublish(cfg, store, session, p); err != nil {
+			return delivered, fmt.Errorf("publish resource %q to session %q after %d deliveries: %w", resourceID, session, delivered, err)
+		}
+		delivered++
+	}
+	return delivered, nil
+}
+
 // normalizePublishDirection stamps the publishing session (`PLECT_SESSION_NAME`)
 // as event.MetaOriginSession and forces Inbound whenever the origin differs
 // from the target session — "direction = whether the origin is outside this

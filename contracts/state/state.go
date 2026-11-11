@@ -245,7 +245,10 @@ type Resource struct {
 	Name string `json:"name"`
 	// Locator is the identifier first resolved to this resource; a later
 	// spelling that derives the same Name never replaces it.
-	Locator string `json:"locator"`
+	Locator        string `json:"locator"`
+	MaxSubscribers int    `json:"max_subscribers,omitempty"`
+	// A zero cap is authoritative only when a declaration supplied it.
+	MaxSubscribersDeclared bool `json:"-"`
 }
 
 // Session is the shared representation of a plect session's durable state.

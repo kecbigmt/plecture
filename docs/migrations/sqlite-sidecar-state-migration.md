@@ -1,7 +1,7 @@
 # SQLite sidecar-state migration
 
 This procedure removes post-cutover `tombstone.json`, moves
-`chain_attempts.json` and `pending_delivery.json` sidecars into `storage.db`,
+`chain_attempts.json` sidecars into `storage.db`,
 and retires the `events/` tree. The updated binary applies the append-only
 schema migration and performs the import when it first opens the database.
 
@@ -10,10 +10,12 @@ schema migration and performs the import when it first opens the database.
 Stop every plect process that uses the data directory, then follow
 [storage upgrade backup and rollback](storage-upgrade-backup-and-rollback.md#before-upgrading).
 Before applying the schema migration, the updated binary backs up `storage.db`
-together with the `pending_delivery.json` and `events/` sidecars that this
-migration imports and removes.
+together with the `pending_delivery.json` and `events/` sidecars. Pending
+delivery is imported by the separate
+[core subscriptions migration](core-subscriptions.md), which resolves resource
+declarations before recording membership.
 
-The importer maps each chain-attempt or subscription-retry session name to
+The importer maps each chain-attempt session name to
 its live `sessions.id`, or to the most recently destroyed row of that name.
 The legacy chain-attempt key's third component is not persisted, but when it
 names an existing session it must name the resolved session; a mismatch stops
@@ -43,10 +45,10 @@ find "$DATA_DIR" -maxdepth 3 -type f -not -path "$DATA_DIR/backups/*" | sort
 ```
 
 The listing contains `storage.db`, its SQLite and persistence-gate sidecars,
-and any `delivery-locks/<escaped-session>.lock` files. Files under `backups/`
-are left out of the listing on purpose: they are the pre-migration backup. It contains no
-`events/` tree, `pending_delivery.json`, `tombstone.json`, or
-`chain_attempts.json`.
+any `delivery-locks/<escaped-session>.lock` files, and any pending delivery
+sidecar awaiting the core subscriptions migration. Files under `backups/`
+are left out of the listing on purpose: they are the pre-migration backup.
+It contains no `events/` tree, `tombstone.json`, or `chain_attempts.json`.
 
 ## Rollback
 

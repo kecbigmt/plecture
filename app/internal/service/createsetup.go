@@ -3,7 +3,6 @@ package service
 import (
 	"context"
 	"fmt"
-	"log/slog"
 	"time"
 
 	"github.com/kecbigmt/plecture/app/internal/config"
@@ -133,7 +132,6 @@ func createWithWorkflowSetup(cfg *config.Config, store *state.Store, params Crea
 	if err := mergeTasksWithSubscriptions(cfg, store, sessionName, session, wiredNodes); err != nil {
 		return nil, &Error{Code: ErrExecutionFailed, Message: fmt.Sprintf("failed to save session state: %v", err)}
 	}
-	wireProducedNodeSubscriptions(cfg, store, sessionName, session.ProjectRoot, wiredNodes)
 	if tasksErr != nil {
 		return nil, &Error{Code: ErrExecutionFailed, Message: tasksErr.Error()}
 	}
@@ -144,13 +142,6 @@ func createWithWorkflowSetup(cfg *config.Config, store *state.Store, params Crea
 	if refreshed != nil {
 		session = refreshed
 	}
-
-	// Binding implies delivery for the session's own resource too, not just
-	// a dynamic task setup's own bound one.
-	if _, errMsg := wireDeliveryOnSetup(cfg, store, sessionName, session.ProjectRoot, session.Resource, false); errMsg != "" {
-		slog.Warn("resource delivery wiring failed at session create", "session", sessionName, "resource", domain.Locator(session.Resource), "error", errMsg)
-	}
-	flushPendingDeliveryLogged(cfg, store, sessionName)
 
 	// Record lifecycle.created on the first successful create (idempotent across
 	// retries of a partial failure and re-runs of an already-created session).

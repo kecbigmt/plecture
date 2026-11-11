@@ -993,8 +993,10 @@ holds the exclusive access lock. The result is a single self-contained,
 page-exact `storage.db` in every journal mode, with no `-wal`, `-shm`, or
 `-journal` beside it. The retired sidecars that are still present
 (`pending_delivery.json`, `pending_delivery.json.lock`, `events/`) are copied
-next to it, because the sidecar import that follows the migration removes
-them. The backup is built in `backups/.tmp-<name>/` and renamed into place,
+next to it so rollback can restore all source data. The storage opener imports
+the `events/` tree; the subscription migration imports pending delivery after
+resolving resource declarations. The backup is built in
+`backups/.tmp-<name>/` and renamed into place,
 so a directory named `<UTC timestamp>-v<version>` is always a completed
 backup; plect neither lists, prunes, nor restores any other entry. The
 timestamp is the clock's second, or one second past the newest existing
@@ -1133,7 +1135,8 @@ following runtime paths.
 | `events/<escaped-session>/log.jsonl` | Decode complete lines in byte order; reject invalid event identity, session mismatch, duplicate ID, and a malformed complete line; discard only a trailing partial line, matching the live reader; import stream and events. A record with no `direction` imports as `internal`, counted in the import summary. |
 | `events/<escaped-session>/.gen` | Read one trimmed non-empty stream identifier when present and reuse it as the imported session row's `id`; otherwise mint a fresh id after recording that no old page cursor survives cutover. |
 | `events/<escaped-session>/.cursor.<consumer>` | Parse a non-negative decimal boundary, validate it against the log boundary index, map `<consumer>` to its `event_cursors.kind` (`dispatcher` imports as `delivery`, `tick-reactor` imports as `tick`), and import the translated position. |
-| `events/<escaped-session>/tombstone.json`, `events/<escaped-session>/chain_attempts.json`, `events/<escaped-session>/.lock`, `pending_delivery.json`, `pending_delivery.json.lock` | The legacy importer does not copy these post-cutover sidecars. The storage opener imports the sidecars from the active database directory in one idempotent pass, then removes them and the retired `events/` tree. A source name resolves to its live incarnation or its latest destroyed incarnation; no match aborts without removing a source file. A chain-attempt generation that identifies another existing session also aborts. |
+| `events/<escaped-session>/tombstone.json`, `events/<escaped-session>/chain_attempts.json`, `events/<escaped-session>/.lock` | The storage opener imports these sidecars from the active database directory in one idempotent pass, then removes the retired `events/` tree. A source name resolves to its live incarnation or its latest destroyed incarnation; no match aborts without removing a source file. A chain-attempt generation that identifies another existing session also aborts. |
+| `pending_delivery.json`, `pending_delivery.json.lock` | The storage opener leaves these files for the subscription migration. That migration resolves each live subscribe intent against its resource declaration before recording membership. Unsubscribe intents create no membership. |
 | `delivery-locks/<escaped-session>.lock` | Confirm no lock is held; do not copy it. Resource delivery decisions use database transactions. |
 
 The importer inserts every `populations` row before any `sessions` row that

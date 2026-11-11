@@ -33,8 +33,7 @@ type ResourceDef struct {
 	// straight to `plect task cleanup` (ADR D4: cleanup itself never gains
 	// completion semantics).
 	Finalize        *lang.Action
-	Subscribe       *lang.Action
-	Unsubscribe     *lang.Action
+	MaxSubscribers  int
 	InputsSchema    map[string]any
 	Query           *ResourceQuery
 	StateSchema     map[string]any
@@ -142,11 +141,18 @@ func resourceDefFrom(def *lang.Definition, path string, fromPlugin bool) (Resour
 	if r.Finalize, err = actionField(def, path, "finalize"); err != nil {
 		return r, err
 	}
-	if r.Subscribe, err = actionField(def, path, "subscribe"); err != nil {
-		return r, err
-	}
-	if r.Unsubscribe, err = actionField(def, path, "unsubscribe"); err != nil {
-		return r, err
+	if raw, ok := def.Body["max_subscribers"]; ok {
+		switch n := raw.(type) {
+		case int64:
+			r.MaxSubscribers = int(n)
+		case int:
+			r.MaxSubscribers = n
+		default:
+			return r, fmt.Errorf("`max_subscribers` must be a positive integer")
+		}
+		if r.MaxSubscribers <= 0 {
+			return r, fmt.Errorf("`max_subscribers` must be a positive integer")
+		}
 	}
 	if raw, ok := def.Body["inputs_schema"]; ok {
 		schema, ok := raw.(map[string]any)

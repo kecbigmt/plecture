@@ -125,11 +125,12 @@ type PopulationMemberBlocker struct {
 }
 
 type Resource struct {
-	ID        string
-	Type      string
-	Name      string
-	Locator   string
-	CreatedAt string
+	ID             string
+	Type           string
+	Name           string
+	Locator        string
+	CreatedAt      string
+	MaxSubscribers sql.NullInt64
 }
 
 type ResourceReference struct {
@@ -179,10 +180,12 @@ type SessionChannelHealth struct {
 	EscalatedAt         sql.NullString
 }
 
-type SubscriptionRetry struct {
+type Subscription struct {
 	SessionID  string
-	Action     string
 	ResourceID string
+	Source     string
+	InputsJson string
+	CreatedAt  string
 }
 
 type TaskDoneWhenJudge struct {

@@ -1,9 +1,7 @@
 // Package effect resolves and runs actions against their surface roots, and
 // owns the effect-nesting machinery a chain of layers composes: setup/
 // cleanup execution, the `[id.inner]` joint, `[outputs.bind]` projection, and
-// `[terminal]` lookup — effects own these, not tasks. It also owns the
-// resource delivery hooks (subscribe/unsubscribe), which run outside any task
-// DAG and take only plain, identifier-shaped values as their context.
+// `[terminal]` lookup — effects own these, not tasks.
 //
 // Root-building that depends on a session's task-DAG state (node outputs,
 // self.state) stays in app/internal/task, which hands this package only the
@@ -160,7 +158,7 @@ func runHostCmd(ctx context.Context, req ExecRequest, outBuf, errBuf *bytes.Buff
 }
 
 // alwaysHostExecutor backs RunHook, the path used by resource
-// observe/finalize/subscribe/unsubscribe.
+// observe/finalize.
 // Unlike defaultExecutor, this is never swapped, not even by tests.
 var alwaysHostExecutor Executor = hostExecutor{}
 
@@ -188,7 +186,7 @@ func ExecHook(ctx context.Context, execution *lang.Execution, workDir string, en
 }
 
 // RunHook runs one resolved execution on the host, unconditionally: the path
-// resource observe/finalize/subscribe/unsubscribe take.
+// resource observe/finalize take.
 func RunHook(ctx context.Context, execution *lang.Execution, workDir string) (stdout, stderr []byte, err error) {
 	return alwaysHostExecutor.Run(ctx, requestFor(execution, workDir, nil, false))
 }

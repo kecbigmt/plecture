@@ -12,6 +12,7 @@ import (
 )
 
 var resourceStatusJSON bool
+var resourceResolveProjectRoot string
 
 var resourceCmd = &cobra.Command{
 	Use:   "resource",
@@ -69,8 +70,27 @@ Example:
 	},
 }
 
+var resourceResolveCmd = &cobra.Command{
+	Use:   "resolve <resource-id>",
+	Short: "Resolve a resource declaration without observing it",
+	Args:  cobra.ExactArgs(1),
+	RunE: func(cmd *cobra.Command, args []string) error {
+		cfg, err := config.Load()
+		if err != nil {
+			return err
+		}
+		resource, err := service.ResolveSubscriptionResource(cfg, resourceResolveProjectRoot, args[0])
+		if err != nil {
+			return err
+		}
+		return printJSON(resource)
+	},
+}
+
 func init() {
 	resourceStatusCmd.Flags().BoolVar(&resourceStatusJSON, "json", false, "Output as JSON")
 	resourceCmd.AddCommand(resourceStatusCmd)
+	resourceResolveCmd.Flags().StringVar(&resourceResolveProjectRoot, "project-root", "", "Resolve project resource declarations from this root")
+	resourceCmd.AddCommand(resourceResolveCmd)
 	rootCmd.AddCommand(resourceCmd)
 }

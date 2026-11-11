@@ -68,10 +68,10 @@ several bot declarations instead of running an adapter process per bot.
 
 `env_file` is an absolute path to an owner-readable file of `KEY=VALUE` lines.
 Blank and `#` comment lines are ignored; duplicate or invalid keys, malformed
-lines, relative paths, unreadable files, interpolation, and a conflicting
-`PLECT_*` runtime key fail loading. A service receives these entries and
-plect-provided runtime values, not the supervisor environment. The executable
-validates its own required variables. `restart` defaults to `on-failure` and
+lines, relative paths, unreadable files, interpolation, and a key conflicting with plect-provided `PLECT_DATA_DIR`
+or `PLECT_CACHE_DIR` fail loading. A service receives these entries plus
+`PLECT_DATA_DIR` and `PLECT_CACHE_DIR`; it does not inherit the supervisor
+environment. The executable validates its own required variables. `restart` defaults to `on-failure` and
 may be `never`; `health` defaults to `{ type = "process" }`, the only health
 kind here. An explicit `plect plugin update` authorizes restarting an already
 declared service when its code changes. Enabling or updating a plugin creates
@@ -146,12 +146,13 @@ outbound call selects one bot from the thread's channel. Plect supplies
 `~/.local/share/plect`. The directory holds authoritative service state such
 as GitHub per-resource last-seen state and Slack once-per-thread denial
 records. Actions never receive it. The service needs this directory because it
-does not inherit the supervisor's environment. Plect does not rewrite any
-`XDG_*` values supplied by the service's env file. It receives no global
+does not inherit the supervisor's other environment variables. Plect does not
+rewrite any `XDG_*` values supplied by the service's env file. It receives no global
 data- or config-home path and never invokes the plect CLI. Plugins receive
 neither `PLECT_CONFIG_HOME`, `PLECT_DATA_HOME`, nor `PLECT_CACHE_HOME`; their
-only plect-provided environment bindings are `PLECT_DATA_DIR` for services and
-`PLECT_CACHE_DIR` for all executable invocations.
+only plect-provided environment bindings are the plugin data directory
+(`PLECT_DATA_DIR`) for services and the plugin cache directory
+(`PLECT_CACHE_DIR`) for all executable invocations.
 
 Every invocation of a plugin executable, including a supervised service or a
 node, channel, or hook action such as `observe`, receives `PLECT_CACHE_DIR` set

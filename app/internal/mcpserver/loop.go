@@ -168,16 +168,15 @@ func handleTaskSetup(ctx context.Context, request mcp.CallToolRequest) (*mcp.Cal
 	}
 
 	return jsonResult(map[string]any{
-		"ok":              true,
-		"session_name":    result.SessionName,
-		"instance":        result.Instance,
-		"task_id":         result.TaskID,
-		"scope":           result.Scope,
-		"name":            result.Name,
-		"resource":        result.Resource,
-		"subscribed":      result.Subscribed,
-		"subscribe_error": result.SubscribeError,
-		"outputs":         result.Outputs,
+		"ok":           true,
+		"session_name": result.SessionName,
+		"instance":     result.Instance,
+		"task_id":      result.TaskID,
+		"scope":        result.Scope,
+		"name":         result.Name,
+		"resource":     result.Resource,
+		"subscribed":   result.Subscribed,
+		"outputs":      result.Outputs,
 	})
 }
 
@@ -200,12 +199,11 @@ func handleTaskCleanup(ctx context.Context, request mcp.CallToolRequest) (*mcp.C
 	}
 
 	return jsonResult(map[string]any{
-		"ok":                true,
-		"session_name":      result.SessionName,
-		"instance":          result.Instance,
-		"found":             result.Found,
-		"unsubscribed":      result.Unsubscribed,
-		"unsubscribe_error": result.UnsubscribeError,
+		"ok":           true,
+		"session_name": result.SessionName,
+		"instance":     result.Instance,
+		"found":        result.Found,
+		"unsubscribed": result.Unsubscribed,
 	})
 }
 
