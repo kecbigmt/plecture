@@ -2,6 +2,7 @@ package persistence
 
 import (
 	"context"
+	"database/sql"
 	"testing"
 	"time"
 
@@ -94,7 +95,7 @@ func TestSubscriptions_DispatchAndTaskAdmissionRejectAtLimitWithoutWritingBindin
 	db := migratedTestDB(t)
 	ctx := context.Background()
 	limited := func() *contract.Resource {
-		return &contract.Resource{Type: "case", Name: "case-1", Locator: "case://1", MaxSubscribers: 1}
+		return &contract.Resource{Type: "case", Name: "case-1", Locator: "case://1", MaxSubscribers: 1, MaxSubscribersDeclared: true}
 	}
 	mustPut(t, db, sessionWithResource("one", limited()))
 	if err := db.PutSession(ctx, sessionWithResource("two", limited())); err == nil {
@@ -114,5 +115,23 @@ func TestSubscriptions_DispatchAndTaskAdmissionRejectAtLimitWithoutWritingBindin
 	got, err := db.GetSession(ctx, "three")
 	if err != nil || len(got.Tasks) != 0 {
 		t.Fatalf("rejected task binding = %+v, err = %v", got, err)
+	}
+}
+
+func TestSubscriptions_EntryBindingClearsRemovedDeclarationLimit(t *testing.T) {
+	db := migratedTestDB(t)
+	ctx := context.Background()
+	limited := &contract.Resource{Type: "case", Name: "case-1", Locator: "case://1", MaxSubscribers: 1, MaxSubscribersDeclared: true}
+	mustPut(t, db, sessionWithResource("one", limited))
+	unlimited := &contract.Resource{Type: "case", Name: "case-1", Locator: "case://1", MaxSubscribersDeclared: true}
+	if err := db.PutSession(ctx, sessionWithResource("two", unlimited)); err != nil {
+		t.Fatalf("unlimited declaration must admit the second session: %v", err)
+	}
+	var limit sql.NullInt64
+	if err := db.write.QueryRowContext(ctx, `SELECT max_subscribers FROM resources WHERE name = 'case-1'`).Scan(&limit); err != nil {
+		t.Fatal(err)
+	}
+	if limit.Valid {
+		t.Fatalf("stored cap = %d, want NULL after declaration removes it", limit.Int64)
 	}
 }

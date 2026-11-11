@@ -27,7 +27,11 @@ Record the data home and the paths to every existing GitHub watcher
 
 Include one Slack entry per adapter state directory. The team, bot, and
 workspace host identify mention and thread resources: the old ledger stores
-only the channel and thread timestamp. Use empty arrays when no ledger exists.
+only the channel and thread timestamp. Mention memberships resolve to the
+`slack://<team>/<bot>` bot-user declaration supplied by the Slack adapter
+change stacked on this PR. That declaration owns their type, name, and
+subscriber limit. Apply the coordinated adapter change before running this
+migration. Use empty arrays when no ledger exists.
 
 Run the one-time importer from a checkout of this release, with the installed
 `plect` binary available on `PATH`:
@@ -43,13 +47,17 @@ manifest, ledgers, and any `pending_delivery.json` into
 `<data-home>/subscription-migration-backups/<timestamp>/`. It then runs
 `plect --data-home <data-home> storage migrate`. The schema migration maps
 live entry, task, node, and pending `subscription_retries` rows into the new
-table; the ordinary sidecar import maps live `pending_delivery.json` subscribe
-intents. Unsubscribe intents and subscriptions for destroyed sessions are
-dropped. Finally, the importer adds membership from both plugin ledgers in
-one database transaction. A ledger membership that already has a dispatch,
-task, or node source does not gain an extra runtime source. Missing sessions,
-invalid identities, and memberships beyond `max_subscribers` are reported as
-`Dropped:` lines; review each reason before restarting.
+table. The importer then resolves resource declarations for the plugin ledgers
+and live `pending_delivery.json` subscribe intents in one database transaction.
+The installed `plect` binary must contain the resource declarations used by
+those sessions, including trusted project resources. Unsubscribe intents and
+subscriptions for destroyed sessions are dropped. A membership that already
+has a dispatch, task, or node source does not gain an extra runtime source.
+If an existing database membership cannot resolve to a declaration, the
+transaction stops so its stored binding is left intact.
+Missing sessions, unresolved resource declarations, and memberships beyond
+`max_subscribers` are reported as `Dropped:` lines; review each reason before
+restarting.
 
 ## Verify and recover
 
@@ -59,7 +67,9 @@ Publish a harmless event to a test resource with `plect event publish
 --resource <id> --type <type> --summary <text>` and check that it appears
 once per subscribed session. Remove the old ledger files from the active
 plugin state directories only after the new services are running against core
-membership.
+membership. Remove `pending_delivery.json` and its lock file from the active
+data home after verifying the imported subscriptions; the backup retains the
+pre-migration copy.
 
 If verification fails, keep services stopped. The timestamped backup contains
 the pre-migration database and source ledgers. Restore it with the

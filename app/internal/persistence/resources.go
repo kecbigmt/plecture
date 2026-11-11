@@ -155,11 +155,7 @@ func resourceID(r *contract.Resource) sql.NullString {
 }
 
 func resourceFromRow(row sqlcgen.Resource) *contract.Resource {
-	resource := &contract.Resource{ID: row.ID, Type: row.Type, Name: row.Name, Locator: row.Locator}
-	if row.MaxSubscribers.Valid {
-		resource.MaxSubscribers = int(row.MaxSubscribers.Int64)
-	}
-	return resource
+	return &contract.Resource{ID: row.ID, Type: row.Type, Name: row.Name, Locator: row.Locator}
 }
 
 func sessionResourceRefs(sessions []*contract.Session) []*contract.Resource {

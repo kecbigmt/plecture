@@ -39,10 +39,9 @@ func (db *DB) AddSubscription(ctx context.Context, session string, resource *con
 		if err := recordResourceTx(ctx, q, resource); err != nil {
 			return err
 		}
-		if maxSubscribers > 0 {
-			if _, err := tx.ExecContext(ctx, `UPDATE resources SET max_subscribers = ? WHERE id = ?`, maxSubscribers, resource.ID); err != nil {
-				return err
-			}
+		limit := sql.NullInt64{Int64: int64(maxSubscribers), Valid: maxSubscribers > 0}
+		if _, err := tx.ExecContext(ctx, `UPDATE resources SET max_subscribers = ? WHERE id = ?`, limit, resource.ID); err != nil {
+			return err
 		}
 		if err := checkSubscriberLimitTx(ctx, tx, id, resource.ID); err != nil {
 			return err

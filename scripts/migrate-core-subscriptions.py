@@ -59,18 +59,79 @@ def backup(data_home, manifest_path, github, slack):
 
 
 def live_session(db, name):
-    return db.execute("SELECT id FROM sessions WHERE name = ? AND status <> 'destroyed'", (name,)).fetchone()
+    return db.execute("SELECT id, project_root FROM sessions WHERE name = ? AND status <> 'destroyed'", (name,)).fetchone()
 
 
-def resource_for(db, locator):
-    row = db.execute("SELECT id FROM resources WHERE locator = ? ORDER BY created_at LIMIT 1", (locator,)).fetchone()
+def resource_for(db, locator, identity):
+    name = identity["name"]
+    kind = identity["type"]
+    cap = identity["max_subscribers"] or None
+    row = db.execute("SELECT id, type, name FROM resources WHERE name = ?", (name,)).fetchone()
     if row:
+        if row[1] != kind:
+            raise ValueError(f"resource name {name!r} already belongs to type {row[1]!r}")
+        duplicate = db.execute("SELECT id FROM resources WHERE locator = ? AND type = ''", (locator,)).fetchone()
+        if duplicate and duplicate[0] != row[0]:
+            raise ValueError(f"resource {locator!r} has separate typed and untyped rows")
+        db.execute("UPDATE resources SET max_subscribers = ? WHERE id = ?", (cap, row[0]))
+        return row[0]
+    row = db.execute("SELECT id FROM resources WHERE locator = ? AND type = '' ORDER BY created_at LIMIT 1", (locator,)).fetchone()
+    if row:
+        db.execute("UPDATE resources SET type = ?, name = ?, max_subscribers = ? WHERE id = ?", (kind, name, cap, row[0]))
         return row[0]
     identity = uuid.uuid4().hex
     now = dt.datetime.now(dt.timezone.utc).strftime("%Y-%m-%dT%H:%M:%S.%f000Z")
-    db.execute("INSERT INTO resources (id, type, name, locator, created_at) VALUES (?, '', ?, ?, ?)",
-               (identity, identity, locator, now))
+    db.execute("INSERT INTO resources (id, type, name, locator, created_at, max_subscribers) VALUES (?, ?, ?, ?, ?, ?)",
+               (identity, kind, name, locator, now, cap))
     return identity
+
+
+def read_pending(path):
+    if not path.is_file():
+        return []
+    state = json.loads(path.read_text())
+    if not isinstance(state, dict) or not isinstance(state.get("subscribe", {}), dict):
+        raise ValueError(f"{path}: invalid pending delivery")
+    entries = []
+    for name, locators in state.get("subscribe", {}).items():
+        if not isinstance(locators, list):
+            raise ValueError(f"{path}: invalid pending subscriptions for {name!r}")
+        entries.extend((path, name, locator) for locator in locators)
+    return entries
+
+
+def plect_resolver(binary, data_home):
+    def resolve(project_root, locator):
+        command = [binary, "--data-home", str(data_home), "resource", "resolve", locator]
+        if project_root:
+            command += ["--project-root", project_root]
+        result = subprocess.run(command, check=True, capture_output=True, text=True)
+        return json.loads(result.stdout)
+    return resolve
+
+
+def validated_identity(resolve, project_root, locator):
+    identity = resolve(project_root, locator)
+    if not isinstance(identity, dict) or not isinstance(identity.get("type"), str) or not identity["type"] or not isinstance(identity.get("name"), str) or not identity["name"] or not isinstance(identity.get("max_subscribers"), int) or identity["max_subscribers"] < 0:
+        raise ValueError("invalid resource declaration identity")
+    return identity
+
+
+def normalize_existing(db, resolve):
+    rows = db.execute("""SELECT DISTINCT r.id, r.locator, s.project_root
+                         FROM resources r JOIN subscriptions sub ON sub.resource_id = r.id
+                         JOIN sessions s ON s.id = sub.session_id
+                         WHERE r.type = '' AND s.status <> 'destroyed'""").fetchall()
+    identities = {}
+    for resource_id, locator, project_root in rows:
+        identity = validated_identity(resolve, project_root, locator)
+        previous = identities.get(resource_id)
+        if previous is not None and previous != identity:
+            raise ValueError(f"resource {locator!r} resolves differently across sessions")
+        identities[resource_id] = identity
+    for resource_id, locator, _ in rows:
+        if resource_for(db, locator, identities[resource_id]) != resource_id:
+            raise ValueError(f"resource {locator!r} has a conflicting stored identity")
 
 
 def bound_source(db, session_id, resource_id):
@@ -99,7 +160,7 @@ def thread_locator(db, channel, timestamp, host):
     return f"https://{host}/archives/{channel}/p{digits}"
 
 
-def import_rows(db, github, slack):
+def import_rows(db, github, slack, pending, resolve):
     inserted = 0
     dropped = []
     entries = []
@@ -108,7 +169,7 @@ def import_rows(db, github, slack):
             if not isinstance(row, dict):
                 dropped.append(f"{path}: malformed subscription")
                 continue
-            entries.append((path, row.get("session_name"), row.get("resource"), False))
+            entries.append((path, row.get("session_name"), row.get("resource")))
     for path, info, rows in slack:
         for row in rows:
             if not isinstance(row, dict):
@@ -117,12 +178,11 @@ def import_rows(db, github, slack):
             thread = row.get("thread_ts")
             if thread == "mentions":
                 locator = f"slack://{info['team_id']}/{info['bot_user_id']}"
-                limited = True
             else:
                 locator = thread_locator(db, row.get("channel_id", ""), thread or "", info["workspace_host"])
-                limited = False
-            entries.append((path, row.get("session_name"), locator, limited))
-    for path, name, locator, limited in entries:
+            entries.append((path, row.get("session_name"), locator))
+    entries.extend(pending)
+    for path, name, locator in entries:
         if not isinstance(name, str) or not name or not isinstance(locator, str) or not locator:
             dropped.append(f"{path}: missing session or resource identity")
             continue
@@ -130,9 +190,14 @@ def import_rows(db, github, slack):
         if not session:
             dropped.append(f"{path}: session {name!r} is absent or destroyed")
             continue
-        resource_id = resource_for(db, locator)
-        if limited:
-            db.execute("UPDATE resources SET max_subscribers = 1 WHERE id = ?", (resource_id,))
+        try:
+            identity = validated_identity(resolve, session[1], locator)
+            resource_id = resource_for(db, locator, identity)
+        except (ValueError, subprocess.CalledProcessError) as exc:
+            if isinstance(exc, subprocess.CalledProcessError):
+                exc = exc.stderr.strip() or str(exc)
+            dropped.append(f"{path}: resource {locator!r}: {exc}")
+            continue
         source = bound_source(db, session[0], resource_id)
         cap = db.execute("SELECT max_subscribers FROM resources WHERE id = ?", (resource_id,)).fetchone()[0]
         already = db.execute("SELECT 1 FROM subscriptions WHERE session_id = ? AND resource_id = ?", (session[0], resource_id)).fetchone()
@@ -163,7 +228,8 @@ def main(argv=None):
     with sqlite3.connect(args.data_home / "storage.db") as db:
         db.execute("PRAGMA foreign_keys = ON")
         db.execute("BEGIN IMMEDIATE")
-        inserted, dropped = import_rows(db, github, slack)
+        normalize_existing(db, plect_resolver(args.plect, args.data_home))
+        inserted, dropped = import_rows(db, github, slack, read_pending(args.data_home / "pending_delivery.json"), plect_resolver(args.plect, args.data_home))
     for reason in dropped:
         print(f"Dropped: {reason}", file=sys.stderr)
     print(f"Imported {inserted} subscription rows; dropped {len(dropped)}")

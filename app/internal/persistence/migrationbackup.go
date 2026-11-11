@@ -105,7 +105,7 @@ func (db *DB) writeBackup(ctx context.Context, dataDir, dest string) error {
 	if err := db.onlineBackup(ctx, PathIn(dest)); err != nil {
 		return err
 	}
-	for _, name := range retiredSidecarNames {
+	for _, name := range backupSidecarNames {
 		if err := copyTree(filepath.Join(dataDir, name), filepath.Join(dest, name)); err != nil {
 			return err
 		}
@@ -373,7 +373,7 @@ func restore(ctx context.Context, dbPath, name string, migrations fs.FS) (string
 	for _, suffix := range journalSuffixes {
 		displace = append(displace, fileName+suffix)
 	}
-	displace = append(displace, retiredSidecarNames...)
+	displace = append(displace, backupSidecarNames...)
 	for _, entry := range displace {
 		if err := moveIfExists(filepath.Join(dataDir, entry), filepath.Join(displaced, entry)); err != nil {
 			return "", fmt.Errorf("persistence: restore stopped while moving the current files aside (moved so far: %s; backup staged at %s): %w", displaced, staging, err)
@@ -430,7 +430,7 @@ func stageBackup(src, staging string) error {
 	if err := copyFile(PathIn(src), PathIn(staging), 0o600); err != nil {
 		return fmt.Errorf("persistence: stage backup: %w", err)
 	}
-	for _, name := range retiredSidecarNames {
+	for _, name := range backupSidecarNames {
 		if err := copyTree(filepath.Join(src, name), filepath.Join(staging, name)); err != nil {
 			return fmt.Errorf("persistence: stage backup: %w", err)
 		}

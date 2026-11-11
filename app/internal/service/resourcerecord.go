@@ -55,6 +55,7 @@ func ResolveResource(store *state.Store, address string, def config.ResourceDef,
 		return contract.Resource{}, true, conflict
 	}
 	recorded.MaxSubscribers = def.MaxSubscribers
+	recorded.MaxSubscribersDeclared = true
 	return recorded, true, nil
 }
 
