@@ -15,7 +15,7 @@ const EnvVar = "PLECT_CACHE_HOME"
 // XDGEnvVar is the XDG Base Directory cache variable, Resolve's fallback.
 const XDGEnvVar = "XDG_CACHE_HOME"
 
-// Resolve returns EnvVar if set (no "/plect/catalogs" suffix), else XDGEnvVar+"/plect/catalogs", else ~/.cache/plect/catalogs.
+// Resolve returns EnvVar if set, else XDGEnvVar+"/plect", else ~/.cache/plect.
 // A home-directory lookup failure returns an error rather than a relative ".cache" a caller could mistake for one rooted at the working directory.
 func Resolve() (string, error) {
 	if v := os.Getenv(EnvVar); v != "" {
@@ -29,7 +29,7 @@ func Resolve() (string, error) {
 		}
 		cacheHome = filepath.Join(home, ".cache")
 	}
-	return filepath.Join(cacheHome, "plect", "catalogs"), nil
+	return filepath.Join(cacheHome, "plect"), nil
 }
 
 // Strip removes EnvVar from env but keeps XDGEnvVar, since a declaration-started child may still depend on inheriting the shared XDG variable for its own state.

@@ -1,7 +1,7 @@
 # plect-fixture: result=valid entry=plugin
-# reason: a plugin manifest declares the package's identity, its executables, and the services the resident process supervises.
+# reason: a plugin manifest marks resident-capable executables without starting them.
 
-schema_version    = 2
+schema_version    = 3
 version           = "0.1.0"
 plect_min_version = "0.0.0"
 description       = "GitHub workspace provider, resource observation, and watcher subscription."
@@ -18,10 +18,6 @@ path = "scripts/gh-guard"
 [[executables]]
 name = "github-watcher"
 path = "bin/github-watcher"
-
-[[services]]
-name       = "github-watcher"
-executable = "github-watcher"
-args       = ["serve"]
-restart    = "on-failure"
-health     = { type = "process" }
+service = true
+[executables.config_schema]
+type = "object"

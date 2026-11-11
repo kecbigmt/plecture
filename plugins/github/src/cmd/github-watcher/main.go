@@ -1,9 +1,6 @@
 // github-watcher is the resident GitHub watcher plugin for plect.
 //
-// Tasks subscribe sessions (`github-watcher subscribe`) and unsubscribe on
-// cleanup; the daemon (`github-watcher serve`) polls subscribed resources via
-// the gh CLI and forwards change notifications through the configured delivery
-// path.
+// The supervised service polls core subscriptions and publishes changes over stdio.
 package main
 
 import (
@@ -16,7 +13,6 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/kecbigmt/plecture/contracts/event"
 	"github.com/kecbigmt/plecture/plugins/github/src/internal/ratebudget"
 	"github.com/kecbigmt/plecture/plugins/github/src/internal/watcher"
 )
@@ -28,12 +24,6 @@ func main() {
 	}
 	var err error
 	switch os.Args[1] {
-	case "subscribe":
-		err = cmdSubscribe(os.Args[2:])
-	case "unsubscribe":
-		err = cmdUnsubscribe(os.Args[2:])
-	case "list":
-		err = cmdList(os.Args[2:])
 	case "serve":
 		err = cmdServe(os.Args[2:])
 	case "gh-api":
@@ -50,11 +40,8 @@ func main() {
 
 func usage() {
 	fmt.Fprintln(os.Stderr, `usage:
-  github-watcher subscribe --session <name> --resource <id> [--branch <branch>]
-  github-watcher unsubscribe --session <name> [--resource <id>]
-  github-watcher list
-  github-watcher serve [--interval 60s] [--allow-legacy-notify [--notify-url http://127.0.0.1:7890/notify]]
-  github-watcher gh-api [--data-dir <dir>] <gh api args...>
+  github-watcher serve [--interval 60s]
+  github-watcher gh-api <gh api args...>
 
 serve and gh-api both authenticate as a single GitHub App installation
 instead of the operator's own "gh auth login" when GITHUB_WATCHER_APP_ID is
@@ -66,67 +53,12 @@ missing or the mint fails); unset, both use ambient "gh auth" unchanged:
   GITHUB_WATCHER_APP_REPO             repository name, resolves the installation id
   GITHUB_WATCHER_APP_PRIVATE_KEY_PATH path to the App's PEM private key
   GITHUB_WATCHER_APP_BASE_URL         GitHub API base URL (default api.github.com)
-  GITHUB_WATCHER_APP_CACHE_PATH       token cache path (default <data-dir>/.app-token-cache.json)`)
-}
-
-func cmdSubscribe(args []string) error {
-	fs := flag.NewFlagSet("subscribe", flag.ExitOnError)
-	session := fs.String("session", "", "plect session name (required)")
-	resource := fs.String("resource", "", "resource identifier (required)")
-	branch := fs.String("branch", "", "session branch (optional; linked-PR discovery for issues)")
-	dataDir := fs.String("data-dir", "", "override data directory")
-	if err := fs.Parse(args); err != nil {
-		return err
-	}
-	if *session == "" || *resource == "" {
-		return fmt.Errorf("--session and --resource are required")
-	}
-	return watcher.NewStore(*dataDir).Subscribe(watcher.Subscription{
-		SessionName: *session,
-		Resource:    *resource,
-		Branch:      *branch,
-	})
-}
-
-func cmdUnsubscribe(args []string) error {
-	fs := flag.NewFlagSet("unsubscribe", flag.ExitOnError)
-	session := fs.String("session", "", "plect session name (required)")
-	resource := fs.String("resource", "", "resource identifier (optional; removes just this one, else all of the session's)")
-	dataDir := fs.String("data-dir", "", "override data directory")
-	if err := fs.Parse(args); err != nil {
-		return err
-	}
-	if *session == "" {
-		return fmt.Errorf("--session is required")
-	}
-	if *resource != "" {
-		return watcher.NewStore(*dataDir).UnsubscribeResource(*session, *resource)
-	}
-	return watcher.NewStore(*dataDir).Unsubscribe(*session)
-}
-
-func cmdList(args []string) error {
-	fs := flag.NewFlagSet("list", flag.ExitOnError)
-	dataDir := fs.String("data-dir", "", "override data directory")
-	if err := fs.Parse(args); err != nil {
-		return err
-	}
-	subs, err := watcher.NewStore(*dataDir).All()
-	if err != nil {
-		return err
-	}
-	for name, sub := range subs {
-		fmt.Printf("%s\t%s\n", name, sub.Resource)
-	}
-	return nil
+  PLECT_CACHE_DIR                      plugin cache containing token and rate-budget files`)
 }
 
 func cmdServe(args []string) error {
-	fs := flag.NewFlagSet("serve", flag.ExitOnError)
+	fs := flag.NewFlagSet("serve", flag.ContinueOnError)
 	interval := fs.String("interval", "60s", "polling interval (min 10s)")
-	notifyURL := fs.String("notify-url", "http://127.0.0.1:7890/notify", "slack-adapter notify endpoint for the legacy push path (requires --allow-legacy-notify)")
-	allowLegacy := fs.Bool("allow-legacy-notify", false, "opt into the deprecated POST /notify delivery when PLECT_BUS_SOCKET is unset (dual-run rollback)")
-	dataDir := fs.String("data-dir", "", "override data directory")
 	if err := fs.Parse(args); err != nil {
 		return err
 	}
@@ -134,62 +66,45 @@ func cmdServe(args []string) error {
 	if err != nil {
 		return err
 	}
-
-	logger := slog.New(slog.NewTextHandler(os.Stderr, nil))
-	poller := &watcher.Poller{
-		Store:  watcher.NewStore(*dataDir),
-		Logger: logger,
-		// Same data-dir resolution as `gh-api`, so poll and config-layer gh
-		// calls back off against one shared budget.
-		Guard: ratebudget.NewGuard(ghAPIDataDir(*dataDir)),
+	dataDir := os.Getenv("PLECT_DATA_DIR")
+	cacheDir := os.Getenv("PLECT_CACHE_DIR")
+	if dataDir == "" || cacheDir == "" {
+		return fmt.Errorf("PLECT_DATA_DIR and PLECT_CACHE_DIR are required for a supervised service")
 	}
-	if err := configureAppAuth(poller, ghAPIDataDir(*dataDir)); err != nil {
+	logger := slog.New(slog.NewTextHandler(os.Stderr, nil))
+	store := watcher.NewProtocolStore(dataDir, cacheDir)
+	protocol := newServiceProtocol(os.Stdin, os.Stdout, store)
+	poller := &watcher.Poller{Store: store, Logger: logger, Guard: ratebudget.NewGuard(cacheDir)}
+	poller.PublishResource = func(_, resource, eventType, summary string, metadata map[string]string) error {
+		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+		defer cancel()
+		return protocol.Publish(ctx, resource, eventType, summary, metadata)
+	}
+	if err := configureAppAuth(poller, cacheDir); err != nil {
 		return fmt.Errorf("github app auth: %w", err)
 	}
-
-	busSocket := os.Getenv("PLECT_BUS_SOCKET")
-	delivery, err := configureDelivery(poller, busSocket, os.Getenv("PLECT_BUS_TOKEN"), *notifyURL, *allowLegacy)
-	if err != nil {
-		return err
-	}
-	switch delivery {
-	case "bus":
-		logger.Info("github-watcher serving", "interval", tick.String(), "delivery", "bus", "bus_socket", busSocket)
-	case "notify":
-		logger.Warn("github-watcher serving in DEPRECATED legacy push mode (set PLECT_BUS_SOCKET to use the event bus)",
-			"interval", tick.String(), "delivery", "notify", "notify_url", *notifyURL)
-	}
-
 	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
 	defer stop()
-
-	// Drop subscriptions for sessions destroyed while the daemon wasn't
-	// running (or before this fix shipped) before ever polling them —
-	// see Poller.Sweep for why this isn't also done every Tick.
-	poller.Sweep()
-	// Establish baselines promptly on start, then tick.
+	readDone := make(chan error, 1)
+	go func() { readDone <- protocol.Run() }()
+	select {
+	case <-protocol.ready:
+	case err := <-readDone:
+		return err
+	case <-ctx.Done():
+		return ctx.Err()
+	}
 	poller.Tick()
 	ticker := time.NewTicker(tick)
 	defer ticker.Stop()
 	for {
 		select {
 		case <-ctx.Done():
-			logger.Info("shutting down")
 			return nil
+		case err := <-readDone:
+			return err
 		case <-ticker.C:
 			poller.Tick()
 		}
 	}
-}
-
-func configureDelivery(poller *watcher.Poller, busSocket, busToken, notifyURL string, allowLegacy bool) (string, error) {
-	if busSocket != "" {
-		poller.Bus = event.NewUDSClient(busSocket, busToken)
-		return "bus", nil
-	}
-	if allowLegacy {
-		poller.NotifyURL = notifyURL
-		return "notify", nil
-	}
-	return "", fmt.Errorf("PLECT_BUS_SOCKET is unset: set it to use the event bus, or pass --allow-legacy-notify to opt into the deprecated POST /notify path")
 }

@@ -17,6 +17,7 @@ import (
 	"github.com/kecbigmt/plecture/app/internal/domain"
 	"github.com/kecbigmt/plecture/app/internal/eventlog"
 	"github.com/kecbigmt/plecture/app/internal/lang"
+	"github.com/kecbigmt/plecture/app/internal/plugins"
 	"github.com/kecbigmt/plecture/app/internal/sessionhub"
 	"github.com/kecbigmt/plecture/app/internal/sockettest"
 	"github.com/kecbigmt/plecture/app/internal/state"
@@ -24,6 +25,41 @@ import (
 	"github.com/kecbigmt/plecture/contracts/event"
 	contract "github.com/kecbigmt/plecture/contracts/state"
 )
+
+func TestDispatcherPluginChannelReceivesCache(t *testing.T) {
+	dir := t.TempDir()
+	t.Setenv("PLECT_CACHE_HOME", filepath.Join(dir, "cache"))
+	t.Setenv("PLECT_CONFIG_HOME", dir)
+	bin := filepath.Join(dir, "deliver")
+	if err := os.WriteFile(bin, []byte("#!/bin/sh\nprintf '%s' \"$PLECT_CACHE_DIR\" > \"$1\"\n"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	out := filepath.Join(dir, "delivered")
+	log := eventlog.NewStore(t.TempDir())
+	d, _, _ := runTestDispatcher(t, log, "")
+	d.plugins = []plugins.Mounted{{ID: "local/delivery", Dir: dir, Manifest: plugins.Manifest{Executables: []plugins.Executable{{Name: "deliver", Path: "deliver"}}}}}
+	d.channels = []config.EventChannel{{Name: "probe", Uses: "probe", Include: []string{string(event.TypeInstruction)}}}
+	d.defs = map[string]config.ChannelDefinition{"probe": {Type: config.ChannelTypeExec, Action: &lang.Action{Type: lang.ActionExec, Bin: "local/delivery/deliver", Args: []*lang.Value{{Form: lang.FormLiteral, Literal: out}}}}}
+	startDispatcher(t, d)
+	if _, _, _, err := log.Append(event.Event{SessionName: d.session, Type: event.TypeInstruction, Body: "go", Direction: event.Internal}); err != nil {
+		t.Fatal(err)
+	}
+	want := filepath.Join(dir, "cache", "plugins", "local", "delivery")
+	deadline := time.Now().Add(2 * time.Second)
+	for {
+		got, err := os.ReadFile(out)
+		if err == nil {
+			if string(got) != want {
+				t.Fatalf("delivery cache = %q, want %q", got, want)
+			}
+			break
+		}
+		if time.Now().After(deadline) {
+			t.Fatalf("delivery did not create output: %v", err)
+		}
+		time.Sleep(time.Millisecond)
+	}
+}
 
 // socketChannel and execChannel build the definitions these tests drive the
 // dispatcher with, in the ratified value forms.

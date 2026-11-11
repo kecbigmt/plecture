@@ -19,6 +19,34 @@ import (
 	"github.com/kecbigmt/plecture/plugins/github/src/internal/ratebudget"
 )
 
+func publishToNotifyFixture(url string) func(string, string, string, string, map[string]string) error {
+	return func(session, resource, kind, summary string, _ map[string]string) error {
+		body, err := json.Marshal(map[string]any{"session_name": session, "change_type": strings.TrimPrefix(kind, "github."), "summary": summary, "url": resource})
+		if err != nil {
+			return err
+		}
+		resp, err := http.Post(url, "application/json", bytes.NewReader(body))
+		if err != nil {
+			return err
+		}
+		return resp.Body.Close()
+	}
+}
+
+func publishToEventFixture(url string) func(string, string, string, string, map[string]string) error {
+	return func(session, _, kind, summary string, metadata map[string]string) error {
+		body, err := json.Marshal(event.Event{SessionName: session, Type: kind, Source: "github", Direction: event.Inbound, Summary: summary, Metadata: metadata})
+		if err != nil {
+			return err
+		}
+		resp, err := http.Post(url, "application/json", bytes.NewReader(body))
+		if err != nil {
+			return err
+		}
+		return resp.Body.Close()
+	}
+}
+
 func TestStore_SubscribeUnsubscribe(t *testing.T) {
 	store := NewStore(t.TempDir())
 	const res1 = "https://github.com/org/repo/issues/1"
@@ -297,11 +325,11 @@ func TestPoller_TickNotifiesAndAdvancesBaseline(t *testing.T) {
 	defer srv.Close()
 
 	p := &Poller{
-		Store:     store,
-		Logger:    slog.New(slog.NewTextHandler(os.Stderr, nil)),
-		NotifyURL: srv.URL,
-		GhBin:     gh,
-		Guard:     ratebudget.NewGuard(t.TempDir()),
+		Store:           store,
+		Logger:          slog.New(slog.NewTextHandler(os.Stderr, nil)),
+		PublishResource: publishToNotifyFixture(srv.URL),
+		GhBin:           gh,
+		Guard:           ratebudget.NewGuard(t.TempDir()),
 	}
 	p.Tick()
 
@@ -326,27 +354,18 @@ func TestPoller_TickNotifiesAndAdvancesBaseline(t *testing.T) {
 		}
 	}
 
-	// "merged" is a terminal PR state: the transition still notifies
-	// (asserted above), but the subscription itself is dropped immediately
-	// afterward rather than kept around polling a resource that can never
-	// change again — see TestPoller_TerminalStateDropsSubscription for the
-	// dedicated coverage.
 	subs, _ := store.All()
-	if _, ok := subs[subKey("org/repo-7", resource)]; ok {
-		t.Errorf("subscription must be dropped after observing a terminal state, got %+v", subs)
+	if _, ok := subs[subKey("org/repo-7", resource)]; !ok {
+		t.Errorf("subscription must remain after observing a closed resource, got %+v", subs)
 	}
 	notified = nil
 	p.Tick()
 	if len(notified) != 0 {
-		t.Errorf("dropped subscription must not be polled again, got %+v", notified)
+		t.Errorf("unchanged resource must not publish again, got %+v", notified)
 	}
 }
 
-// A resource observed in a terminal state (a merged or closed PR, a closed
-// issue) is dropped the moment it's observed — nothing further can ever
-// change about it, so polling it again would only grow the registry and the
-// steady-state gh call volume forever.
-func TestPoller_TerminalStateDropsSubscription(t *testing.T) {
+func TestPoller_ClosedResourceKeepsSubscription(t *testing.T) {
 	tests := []struct {
 		name     string
 		resource string
@@ -392,8 +411,8 @@ func TestPoller_TerminalStateDropsSubscription(t *testing.T) {
 			p.Tick()
 
 			subs, _ := store.All()
-			if _, ok := subs[subKey("org/repo-x", tt.resource)]; ok {
-				t.Errorf("terminal resource must be dropped, got %+v", subs)
+			if _, ok := subs[subKey("org/repo-x", tt.resource)]; !ok {
+				t.Errorf("closed resource must keep subscription, got %+v", subs)
 			}
 		})
 	}
@@ -431,12 +450,11 @@ func TestPoller_TickPublishesToBus(t *testing.T) {
 	defer srv.Close()
 
 	p := &Poller{
-		Store:     store,
-		Logger:    slog.New(slog.NewTextHandler(os.Stderr, nil)),
-		Bus:       &event.Client{BaseURL: srv.URL, HTTP: srv.Client()},
-		NotifyURL: "http://127.0.0.1:1/notify", // must be ignored when Bus is set
-		GhBin:     gh,
-		Guard:     ratebudget.NewGuard(t.TempDir()),
+		Store:           store,
+		Logger:          slog.New(slog.NewTextHandler(os.Stderr, nil)),
+		PublishResource: publishToEventFixture(srv.URL),
+		GhBin:           gh,
+		Guard:           ratebudget.NewGuard(t.TempDir()),
 	}
 	p.Tick()
 
@@ -446,7 +464,7 @@ func TestPoller_TickPublishesToBus(t *testing.T) {
 	types := map[string]bool{}
 	for _, ev := range published {
 		types[ev.Type] = true
-		if ev.Source != sourceGitHub {
+		if ev.Source != "github" {
 			t.Errorf("source = %q, want github", ev.Source)
 		}
 		if ev.SessionName != "org/repo-7" {
@@ -504,11 +522,11 @@ func TestPoller_PublishedEventPayloadIsMinimal(t *testing.T) {
 	defer srv.Close()
 
 	p := &Poller{
-		Store:  store,
-		Logger: slog.New(slog.NewTextHandler(os.Stderr, nil)),
-		Bus:    &event.Client{BaseURL: srv.URL, HTTP: srv.Client()},
-		GhBin:  gh,
-		Guard:  ratebudget.NewGuard(t.TempDir()),
+		Store:           store,
+		Logger:          slog.New(slog.NewTextHandler(os.Stderr, nil)),
+		PublishResource: publishToEventFixture(srv.URL),
+		GhBin:           gh,
+		Guard:           ratebudget.NewGuard(t.TempDir()),
 	}
 	p.Tick()
 
@@ -528,7 +546,7 @@ func TestPoller_PublishedEventPayloadIsMinimal(t *testing.T) {
 	}
 }
 
-func TestPoller_SamePRPublishesPerSubscriber(t *testing.T) {
+func TestPoller_SamePRPublishesOnceForCoreSubscribers(t *testing.T) {
 	dir := t.TempDir()
 	store := NewStore(dir)
 	resource := "https://github.com/org/repo/pull/7"
@@ -570,11 +588,11 @@ func TestPoller_SamePRPublishesPerSubscriber(t *testing.T) {
 	defer srv.Close()
 
 	p := &Poller{
-		Store:  store,
-		Logger: slog.New(slog.NewTextHandler(os.Stderr, nil)),
-		Bus:    &event.Client{BaseURL: srv.URL, HTTP: srv.Client()},
-		GhBin:  gh,
-		Guard:  ratebudget.NewGuard(t.TempDir()),
+		Store:           store,
+		Logger:          slog.New(slog.NewTextHandler(os.Stderr, nil)),
+		PublishResource: publishToEventFixture(srv.URL),
+		GhBin:           gh,
+		Guard:           ratebudget.NewGuard(t.TempDir()),
 	}
 	p.Tick()
 
@@ -588,22 +606,15 @@ func TestPoller_SamePRPublishesPerSubscriber(t *testing.T) {
 	if calls != 1 {
 		t.Errorf("expected 1 gh fetch for shared PR, got %d:\n%s", calls, data)
 	}
-	if len(published) != 2 {
-		t.Fatalf("expected one state event per subscriber, got %d: %+v", len(published), published)
+	if len(published) != 1 {
+		t.Fatalf("expected one resource event, got %d: %+v", len(published), published)
 	}
-	sessions := map[string]bool{}
 	for _, ev := range published {
 		if ev.Type != typeGitHubPrefix+"state" {
 			t.Errorf("event type = %q, want github.state", ev.Type)
 		}
 		if ev.Metadata["resource"] != resource || ev.Metadata["url"] != resource {
 			t.Errorf("metadata = %+v, want resource/url %q", ev.Metadata, resource)
-		}
-		sessions[ev.SessionName] = true
-	}
-	for _, want := range []string{"org/repo-7", "reviewer/sess"} {
-		if !sessions[want] {
-			t.Errorf("missing session %q in events %+v", want, published)
 		}
 	}
 }
@@ -628,7 +639,7 @@ func TestPoller_InitialObservationDoesNotNotify(t *testing.T) {
 	}))
 	defer srv.Close()
 
-	p := &Poller{Store: store, Logger: slog.New(slog.NewTextHandler(os.Stderr, nil)), NotifyURL: srv.URL, GhBin: gh, Guard: ratebudget.NewGuard(t.TempDir())}
+	p := &Poller{Store: store, Logger: slog.New(slog.NewTextHandler(os.Stderr, nil)), PublishResource: publishToNotifyFixture(srv.URL), GhBin: gh, Guard: ratebudget.NewGuard(t.TempDir())}
 	p.Tick()
 	if notifyCount != 0 {
 		t.Errorf("first observation must establish a baseline silently, got %d notifications", notifyCount)
@@ -757,11 +768,7 @@ func TestPoller_DoesNotPruneSubscriptionsDuringPoll(t *testing.T) {
 	p := &Poller{Store: store, Logger: slog.New(slog.NewTextHandler(os.Stderr, nil)), GhBin: gh, Guard: ratebudget.NewGuard(t.TempDir())}
 	p.Tick()
 
-	// Polling never probes plect state as a side task — session-existence
-	// cleanup is left to explicit unsubscribe / Sweep. An open (non-terminal)
-	// PR must also survive polling itself: only a resource observed in a
-	// terminal state gets dropped inline (see
-	// TestPoller_TerminalStateDropsSubscription).
+	// Polling leaves membership cleanup to the subscription owner.
 	subs, _ := store.All()
 	if len(subs) != 1 {
 		t.Errorf("poll should leave subscription cleanup to unsubscribe, got %+v", subs)
@@ -799,7 +806,7 @@ func TestPoller_NewCommitsNotifies(t *testing.T) {
 	}))
 	defer srv.Close()
 
-	p := &Poller{Store: store, Logger: slog.New(slog.NewTextHandler(os.Stderr, nil)), NotifyURL: srv.URL, GhBin: gh, Guard: ratebudget.NewGuard(t.TempDir())}
+	p := &Poller{Store: store, Logger: slog.New(slog.NewTextHandler(os.Stderr, nil)), PublishResource: publishToNotifyFixture(srv.URL), GhBin: gh, Guard: ratebudget.NewGuard(t.TempDir())}
 	p.Tick()
 
 	got := map[string]string{}
@@ -978,7 +985,7 @@ func TestPoller_ChecksResetToPendingNotifies(t *testing.T) {
 	}))
 	defer srv.Close()
 
-	p := &Poller{Store: store, Logger: slog.New(slog.NewTextHandler(os.Stderr, nil)), NotifyURL: srv.URL, GhBin: gh, Guard: ratebudget.NewGuard(t.TempDir())}
+	p := &Poller{Store: store, Logger: slog.New(slog.NewTextHandler(os.Stderr, nil)), PublishResource: publishToNotifyFixture(srv.URL), GhBin: gh, Guard: ratebudget.NewGuard(t.TempDir())}
 	p.Tick()
 
 	if len(notified) != 1 {
@@ -1025,7 +1032,7 @@ func TestPoller_MergeableStateTransitionNotifies(t *testing.T) {
 	}))
 	defer srv.Close()
 
-	p := &Poller{Store: store, Logger: slog.New(slog.NewTextHandler(os.Stderr, nil)), NotifyURL: srv.URL, GhBin: gh, Guard: ratebudget.NewGuard(t.TempDir())}
+	p := &Poller{Store: store, Logger: slog.New(slog.NewTextHandler(os.Stderr, nil)), PublishResource: publishToNotifyFixture(srv.URL), GhBin: gh, Guard: ratebudget.NewGuard(t.TempDir())}
 	p.Tick()
 
 	if len(notified) != 1 {
@@ -1068,7 +1075,7 @@ func TestPoller_MergeableUnknownDoesNotUpdateOrNotify(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) { notifyCount++ }))
 	defer srv.Close()
 
-	p := &Poller{Store: store, Logger: slog.New(slog.NewTextHandler(os.Stderr, nil)), NotifyURL: srv.URL, GhBin: gh, Guard: ratebudget.NewGuard(t.TempDir())}
+	p := &Poller{Store: store, Logger: slog.New(slog.NewTextHandler(os.Stderr, nil)), PublishResource: publishToNotifyFixture(srv.URL), GhBin: gh, Guard: ratebudget.NewGuard(t.TempDir())}
 	p.Tick()
 
 	if notifyCount != 0 {
@@ -1109,7 +1116,7 @@ func TestPoller_DraftBecomesReadyForReviewNotifies(t *testing.T) {
 	}))
 	defer srv.Close()
 
-	p := &Poller{Store: store, Logger: slog.New(slog.NewTextHandler(os.Stderr, nil)), NotifyURL: srv.URL, GhBin: gh, Guard: ratebudget.NewGuard(t.TempDir())}
+	p := &Poller{Store: store, Logger: slog.New(slog.NewTextHandler(os.Stderr, nil)), PublishResource: publishToNotifyFixture(srv.URL), GhBin: gh, Guard: ratebudget.NewGuard(t.TempDir())}
 	p.Tick()
 
 	if len(notified) != 1 {
@@ -1150,7 +1157,7 @@ func TestPoller_DraftGoingBackToDraftDoesNotNotify(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) { notifyCount++ }))
 	defer srv.Close()
 
-	p := &Poller{Store: store, Logger: slog.New(slog.NewTextHandler(os.Stderr, nil)), NotifyURL: srv.URL, GhBin: gh, Guard: ratebudget.NewGuard(t.TempDir())}
+	p := &Poller{Store: store, Logger: slog.New(slog.NewTextHandler(os.Stderr, nil)), PublishResource: publishToNotifyFixture(srv.URL), GhBin: gh, Guard: ratebudget.NewGuard(t.TempDir())}
 	p.Tick()
 
 	if notifyCount != 0 {
@@ -1411,7 +1418,7 @@ func TestPoller_RepeatedFailureSurfacesOnceAtThreshold(t *testing.T) {
 	}))
 	defer srv.Close()
 
-	p := &Poller{Store: store, Logger: slog.New(slog.NewTextHandler(os.Stderr, nil)), NotifyURL: srv.URL, GhBin: gh, Guard: ratebudget.NewGuard(t.TempDir())}
+	p := &Poller{Store: store, Logger: slog.New(slog.NewTextHandler(os.Stderr, nil)), PublishResource: publishToNotifyFixture(srv.URL), GhBin: gh, Guard: ratebudget.NewGuard(t.TempDir())}
 
 	for i := 0; i < failureSurfaceThreshold-1; i++ {
 		p.Tick()
@@ -1474,134 +1481,6 @@ printf 'HTTP/1.1 200 OK\n\n{"state":"open"}'
 	subs, _ = store.All()
 	if got := subs[subKey("org/repo-51", res)].FailStreak; got != 0 {
 		t.Errorf("fail streak = %d, want reset to 0 after a success", got)
-	}
-}
-
-// --- Sweep: drop subscriptions for destroyed sessions ---
-
-// fakePlectLs writes a `plect` stub that answers `ls --json` with the given
-// session names, mirroring the shape Sweep parses (session_name only — run
-// state is irrelevant to session existence).
-func fakePlectLs(t *testing.T, dir string, sessionNames []string) string {
-	t.Helper()
-	rows := make([]string, len(sessionNames))
-	for i, n := range sessionNames {
-		rows[i] = fmt.Sprintf(`{"session_name":%q}`, n)
-	}
-	return fakeBin(t, dir, "plect", "echo '["+strings.Join(rows, ",")+"]'\n")
-}
-
-func TestPoller_SweepDropsSubscriptionsForDestroyedSessions(t *testing.T) {
-	dir := t.TempDir()
-	store := NewStore(dir)
-	const liveRes = "https://github.com/org/repo/pull/1"
-	const deadRes = "https://github.com/org/repo/pull/2"
-	if err := store.Subscribe(Subscription{SessionName: "org/repo-1", Resource: liveRes}); err != nil {
-		t.Fatal(err)
-	}
-	if err := store.Subscribe(Subscription{SessionName: "org/repo-2", Resource: deadRes}); err != nil {
-		t.Fatal(err)
-	}
-
-	binDir := t.TempDir()
-	plect := fakePlectLs(t, binDir, []string{"org/repo-1"}) // org/repo-2 no longer exists
-
-	p := &Poller{Store: store, Logger: slog.New(slog.NewTextHandler(os.Stderr, nil)), PlectBin: plect}
-	p.Sweep()
-
-	subs, _ := store.All()
-	if _, ok := subs[subKey("org/repo-1", liveRes)]; !ok {
-		t.Error("live session's subscription must survive Sweep")
-	}
-	if _, ok := subs[subKey("org/repo-2", deadRes)]; ok {
-		t.Error("destroyed session's subscription must be dropped by Sweep")
-	}
-}
-
-// A session plect still lists as "down" (not destroyed — resumable via
-// `plect up`) must not be swept; only a session plect no longer knows about
-// at all is gone.
-func TestPoller_SweepKeepsDownButNotDestroyedSessions(t *testing.T) {
-	dir := t.TempDir()
-	store := NewStore(dir)
-	const res = "https://github.com/org/repo/pull/3"
-	if err := store.Subscribe(Subscription{SessionName: "org/repo-3", Resource: res}); err != nil {
-		t.Fatal(err)
-	}
-
-	binDir := t.TempDir()
-	plect := fakePlectLs(t, binDir, []string{"org/repo-3"})
-
-	p := &Poller{Store: store, Logger: slog.New(slog.NewTextHandler(os.Stderr, nil)), PlectBin: plect}
-	p.Sweep()
-
-	subs, _ := store.All()
-	if _, ok := subs[subKey("org/repo-3", res)]; !ok {
-		t.Error("a session plect still lists (even if down) must survive Sweep")
-	}
-}
-
-// A `plect` that can't be asked (missing binary, non-zero exit) must never
-// be treated as "nothing exists" — that would sweep every live session's
-// subscriptions on a transient hiccup.
-func TestPoller_SweepSkipsWhenPlectListFails(t *testing.T) {
-	dir := t.TempDir()
-	store := NewStore(dir)
-	const res = "https://github.com/org/repo/pull/4"
-	if err := store.Subscribe(Subscription{SessionName: "org/repo-4", Resource: res}); err != nil {
-		t.Fatal(err)
-	}
-
-	p := &Poller{Store: store, Logger: slog.New(slog.NewTextHandler(os.Stderr, nil)), PlectBin: filepath.Join(t.TempDir(), "plect-does-not-exist")}
-	p.Sweep()
-
-	subs, _ := store.All()
-	if _, ok := subs[subKey("org/repo-4", res)]; !ok {
-		t.Error("Sweep must leave subscriptions untouched when it can't list sessions")
-	}
-}
-
-// A hung `plect ls` (e.g. one session's movement-source healthcheck never
-// returning) must not block Sweep — and therefore the watcher's first
-// Tick — forever. Bounding the subprocess with PlectListTimeout is what
-// turns "hangs indefinitely" into "fails like any other liveSessions error."
-func TestPoller_SweepBoundsHungPlectListCall(t *testing.T) {
-	dir := t.TempDir()
-	store := NewStore(dir)
-	const res = "https://github.com/org/repo/pull/5"
-	if err := store.Subscribe(Subscription{SessionName: "org/repo-5", Resource: res}); err != nil {
-		t.Fatal(err)
-	}
-
-	binDir := t.TempDir()
-	plect := fakeBin(t, binDir, "plect", "sleep 30\n") // never returns within any sane test budget
-
-	p := &Poller{
-		Store:            store,
-		Logger:           slog.New(slog.NewTextHandler(os.Stderr, nil)),
-		PlectBin:         plect,
-		PlectListTimeout: 200 * time.Millisecond,
-	}
-
-	done := make(chan struct{})
-	start := time.Now()
-	go func() {
-		p.Sweep()
-		close(done)
-	}()
-
-	select {
-	case <-done:
-	case <-time.After(5 * time.Second):
-		t.Fatal("Sweep did not return within 5s of a hung plect ls — the timeout isn't bounding the subprocess")
-	}
-	if elapsed := time.Since(start); elapsed > 2*time.Second {
-		t.Errorf("Sweep took %v to return, want close to the 200ms PlectListTimeout", elapsed)
-	}
-
-	subs, _ := store.All()
-	if _, ok := subs[subKey("org/repo-5", res)]; !ok {
-		t.Error("Sweep must leave subscriptions untouched when plect ls times out")
 	}
 }
 

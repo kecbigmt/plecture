@@ -22,7 +22,7 @@ schema_version = 2
 plugins = ["runtime", "claude"]
 `)
 	writeFile(t, filepath.Join(catalogDir, "runtime", "plugin.toml"), `
-schema_version = 2
+schema_version = 3
 plect_min_version = "0.0.0"
 
 [[executables]]
@@ -30,7 +30,7 @@ name = "activity"
 path = "bin/activity"
 `)
 	writeFile(t, filepath.Join(catalogDir, "claude", "plugin.toml"), `
-schema_version = 2
+schema_version = 3
 plect_min_version = "0.0.0"
 `)
 	writeFile(t, filepath.Join(tmpHome, ".config", "plect", "config.toml"), "schema_version = 2\n")
@@ -84,7 +84,7 @@ schema_version = 2
 plugins = ["okf"]
 `)
 	writeFile(t, filepath.Join(catalogDir, "okf", "plugin.toml"), `
-schema_version = 2
+schema_version = 3
 plect_min_version = "0.0.0"
 
 [[executables]]
@@ -137,7 +137,7 @@ schema_version = 2
 plugins = ["claude"]
 `)
 	writeFile(t, filepath.Join(catalogDir, "claude", "plugin.toml"), `
-schema_version = 2
+schema_version = 3
 plect_min_version = "0.0.0"
 `)
 	writeFile(t, filepath.Join(catalogDir, "claude", "config", "tasks", "claude.toml"), `
@@ -186,7 +186,7 @@ schema_version = 2
 plugins = ["runtime", "github"]
 `)
 	writeFile(t, filepath.Join(catalogDir, "runtime", "plugin.toml"), `
-schema_version = 2
+schema_version = 3
 plect_min_version = "0.0.0"
 
 [[executables]]
@@ -194,7 +194,7 @@ name = "watcher"
 path = "bin/watcher"
 `)
 	writeFile(t, filepath.Join(catalogDir, "github", "plugin.toml"), `
-schema_version = 2
+schema_version = 3
 plect_min_version = "0.0.0"
 `)
 	writeFile(t, filepath.Join(catalogDir, "github", "config", "tasks", "github.toml"), `
@@ -251,7 +251,7 @@ schema_version = 2
 plugins = ["runtime", "github"]
 `)
 	writeFile(t, filepath.Join(catalogDir, "runtime", "plugin.toml"), `
-schema_version = 2
+schema_version = 3
 plect_min_version = "0.0.0"
 
 [[executables]]
@@ -259,7 +259,7 @@ name = "watcher"
 path = "bin/watcher"
 `)
 	writeFile(t, filepath.Join(catalogDir, "github", "plugin.toml"), `
-schema_version = 2
+schema_version = 3
 plect_min_version = "0.0.0"
 `)
 	writeFile(t, filepath.Join(tmpHome, ".config", "plect", "config.toml"), "schema_version = 2\n")

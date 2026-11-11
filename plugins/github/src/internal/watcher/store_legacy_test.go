@@ -23,39 +23,6 @@ import (
 // provider's runtime subscribe hook), so there is nothing to migrate.
 const registryVersion = 2
 
-// Subscription is one watched resource bound to a plect session. A session may
-// have several (one per resource), so the registry is keyed by (session,
-// resource), not session alone.
-type Subscription struct {
-	SessionName string `json:"session_name"`
-	Resource    string `json:"resource"`
-	// Branch is the session's working branch; used to discover the linked PR
-	// for issue resources. Optional.
-	Branch string `json:"branch,omitempty"`
-	// Last holds the most recent observed values, used for change detection
-	// across daemon restarts.
-	Last map[string]string `json:"last,omitempty"`
-	// FailStreak counts consecutive failed polls since the last successful
-	// one. It exists so a subscription that never resolves (a deleted repo,
-	// a revoked token) can be surfaced once instead of warn-spamming every
-	// tick forever — see Poller.recordFailure.
-	FailStreak int `json:"fail_streak,omitempty"`
-}
-
-// subKey is the registry key for a subscription: (session, resource). The NUL
-// separator can't appear in either field, so the composite is unambiguous.
-func subKey(session, resource string) string {
-	return session + "\x00" + resource
-}
-
-// cacheEntry is one cached conditional-GET response: the ETag GitHub returned
-// and the (already jq-projected) body it was served with, reused verbatim on
-// a subsequent 304.
-type cacheEntry struct {
-	ETag string `json:"etag"`
-	Body string `json:"body"`
-}
-
 // registry is the on-disk subscription store.
 type registry struct {
 	Version       int                      `json:"version"`

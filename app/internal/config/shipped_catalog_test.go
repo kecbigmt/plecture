@@ -146,23 +146,19 @@ func TestShippedCatalog_LoadsUnderArbitraryAlias(t *testing.T) {
 	}
 }
 
-func TestShippedCatalog_SlackAdapterServiceRequiresBotTokenOnly(t *testing.T) {
+func TestShippedCatalog_SlackAdapterIsServiceCapable(t *testing.T) {
 	cfg := loadShippedCatalog(t, "official")
 
-	var svc *plugins.Service
+	var executable *plugins.Executable
 	for _, m := range cfg.Plugins {
-		for i, s := range m.Manifest.Services {
+		for i, s := range m.Manifest.Executables {
 			if s.Name == "slack-adapter" {
-				svc = &m.Manifest.Services[i]
+				executable = &m.Manifest.Executables[i]
 			}
 		}
 	}
-	if svc == nil {
-		t.Fatal("no shipped plugin declares a slack-adapter service")
-	}
-
-	if len(svc.RequiredEnv) != 1 || svc.RequiredEnv[0] != "SLACK_BOT_TOKEN" {
-		t.Errorf("slack-adapter service required_env = %v, want bot-token-only outbound startup", svc.RequiredEnv)
+	if executable == nil || !executable.Service || executable.ConfigSchema == nil {
+		t.Fatalf("slack-adapter executable = %+v", executable)
 	}
 }
 

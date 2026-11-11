@@ -97,7 +97,8 @@ func nodeRoots(tasks map[string]map[string]any) map[string]any {
 func capabilitiesFor(ctx RenderContext, from lang.Ownership) effect.Capabilities {
 	bins := config.MountedBins{Mounted: ctx.Session.Plugins, SourcePath: ctx.SourcePath}
 	caps := effect.Capabilities{
-		Bin: func(ref string) (string, error) { return bins.ResolveBin(ref, from) },
+		Bin:        func(ref string) (string, error) { return bins.ResolveBin(ref, from) },
+		BinRuntime: func(path string) (lang.BinRuntime, error) { return effect.PluginRuntime(path, bins.Mounted) },
 	}
 	if binding := ctx.Session.Terminal; binding != nil {
 		caps.Terminal = func(dir, verb string) (string, error) {

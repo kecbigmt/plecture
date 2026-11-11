@@ -539,6 +539,14 @@ func (v Validation) action(body map[string]any, field string, s *Surface, pos Po
 }
 
 func (v Validation) checkAction(a *Action, s *Surface, pos Position) error {
+	if a.Bin != "" || len(a.Bind) > 0 {
+		s = &Surface{
+			Name:      s.Name,
+			roots:     append(append([]rootPath{}, s.roots...), rootPath{segments: []string{"service", "config"}}),
+			rootLayer: s.rootLayer,
+			rootCode:  s.rootCode,
+		}
+	}
 	if a.Bin != "" {
 		if _, err := v.Executables.ResolveBin(a.Bin, v.From); err != nil {
 			return err

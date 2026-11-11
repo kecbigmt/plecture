@@ -1,4 +1,4 @@
-schema_version = 2
+schema_version = 3
 version = "0.1.0"
 # 0.0.0 matches app/internal/version.Current ("0.0.0-dev"): plect has no
 # release/tagging process yet, so any higher floor would reject the plugin
@@ -10,12 +10,7 @@ description = "Slack adapter service, thread subscriptions, and Slack delivery c
 name = "slack-adapter"
 path = "bin/slack-adapter"
 build = "go -C src/slack-adapter build -o ../../bin/slack-adapter ./cmd/slack-adapter"
+service = true
 
-[[services]]
-name = "slack-adapter"
-executable = "slack-adapter"
-# A bot token is enough for outbound thread creation and posting. Socket Mode
-# remains inactive until an app token is configured.
-required_env = ["SLACK_BOT_TOKEN"]
-restart = "on-failure"
-health = { type = "process" }
+[executables.config_schema]
+type = "object"

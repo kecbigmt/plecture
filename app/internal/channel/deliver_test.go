@@ -12,9 +12,36 @@ import (
 	"testing"
 
 	"github.com/kecbigmt/plecture/app/internal/config"
+	"github.com/kecbigmt/plecture/app/internal/effect"
+	"github.com/kecbigmt/plecture/app/internal/lang"
 	"github.com/kecbigmt/plecture/app/internal/plectshim"
+	"github.com/kecbigmt/plecture/app/internal/plugins"
 	"github.com/kecbigmt/plecture/contracts/event"
 )
+
+func TestDeliverPluginExecutableReceivesCache(t *testing.T) {
+	dir := t.TempDir()
+	t.Setenv("PLECT_CACHE_HOME", filepath.Join(dir, "cache"))
+	t.Setenv("PLECT_CONFIG_HOME", dir)
+	bin := filepath.Join(dir, "deliver")
+	if err := os.WriteFile(bin, []byte("#!/bin/sh\nprintf '%s' \"$PLECT_CACHE_DIR\" > \"$1\"\n"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	mounted := []plugins.Mounted{{ID: "local/delivery", Dir: dir, Manifest: plugins.Manifest{Executables: []plugins.Executable{{Name: "deliver", Path: "deliver"}}}}}
+	def := config.ChannelDefinition{Type: config.ChannelTypeExec, Action: &lang.Action{Type: lang.ActionExec, Bin: "local/delivery/deliver", Args: []*lang.Value{{Form: lang.FormLiteral, Literal: filepath.Join(dir, "delivered")}}}}
+	opts := DeliverOptions{
+		Bin:        func(string) (string, error) { return bin, nil },
+		BinRuntime: func(path string) (lang.BinRuntime, error) { return effect.PluginRuntime(path, mounted) },
+	}
+	if err := DeliverWithOptions(context.Background(), def, nil, event.Event{Type: event.TypeInstruction}, opts); err != nil {
+		t.Fatal(err)
+	}
+	want := filepath.Join(dir, "cache", "plugins", "local", "delivery")
+	got, err := os.ReadFile(filepath.Join(dir, "delivered"))
+	if err != nil || string(got) != want {
+		t.Fatalf("delivered cache = %q, %v; want %q", got, err, want)
+	}
+}
 
 // channelDef loads one channel declaration the way a real config home does,
 // so these tests exercise the declarations an author writes rather than a

@@ -2,6 +2,7 @@ package lang
 
 import (
 	"fmt"
+	"strings"
 
 	"github.com/BurntSushi/toml"
 
@@ -22,30 +23,15 @@ type PluginManifest struct {
 	PlectMinVersion string               `toml:"plect_min_version"`
 	Description     string               `toml:"description"`
 	Executables     []ManifestExecutable `toml:"executables"`
-	Services        []ManifestService    `toml:"services"`
 }
 
 // ManifestExecutable is one [[executables]] entry.
 type ManifestExecutable struct {
-	Name  string `toml:"name"`
-	Path  string `toml:"path"`
-	Build string `toml:"build"`
-}
-
-// ManifestService is one [[services]] entry.
-type ManifestService struct {
-	Name        string                `toml:"name"`
-	Executable  string                `toml:"executable"`
-	Args        []string              `toml:"args"`
-	Env         map[string]string     `toml:"env"`
-	RequiredEnv []string              `toml:"required_env"`
-	Restart     string                `toml:"restart"`
-	Health      ManifestServiceHealth `toml:"health"`
-}
-
-// ManifestServiceHealth is a service's health policy.
-type ManifestServiceHealth struct {
-	Type string `toml:"type"`
+	Name         string         `toml:"name"`
+	Path         string         `toml:"path"`
+	Build        string         `toml:"build"`
+	Service      bool           `toml:"service"`
+	ConfigSchema map[string]any `toml:"config_schema"`
 }
 
 // CatalogManifestFile is a catalog.toml: which plugins the catalog publishes.
@@ -75,8 +61,14 @@ func ValidatePluginManifest(path string) (*PluginManifest, error) {
 				fmt.Sprintf("%s is required", field))
 		}
 	}
-	if undecoded := meta.Undecoded(); len(undecoded) > 0 {
-		key := undecoded[0].String()
+	if meta.IsDefined("services") {
+		return nil, fmt.Errorf("%s: plugin [[services]] is retired; see docs/migrations/operator-declared-services.md", path)
+	}
+	for _, undecoded := range meta.Undecoded() {
+		key := undecoded.String()
+		if strings.HasPrefix(key, "executables.config_schema.") {
+			continue
+		}
 		return nil, newDiag(CodeFieldUnknown, LayerStructural, Position{File: path, Path: key},
 			fmt.Sprintf("field %q is not part of a plugin manifest's surface", key))
 	}
@@ -91,13 +83,6 @@ func ValidatePluginManifest(path string) (*PluginManifest, error) {
 			return nil, fmt.Errorf("%s: executables[%d]: duplicate executable name %q", path, i, ex.Name)
 		}
 		declared[ex.Name] = true
-	}
-	for _, svc := range m.Services {
-		if !declared[svc.Executable] {
-			return nil, newDiag(CodeUnknownRef, LayerSemantic,
-				Position{File: path, Path: fmt.Sprintf("services.%s.executable", svc.Name)},
-				fmt.Sprintf("service %q names executable %q, which this manifest does not declare", svc.Name, svc.Executable))
-		}
 	}
 	return &m, nil
 }

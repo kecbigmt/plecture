@@ -131,18 +131,15 @@ func TestRunGhAPI_PaginateFallbackRelaysStdout(t *testing.T) {
 	}
 }
 
-// cmdGhAPI's --data-dir must precede the gh api args and point the guard at
-// that directory (the poll loop's --data-dir), not the process-default XDG
-// path — otherwise a session using a custom data dir would share no budget
-// with its own gh-api calls.
-func TestCmdGhAPI_DataDirRoutesGuardState(t *testing.T) {
+func TestCmdGhAPI_PluginCacheRoutesGuardState(t *testing.T) {
 	fakeGhBin(t, `printf 'HTTP/1.1 200 OK\r\n\r\nok'`)
 	dir := t.TempDir()
-	if err := cmdGhAPI([]string{"--data-dir", dir, "repos/x/y"}); err != nil {
+	t.Setenv("PLECT_CACHE_DIR", dir)
+	if err := cmdGhAPI([]string{"repos/x/y"}); err != nil {
 		t.Fatal(err)
 	}
 	if _, err := os.Stat(filepath.Join(dir, "rate-budget.json")); err != nil {
-		t.Errorf("expected rate-budget.json under --data-dir, got: %v", err)
+		t.Errorf("expected rate-budget.json under PLECT_CACHE_DIR, got: %v", err)
 	}
 }
 
@@ -158,6 +155,7 @@ func TestCmdGhAPI_AppAuthExportsGHTokenToGhChild(t *testing.T) {
 	t.Setenv(envBaseURL, tokenSrv.URL)
 
 	dir := t.TempDir()
+	t.Setenv("PLECT_CACHE_DIR", dir)
 	// Capture stderr, where the fake gh echoed GH_TOKEN, by redirecting the
 	// process's own stderr — cmdGhAPI writes straight to os.Stderr.
 	r, w, err := os.Pipe()
@@ -166,7 +164,7 @@ func TestCmdGhAPI_AppAuthExportsGHTokenToGhChild(t *testing.T) {
 	}
 	origStderr := os.Stderr
 	os.Stderr = w
-	cmdErr := cmdGhAPI([]string{"--data-dir", dir, "repos/x/y"})
+	cmdErr := cmdGhAPI([]string{"repos/x/y"})
 	os.Stderr = origStderr
 	w.Close()
 	var buf bytes.Buffer
@@ -195,7 +193,8 @@ func TestCmdGhAPI_AppAuthMintFailureFailsLoudWithoutCallingGh(t *testing.T) {
 	t.Setenv(envPrivateKeyPath, writeAppKey(t))
 	t.Setenv(envBaseURL, tokenSrv.URL)
 
-	err := cmdGhAPI([]string{"--data-dir", t.TempDir(), "repos/x/y"})
+	t.Setenv("PLECT_CACHE_DIR", t.TempDir())
+	err := cmdGhAPI([]string{"repos/x/y"})
 	if err == nil {
 		t.Fatal("want an error when the App token mint fails")
 	}
@@ -204,24 +203,9 @@ func TestCmdGhAPI_AppAuthMintFailureFailsLoudWithoutCallingGh(t *testing.T) {
 	}
 }
 
-// serve and gh-api must resolve the same on-disk budget file when given the
-// same --data-dir (explicit or, via XDG defaulting, empty) — otherwise the
-// watcher daemon and config-layer gh calls back off independently instead of
-// sharing one budget.
-func TestGhAPIDataDir_MatchesAcrossServeAndGhAPIInvocations(t *testing.T) {
-	t.Run("explicit --data-dir", func(t *testing.T) {
-		dir := t.TempDir()
-		if got := ghAPIDataDir(dir); got != dir {
-			t.Errorf("ghAPIDataDir(%q) = %q, want %q", dir, got, dir)
-		}
-	})
-
-	t.Run("default (XDG) --data-dir is stable across calls", func(t *testing.T) {
-		t.Setenv("XDG_DATA_HOME", t.TempDir())
-		serveGuardPath := ghAPIDataDir("")
-		ghAPIGuardPath := ghAPIDataDir("")
-		if serveGuardPath != ghAPIGuardPath {
-			t.Errorf("serve resolved %q, gh-api resolved %q; must match", serveGuardPath, ghAPIGuardPath)
-		}
-	})
+func TestCmdGhAPIRequiresPluginCache(t *testing.T) {
+	t.Setenv("PLECT_CACHE_DIR", "")
+	if err := cmdGhAPI([]string{"repos/x/y"}); err == nil || !strings.Contains(err.Error(), "PLECT_CACHE_DIR") {
+		t.Fatalf("error = %v", err)
+	}
 }

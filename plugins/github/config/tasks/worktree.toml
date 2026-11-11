@@ -44,9 +44,6 @@ args = [
   { from = "session.inputs.private_key_path", default = "" },
 ]
 
-# The unsubscribe runs after the worktree cleanup and never gates its exit
-# status: a dirty worktree must still fail `plect destroy`, and a destroyed
-# session's subscriptions must not poll forever.
 [worktree.cleanup]
 type = "shell"
 script = '''
@@ -57,15 +54,10 @@ script = '''
   --workspace-layout-root "$workspace_layout_root" \
   --force="$force" \
   --delete-branch="$delete_branch"
-status=$?
-"$watcher_bin" unsubscribe --session "$session_name"
-exit $status
 '''
 
 [worktree.cleanup.bind]
 worktree_bin          = { bin = "github-worktree" }
-watcher_bin           = { bin = "github-watcher" }
-session_name          = { from = "session.name" }
 workspace_dir         = { from = "self.outputs.workspace_dir" }
 branch                = { from = "self.outputs.branch" }
 workspace_dirs_root   = { from = "inputs.dirs_root", default = "" }

@@ -25,6 +25,7 @@ import (
 	"github.com/kecbigmt/plecture/app/internal/service"
 	"github.com/kecbigmt/plecture/app/internal/sessionhub"
 	"github.com/kecbigmt/plecture/app/internal/state"
+	"github.com/kecbigmt/plecture/contracts/event"
 )
 
 var serveEventBusSocket string
@@ -133,8 +134,7 @@ restart, within one refresh interval.`,
 
 		go live.Run(ctx)
 
-		// Plugin-declared [[services]] (a plugin-owned daemon such as a chat
-		// relay or an issue-tracker watcher) are supervised the same way:
+		// Operator-declared [[services]] are supervised the same way:
 		// started and stopped with the resident process, restarted on crash
 		// or on the owning plugin's content change. Polls config.LoadPlugins() itself rather
 		// than live.Get()/cfg.Plugins: services only need the mounted
@@ -143,6 +143,17 @@ restart, within one refresh interval.`,
 		// content change (a `plect plugin update` while the resident process is
 		// running) picked up on the supervisor's own, tighter poll cycle.
 		svcSup := pluginservice.NewSupervisor(config.LoadPlugins)
+		svcSup.Protocol = &pluginservice.Protocol{
+			Subscriptions: func(context.Context) ([]persistence.Subscription, error) {
+				return stateStore.ListSubscriptions("", "")
+			},
+			Publish: func(_ context.Context, req pluginservice.PublishRequest) (int, error) {
+				return service.EventPublishResource(live.Get(), stateStore, req.Resource, service.EventPublishParams{
+					Type: req.Type, Source: "service", Direction: event.Inbound,
+					Summary: req.Summary, Body: req.Body, Metadata: req.Metadata,
+				})
+			},
+		}
 		var svcWG sync.WaitGroup
 		svcWG.Go(func() { svcSup.Run(ctx) })
 

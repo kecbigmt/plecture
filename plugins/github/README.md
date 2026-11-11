@@ -280,7 +280,8 @@ plect up https://github.com/acme/widgets/issues/42 --inputs '{
 
 **`github-watcher serve` can authenticate as one deployment-level GitHub App
 installation instead of the operator's own `gh auth`.** It is a single
-resident service shared across sessions (`[[services]]` in `plugin.toml`),
+resident service shared across sessions (declared in the operator's
+`<config-home>/services/*.toml`),
 not a per-session task in a plan, so there is no per-call installation
 context to select a token by — this is deliberately one App id/installation
 per deployment, set via environment rather than `gh_app_guard`'s per-session
@@ -297,7 +298,7 @@ process (and anywhere `gh-api` runs standalone):
 | `GITHUB_WATCHER_APP_OWNER`, `GITHUB_WATCHER_APP_REPO` | Alternative to `GITHUB_WATCHER_APP_INSTALLATION_ID`: resolves the installation id for this repository on first mint. |
 | `GITHUB_WATCHER_APP_PRIVATE_KEY_PATH` | Path to the App's PEM private key. Required once `GITHUB_WATCHER_APP_ID` is set. |
 | `GITHUB_WATCHER_APP_BASE_URL` | GitHub API base URL override (default `api.github.com`). |
-| `GITHUB_WATCHER_APP_CACHE_PATH` | Token cache path override (default `<data-dir>/.app-token-cache.json`, alongside the shared rate-budget file). |
+| `PLECT_CACHE_DIR` | Plugin cache directory supplied by plect to every executable. The watcher, `gh-api`, and observation helpers share the token cache and rate budget there. |
 
 A deployment configured this way fails loud: `serve` mints once at startup
 and exits non-zero if the private key is unreadable or the mint is rejected,
@@ -358,10 +359,21 @@ resolves its executables through `{ bin = "github-worktree" }`'s plugin-local
 bare-name reading, which resolves against the containing plugin regardless of
 which alias you chose.
 
-Running `github-watcher serve` as a background daemon is a separate,
-deployment-specific step (a systemd unit, a launchd agent, or similar) —
-this plugin ships the binary and the subscribe-side wiring, not a daemon
-supervisor.
+To run the watcher, declare it in `<config-home>/services/github-watcher.toml`
+and start `plect serve`:
+
+```toml
+[[services]]
+name = "github-watcher"
+executable = "official/github/github-watcher"
+env_file = "/path/to/private/github-watcher.env"
+args = ["serve"]
+restart = "on-failure"
+health = { type = "process" }
+```
+
+The executable reference uses the catalog alias selected at install time.
+The env file holds deployment credentials and must be owner-readable only.
 
 ## Requirements
 
@@ -395,8 +407,8 @@ What stays in your own config after enabling this plugin:
   config layer. See `docs/language/tasks.md`'s Extension section for what
   an extension may add (`[[instructions]]`, `[[chains]]`, `done_when`
   leaves).
-- Running `github-watcher serve` as a background daemon, and its delivery
-  configuration (`PLECT_BUS_SOCKET` / `PLECT_BUS_TOKEN`).
+- The operator service declaration and private environment file for
+  `github-watcher serve`, if resource change notifications are needed.
 
 ## Compatibility fixtures
 

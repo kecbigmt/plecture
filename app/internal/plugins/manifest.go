@@ -3,6 +3,7 @@ package plugins
 import (
 	"fmt"
 	"path/filepath"
+	"strings"
 
 	"github.com/BurntSushi/toml"
 )
@@ -10,7 +11,7 @@ import (
 // ManifestSchemaVersion is the only plugin.toml schema_version this build
 // understands. An unknown value fails loud rather than degrading — see
 // docs/design/plugin-packaging.md's Compatibility section.
-const ManifestSchemaVersion = 2
+const ManifestSchemaVersion = 3
 
 // Manifest is a plugin's plugin.toml, its only required file. It carries no
 // identity field: a plugin's identity is `<catalog-alias>/<relative-path>`,
@@ -21,31 +22,15 @@ type Manifest struct {
 	PlectMinVersion string       `toml:"plect_min_version"`
 	Description     string       `toml:"description"`
 	Executables     []Executable `toml:"executables"`
-	Services        []Service    `toml:"services"`
 }
 
 // Executable is one [[executables]] entry.
 type Executable struct {
-	Name  string `toml:"name"`
-	Path  string `toml:"path"`
-	Build string `toml:"build"`
-}
-
-// Service is one [[services]] entry: a plugin-owned daemon supervised by
-// `plect serve`. Its full identity is `<plugin-id>/<name>`.
-type Service struct {
-	Name        string            `toml:"name"`
-	Executable  string            `toml:"executable"`
-	Args        []string          `toml:"args"`
-	Env         map[string]string `toml:"env"`
-	RequiredEnv []string          `toml:"required_env"`
-	Restart     string            `toml:"restart"`
-	Health      ServiceHealth     `toml:"health"`
-}
-
-// ServiceHealth is a service's health policy.
-type ServiceHealth struct {
-	Type string `toml:"type"`
+	Name         string         `toml:"name"`
+	Path         string         `toml:"path"`
+	Build        string         `toml:"build"`
+	Service      bool           `toml:"service"`
+	ConfigSchema map[string]any `toml:"config_schema"`
 }
 
 // Service restart policies and health kinds. ServiceHealthProcess is the
@@ -63,11 +48,21 @@ const (
 func LoadManifest(pluginDir string) (Manifest, error) {
 	path := filepath.Join(pluginDir, "plugin.toml")
 	var m Manifest
-	if _, err := toml.DecodeFile(path, &m); err != nil {
+	meta, err := toml.DecodeFile(path, &m)
+	if err != nil {
 		return Manifest{}, fmt.Errorf("read %s: %w", path, err)
 	}
 	if m.SchemaVersion != ManifestSchemaVersion {
 		return Manifest{}, fmt.Errorf("%s: schema_version %d is not supported (want %d)", path, m.SchemaVersion, ManifestSchemaVersion)
+	}
+	if meta.IsDefined("services") {
+		return Manifest{}, fmt.Errorf("%s: plugin [[services]] is retired; see docs/migrations/operator-declared-services.md", path)
+	}
+	for _, key := range meta.Undecoded() {
+		if strings.HasPrefix(key.String(), "executables.config_schema.") {
+			continue
+		}
+		return Manifest{}, fmt.Errorf("%s: unknown field %s", path, key)
 	}
 	if m.PlectMinVersion == "" {
 		return Manifest{}, fmt.Errorf("%s: `plect_min_version` is required", path)
@@ -87,41 +82,10 @@ func LoadManifest(pluginDir string) (Manifest, error) {
 			return Manifest{}, fmt.Errorf("%s: executables[%d]: duplicate executable name %q", path, i, ex.Name)
 		}
 		execNames[ex.Name] = true
+		if ex.Service && ex.ConfigSchema == nil {
+			return Manifest{}, fmt.Errorf("%s: executables[%d] %q: service executable requires config_schema", path, i, ex.Name)
+		}
 	}
 
-	svcNames := make(map[string]bool, len(m.Services))
-	for i, svc := range m.Services {
-		if svc.Name == "" {
-			return Manifest{}, fmt.Errorf("%s: services[%d]: `name` is required", path, i)
-		}
-		if svcNames[svc.Name] {
-			return Manifest{}, fmt.Errorf("%s: services[%d]: duplicate service name %q", path, i, svc.Name)
-		}
-		svcNames[svc.Name] = true
-		if svc.Executable == "" {
-			return Manifest{}, fmt.Errorf("%s: services[%d] %q: `executable` is required", path, i, svc.Name)
-		}
-		// A service can only name its own plugin's executable — see
-		// docs/design/plugin-packaging.md's [[services]] field table. Cross-
-		// plugin service executables would reopen the dependency edges the
-		// plugin service lifecycle ADR rules out.
-		if !execNames[svc.Executable] {
-			return Manifest{}, fmt.Errorf("%s: services[%d] %q: executable %q is not declared by this plugin's [[executables]]", path, i, svc.Name, svc.Executable)
-		}
-		switch svc.Restart {
-		case "":
-			m.Services[i].Restart = ServiceRestartOnFailure
-		case ServiceRestartOnFailure, ServiceRestartNever:
-		default:
-			return Manifest{}, fmt.Errorf("%s: services[%d] %q: `restart` %q is not a supported restart policy (want %q or %q)", path, i, svc.Name, svc.Restart, ServiceRestartOnFailure, ServiceRestartNever)
-		}
-		switch svc.Health.Type {
-		case "":
-			m.Services[i].Health.Type = ServiceHealthProcess
-		case ServiceHealthProcess:
-		default:
-			return Manifest{}, fmt.Errorf("%s: services[%d] %q: health type %q is not supported (want %q)", path, i, svc.Name, svc.Health.Type, ServiceHealthProcess)
-		}
-	}
 	return m, nil
 }

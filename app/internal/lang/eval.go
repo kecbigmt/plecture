@@ -23,9 +23,16 @@ type Roots map[string]any
 // machine and this session rather than about the configuration; a nil hook
 // makes that capability unavailable rather than resolving to nothing.
 type Eval struct {
-	Roots    Roots
-	Bin      func(ref string) (string, error)
-	Terminal func(verb string) (string, error)
+	Roots      Roots
+	Bin        func(ref string) (string, error)
+	BinRuntime func(path string) (BinRuntime, error)
+	Terminal   func(verb string) (string, error)
+}
+
+type BinRuntime struct {
+	Env     []string
+	Config  map[string]any
+	Prepare func() ([]string, error)
 }
 
 // Execution is the process one action runs. Both process-bearing variants —
@@ -33,8 +40,10 @@ type Eval struct {
 // process does not have to know which one it came from. A noop action never
 // reaches this: it runs no process, so it never produces an Execution.
 type Execution struct {
-	Argv  []string
-	Stdin []byte
+	Argv      []string
+	Stdin     []byte
+	PluginEnv []string
+	Prepare   func() ([]string, error)
 }
 
 // Run resolves either process-bearing action variant, exec or shell; a noop
@@ -64,6 +73,22 @@ func (e Eval) Exec(a *Action) (*Execution, error) {
 		}
 		path = resolved
 	}
+	var runtime BinRuntime
+	if a.Bin != "" && e.BinRuntime != nil {
+		var err error
+		runtime, err = e.BinRuntime(path)
+		if err != nil {
+			return nil, err
+		}
+		if runtime.Config != nil {
+			roots := make(Roots, len(e.Roots)+1)
+			for key, value := range e.Roots {
+				roots[key] = value
+			}
+			roots["service"] = map[string]any{"config": runtime.Config}
+			e.Roots = roots
+		}
+	}
 	argv := []string{path}
 	for i, arg := range a.Args {
 		value, absent, err := e.Argument(arg)
@@ -78,7 +103,7 @@ func (e Eval) Exec(a *Action) (*Execution, error) {
 		}
 		argv = append(argv, value)
 	}
-	exec := &Execution{Argv: argv}
+	exec := &Execution{Argv: argv, PluginEnv: runtime.Env, Prepare: runtime.Prepare}
 	if a.Stdin != nil {
 		stdin, absent, err := e.Bytes(a.Stdin)
 		if err != nil {
@@ -95,6 +120,41 @@ func (e Eval) Exec(a *Action) (*Execution, error) {
 func (e Eval) Shell(dir string, a *Action, operands []string) (*Execution, error) {
 	if a.Type != ActionShell {
 		return nil, fmt.Errorf("this is a shell evaluation, not %s", a.Type)
+	}
+	var runtime BinRuntime
+	for _, value := range a.Bind {
+		if value == nil || value.Bin == "" || e.BinRuntime == nil {
+			continue
+		}
+		path, err := e.resolveBin(value.Bin)
+		if err != nil {
+			return nil, err
+		}
+		candidate, err := e.BinRuntime(path)
+		if err != nil {
+			return nil, err
+		}
+		if candidate.Env == nil {
+			continue
+		}
+		if runtime.Env != nil && runtime.Env[0] != candidate.Env[0] {
+			return nil, fmt.Errorf("shell action binds executables from different plugins")
+		}
+		runtime.Env = candidate.Env
+		if candidate.Prepare != nil {
+			if runtime.Prepare != nil {
+				return nil, fmt.Errorf("shell action binds more than one service executable")
+			}
+			runtime.Prepare = candidate.Prepare
+		}
+		if candidate.Config != nil {
+			roots := make(Roots, len(e.Roots)+1)
+			for key, value := range e.Roots {
+				roots[key] = value
+			}
+			roots["service"] = map[string]any{"config": candidate.Config}
+			e.Roots = roots
+		}
 	}
 	bound := make(map[string]string, len(a.Bind))
 	for _, name := range sortedBindKeys(a.Bind) {
@@ -115,7 +175,7 @@ func (e Eval) Shell(dir string, a *Action, operands []string) (*Execution, error
 	if err != nil {
 		return nil, err
 	}
-	return &Execution{Argv: append([]string{shell.Path}, shell.Operands...)}, nil
+	return &Execution{Argv: append([]string{shell.Path}, shell.Operands...), PluginEnv: runtime.Env, Prepare: runtime.Prepare}, nil
 }
 
 // Argument resolves one value to the single string an argv element or a

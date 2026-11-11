@@ -14,6 +14,7 @@ import (
 	"github.com/kecbigmt/plecture/app/internal/cachehome"
 	"github.com/kecbigmt/plecture/app/internal/config"
 	"github.com/kecbigmt/plecture/app/internal/datahome"
+	"github.com/kecbigmt/plecture/app/internal/effect"
 	"github.com/kecbigmt/plecture/app/internal/lang"
 )
 
@@ -103,11 +104,20 @@ func (r actionRunner) resolve(def Definition, action *lang.Action) (*lang.Execut
 		Bin: func(ref string) (string, error) {
 			return bins.ResolveBin(ref, def.Entry.Ownership())
 		},
+		BinRuntime: func(path string) (lang.BinRuntime, error) { return effect.PluginRuntime(path, r.cfg.Plugins) },
 	}
 	execution, err := eval.Run(filepath.Join(dir, "action"), action, nil)
 	if err != nil {
 		cleanup()
 		return nil, func() {}, err
+	}
+	if execution.Prepare != nil {
+		private, err := execution.Prepare()
+		if err != nil {
+			cleanup()
+			return nil, func() {}, err
+		}
+		execution.PluginEnv = append(execution.PluginEnv, private...)
 	}
 	return execution, cleanup, nil
 }
@@ -119,7 +129,7 @@ func commandContext(ctx context.Context, execution *lang.Execution) *exec.Cmd {
 	// PLECT_DATA_HOME and PLECT_CACHE_HOME must not leak into it; XDG_DATA_HOME
 	// and XDG_CACHE_HOME are deliberately left alone, since an observer may
 	// already depend on inheriting either for its own unrelated on-disk state.
-	cmd.Env = cachehome.Strip(datahome.InheritableEnv())
+	cmd.Env = append(cachehome.Strip(datahome.InheritableEnv()), execution.PluginEnv...)
 	if len(execution.Stdin) > 0 {
 		cmd.Stdin = bytes.NewReader(execution.Stdin)
 	}
