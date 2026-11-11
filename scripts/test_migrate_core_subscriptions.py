@@ -86,7 +86,10 @@ class MigrationTest(unittest.TestCase):
                 if locator not in identities:
                     raise ValueError("no resource declaration matches")
                 typ, name, cap = identities[locator]
-                return {"type": typ, "name": name, "max_subscribers": cap}
+                identity = {"type": typ, "name": name}
+                if cap:
+                    identity["max_subscribers"] = cap
+                return identity
             with sqlite3.connect(db_path) as db:
                 db.execute("BEGIN IMMEDIATE")
                 migration.normalize_existing(db, resolve)
