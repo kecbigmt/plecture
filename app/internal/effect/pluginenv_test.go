@@ -25,6 +25,9 @@ func TestPluginExecutableReceivesSharedCacheAndDeclaredServiceEnv(t *testing.T) 
 	if err := os.WriteFile(filepath.Join(home, "services", "svc.toml"), []byte("[[services]]\nname = \"svc\"\nexecutable = \"local/work/worker\"\nenv_file = \""+envFile+"\"\n[services.config]\nregion = \"west\"\n"), 0o600); err != nil {
 		t.Fatal(err)
 	}
+	if err := os.WriteFile(filepath.Join(home, "services", "invalid.toml"), []byte("[[services]]\nname = \"invalid\"\nexecutable = \"other/missing\"\nenv_file = \"relative.env\"\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
 	mounted := []plugins.Mounted{{ID: "local/work", Dir: home, Manifest: plugins.Manifest{Executables: []plugins.Executable{{Name: "worker", Path: "bin/worker", Service: true, ConfigSchema: map[string]any{"type": "object"}}, {Name: "observe", Path: "bin/observe"}}}}}
 	worker, err := pluginEnvironment(filepath.Join(home, "bin", "worker"), mounted)
 	if err != nil {
@@ -59,6 +62,15 @@ func TestPluginExecutableReceivesSharedCacheAndDeclaredServiceEnv(t *testing.T) 
 	}
 	if len(resolved.Argv) != 2 || resolved.Argv[1] != "west" || !slices.Contains(private, "TOKEN=private") {
 		t.Fatalf("execution = %+v", resolved)
+	}
+	if err := os.Chmod(envFile, 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := pluginEnvironment(filepath.Join(home, "bin", "worker"), mounted); err == nil || !strings.Contains(err.Error(), "env_file") {
+		t.Fatalf("invalid worker declaration error = %v", err)
+	}
+	if err := os.Chmod(envFile, 0o600); err != nil {
+		t.Fatal(err)
 	}
 	if err := os.Remove(filepath.Join(home, "services", "svc.toml")); err != nil {
 		t.Fatal(err)

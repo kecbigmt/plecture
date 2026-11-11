@@ -48,13 +48,14 @@ func PluginRuntime(execPath string, mounted []plugins.Mounted) (lang.BinRuntime,
 			if !executable.Service {
 				return lang.BinRuntime{Env: env}, nil
 			}
+			id := m.ID + "/" + executable.Name
 			declarations, err := pluginservice.BuildDeclarations(mounted, nil)
-			if err != nil {
+			if err := pluginservice.ExecutableError(err, id); err != nil {
 				return lang.BinRuntime{}, err
 			}
 			prepare := func() ([]string, error) {
 				current, err := pluginservice.BuildDeclarations(mounted, nil)
-				if err != nil {
+				if err := pluginservice.ExecutableError(err, id); err != nil {
 					return nil, err
 				}
 				for _, decl := range current {

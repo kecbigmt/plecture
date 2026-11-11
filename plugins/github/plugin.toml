@@ -27,9 +27,8 @@ service = true
 type = "object"
 
 # Verifies GitHub webhook deliveries and streams matching pull-request
-# appearances. Not declared under [[services]]: exposing its endpoint and
-# provisioning its signing secret are deployment infrastructure, so it runs
-# only when something invokes it, not as a plugin-managed daemon.
+# appearances. Exposing its endpoint and provisioning its signing secret
+# are deployment infrastructure, so it runs only when something invokes it.
 [[executables]]
 name = "github-webhook-receiver"
 path = "bin/github-webhook-receiver"
@@ -59,8 +58,7 @@ name = "gh-app-guard"
 path = "scripts/gh-app-guard"
 
 # The watcher polls subscribed resources via the gh CLI, authenticated
-# outside plect (the user's own `gh auth login`) by default — no
-# required_env, since there is no plect-owned credential to gate on. A
+# outside plect (the user's own `gh auth login`) by default. A
 # deployment that sets GITHUB_WATCHER_APP_ID (and the rest of the App auth
 # env — see `github-watcher serve`'s own usage text) authenticates as a
 # single GitHub App installation instead, and fails startup loud if that

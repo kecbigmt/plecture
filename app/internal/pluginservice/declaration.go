@@ -2,6 +2,7 @@ package pluginservice
 
 import (
 	"bufio"
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -45,6 +46,23 @@ type serviceHealth struct {
 	Type string `toml:"type"`
 }
 
+type declarationErrors struct {
+	all          []error
+	byExecutable map[string]error
+}
+
+func (e *declarationErrors) Error() string { return errors.Join(e.all...).Error() }
+
+func ExecutableError(err error, executable string) error {
+	if err == nil {
+		return nil
+	}
+	if invalid, ok := err.(*declarationErrors); ok {
+		return invalid.byExecutable[executable]
+	}
+	return err
+}
+
 func BuildDeclarations(mounted []plugins.Mounted, lock *plugins.Lockfile) ([]Declaration, error) {
 	home, err := confighome.Resolve()
 	if err != nil {
@@ -67,75 +85,97 @@ func BuildDeclarations(mounted []plugins.Mounted, lock *plugins.Lockfile) ([]Dec
 		}
 	}
 	var out []Declaration
+	var errs []error
+	byExecutable := map[string]error{}
 	names := map[string]bool{}
 	bindings := map[string]bool{}
 	for _, path := range files {
 		var file operatorFile
 		meta, err := toml.DecodeFile(path, &file)
 		if err != nil {
-			return nil, fmt.Errorf("%s: %w", path, err)
+			errs = append(errs, fmt.Errorf("%s: %w", path, err))
+			continue
 		}
 		if keys := meta.Undecoded(); len(keys) > 0 {
-			return nil, fmt.Errorf("%s: unknown key %s", path, keys[0])
+			errs = append(errs, fmt.Errorf("%s: unknown key %s", path, keys[0]))
+			continue
 		}
 		for _, svc := range file.Services {
-			if !serviceName.MatchString(svc.Name) {
-				return nil, fmt.Errorf("%s: invalid service name %q", path, svc.Name)
-			}
-			if names[svc.Name] {
-				return nil, fmt.Errorf("%s: duplicate service name %q", path, svc.Name)
-			}
-			names[svc.Name] = true
-			if bindings[svc.Executable] {
-				return nil, fmt.Errorf("%s: duplicate executable %q", path, svc.Executable)
-			}
-			bindings[svc.Executable] = true
-			resolved, ok := executables[svc.Executable]
-			if !ok {
-				return nil, fmt.Errorf("%s: service %q: executable %q is not mounted", path, svc.Name, svc.Executable)
-			}
-			if !resolved.executable.Service {
-				return nil, fmt.Errorf("%s: service %q: executable %q is not marked service = true", path, svc.Name, svc.Executable)
-			}
-			if svc.Restart == "" {
-				svc.Restart = plugins.ServiceRestartOnFailure
-			}
-			if svc.Restart != plugins.ServiceRestartOnFailure && svc.Restart != plugins.ServiceRestartNever {
-				return nil, fmt.Errorf("%s: service %q: invalid restart %q", path, svc.Name, svc.Restart)
-			}
-			if svc.Health.Type == "" {
-				svc.Health.Type = plugins.ServiceHealthProcess
-			}
-			if svc.Health.Type != plugins.ServiceHealthProcess {
-				return nil, fmt.Errorf("%s: service %q: invalid health type %q", path, svc.Name, svc.Health.Type)
-			}
-			env, err := readEnvFile(svc.EnvFile)
+			decl, err := buildDeclaration(path, svc, executables, names, bindings, lock)
 			if err != nil {
-				return nil, fmt.Errorf("%s: service %q: env_file: %w", path, svc.Name, err)
-			}
-			if svc.Config == nil {
-				svc.Config = map[string]any{}
-			}
-			if resolved.executable.ConfigSchema == nil {
-				return nil, fmt.Errorf("%s: service %q: executable %q has no config_schema", path, svc.Name, svc.Executable)
-			}
-			schema, err := lang.CompileInlineSchema(resolved.executable.ConfigSchema, "service-config.json")
-			if err != nil {
-				return nil, fmt.Errorf("%s: service %q: config_schema: %w", path, svc.Name, err)
-			}
-			if err := schema.Validate(svc.Config); err != nil {
-				return nil, fmt.Errorf("%s: service %q: config: %w", path, svc.Name, err)
-			}
-			hash := ""
-			if lock != nil {
-				if entry, ok := lock.FindPlugin(resolved.mounted.ID); ok {
-					hash = entry.ContentHash
+				errs = append(errs, err)
+				if svc.Executable != "" {
+					byExecutable[svc.Executable] = err
 				}
+				continue
 			}
-			out = append(out, Declaration{ID: svc.Name, Name: svc.Name, PluginID: resolved.mounted.ID, ExecPath: filepath.Join(resolved.mounted.Dir, resolved.executable.Path), Args: svc.Args, Env: env, Config: svc.Config, Restart: svc.Restart, HealthType: svc.Health.Type, ContentHash: hash})
+			out = append(out, decl)
 		}
 	}
+	if len(errs) > 0 {
+		return out, &declarationErrors{all: errs, byExecutable: byExecutable}
+	}
 	return out, nil
+}
+
+func buildDeclaration(path string, svc operatorService, executables map[string]struct {
+	mounted    plugins.Mounted
+	executable plugins.Executable
+}, names, bindings map[string]bool, lock *plugins.Lockfile) (Declaration, error) {
+	if !serviceName.MatchString(svc.Name) {
+		return Declaration{}, fmt.Errorf("%s: invalid service name %q", path, svc.Name)
+	}
+	if names[svc.Name] {
+		return Declaration{}, fmt.Errorf("%s: duplicate service name %q", path, svc.Name)
+	}
+	if bindings[svc.Executable] {
+		return Declaration{}, fmt.Errorf("%s: duplicate executable %q", path, svc.Executable)
+	}
+	resolved, ok := executables[svc.Executable]
+	if !ok {
+		return Declaration{}, fmt.Errorf("%s: service %q: executable %q is not mounted", path, svc.Name, svc.Executable)
+	}
+	if !resolved.executable.Service {
+		return Declaration{}, fmt.Errorf("%s: service %q: executable %q is not marked service = true", path, svc.Name, svc.Executable)
+	}
+	if svc.Restart == "" {
+		svc.Restart = plugins.ServiceRestartOnFailure
+	}
+	if svc.Restart != plugins.ServiceRestartOnFailure && svc.Restart != plugins.ServiceRestartNever {
+		return Declaration{}, fmt.Errorf("%s: service %q: invalid restart %q", path, svc.Name, svc.Restart)
+	}
+	if svc.Health.Type == "" {
+		svc.Health.Type = plugins.ServiceHealthProcess
+	}
+	if svc.Health.Type != plugins.ServiceHealthProcess {
+		return Declaration{}, fmt.Errorf("%s: service %q: invalid health type %q", path, svc.Name, svc.Health.Type)
+	}
+	env, err := readEnvFile(svc.EnvFile)
+	if err != nil {
+		return Declaration{}, fmt.Errorf("%s: service %q: env_file: %w", path, svc.Name, err)
+	}
+	if svc.Config == nil {
+		svc.Config = map[string]any{}
+	}
+	if resolved.executable.ConfigSchema == nil {
+		return Declaration{}, fmt.Errorf("%s: service %q: executable %q has no config_schema", path, svc.Name, svc.Executable)
+	}
+	schema, err := lang.CompileInlineSchema(resolved.executable.ConfigSchema, "service-config.json")
+	if err != nil {
+		return Declaration{}, fmt.Errorf("%s: service %q: config_schema: %w", path, svc.Name, err)
+	}
+	if err := schema.Validate(svc.Config); err != nil {
+		return Declaration{}, fmt.Errorf("%s: service %q: config: %w", path, svc.Name, err)
+	}
+	hash := ""
+	if lock != nil {
+		if entry, ok := lock.FindPlugin(resolved.mounted.ID); ok {
+			hash = entry.ContentHash
+		}
+	}
+	names[svc.Name] = true
+	bindings[svc.Executable] = true
+	return Declaration{ID: svc.Name, Name: svc.Name, PluginID: resolved.mounted.ID, ExecPath: filepath.Join(resolved.mounted.Dir, resolved.executable.Path), Args: svc.Args, Env: env, Config: svc.Config, Restart: svc.Restart, HealthType: svc.Health.Type, ContentHash: hash}, nil
 }
 
 func readEnvFile(path string) (map[string]string, error) {
