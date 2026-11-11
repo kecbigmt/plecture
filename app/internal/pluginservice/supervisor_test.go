@@ -2,6 +2,8 @@ package pluginservice
 
 import (
 	"context"
+	"io"
+	"log/slog"
 	"os"
 	"path/filepath"
 	"sync/atomic"
@@ -12,6 +14,46 @@ import (
 	"github.com/kecbigmt/plecture/app/internal/domain"
 	"github.com/kecbigmt/plecture/app/internal/plugins"
 )
+
+func TestSupervisorInvalidDeclarationDoesNotStartService(t *testing.T) {
+	dir := t.TempDir()
+	t.Setenv("PLECT_CONFIG_HOME", dir)
+	marker := filepath.Join(dir, "started")
+	script := writeScript(t, dir, "worker", "touch \""+marker+"\"\n")
+	mounted := mountWithService(t, "local/work", "worker", script, plugins.ServiceRestartOnFailure)
+	servicePath := filepath.Join(dir, "services", "worker.toml")
+	if err := os.WriteFile(servicePath, []byte("[[services]]\nname = \"worker\"\nexecutable = \"local/work/worker\"\nenv_file = \"relative.env\"\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	loaded := make(chan struct{}, 3)
+	source := func() ([]plugins.Mounted, *plugins.Lockfile, error) {
+		select {
+		case loaded <- struct{}{}:
+		default:
+		}
+		return []plugins.Mounted{mounted}, nil, nil
+	}
+	sup := newTestSupervisor(source)
+	sup.logger = slog.New(slog.NewTextHandler(io.Discard, nil))
+	ctx, cancel := context.WithCancel(context.Background())
+	done := make(chan struct{})
+	go func() { sup.Run(ctx); close(done) }()
+	for range 3 {
+		select {
+		case <-loaded:
+		case <-time.After(time.Second):
+			t.Fatal("supervisor did not reconcile declarations")
+		}
+	}
+	cancel()
+	<-done
+	if _, err := os.Stat(marker); !os.IsNotExist(err) {
+		t.Fatalf("invalid service started: marker stat = %v", err)
+	}
+	if status, ok := sup.Status.Get("worker"); ok && status.Running {
+		t.Fatalf("invalid service running: %+v", status)
+	}
+}
 
 // writeScript writes a #!/usr/bin/env bash script and returns its absolute
 // path. Tests use real short-lived subprocesses rather than fakes because
