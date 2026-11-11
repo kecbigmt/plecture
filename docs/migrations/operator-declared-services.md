@@ -39,7 +39,8 @@ The executable reference uses the enabled catalog alias, plugin path, and
 executable name. Put secrets in the absolute-path env file as `KEY=VALUE`
 lines and make it owner-readable only, for example mode `0600`. Move
 non-secret options into `[services.config]` and validate them with the
-plugin's inline schema. Service processes receive that config as their first
+plugin's inline schema. `PLECT_*` names are reserved for the runtime and
+cannot be set in the env file. Service processes receive that config as their first
 JSON line on stdin. Convert service code to use JSON-lines requests and
 replies on stdio, and send logs to stderr. Remove any service-local listener,
 local HTTP control calls, plect CLI calls, and old socket configuration.

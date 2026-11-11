@@ -163,8 +163,9 @@ func FinalizeResource(defs map[string]config.ResourceDef, params FinalizeResourc
 func runResourceAction(def config.ResourceDef, action *lang.Action, env lang.Roots, mountedPlugins []plugins.Mounted) (stdout, stderr []byte, err error) {
 	bins := config.MountedBins{Mounted: mountedPlugins, SourcePath: def.SourcePath}
 	eval := lang.Eval{
-		Roots: env,
-		Bin:   func(ref string) (string, error) { return bins.ResolveBin(ref, def.Ownership()) },
+		Roots:      env,
+		Bin:        func(ref string) (string, error) { return bins.ResolveBin(ref, def.Ownership()) },
+		BinRuntime: func(path string) (lang.BinRuntime, error) { return effect.PluginRuntime(path, mountedPlugins) },
 	}
 	runDir := ""
 	if action.Type == lang.ActionShell {

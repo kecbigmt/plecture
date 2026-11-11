@@ -10,7 +10,9 @@ import (
 	"github.com/kecbigmt/plecture/app/internal/channel"
 	"github.com/kecbigmt/plecture/app/internal/config"
 	"github.com/kecbigmt/plecture/app/internal/domain"
+	"github.com/kecbigmt/plecture/app/internal/effect"
 	"github.com/kecbigmt/plecture/app/internal/eventlog"
+	"github.com/kecbigmt/plecture/app/internal/lang"
 	"github.com/kecbigmt/plecture/app/internal/plugins"
 	"github.com/kecbigmt/plecture/app/internal/sessionhub"
 	"github.com/kecbigmt/plecture/app/internal/state"
@@ -237,7 +239,8 @@ func (d *sessionDispatcher) processEvent(ctx context.Context, s *domain.Session,
 			}
 			bins := config.MountedBins{Mounted: d.plugins, SourcePath: def.SourcePath}
 			opts := channel.DeliverOptions{
-				Bin: func(ref string) (string, error) { return bins.ResolveBin(ref, def.Ownership()) },
+				Bin:        func(ref string) (string, error) { return bins.ResolveBin(ref, def.Ownership()) },
+				BinRuntime: func(path string) (lang.BinRuntime, error) { return effect.PluginRuntime(path, d.plugins) },
 				Terminal: terminalResolver(s, d.terminal, task.SessionVars{
 					Name:       s.Name,
 					ResourceID: domain.Locator(s.Resource),

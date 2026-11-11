@@ -165,7 +165,7 @@ func readEnvFile(path string) (map[string]string, error) {
 		if !ok || !envKey.MatchString(key) || strings.Contains(value, "${") || strings.Contains(value, "$(") {
 			return nil, fmt.Errorf("invalid entry %q", line)
 		}
-		if key == "PLECT_DATA_DIR" || key == "PLECT_CACHE_DIR" {
+		if strings.HasPrefix(key, "PLECT_") {
 			return nil, fmt.Errorf("%s conflicts with plect runtime", key)
 		}
 		if _, exists := env[key]; exists {
