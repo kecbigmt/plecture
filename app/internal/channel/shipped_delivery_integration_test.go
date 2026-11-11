@@ -81,7 +81,22 @@ func shippedEval(t *testing.T, def config.ChannelDefinition, inputs map[string]a
 	}
 	bins := config.MountedBins{Mounted: mounted, SourcePath: def.SourcePath}
 	return deliveryEval(inputs, ev, DeliverOptions{
-		Bin:      func(ref string) (string, error) { return bins.ResolveBin(ref, def.Ownership()) },
+		Bin: func(ref string) (string, error) { return bins.ResolveBin(ref, def.Ownership()) },
+		BinRuntime: func(string) (lang.BinRuntime, error) {
+			fixture := filepath.Join(pluginRootOf(t, def.SourcePath), "testdata", "service-config.json")
+			data, err := os.ReadFile(fixture)
+			if os.IsNotExist(err) {
+				return lang.BinRuntime{}, nil
+			}
+			if err != nil {
+				return lang.BinRuntime{}, err
+			}
+			var cfg map[string]any
+			if err := json.Unmarshal(data, &cfg); err != nil {
+				return lang.BinRuntime{}, err
+			}
+			return lang.BinRuntime{Config: cfg}, nil
+		},
 		Terminal: func(verb, _ string) (string, error) { return "terminal:" + verb, nil },
 	}, runDir)
 }

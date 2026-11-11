@@ -2,6 +2,7 @@ package pluginservice
 
 import (
 	"bufio"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"os"
@@ -96,8 +97,15 @@ func BuildDeclarations(mounted []plugins.Mounted, lock *plugins.Lockfile) ([]Dec
 			errs = append(errs, fmt.Errorf("%s: %w", path, err))
 			continue
 		}
-		if keys := meta.Undecoded(); len(keys) > 0 {
-			errs = append(errs, fmt.Errorf("%s: unknown key %s", path, keys[0]))
+		var unknownKey string
+		for _, key := range meta.Undecoded() {
+			if !strings.HasPrefix(key.String(), "services.config.") {
+				unknownKey = key.String()
+				break
+			}
+		}
+		if unknownKey != "" {
+			errs = append(errs, fmt.Errorf("%s: unknown key %s", path, unknownKey))
 			continue
 		}
 		for _, svc := range file.Services {
@@ -156,6 +164,13 @@ func buildDeclaration(path string, svc operatorService, executables map[string]s
 	}
 	if svc.Config == nil {
 		svc.Config = map[string]any{}
+	}
+	configJSON, err := json.Marshal(svc.Config)
+	if err != nil {
+		return Declaration{}, fmt.Errorf("%s: service %q: config: %w", path, svc.Name, err)
+	}
+	if err := json.Unmarshal(configJSON, &svc.Config); err != nil {
+		return Declaration{}, fmt.Errorf("%s: service %q: config: %w", path, svc.Name, err)
 	}
 	if resolved.executable.ConfigSchema == nil {
 		return Declaration{}, fmt.Errorf("%s: service %q: executable %q has no config_schema", path, svc.Name, svc.Executable)

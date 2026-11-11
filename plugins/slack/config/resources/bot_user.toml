@@ -1,0 +1,14 @@
+[slack_bot_user]
+kind = "resource"
+match = '^slack://(?P<team_id>[A-Z0-9]+)/(?P<bot_user_id>[A-Z0-9]+)$'
+name = { expr = "'slack-bot/' + match.team_id + '-' + match.bot_user_id" }
+max_subscribers = 1
+
+[slack_bot_user.observe]
+type = "exec"
+bin = "slack-adapter"
+args = ["resource", "observe", "--resource", { from = "resource.id" }]
+
+[slack_bot_user.state_schema]
+type = "object"
+additionalProperties = false
