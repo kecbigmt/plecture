@@ -55,6 +55,26 @@ func TestSupervisorInvalidDeclarationDoesNotStartService(t *testing.T) {
 	}
 }
 
+func TestSupervisorStartsValidServiceBesideInvalidDeclaration(t *testing.T) {
+	dir := t.TempDir()
+	t.Setenv("PLECT_CONFIG_HOME", dir)
+	marker := filepath.Join(dir, "started")
+	script := writeScript(t, dir, "valid-worker", ": > \""+marker+"\"\ntrap 'exit 0' TERM\nwhile true; do :; done\n")
+	mounted := mountWithService(t, "local/work", "valid-worker", script, plugins.ServiceRestartOnFailure)
+	bad := filepath.Join(dir, "services", "invalid.toml")
+	if err := os.WriteFile(bad, []byte("[[services]]\nname = \"invalid\"\nexecutable = \"local/work/valid-worker\"\nenv_file = \"relative.env\"\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	sup := newTestSupervisor(staticSource(mounted))
+	sup.logger = slog.New(slog.NewTextHandler(io.Discard, nil))
+	ctx, cancel := context.WithCancel(context.Background())
+	done := make(chan struct{})
+	go func() { sup.Run(ctx); close(done) }()
+	waitFor(t, time.Second, func() bool { _, err := os.Stat(marker); return err == nil })
+	cancel()
+	<-done
+}
+
 // writeScript writes a #!/usr/bin/env bash script and returns its absolute
 // path. Tests use real short-lived subprocesses rather than fakes because
 // this package's whole job is process lifecycle (start, crash, signal-

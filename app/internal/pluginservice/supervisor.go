@@ -98,8 +98,7 @@ func (sup *Supervisor) reconcile(ctx context.Context, running map[string]*runnin
 	}
 	decls, err := BuildDeclarations(mounted, lock)
 	if err != nil {
-		sup.logger.Error("pluginservice: invalid service declarations; leaving currently running services as-is", "error", err)
-		return
+		sup.logger.Error("pluginservice: invalid service declaration", "error", err)
 	}
 
 	seen := make(map[string]bool, len(decls))

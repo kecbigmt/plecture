@@ -181,7 +181,7 @@ func (p *Poller) Tick() {
 // moment it first crosses failureSurfaceThreshold, notifies once through the
 // normal delivery path. It never removes the subscription itself — a
 // standing failure might be transient (a GitHub incident, a token hiccup),
-// so only the lifecycle paths (terminal-state pruning, sweep, explicit
+// so only the lifecycle paths (terminal-state pruning, explicit
 // unsubscribe) get to do that.
 func (p *Poller) recordFailure(sub *Subscription) {
 	streak, err := p.Store.IncrementFailStreak(sub.SessionName, sub.Resource)
