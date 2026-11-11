@@ -59,8 +59,9 @@ Start the daemon with the new plugin manifests and service declarations.
 Check each declared service's status and stderr log. Check that invalid
 `[services.config]` names its field and prevents startup. Publish a resource
 event and confirm that a service receives a correlated `published` reply and
-subscription snapshot/deltas. Confirm that an undeclared service executable
-fails when an action invokes it.
+subscription snapshot/deltas. Confirm that an action reading `service.config`
+without an operator declaration fails, while an action using the executable
+as a helper receives only the plugin cache directory.
 
 After verification, remove obsolete plugin-owned subscription files and
 service listener configuration from the backed-up deployment. Keep the backup
