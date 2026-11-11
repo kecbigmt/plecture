@@ -112,8 +112,9 @@ def plect_resolver(binary, data_home):
 
 def validated_identity(resolve, project_root, locator):
     identity = resolve(project_root, locator)
-    if not isinstance(identity, dict) or not isinstance(identity.get("type"), str) or not identity["type"] or not isinstance(identity.get("name"), str) or not identity["name"] or not isinstance(identity.get("max_subscribers"), int) or identity["max_subscribers"] < 0:
+    if not isinstance(identity, dict) or not isinstance(identity.get("type"), str) or not identity["type"] or not isinstance(identity.get("name"), str) or not identity["name"] or not isinstance(identity.get("max_subscribers", 0), int) or identity.get("max_subscribers", 0) < 0:
         raise ValueError("invalid resource declaration identity")
+    identity.setdefault("max_subscribers", 0)
     return identity
 
 

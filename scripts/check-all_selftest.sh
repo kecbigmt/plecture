@@ -48,6 +48,7 @@ ln -s "CLAUDE.md" "$fixture/AGENTS.md"
   git commit -q -m base
 )
 base_sha="$(git -C "$fixture" rev-parse HEAD)"
+git -C "$fixture" update-ref refs/remotes/origin/main "$base_sha"
 
 run_check() {
   CHECK_ALL_ROOT="$fixture" "$checker" "$base_sha"
@@ -60,6 +61,11 @@ if ! run_check >/tmp/check-all-selftest-clean.log 2>&1; then
 fi
 if ! grep -q "check-all.sh: all checks passed" /tmp/check-all-selftest-clean.log; then
   echo "FAIL: check-all.sh did not report success on a clean fixture" >&2
+  cat /tmp/check-all-selftest-clean.log >&2
+  exit 1
+fi
+if ! grep -q "==> scripts/check-adr-lifecycle.sh origin/main HEAD" /tmp/check-all-selftest-clean.log; then
+  echo "FAIL: check-all.sh did not use CI's ADR lifecycle base" >&2
   cat /tmp/check-all-selftest-clean.log >&2
   exit 1
 fi
