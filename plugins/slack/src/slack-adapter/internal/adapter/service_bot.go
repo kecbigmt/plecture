@@ -70,21 +70,27 @@ func (b *BotAdapter) Run(ctx context.Context) error {
 					b.socket.Ack(*event.Request)
 				}
 				outer, ok := event.Data.(slackevents.EventsAPIEvent)
-				if !ok || outer.Type != slackevents.CallbackEvent {
-					continue
-				}
-				switch ev := outer.InnerEvent.Data.(type) {
-				case *slackevents.AppMentionEvent:
-					b.routeMention(ev)
-				case *slackevents.MessageEvent:
-					if ev.BotID == "" && ev.SubType == "" && strings.Contains(ev.Text, "<@"+b.botUserID+">") {
-						b.routeMention(&slackevents.AppMentionEvent{User: ev.User, Text: ev.Text, TimeStamp: ev.TimeStamp, ThreadTimeStamp: ev.ThreadTimeStamp, Channel: ev.Channel, UserTeam: ev.UserTeam})
-					}
+				if ok {
+					b.handleEventsAPI(outer)
 				}
 			}
 		}
 	}()
 	return b.socket.RunContext(ctx)
+}
+
+func (b *BotAdapter) handleEventsAPI(outer slackevents.EventsAPIEvent) {
+	if outer.Type != slackevents.CallbackEvent {
+		return
+	}
+	switch ev := outer.InnerEvent.Data.(type) {
+	case *slackevents.AppMentionEvent:
+		b.routeMention(ev)
+	case *slackevents.MessageEvent:
+		if ev.BotID == "" && ev.SubType == "" && strings.Contains(ev.Text, "<@"+b.botUserID+">") {
+			b.routeMention(&slackevents.AppMentionEvent{User: ev.User, Text: ev.Text, TimeStamp: ev.TimeStamp, ThreadTimeStamp: ev.ThreadTimeStamp, Channel: ev.Channel, UserTeam: ev.UserTeam})
+		}
+	}
 }
 
 func (b *BotAdapter) routeMention(ev *slackevents.AppMentionEvent) {
