@@ -44,9 +44,6 @@ func TestDeliverPluginExecutableReceivesCache(t *testing.T) {
 	}
 }
 
-// channelDef loads one channel declaration the way a real config home does,
-// so these tests exercise the declarations an author writes rather than a
-// hand-built runtime struct.
 func TestDeliverServiceExecutableReceivesConfigAndPrivateEnvironment(t *testing.T) {
 	out := filepath.Join(t.TempDir(), "out")
 	action, err := lang.ParseAction(map[string]any{
