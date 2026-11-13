@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/binary"
 	"encoding/json"
+	"errors"
 	"io"
 	"net"
 	"os"
@@ -40,6 +41,50 @@ func TestDeliverPluginExecutableReceivesCache(t *testing.T) {
 	got, err := os.ReadFile(filepath.Join(dir, "delivered"))
 	if err != nil || string(got) != want {
 		t.Fatalf("delivered cache = %q, %v; want %q", got, err, want)
+	}
+}
+
+func TestDeliverServiceExecutableReceivesConfigAndPrivateEnvironment(t *testing.T) {
+	out := filepath.Join(t.TempDir(), "out")
+	action, err := lang.ParseAction(map[string]any{
+		"type": "exec", "bin": "local/work/worker",
+		"args": []any{"-c", "printf '%s|%s' \"$1\" \"$TOKEN\" > \"$2\"", "worker", map[string]any{"from": "service.config.region"}, map[string]any{"from": "inputs.out"}},
+	}, lang.Position{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	def := config.ChannelDefinition{Type: config.ChannelTypeExec, Action: action}
+	opts := DeliverOptions{
+		Bin: func(string) (string, error) { return "/bin/sh", nil },
+		BinRuntime: func(string) (lang.BinRuntime, error) {
+			return lang.BinRuntime{Config: map[string]any{"region": "west"}, Prepare: func() ([]string, error) { return []string{"TOKEN=private"}, nil }}, nil
+		},
+	}
+	if err := DeliverWithOptions(context.Background(), def, map[string]any{"out": out}, event.Event{}, opts); err != nil {
+		t.Fatal(err)
+	}
+	raw, err := os.ReadFile(out)
+	if err != nil || string(raw) != "west|private" {
+		t.Fatalf("output = %q, err = %v", raw, err)
+	}
+}
+
+func TestDeliverServiceExecutableRejectsMissingDeclarationAndEnvironment(t *testing.T) {
+	action, err := lang.ParseAction(map[string]any{"type": "exec", "bin": "local/work/worker", "args": []any{"-c", "true", map[string]any{"from": "service.config.region"}}}, lang.Position{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	def := config.ChannelDefinition{Type: config.ChannelTypeExec, Action: action}
+	base := DeliverOptions{Bin: func(string) (string, error) { return "/bin/sh", nil }}
+	base.BinRuntime = func(string) (lang.BinRuntime, error) { return lang.BinRuntime{}, nil }
+	if err := DeliverWithOptions(context.Background(), def, nil, event.Event{}, base); err == nil || !strings.Contains(err.Error(), "service.config") {
+		t.Fatalf("undeclared config error = %v", err)
+	}
+	base.BinRuntime = func(string) (lang.BinRuntime, error) {
+		return lang.BinRuntime{Config: map[string]any{"region": "west"}, Prepare: func() ([]string, error) { return nil, errors.New("env unavailable") }}, nil
+	}
+	if err := DeliverWithOptions(context.Background(), def, nil, event.Event{}, base); err == nil || !strings.Contains(err.Error(), "env unavailable") {
+		t.Fatalf("private env error = %v", err)
 	}
 }
 

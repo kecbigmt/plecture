@@ -1,6 +1,6 @@
 == slack_thread / setup
-call[0]: "curl" "-sf" "--max-time" "10" "-X" "POST" "http://127.0.0.1:7890/threads" "-H" "Content-Type: application/json" "-d" "{\"channel_id\":\"C-review\",\"text\":\"[AI review] Fix widgets — https://github.com/acme/widgets/pull/7\\nsession acme/widget-1 · head abcdef123456\"}"
-outputs: {"channel_id":"C-review","permalink":"https://example.slack.com/archives/C-review/p12345678","thread_ts":"1234.5678"}
+call[0]: "slack-adapter" "thread" "create" "--config" "{\"bots\":[{\"allowed_user_ids\":[],\"app_token_env\":\"APP_TEST\",\"bot_token_env\":\"BOT_TEST\",\"channel_id\":\"C0123\"}]}" "--channel-id" "C0123" "--text" "[AI review] Fix widgets — https://github.com/acme/widgets/pull/7\nsession acme/widget-1 · head abcdef123456"
+outputs: {"channel_id":"C0123","permalink":"https://example.slack.com/archives/C0123/p12345678","thread_ts":"1234.5678"}
 
 == slack_thread / health.alive
 alive
