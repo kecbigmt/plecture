@@ -65,9 +65,12 @@ func (a *App) JSON(ctx context.Context, args ...string) ([]byte, error) {
 		return nil, fmt.Errorf("github api %s: %w", args[0], err)
 	}
 	defer resp.Body.Close()
-	body, err := io.ReadAll(io.LimitReader(resp.Body, 1<<20))
+	body, err := io.ReadAll(io.LimitReader(resp.Body, maxResponseBytes+1))
 	if err != nil {
 		return nil, fmt.Errorf("read github api response: %w", err)
+	}
+	if len(body) > maxResponseBytes {
+		return nil, fmt.Errorf("github api %s: response exceeds %d bytes", args[0], maxResponseBytes)
 	}
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
 		return nil, fmt.Errorf("github api %s: %s", args[0], githubapp.APIErrorMessage(resp.StatusCode, body))
@@ -95,3 +98,8 @@ func (a *App) skew() time.Duration {
 	}
 	return defaultAppSkew
 }
+
+// maxResponseBytes is sized for a full 100-entry page of pull requests,
+// whose descriptions can each approach GitHub's 65536-character body cap;
+// a response past it fails rather than being truncated into invalid JSON.
+const maxResponseBytes = 16 << 20
