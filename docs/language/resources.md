@@ -1,7 +1,7 @@
 # Resources
 
 A resource declaration owns one kind of external thing: recognition, resource
-naming, observation, query, delivery binding, and finalization. A resource is
+naming, observation, query, subscription limits, and finalization. A resource is
 not a workflow node and does not acquire an environment.
 
 ## Identity and actions
@@ -15,19 +15,13 @@ across resource types, because a session takes its name from one; a resource
 name is not itself a session name, which may append a tag.
 `observe` refreshes `resource.state.*`; it neither performs work nor implies
 completion. `finalize` records a task's accepted completion and its evidence.
-`subscribe` and `unsubscribe` bind or remove delivery for one session/resource
-pair.
-
-`subscribe` and `unsubscribe` take a resource input object satisfying
-`inputs_schema` when the resource declares one; no declaration means the
-empty object. A binding made by `plect up`, `plect task setup`, a chain, a
-population, or a node's `subscription` passes the empty object, and so does
-every `unsubscribe`. Only a standalone `plect subscribe` supplies one.
-
-Resource action inputs are never inferred from workflow inputs or a previous
-resource binding. Query inputs are separate: a population supplies the literal
-object required by `[resource.query.inputs_schema]`, and query actions see it
-as `inputs.*`, not `resource.inputs.*`.
+Core binds delivery with a subscription row for each session/resource pair.
+A resource may declare `max_subscribers` as a positive integer; a subscribe
+that exceeds it fails without adding a row. Resource action inputs are never
+inferred from workflow inputs or a previous resource binding. Query inputs are
+separate: a population supplies the literal object required by
+`[resource.query.inputs_schema]`, and query actions see it as `inputs.*`, not
+`resource.inputs.*`.
 
 ```toml
 [issue]
@@ -40,17 +34,6 @@ type = "exec"
 bin  = "forge"
 args = ["issue", "observe", { from = "resource.id" }]
 
-[issue.subscribe]
-type = "exec"
-bin  = "forge"
-args = ["issue", "subscribe", { from = "resource.id" }, { from = "session.name" }, "--events", { from = "resource.inputs.events", default = "all" }]
-
-[issue.inputs_schema]
-type = "object"
-
-[issue.inputs_schema.properties]
-events = { type = "string", enum = ["all", "comments"] }
-
 [issue.state_schema]
 type = "object"
 
@@ -61,20 +44,31 @@ pr_url   = { type = "string" }
 
 The first observation is required before instantiation; later observation
 failure is recorded degradation. Finalization receives the concrete resource
-and session; delivery also receives the resource action input object. A
-resource does not own a task's state or judge evidence.
+and session. A resource does not own a task's state or judge evidence.
 
-`plect subscribe <resource-id>` selects exactly one matching resource
-declaration. It accepts `--inputs` or `--inputs-file` for the action input
-object. Session creation and task binding subscribe automatically when that
-declaration has a `subscribe` action and the empty input object satisfies its
-schema. A node's `subscription` uses the same empty-input rule after its setup
-produces an identifier. If required inputs prevent that binding, a known
-identifier fails loading and a runtime identifier reports a subscription
-failure for retry; neither is silently skipped. Teardown runs `unsubscribe`
-with the empty object when the resource is no longer needed by the session
-entry, any task, or any live node and the empty object satisfies its schema;
-otherwise the delivery registration is left in place.
+`plect subscribe <resource-id>` resolves exactly one resource declaration and
+records an idempotent `runtime` row for the calling session. It runs no
+resource hook. `plect unsubscribe <id>` removes only that session's `runtime`
+row for resource `<id>`. `plect up <url>` records a `dispatch` row for the
+session's entry resource. A task instance bound to a resource records a `task`
+row until the last task in that session bound to it is cleaned up. A node with
+`subscription` records a `node` row while any live node binds the resource.
+Task binding and subscription admission, or cleanup and removal, use one
+database transaction. Source rows overlap without replacing one
+another. Subscriptions survive session down/up. Destroying a session removes
+them; they also cascade if its retained session row is deleted. Core records
+`inputs` JSON and `created_at` for each row. A `max_subscribers` limit counts
+distinct sessions, not rows. `plect event publish --resource <id>` appends an
+event once to each subscribed session log and reports the delivered session
+count. A failed append is an error, not zero delivery. Services receive the
+full membership snapshot and later deltas from their supervising plect over
+stdio; `plect subscription list [--session] [--resource-type] --json` is the
+operator-facing query.
+
+The Slack bot-user resource form is `slack://<team_id>/<bot_user_id>` and sets
+`max_subscribers = 1`. A session that handles otherwise-undelivered mentions
+subscribes explicitly. The adapter publishes allowed mentions as `user.emit`
+by resource identifier; core routes them using its subscription table.
 
 ## Query
 
@@ -93,8 +87,7 @@ optional appearance context. It does not duplicate observation state.
   derived.
 - A resource name another resource type already holds is an error where an
   identifier resolves to it.
-- Every subscribe and unsubscribe receives an object satisfying
-  `inputs_schema`.
+- `max_subscribers`, when present, is a positive integer.
 - Query inputs satisfy the query input schema independently of action inputs.
 - A query has its shared schemas and at least one means.
 - A task's resource type matches the concrete resource to which its instance

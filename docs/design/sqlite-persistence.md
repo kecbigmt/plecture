@@ -64,12 +64,36 @@ Process fan-out that shares the parent's own store (`plect serve` spawning a
 `app/internal/effect.ExecHook` (a task's setup/cleanup/health/capture,
 including a terminal-multiplexer pane's long-lived shell) and
 `app/internal/channel` (a channel delivery) use `IsolatedEnv`.
-`app/internal/effect.RunHook` (resource subscribe/unsubscribe, resource
-observe/finalize), `app/internal/population`'s resource-observer
-poll/subscribe query, and `app/internal/pluginservice` (a supervised
-service) use `InheritableEnv`: a resource-observer
-query, resource subscription hook, or service may read `XDG_DATA_HOME` for on-disk state of its own,
-unrelated to plect's store.
+`app/internal/effect.RunHook` (resource observe/finalize) and
+`app/internal/population`'s resource-observer poll/subscribe query use
+`InheritableEnv` so an observer or query may read `XDG_DATA_HOME` for its own
+state. `app/internal/pluginservice` builds a supervised service's environment
+from its declared `env_file` and plect runtime values only. It does not inherit
+the supervisor's `XDG_*`, `HOME`, or other environment entries, and does not
+rewrite any `XDG_*` values in the env file. It receives `PLECT_DATA_DIR` set to
+`<data-home>/plugins/<plugin>/`, a mode-`0700` directory for authoritative
+service state, only in its supervised process. Actions never receive it.
+Plugins receive none of `PLECT_CONFIG_HOME`, `PLECT_DATA_HOME`, or
+`PLECT_CACHE_HOME`. A service first receives validated non-secret config as
+`{"op":"config","config":{...}}` on stdin, before any other traffic. It then
+exchanges publish requests with IDs, correlated replies or errors, and
+subscription snapshots/deltas only with its supervising plect process over
+JSON-lines stdio.
+An action that invokes a service-marked executable keeps its ordinary action
+base and overlays that service's env-file entries; service entries win on
+duplicate keys. Validated config reaches the action only through an explicit
+argument, stdin, or shell binding reference to `service.config` or a sub-path.
+No config environment variable is set. This gives an action no global
+data-home binding from the service.
+
+Every plugin executable invocation receives `PLECT_CACHE_DIR` for its plugin's
+mode-`0700` disposable cache. The directory is under
+`<cache-home>/plugins/<plugin>/`; `<cache-home>` resolves from `--cache-home`,
+then `PLECT_CACHE_HOME`, then `$XDG_CACHE_HOME/plect`, then `~/.cache/plect`.
+The plugin owns cache locking. Plect neither reads the contents nor treats
+them as authoritative, and may delete them wholesale. Core subscription
+membership stays in `storage.db`; per-resource watch state stays in
+`PLECT_DATA_DIR`.
 
 An `IsolatedEnv` child still needs to run `plect` against the daemon's own
 store — a pane's plugin hooks, or a task instruction that tells the agent to
@@ -181,7 +205,7 @@ classifies every `_json` column by its owning declaration:
 
 | Table | Key and relational columns | JSON or scalar payload | Source |
 | --- | --- | --- | --- |
-| `resources` | `id` primary key (opaque; see "Resources"); `type`; `name` unique across types; `locator`; `created_at` | none | each distinct resource a session, task, node, population member or delivery retry refers to |
+| `resources` | `id` primary key (opaque; see "Resources"); `type`; `name` unique across types; `locator`; `created_at` | none | each distinct resource a session, task, node, population member or subscription refers to |
 | `sessions` | `id` (ULID) primary key; `name` (unique only among live rows — see "Session identity and lifecycle"); `status`, nullable `destroyed_at`; nullable `parent_session_id` and `root_session_id`, each referencing `sessions(id)`; `project_root` (the configuration context, `''` for global only); nullable `resource_id` referencing `resources(id)`; nullable `tag`, `alias`, `population_workflow`, `population_name` (with `project_root` they reference `populations(project_root, workflow, name)`); nullable lifecycle-configuration digest baseline; `workflow`, `created_at`, `updated_at` | inputs, health, tick backoff | `state.json` `sessions` entries |
 | `node_instances` | `(session_id, node_id)` primary key; session foreign key; no other columns | none — purely the logical node's identity | `state.json` `sessions.*.tasks` entries with `dynamic` unset (keys only) |
 | `node_executions` | `id` (ULID, minted per setup attempt) primary key; `(session_id, node_id)` foreign key to `node_instances`; `sequence`; nullable `task_id`, `resource_id` and `subscription_id` (each referencing `resources(id)`; `subscription_id` is the resource the node's subscription output bound); `scope`, `status`, nullable `finalized_at`; release outcome and unavailable reason; at most one unreleased row per `(session_id, node_id)` — see "Node execution identity" | inputs, outputs, state, observed value, `done_when` (rare, not relationally queried), setup-time cleanup facts, nullable `directory` (the directory the setup ran in; `NULL` when setup ran with no explicit directory), error, lifecycle timestamps | `state.json` `sessions.*.tasks` entries with `dynamic` unset (per-attempt facts) |
@@ -195,6 +219,7 @@ classifies every `_json` column by its owning declaration:
 | `populations` | `(project_root, workflow, name)` primary key | none | `state.json` `populations` map key and value |
 | `population_members` | `(project_root, workflow, name, resource_id)` primary key, `populations(project_root, workflow, name)` foreign key, and `resource_id` referencing `resources(id)`; nullable `session_name` | item, generation, timestamps, flags, `decision_kind`/`decision_reason` | `PopulationState.Members` |
 | `population_member_blockers` | `(project_root, workflow, name, resource_id, position)` primary key; foreign key to `population_members` | one blocker reason per row | `PopulationMember.LastBlockers` |
+| `subscriptions` | `(session_id, resource_id, source)` primary key; session and resource foreign keys; session deletion cascades | `source` CHECK IN `runtime`/`dispatch`/`task`/`node`, `inputs` JSON, `created_at` | core subscription admission |
 | `session_channel_health` | `(session_id, kind)` primary key; session foreign key; `kind` CHECK IN `validation`/`delivery` | consecutive failures, first/last failure time, last channel/error, escalation time | `Session.ChannelValidationHealth`/`ChannelDeliveryHealth` |
 | `up_reservations` | `child_session_name` primary key; nullable `parent_session_name`, `virtual_root`, `pid`, `reserved_at` | none | `state.json` `up_reservations` |
 | `events` | `id` primary key; `(session_id, sequence)` unique and references `sessions(id)`; `direction` CHECK IN `inbound`/`outbound`/`internal`; `metadata_json` CHECK `json_valid` | type, source, direction, summary, body, metadata, and recorded time | each `log.jsonl` record |
@@ -204,8 +229,6 @@ classifies every `_json` column by its owning declaration:
 
 `storage.db` is the durable authority. Its SQLite sidecars and persistence
 gate files remain beside it because SQLite and the gate own their lifecycle.
-The only per-session file is a delivery-decision flock; it serializes a
-provider hook and carries no durable fact.
 
 | File | Reason |
 | --- | --- |
@@ -213,19 +236,27 @@ provider hook and carries no durable fact.
 | `storage.db.access.lock`, `storage.db.coordination.lock`, `storage.db.handle.lock`, `storage.db.migration.json` | The persistence migration access gate's lock and diagnostic state. |
 | `backups/<UTC timestamp>-v<from version>/` | A copy of the store taken before a migration; see "Pre-migration backups and restore". |
 | `restore-displaced/<UTC timestamp>/` | The files a restore replaced; kept for the operator to inspect and delete. |
-| `delivery-locks/<escaped-session>.lock` | OS-level mutual exclusion for one provider delivery decision; it is a `flock`, not durable state. |
 
 The retained `sessions` row with `status = 'destroyed'` and `destroyed_at`
 is a session tombstone. Its child rows reconstruct `contract.Tombstone`; no
 second tombstone marker exists. `chain_attempts` stores one non-empty cap
 refusal fingerprint per `(session_id, instance, chain_id)`, so
 compare-and-set and conditional revert run in an immediate transaction.
-`subscription_retries` stores deduplicated failed `subscribe` and
-`unsubscribe` intents by `(session_id, action, resource_id)`, `resource_id`
-referencing `resources(id)`. A teardown retry
-uses the destroyed incarnation id, and a sweep drops its stale subscribe
-intent or retries its unsubscribe intent without involving a same-name live
-replacement.
+`subscriptions` is the sole durable delivery membership authority. A
+resource-addressed publish groups rows by `(session_id, resource_id)` and
+appends once to each session's event log. `runtime` rows are written by an
+explicit subscribe and removed only by an explicit unsubscribe or destroy;
+`dispatch` rows are written by session up for its entry resource and removed
+on destroy; `task` rows are held while any task instance in that session binds
+the resource; `node` rows are held while any live node in that session binds
+the resource. Every write that changes task-resource bindings reconciles
+`task` rows with the distinct `(session_id, resource_id)` pairs in task
+instances that have not been cleaned up, in the same transaction. Repeating a
+write for one
+source is idempotent. The `max_subscribers` check counts distinct session ids,
+not source rows. Session
+destroy removes its rows while retaining its tombstone; deleting that session
+row also cascades to them.
 
 `Session.Message` is not a stored field on any table: a session's
 self-reported status line is derived from the most recent
@@ -591,14 +622,12 @@ one such row, found by its `locator`.
 A row is recorded in the same write transaction as the first row that refers
 to it. Its release is a schema rule: the `resource_references` view lists every
 reference — `sessions`, `task_instances`, `node_executions` (`resource_id` and
-`subscription_id`), `population_members` and `subscription_retries` — and an
+`subscription_id`), `population_members` and `subscriptions` — and an
 `AFTER DELETE` and an `AFTER UPDATE OF` trigger on each of those tables delete
 the row once the view no longer names it, so the write that removes the last
-reference releases the row whichever code issued it. A pending
-retry counts, because an `unsubscribe` retry still names its resource after the
-binding that subscribed it is gone; a task cleanup queues that retry in the
-write that removes the binding, so the row is never released in between. A
-destroyed session's retained row keeps its resource. The observation a node or
+reference releases the row whichever code issued it. A subscription keeps its
+resource live until the row is removed. A destroyed session's retained row
+keeps its resource. The observation a node or
 task recorded (`resource_observation_json`) stays on that node or task row: it
 is what was observed when that row was evaluated, not a property of the
 resource.
@@ -1105,7 +1134,7 @@ following runtime paths.
 | `events/<escaped-session>/.gen` | Read one trimmed non-empty stream identifier when present and reuse it as the imported session row's `id`; otherwise mint a fresh id after recording that no old page cursor survives cutover. |
 | `events/<escaped-session>/.cursor.<consumer>` | Parse a non-negative decimal boundary, validate it against the log boundary index, map `<consumer>` to its `event_cursors.kind` (`dispatcher` imports as `delivery`, `tick-reactor` imports as `tick`), and import the translated position. |
 | `events/<escaped-session>/tombstone.json`, `events/<escaped-session>/chain_attempts.json`, `events/<escaped-session>/.lock`, `pending_delivery.json`, `pending_delivery.json.lock` | The legacy importer does not copy these post-cutover sidecars. The storage opener imports the sidecars from the active database directory in one idempotent pass, then removes them and the retired `events/` tree. A source name resolves to its live incarnation or its latest destroyed incarnation; no match aborts without removing a source file. A chain-attempt generation that identifies another existing session also aborts. |
-| `delivery-locks/<escaped-session>.lock` | Confirm no lock is held; do not copy it. The delivery decision keeps its service-level `flock`. |
+| `delivery-locks/<escaped-session>.lock` | Confirm no lock is held; do not copy it. Resource delivery decisions use database transactions. |
 
 The importer inserts every `populations` row before any `sessions` row that
 references it: `sessions.population_workflow`/`population_name` is a

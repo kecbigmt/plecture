@@ -3,8 +3,8 @@
 This document defines the plugin model for distributing reusable Plecture
 configuration and executable adapters. The goal is to reduce bootstrap cost
 without moving tool, or domain knowledge into core.
-The plugin service lifecycle decision is recorded in
-[`../adr/2026-08-17-plugin-boundary-contracts.md`](../adr/2026-08-17-plugin-boundary-contracts.md).
+The service lifecycle decision is recorded in
+[`../adr/2026-11-09-operator-declared-plugin-services.md`](../adr/2026-11-09-operator-declared-plugin-services.md).
 
 The design keeps two concepts: catalog and plugin. A catalog is a trusted
 distribution unit: a subtree of a source repository marked by `catalog.toml`.
@@ -109,7 +109,7 @@ shipped config needs neither.
 `plugin.toml` is the only required plugin-local file:
 
 ```toml
-schema_version = 2
+schema_version = 3
 version = "0.3.0"
 plect_min_version = "0.8.0"
 description = "GitHub worktree effect, resource observation, and workflow support."
@@ -118,6 +118,7 @@ description = "GitHub worktree effect, resource observation, and workflow suppor
 name = "github-watcher"
 path = "bin/github-watcher"
 build = "go -C src build -o ../bin/github-watcher ./cmd/github-watcher"
+service = true
 
 [[executables]]
 name = "github-worktree"
@@ -149,7 +150,6 @@ Plugin metadata fields:
 | `plect_min_version` | yes | Minimum plect version required to load the plugin. |
 | `description` | no | Human-readable summary for list/show commands. |
 | `executables` | no | Relative paths for scripts or binaries shipped by the plugin. |
-| `services` | no | Daemon declarations supervised by `plect serve`. |
 
 The catalog-relative path listed in `catalog.toml` is the plugin identity. Full
 identity is `<catalog-alias>/<relative-path>`, such as `official/github` or
@@ -162,62 +162,167 @@ Executable entry fields:
 | Field | Required | Meaning |
 |---|---:|---|
 | `name` | yes | Stable executable identity inside the plugin. |
-| `path` | yes | Relative executable path. In the primary script case, this points at a file already present in the source tree. |
-| `build` | no | Command run at add/update time to produce a compiled executable from plugin source. |
+| `path` | yes | Relative path to the script or built binary. |
+| `build` | no | Command run at add/update time to produce a binary. |
+| `service` | no | Marks a resident-capable executable; defaults to `false` and starts nothing. |
+| `config_schema` | no | Inline JSON Schema for non-secret `[services.config]`; required when that table is used. |
 
-Service entries declare plugin-owned daemons supervised by `plect serve`:
-
-```toml
-[[services]]
-name = "github-watcher"
-executable = "github-watcher"
-args = ["serve"]
-restart = "on-failure"
-health = { type = "process" }
-```
-
-A session runtime plugin can declare its daemons the same way:
+A Slack executable declares its service configuration schema inline:
 
 ```toml
-[[services]]
-name = "channel-server"
-executable = "channel-server"
-restart = "on-failure"
-health = { type = "process" }
-
-[[services]]
+[[executables]]
 name = "slack-adapter"
-executable = "slack-adapter"
-args = ["serve"]
-required_env = ["SLACK_BOT_TOKEN"]
-restart = "on-failure"
-health = { type = "process" }
+path = "bin/slack-adapter"
+service = true
+
+[executables.config_schema]
+type = "object"
+required = ["bots"]
+additionalProperties = false
+
+[executables.config_schema.properties.bots]
+type = "array"
+minItems = 1
+
+[executables.config_schema.properties.bots.items]
+type = "object"
+required = ["app_token_env", "bot_token_env", "channel_id", "allowed_user_ids"]
+additionalProperties = false
+
+[executables.config_schema.properties.bots.items.properties]
+app_token_env = { type = "string" }
+bot_token_env = { type = "string" }
+channel_id = { type = "string" }
+allowed_user_ids = { type = "array", items = { type = "string" } }
 ```
 
-Service entry fields:
+The schema requires at least one bot. Each bot requires the four fields shown;
+unknown fields fail validation. The two token fields name variables in the
+service's `env_file`, not token values. Plugin authors keep secret values out
+of service config because plect cannot infer whether an arbitrary field is
+secret. The adapter rejects duplicate `channel_id` values across bots so
+outbound calls can select the bot from the thread's channel.
+
+Only user-owned service declarations start a process. In this example,
+`<config-home>` is `/srv/plect/config`. One Slack service serves two bots:
+
+```toml
+[[services]]
+name = "slack"
+executable = "official/slack/slack-adapter"
+env_file = "/srv/plect/config/service-env/slack.env"
+
+[services.config]
+[[services.config.bots]]
+app_token_env = "SLACK_APP_TOKEN_PRIMARY"
+bot_token_env = "SLACK_BOT_TOKEN_PRIMARY"
+channel_id = "C0123"
+allowed_user_ids = ["U0123"]
+
+[[services.config.bots]]
+app_token_env = "SLACK_APP_TOKEN_SECONDARY"
+bot_token_env = "SLACK_BOT_TOKEN_SECONDARY"
+channel_id = "C0456"
+allowed_user_ids = ["U0456"]
+```
+
+Plugin manifests contain no `[[services]]`; such a table is a load error.
+User service entry fields are:
 
 | Field | Required | Meaning |
 |---|---:|---|
-| `name` | yes | Stable service identity inside the plugin. Full identity is `<catalog-alias>/<plugin-path>/<service-name>`. |
-| `executable` | yes | Name of one executable declared by the same plugin. Services cannot name another plugin's executable. |
+| `name` | yes | Operator-chosen service identity, unique across user config; lowercase letters, digits, hyphens, starts with a letter, at most 64 characters. |
+| `executable` | yes | Fully qualified `<catalog>/<plugin>/<executable>` of an enabled plugin executable marked `service = true`. Only one declaration may name an executable. |
 | `args` | no | Argument vector passed after the executable path. |
-| `env` | no | Non-secret environment literals supplied to the child process. |
-| `required_env` | no | Environment variable names that must be present in user-owned configuration or the supervisor environment before the service can start. |
-| `restart` | no | Restart policy. `on-failure` restarts crashed children with bounded backoff; `never` leaves the service stopped after exit. |
-| `health` | no | Health policy. `type = "process"` treats a running child as healthy. Future health kinds must be technology-agnostic. |
+| `env_file` | yes | Absolute path to a private operator-owned `KEY=VALUE` file. |
+| `restart` | no | `on-failure` (default) or `never`. |
+| `health` | no | `{ type = "process" }` (default and sole supported kind). |
+| `config` | no | Plugin-specific non-secret table validated against the executable's inline `config_schema`. |
 
-The plugin service supervisor starts services for enabled plugins when
-`plect serve` starts, stops them when the resident process stops, and restarts
-service processes according to their restart policy. Service status is
-resident-global and records service id,
-running state, pid, restart count, last exit, last error, last health result,
-plugin id, and the lock coordinate or content hash that produced the running
-process.
+The loader rejects unknown service keys, duplicate names or executable
+bindings, a missing or unmarked executable, relative or unreadable env files,
+duplicate or malformed env entries, and env files readable by other users.
+Neither plugin metadata nor a service declaration interpolates environment
+variables. A conflicting `PLECT_*` runtime key in an env file is a load error.
+Core validates the config against the inline schema, then treats it as opaque.
 
-Service logs are attached to the resident process log with the service id.
-Service logs do not write into per-session event logs.
+The supervisor starts declared services with `plect serve`, applies their
+restart policy, and records state, pid, restart count, last exit, last error,
+health result, and producing plugin content. Service logs attach to the
+resident process log rather than a session event log. An explicit
+`plect plugin update` authorizes restarting an already-declared service when
+its executable changes.
 
-Updating a service-owning plugin restarts its services.
+Each supervised service receives only its env-file values and plect runtime
+values. `PLECT_DATA_DIR` names the mode-`0700` directory
+`<data-home>/plugins/<plugin>/` for authoritative service state, such as
+per-resource watch state and once-per-thread denial records. Plect passes it
+only to the service process, never to actions; the service inherits neither
+`XDG_*` nor `HOME` from the supervisor. Plect does not rewrite any `XDG_*`
+values the service's env file supplies. It receives neither the global data
+home nor config home. Plugins never receive `PLECT_CONFIG_HOME`,
+`PLECT_DATA_HOME`, or `PLECT_CACHE_HOME`. No service listens for local control
+requests.
+Browser content on the same host and other OS users cannot reach a local
+listener; same-user code is outside this boundary. The env file is
+owner-readable, and validated service config contains no secrets.
+
+A service first reads `{"op":"config","config":{...}}` from its supervisor
+on stdin, before any other traffic. The value is validated non-secret
+`[services.config]`. It writes JSON-lines `publish` requests to stdout, each
+with an `id`.
+Its supervising plect writes a result such as
+`{"op":"published","id":"request-1","delivered":1}` or an error such as
+`{"op":"error","id":"request-1","code":...,"message":...}` on stdin,
+echoing the request `id`. It also sends a full `subscriptions` snapshot at
+service start, then add/remove deltas; these notifications have no `id`.
+Service logs go to stderr. The service never invokes the plect CLI. Core holds
+subscription membership and event delivery.
+
+Every invocation of an executable from a plugin receives `PLECT_CACHE_DIR` as
+`<cache-home>/plugins/<plugin>/`, a mode-`0700` directory shared by that
+plugin's services and actions, including `observe`. It holds only disposable
+tokens, ETags, conditional-request state, and rate backoff. Plect never reads
+its contents and may delete the directory wholesale; the plugin handles
+locking. Correctness does not depend on the cache. The service's authoritative
+watch state stays in `PLECT_DATA_DIR`.
+
+When a node, channel, or hook runs an executable marked `service = true`,
+plect overlays that service's env-file values on the action's ordinary env
+and exposes validated config only through explicit argument, stdin, or shell
+binding references such as `{ from = "service.config" }`. No config environment
+variable is set. Service env-file values win duplicate keys. No declaration for
+that executable is an invocation error naming it. One service per executable
+makes the binding unique. Slack outbound actions call the provider Web API
+directly, with no workflow `base_url` input.
+
+Core stores subscriptions keyed by `(session, resource, source)`. An explicit
+`plect subscribe` writes a `runtime` row and `plect unsubscribe` removes only
+that row. `plect up <url>` writes a `dispatch` row for the entry resource;
+session destroy removes it. A resource-bound task writes a `task` row while
+any task instance in that session remains bound to the resource. Task binding
+or cleanup and the row change use one database transaction. A node with
+`subscription` writes a `node` row while at least one such node binds the
+resource. The limit in
+`max_subscribers` counts distinct sessions, and an event is delivered once per
+session/resource even when several source rows exist. `plect event publish
+--resource <id>` and a service's stdio `publish` request both use this table.
+Resources retain `observe` but have no subscribe or unsubscribe hooks.
+
+For an allowed mention, the Slack adapter publishes `user.emit` to the thread
+resource. A zero delivered count leads to a publish to the bot-user resource
+`slack://<team_id>/<bot_user_id>`, which permits one subscriber. Zero again
+drops the mention and logs its channel, thread, and reason. The adapter handles
+denied users or channels before publication. Slack thread
+`query.subscribe`, `/unbound-mentions`, and the adapter's subscriber registry
+are removed. Per-mention session creation waits for a concrete use case;
+GitHub query populations retain their `poll` and `subscribe` contract.
+
+The GitHub watcher receives core subscriptions by stdio snapshot and deltas
+and keeps its per-resource watch state in `PLECT_DATA_DIR`. GitHub
+`observe` remains callable without a watcher service, using its own
+credentials. Both invocations share disposable App token and rate budget
+caches through `PLECT_CACHE_DIR`.
 
 Build-less script executables are the primary v1 form. They must carry their
 interpreter through a shebang. Built binaries are the additional case for
@@ -237,7 +342,7 @@ user config, and those copies drift away from the plugin revision recorded in
 the lockfile.
 
 Executable adapters are invoked from TOML hooks through normal command lines.
-Core does not gain a plugin-specific process protocol in this design. A plugin
+Resident services use the generic JSON-lines stdio protocol above. A plugin
 may ship effect, resource, or task config that calls a binary in `bin/`; the
 loader resolves those executable paths so a reference becomes a stable
 absolute path.
@@ -419,9 +524,9 @@ the global `tasks/`, `workflows/`, `resources/`, and
 cache and runtime state resolve independently of the config home, each
 through its own flag/env pair: `--data-home`/`PLECT_DATA_HOME`/
 `$XDG_DATA_HOME/plect`/`~/.local/share/plect` for runtime state, and
-`--cache-home`/`PLECT_CACHE_HOME`/`$XDG_CACHE_HOME/plect/catalogs`/
-`~/.cache/plect/catalogs` for the resolved catalog snapshots this section
-describes.
+`--cache-home`/`PLECT_CACHE_HOME`/`$XDG_CACHE_HOME/plect`/
+`~/.cache/plect` for cache data. Resolved catalog snapshots live in its
+`catalogs/` child; per-plugin disposable runtime caches live in `plugins/`.
 
 Example:
 
@@ -709,8 +814,18 @@ Add and update commands:
 - `plect plugin verify` re-hashes cached plugin directories and fails if any
   differ from the lockfile.
 - `plect plugin list` shows selected, resolved, locked, and compatibility state.
-- `plect plugin show <alias>/<path>` shows metadata, executables, services,
-  compatibility, and lock coordinates.
+- `plect service list` shows declared services with name, executable, state,
+  pid, and restart count. `--all` also lists unused service-marked executables
+  from enabled plugins as `available`, with empty name and pid.
+
+For the Slack service example, when the watcher executable is available
+but no watcher service is declared, `plect service list --all` can display:
+
+```text
+NAME   EXECUTABLE                         STATE      PID    RESTARTS
+slack  official/slack/slack-adapter       running    4102   0
+       official/github/github-watcher     available
+```
 
 Non-interactive contexts fail instead of prompting for first-seen catalog
 registrations. Any override flag must be explicit and visible in command
