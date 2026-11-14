@@ -153,3 +153,48 @@ func TestApp_JSONMissingPrivateKeyFailsLoudly(t *testing.T) {
 		t.Fatal("want error for a missing private key")
 	}
 }
+
+func newTestApp(t *testing.T, baseURL string) *App {
+	t.Helper()
+	return &App{
+		AppID:          "123456",
+		InstallationID: "789012",
+		PrivateKeyPath: writeTestAppKey(t),
+		CachePath:      filepath.Join(t.TempDir(), "cache.json"),
+		BaseURL:        baseURL,
+	}
+}
+
+// A full 100-entry page of open pull requests with long descriptions
+// routinely exceeds one mebibyte.
+func TestApp_JSONReturnsAFullPageOfPullRequestsLargerThanOneMebibyte(t *testing.T) {
+	entry := `{"html_url":"https://github.com/acme/widgets/pull/1","body":"` + strings.Repeat("x", 12000) + `"}`
+	body := "[" + strings.TrimSuffix(strings.Repeat(entry+",", 100), ",") + "]"
+	if len(body) <= 1<<20 {
+		t.Fatalf("fixture is %d bytes, want it above one mebibyte", len(body))
+	}
+	srv, _ := fakeGitHubAPI(t, "ghs_large", "repos/acme/widgets/pulls", body)
+	defer srv.Close()
+
+	got, err := newTestApp(t, srv.URL).JSON(context.Background(), "repos/acme/widgets/pulls")
+	if err != nil {
+		t.Fatalf("JSON: %v", err)
+	}
+	if len(got) != len(body) {
+		t.Errorf("body length = %d, want %d (the response must not be truncated)", len(got), len(body))
+	}
+}
+
+func TestApp_JSONRejectsAResponseOverTheSizeLimitInsteadOfTruncatingIt(t *testing.T) {
+	body := `"` + strings.Repeat("x", maxResponseBytes) + `"`
+	srv, _ := fakeGitHubAPI(t, "ghs_oversized", "repos/acme/widgets/pulls", body)
+	defer srv.Close()
+
+	got, err := newTestApp(t, srv.URL).JSON(context.Background(), "repos/acme/widgets/pulls")
+	if err == nil {
+		t.Fatalf("want an error for an oversized response, got %d bytes", len(got))
+	}
+	if !strings.Contains(err.Error(), "exceeds") {
+		t.Errorf("error = %v, want it to say the response exceeds the size limit", err)
+	}
+}
