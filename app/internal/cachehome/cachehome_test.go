@@ -13,7 +13,7 @@ func TestResolve_DefaultsToXDGCachePlectCatalogs(t *testing.T) {
 	t.Setenv(EnvVar, "")
 	t.Setenv(XDGEnvVar, "")
 
-	want := filepath.Join(tmpHome, ".cache", "plect", "catalogs")
+	want := filepath.Join(tmpHome, ".cache", "plect")
 	got, err := Resolve()
 	if err != nil {
 		t.Fatalf("Resolve() error = %v", err)
@@ -28,7 +28,7 @@ func TestResolve_XDGCacheHomeOverridesDefaultWithPlectCatalogsSuffix(t *testing.
 	xdgCacheHome := t.TempDir()
 	t.Setenv(XDGEnvVar, xdgCacheHome)
 
-	want := filepath.Join(xdgCacheHome, "plect", "catalogs")
+	want := filepath.Join(xdgCacheHome, "plect")
 	got, err := Resolve()
 	if err != nil {
 		t.Fatalf("Resolve() error = %v", err)

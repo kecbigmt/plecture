@@ -7,7 +7,39 @@ import (
 	"testing"
 
 	"github.com/kecbigmt/plecture/app/internal/config"
+	"github.com/kecbigmt/plecture/app/internal/lang"
+	"github.com/kecbigmt/plecture/app/internal/plugins"
 )
+
+func TestResourceObserveAndFinalizeReceivePluginCache(t *testing.T) {
+	dir := t.TempDir()
+	cacheRoot := filepath.Join(dir, "cache")
+	t.Setenv("PLECT_CACHE_HOME", cacheRoot)
+	t.Setenv("PLECT_CONFIG_HOME", dir)
+	bin := filepath.Join(dir, "probe")
+	script := "#!/bin/sh\nif [ \"$1\" = observe ]; then printf '{\"cache\":\"%s\"}' \"$PLECT_CACHE_DIR\"; else printf '%s' \"$PLECT_CACHE_DIR\" > \"$2\"; fi\n"
+	if err := os.WriteFile(bin, []byte(script), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	mounted := []plugins.Mounted{{ID: "local/probe", Dir: dir, Manifest: plugins.Manifest{Executables: []plugins.Executable{{Name: "probe", Path: "probe", Service: true, ConfigSchema: map[string]any{"type": "object"}}}}}}
+	def := config.ResourceDef{
+		ID: "probe", Match: ".*",
+		Observe:  &lang.Action{Type: lang.ActionExec, Bin: "local/probe/probe", Args: []*lang.Value{{Form: lang.FormLiteral, Literal: "observe"}}},
+		Finalize: &lang.Action{Type: lang.ActionExec, Bin: "local/probe/probe", Args: []*lang.Value{{Form: lang.FormLiteral, Literal: "finalize"}, {Form: lang.FormLiteral, Literal: filepath.Join(dir, "finalized")}}},
+	}
+	want := filepath.Join(cacheRoot, "plugins", "local", "probe")
+	state, err := ObserveResource(def, "urn:case:1", mounted)
+	if err != nil || state["cache"] != want {
+		t.Fatalf("observe state = %v, %v; want cache %q", state, err, want)
+	}
+	if ran, _, err := FinalizeResource(map[string]config.ResourceDef{"probe": def}, FinalizeResourceParams{ResourceID: "urn:case:1", Plugins: mounted}); err != nil || !ran {
+		t.Fatalf("finalize ran = %v, error = %v", ran, err)
+	}
+	got, err := os.ReadFile(filepath.Join(dir, "finalized"))
+	if err != nil || string(got) != want {
+		t.Fatalf("finalize cache = %q, %v; want %q", got, err, want)
+	}
+}
 
 // observers loads a resource-observer document the way a real config home
 // would, so these tests exercise the declarations an author writes rather

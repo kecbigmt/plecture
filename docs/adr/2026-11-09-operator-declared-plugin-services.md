@@ -1,4 +1,7 @@
 ---
+superseded_by:
+  - 2026-11-11-service-executable-action-helpers
+  - 2026-11-15-plugin-update-preview
 supersedes:
   - 2026-08-16-plugin-service-lifecycle
   - 2026-08-17-plugin-boundary-contracts

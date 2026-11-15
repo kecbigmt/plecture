@@ -136,7 +136,7 @@ func TestPluginUpdate_NotEnabledFailsLoud(t *testing.T) {
 	src := writeCatalogSource(t, map[string]string{"okf": "0.0.0"})
 	addTestCatalog(t, paths, "local", "path://"+src)
 
-	if _, err := PluginUpdate(context.Background(), paths, "local/okf", ""); err == nil {
+	if _, err := PluginUpdate(context.Background(), paths, "local/okf", PluginUpdateParams{}); err == nil {
 		t.Fatal("want error for a plugin that is not enabled, got nil")
 	}
 }
@@ -149,7 +149,7 @@ func TestPluginUpdate_PathSourceRejectsRevisionFlag(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	if _, err := PluginUpdate(context.Background(), paths, "local/okf", "v1"); err == nil {
+	if _, err := PluginUpdate(context.Background(), paths, "local/okf", PluginUpdateParams{Revision: "v1"}); err == nil {
 		t.Fatal("want error when --revision is passed for a path-sourced plugin, got nil")
 	}
 }
@@ -170,10 +170,10 @@ func TestPluginUpdate_ReHashesChangedContentAndKeepsSiblingsPinned(t *testing.T)
 	}
 	githubBefore, _ := lockBefore.FindPlugin("local/github")
 
-	if err := os.WriteFile(filepath.Join(src, "okf", "plugin.toml"), []byte("schema_version = 2\nplect_min_version = \"0.0.1\"\n"), 0o644); err != nil {
+	if err := os.WriteFile(filepath.Join(src, "okf", "plugin.toml"), []byte("schema_version = 3\nplect_min_version = \"0.0.1\"\n"), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	got, err := PluginUpdate(context.Background(), paths, "local/okf", "")
+	got, err := PluginUpdate(context.Background(), paths, "local/okf", PluginUpdateParams{})
 	if err != nil {
 		t.Fatalf("PluginUpdate: unexpected error: %v", err)
 	}
@@ -252,7 +252,7 @@ func TestPluginVerify_TamperedContentFails(t *testing.T) {
 	if _, err := PluginAdd(context.Background(), paths, "local/okf"); err != nil {
 		t.Fatal(err)
 	}
-	if err := os.WriteFile(filepath.Join(src, "okf", "plugin.toml"), []byte("schema_version = 2\nplect_min_version = \"9.9.9\"\n"), 0o644); err != nil {
+	if err := os.WriteFile(filepath.Join(src, "okf", "plugin.toml"), []byte("schema_version = 3\nplect_min_version = \"9.9.9\"\n"), 0o644); err != nil {
 		t.Fatal(err)
 	}
 
@@ -365,7 +365,7 @@ func TestPluginUpdate_RejectsHandEditedSubdirDrift(t *testing.T) {
 
 	handEditCatalogSubdir(t, paths, "local", "sub")
 
-	_, err := PluginUpdate(context.Background(), paths, "local/okf", "")
+	_, err := PluginUpdate(context.Background(), paths, "local/okf", PluginUpdateParams{})
 	if err == nil || !strings.Contains(err.Error(), "does not match plect.lock") {
 		t.Fatalf("PluginUpdate after a hand-edited subdir: err = %v, want a source/subdir drift error", err)
 	}

@@ -78,6 +78,7 @@ func deliveryEval(inputs map[string]any, ev event.Event, opts DeliverOptions, ru
 	if opts.Bin != nil {
 		e.Bin = opts.Bin
 	}
+	e.BinRuntime = opts.BinRuntime
 	return e
 }
 
@@ -91,7 +92,8 @@ type DeliverOptions struct {
 	Terminal TerminalResolver
 	// Bin resolves this delivery's plugin-owned executables; nil means a
 	// channel naming one cannot be delivered.
-	Bin BinResolver
+	Bin        BinResolver
+	BinRuntime func(path string) (lang.BinRuntime, error)
 }
 
 // Deliver renders a channel definition against the event and resolved inputs,
@@ -200,7 +202,14 @@ func deliverProcess(ctx context.Context, def config.ChannelDefinition, eval lang
 	if shimDir, shimErr := plectshim.ForCurrentProcess(); shimErr == nil {
 		env = plectshim.PatchPath(env, shimDir)
 	}
-	cmd.Env = env
+	cmd.Env = append(env, execution.PluginEnv...)
+	if execution.Prepare != nil {
+		private, err := execution.Prepare()
+		if err != nil {
+			return err
+		}
+		cmd.Env = append(cmd.Env, private...)
+	}
 	if len(execution.Stdin) > 0 {
 		cmd.Stdin = bytes.NewReader(execution.Stdin)
 	}

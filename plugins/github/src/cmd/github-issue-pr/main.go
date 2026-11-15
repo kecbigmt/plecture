@@ -43,19 +43,11 @@ func queryClient(watcherBin, cachePathOverride string) (github.GHClient, error) 
 	return ghClient(watcherBin), nil
 }
 
-// defaultAppCachePath mirrors github-watcher's own default data directory
-// so a deployment running both serve and query-pulls mints one installation
-// token instead of two.
 func defaultAppCachePath(override string) string {
 	if override != "" {
 		return override
 	}
-	dataDir := os.Getenv("XDG_DATA_HOME")
-	if dataDir == "" {
-		home, _ := os.UserHomeDir()
-		dataDir = filepath.Join(home, ".local", "share")
-	}
-	return filepath.Join(dataDir, "github-watcher", ".app-token-cache.json")
+	return filepath.Join(os.Getenv("PLECT_CACHE_DIR"), ".app-token-cache.json")
 }
 
 func main() {

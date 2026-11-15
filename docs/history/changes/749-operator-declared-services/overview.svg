@@ -1,0 +1,152 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1220 800" width="1220" height="800" role="img" aria-label="Before: plugin manifests declared services with required_env, plect serve started them when the plugin was enabled, each child inherited the supervisor environment, and the GitHub watcher kept its own subscriptions file, swept sessions with plect ls, and published through the bus or a notify endpoint. After: the operator declares services under the config home, plugin manifests at schema version 3 mark executables with service = true and an inline config_schema, the supervisor validates config and skips only invalid declarations, and a service gets only its env file plus PLECT_DATA_DIR and PLECT_CACHE_DIR and talks to plect over stdio: config first, a subscription snapshot then deltas from the core table, and publish requests answered with published or error. Every plugin executable invocation gets PLECT_CACHE_DIR; a service-marked executable used as an action gets its declaration's env file and config, or runs as a helper without one. The GitHub watcher moves to this protocol. Also: plugin update previews, a cache-home root, and a migration procedure.">
+  <defs>
+    <marker id="arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M0,0 L10,5 L0,10 z" fill="#1f2328"/>
+    </marker>
+  </defs>
+  <rect x="0" y="0" width="1220" height="800" fill="#ffffff"/>
+  <g font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="12" fill="#1f2328">
+    <text x="24" y="32" font-size="15" font-weight="600">#749 operator-declared services: what changes in declaration, supervision, and plugin environment</text>
+
+    <!-- ===== BEFORE ===== -->
+    <rect x="12" y="50" width="1196" height="206" rx="8" fill="none" stroke="#d0d7de"/>
+    <text x="24" y="72" font-weight="600">Before <tspan fill="#59636e" font-weight="400">· main: enabling a plugin starts the services its manifest declares</tspan></text>
+
+    <rect x="24" y="88" width="220" height="84" rx="6" fill="#ffebe9" stroke="#cf222e" stroke-dasharray="6 4"/>
+    <text x="36" y="110" font-weight="600" fill="#cf222e">plugin.toml <tspan font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" font-size="11.5">[[services]]</tspan></text>
+    <text x="36" y="130" fill="#59636e">schema v2; <tspan font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" font-size="11.5">required_env</tspan> gate</text>
+    <text x="36" y="148" fill="#59636e">github-watcher, slack-adapter, and</text>
+    <text x="36" y="164" fill="#59636e">an inert channel-server entry</text>
+
+    <rect x="300" y="88" width="210" height="84" rx="6" fill="#f6f8fa" stroke="#8c959f"/>
+    <text x="312" y="110" font-weight="600">service supervisor</text>
+    <text x="312" y="130" fill="#59636e">in plect serve; starts every</text>
+    <text x="312" y="146" fill="#59636e">service of an enabled plugin</text>
+    <line x1="244" y1="130" x2="298" y2="130" stroke="#1f2328" stroke-width="1.5" marker-end="url(#arrow)"/>
+    <text x="271" y="123" text-anchor="middle" font-size="11">declares</text>
+
+    <rect x="556" y="88" width="290" height="84" rx="6" fill="#f6f8fa" stroke="#8c959f"/>
+    <text x="568" y="110" font-weight="600">service process</text>
+    <rect x="568" y="120" width="266" height="42" rx="4" fill="#ffebe9" stroke="#cf222e" stroke-dasharray="6 4"/>
+    <text x="580" y="138" fill="#cf222e">inherits the supervisor environment</text>
+    <text x="580" y="155" fill="#cf222e">no protocol with plect</text>
+    <line x1="510" y1="130" x2="554" y2="130" stroke="#1f2328" stroke-width="1.5" marker-end="url(#arrow)"/>
+    <text x="532" y="123" text-anchor="middle" font-size="11">starts</text>
+
+    <rect x="892" y="88" width="304" height="156" rx="6" fill="#f6f8fa" stroke="#8c959f"/>
+    <text x="904" y="110" font-weight="600">github-watcher serve</text>
+    <text x="904" y="128" fill="#59636e">polls subscribed resources</text>
+    <rect x="904" y="138" width="280" height="96" rx="4" fill="#ffebe9" stroke="#cf222e" stroke-dasharray="6 4"/>
+    <text x="916" y="157" fill="#cf222e">own <tspan font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" font-size="11.5">subscriptions.json</tspan>, <tspan font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" font-size="11.5">subscribe</tspan> /</text>
+    <text x="916" y="174" fill="#cf222e"><tspan font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" font-size="11.5">unsubscribe</tspan> commands</text>
+    <text x="916" y="191" fill="#cf222e">sweep through <tspan font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" font-size="11.5">plect ls --json</tspan></text>
+    <text x="916" y="208" fill="#cf222e">publishes via the event bus or /notify</text>
+    <text x="916" y="225" fill="#cf222e">token cache under <tspan font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" font-size="11.5">$XDG_DATA_HOME</tspan></text>
+    <line x1="846" y1="130" x2="890" y2="130" stroke="#1f2328" stroke-width="1.5" marker-end="url(#arrow)"/>
+    <text x="868" y="123" text-anchor="middle" font-size="11">e.g.</text>
+
+    <!-- ===== AFTER ===== -->
+    <rect x="12" y="272" width="1196" height="372" rx="8" fill="none" stroke="#d0d7de"/>
+    <text x="24" y="294" font-weight="600">After <tspan fill="#59636e" font-weight="400">· #749: the operator declares services; a service speaks stdio with the plect that supervises it</tspan></text>
+
+    <rect x="24" y="310" width="220" height="100" rx="6" fill="#dafbe1" stroke="#1a7f37"/>
+    <text x="36" y="332" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" font-size="11" font-weight="600">&lt;config-home&gt;/services/*.toml</text>
+    <text x="36" y="352" fill="#59636e">operator <tspan font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" font-size="11.5">[[services]]</tspan>: name,</text>
+    <text x="36" y="369" fill="#59636e">executable, env_file, args,</text>
+    <text x="36" y="386" fill="#59636e">restart, health,</text>
+    <text x="36" y="402" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" font-size="11.5" fill="#59636e">[services.config]</text>
+
+    <rect x="24" y="424" width="220" height="70" rx="6" fill="#fff8c5" stroke="#9a6700"/>
+    <text x="36" y="446" font-weight="600">plugin.toml schema v3</text>
+    <text x="36" y="465" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" font-size="11.5">service = true</text>
+    <text x="36" y="483" fill="#59636e">and an inline <tspan font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" font-size="11.5">config_schema</tspan></text>
+
+    <rect x="300" y="310" width="210" height="184" rx="6" fill="#fff8c5" stroke="#9a6700"/>
+    <text x="312" y="332" font-weight="600">service supervisor</text>
+    <text x="312" y="350" fill="#59636e">in plect serve</text>
+    <text x="312" y="374">validates config against</text>
+    <text x="312" y="391">the executable's schema</text>
+    <text x="312" y="415">an invalid declaration is</text>
+    <text x="312" y="432">logged and skipped; the</text>
+    <text x="312" y="449">valid ones still start</text>
+    <text x="312" y="473" fill="#59636e">restart: on-failure | never</text>
+    <line x1="244" y1="360" x2="298" y2="360" stroke="#1f2328" stroke-width="1.5" marker-end="url(#arrow)"/>
+    <text x="271" y="353" text-anchor="middle" font-size="11">declares</text>
+    <line x1="244" y1="459" x2="298" y2="459" stroke="#1f2328" stroke-width="1.5" marker-end="url(#arrow)"/>
+    <text x="271" y="452" text-anchor="middle" font-size="11">schema</text>
+
+    <rect x="556" y="310" width="290" height="184" rx="6" fill="#fff8c5" stroke="#9a6700"/>
+    <text x="568" y="332" font-weight="600">service process</text>
+    <text x="568" y="352" fill="#59636e">env: only</text>
+    <text x="568" y="369" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" font-size="11.5">env_file + PLECT_DATA_DIR</text>
+    <text x="568" y="385" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" font-size="11.5">+ PLECT_CACHE_DIR</text>
+    <line x1="556" y1="397" x2="846" y2="397" stroke="#d4a72c"/>
+    <text x="568" y="416" fill="#59636e">stdin: <tspan fill="#1f2328">config, subscriptions snapshot,</tspan></text>
+    <text x="568" y="433">then deltas; published / error</text>
+    <text x="568" y="452" fill="#59636e">stdout: <tspan fill="#1f2328" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" font-size="11.5">publish {id, resource, …}</tspan></text>
+    <text x="568" y="471" fill="#59636e">stderr: <tspan fill="#1f2328">plect log</tspan></text>
+    <line x1="510" y1="402" x2="554" y2="402" stroke="#1f2328" stroke-width="1.5" marker-start="url(#arrow)" marker-end="url(#arrow)"/>
+    <text x="532" y="395" text-anchor="middle" font-size="11">stdio</text>
+
+    <rect x="300" y="524" width="210" height="50" rx="6" fill="#f6f8fa" stroke="#8c959f"/>
+    <text x="312" y="544" font-weight="600">core subscriptions</text>
+    <text x="312" y="562" fill="#59636e">table and resource publish</text>
+    <line x1="405" y1="522" x2="405" y2="496" stroke="#1f2328" stroke-width="1.5" marker-start="url(#arrow)" marker-end="url(#arrow)"/>
+    <text x="413" y="513" font-size="11">rows · publish</text>
+
+    <rect x="892" y="310" width="304" height="184" rx="6" fill="#fff8c5" stroke="#9a6700"/>
+    <text x="904" y="332" font-weight="600">github-watcher serve</text>
+    <text x="904" y="352">membership from the snapshot</text>
+    <text x="904" y="369">and deltas</text>
+    <text x="904" y="391">publishes over stdout</text>
+    <text x="904" y="413">per-resource watch state in</text>
+    <text x="904" y="430" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" font-size="11.5">PLECT_DATA_DIR</text>
+    <text x="904" y="452">App token and rate budget in</text>
+    <text x="904" y="469" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" font-size="11.5">PLECT_CACHE_DIR</text>
+    <line x1="846" y1="402" x2="890" y2="402" stroke="#1f2328" stroke-width="1.5" marker-end="url(#arrow)"/>
+    <text x="868" y="395" text-anchor="middle" font-size="11">e.g.</text>
+
+    <!-- Actions row -->
+    <rect x="556" y="514" width="290" height="116" rx="6" fill="#fff8c5" stroke="#9a6700"/>
+    <text x="568" y="535" font-weight="600">service-marked executable as an action</text>
+    <text x="568" y="556" fill="#59636e">declared: <tspan fill="#1f2328">+ env_file values and</tspan></text>
+    <text x="568" y="573"><tspan font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" font-size="11.5">service.config</tspan> references</text>
+    <text x="568" y="594" fill="#59636e">undeclared: <tspan fill="#1f2328">runs as a helper</tspan></text>
+    <text x="568" y="611" fill="#59636e">(ADR 2026-11-11)</text>
+
+    <rect x="24" y="584" width="486" height="46" rx="6" fill="#dafbe1" stroke="#1a7f37"/>
+    <text x="36" y="603">every plugin executable invocation gets <tspan font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" font-size="11.5">PLECT_CACHE_DIR</tspan></text>
+    <text x="36" y="620" fill="#59636e">node, channel, hook, population, and resource actions</text>
+    <line x1="510" y1="607" x2="554" y2="607" stroke="#1f2328" stroke-width="1.5" marker-end="url(#arrow)"/>
+
+    <rect x="892" y="514" width="304" height="116" rx="6" fill="#fff8c5" stroke="#9a6700"/>
+    <text x="904" y="535" font-weight="600">github-issue-pr</text>
+    <text x="904" y="556">reads the App token cache from</text>
+    <text x="904" y="573" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" font-size="11.5">PLECT_CACHE_DIR</text>
+    <text x="904" y="594" fill="#59636e">instead of a path under</text>
+    <text x="904" y="611" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" font-size="11.5" fill="#59636e">$XDG_DATA_HOME</text>
+
+    <!-- ===== ALSO ===== -->
+    <rect x="12" y="660" width="1196" height="96" rx="8" fill="none" stroke="#d0d7de"/>
+    <text x="24" y="682" font-weight="600">Also in this PR</text>
+    <rect x="24" y="694" width="500" height="52" rx="5" fill="#dafbe1" stroke="#1a7f37"/>
+    <text x="36" y="714"><tspan font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" font-size="11.5">plect plugin update</tspan> previews changed files and restarts (ADR 2026-11-15)</text>
+    <text x="36" y="733" fill="#59636e">before any build; <tspan font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" font-size="11.5">--dry-run</tspan> changes nothing; <tspan font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" font-size="11.5">--revision &lt;rev&gt;</tspan></text>
+    <rect x="540" y="694" width="330" height="52" rx="5" fill="#fff8c5" stroke="#9a6700"/>
+    <text x="552" y="714"><tspan font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" font-size="11.5">PLECT_CACHE_HOME</tspan> names the cache root</text>
+    <text x="552" y="733" fill="#59636e">catalogs move to <tspan font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" font-size="11.5">&lt;cache-home&gt;/catalogs/</tspan></text>
+    <rect x="886" y="694" width="310" height="52" rx="5" fill="#dafbe1" stroke="#1a7f37"/>
+    <text x="898" y="714">backup-first migration procedure</text>
+    <text x="898" y="733" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" font-size="11.5" fill="#59636e">operator-declared-services.md</text>
+
+    <!-- Legend -->
+    <rect x="24" y="770" width="24" height="16" rx="3" fill="#dafbe1" stroke="#1a7f37"/>
+    <text x="56" y="782">added</text>
+    <rect x="120" y="770" width="24" height="16" rx="3" fill="#fff8c5" stroke="#9a6700"/>
+    <text x="152" y="782">changed</text>
+    <rect x="230" y="770" width="24" height="16" rx="3" fill="#ffebe9" stroke="#cf222e" stroke-dasharray="4 3"/>
+    <text x="262" y="782" fill="#cf222e">removed</text>
+    <rect x="340" y="770" width="24" height="16" rx="3" fill="#f6f8fa" stroke="#8c959f"/>
+    <text x="372" y="782">unchanged</text>
+  </g>
+</svg>

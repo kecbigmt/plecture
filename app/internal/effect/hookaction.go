@@ -12,8 +12,9 @@ import (
 func HookEval(env lang.Roots, mounted []plugins.Mounted, sourcePath string, from lang.Ownership) lang.Eval {
 	bins := config.MountedBins{Mounted: mounted, SourcePath: sourcePath}
 	return lang.Eval{
-		Roots: env,
-		Bin:   func(ref string) (string, error) { return bins.ResolveBin(ref, from) },
+		Roots:      env,
+		Bin:        func(ref string) (string, error) { return bins.ResolveBin(ref, from) },
+		BinRuntime: func(path string) (lang.BinRuntime, error) { return PluginRuntime(path, mounted) },
 	}
 }
 
