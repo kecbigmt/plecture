@@ -195,7 +195,7 @@ the binding is unambiguous.
 
 ### Core subscription and delivery contract
 
-![Runtime, dispatch, task, and node sources write rows into one core subscriptions table; a publish appends once per distinct session and resource and reports the delivered count, and services learn membership from a snapshot and deltas. Plugin-owned registries, subscribe hooks, the delivery lock, and the retry queue are rejected.](assets/2026-11-09-operator-declared-plugin-services-delivery.svg)
+![Runtime, dispatch, task, and node sources write rows into one core subscriptions table; a publish appends once per distinct session and resource and reports the delivered count, and services learn membership from a snapshot and deltas. Plugin-owned registries and subscribe hooks give way to the table, and the delivery lock and retry queue give way to the task-binding transaction.](assets/2026-11-09-operator-declared-plugin-services-delivery.svg)
 
 Core owns a `subscriptions` table keyed by
 `(session_id, resource_id, source)`, with `source` equal to `runtime`,

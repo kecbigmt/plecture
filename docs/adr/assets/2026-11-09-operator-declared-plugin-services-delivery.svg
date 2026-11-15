@@ -1,4 +1,4 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1000 610" width="1000" height="610" role="img" aria-label="Four sources write rows into one core subscriptions table keyed by session, resource and source: plect subscribe writes runtime, plect up writes dispatch, a task binding writes task in the same transaction as the binding, and a starting node writes node. A publish from a service over stdio or from plect event publish appends the event once per distinct session and resource, so three rows for resource r1 across two sessions yield two appends and a delivered count of two. Services learn membership from a snapshot and deltas. Rejected: subscription registries owned by each plugin, and resource subscribe hooks with a delivery lock and retry queue.">
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1000 610" width="1000" height="610" role="img" aria-label="Four sources write rows into one core subscriptions table keyed by session, resource and source: plect subscribe writes runtime, plect up writes dispatch, a task binding writes task in the same transaction as the binding, and a starting node writes node. A publish from a service over stdio or from plect event publish appends the event once per distinct session and resource, so three rows for resource r1 across two sessions yield two appends and a delivered count of two. Services learn membership from a snapshot and deltas. Rejected: subscription registries owned by each plugin and resource subscribe hooks, both replaced by the table, and the delivery lock and retry queue, replaced by the transaction that binds or cleans up a task.">
   <defs>
     <marker id="arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
       <path d="M0,0 L10,5 L0,10 z" fill="#1f2328"/>
@@ -104,14 +104,17 @@
     <rect x="510" y="508" width="150" height="44" rx="6" fill="#f6f8fa" stroke="#8c959f"/>
     <text x="585" y="535" text-anchor="middle">S2 event log</text>
 
-    <!-- Rejected: hooks, lock, retry queue -->
-    <rect x="24" y="390" width="250" height="88" rx="6" fill="#ffebe9" stroke="#cf222e" stroke-dasharray="6 4"/>
-    <text x="36" y="413" fill="#cf222e" font-weight="600">✗ resource subscribe/unsubscribe</text>
-    <text x="36" y="431" fill="#cf222e" font-weight="600">   hooks, delivery lock,</text>
-    <text x="36" y="449" fill="#cf222e" font-weight="600">   subscription_retries</text>
-    <text x="36" y="469" fill="#59636e">replaced by one DB transaction</text>
-    <line x1="274" y1="420" x2="338" y2="334" stroke="#cf222e" stroke-width="1.5" stroke-dasharray="6 4" marker-end="url(#arrow-red)"/>
+    <!-- Rejected: hooks (replaced by the table); lock and retry queue (replaced by the transaction) -->
+    <rect x="24" y="380" width="250" height="56" rx="6" fill="#ffebe9" stroke="#cf222e" stroke-dasharray="6 4"/>
+    <text x="36" y="402" fill="#cf222e" font-weight="600">✗ subscribe / unsubscribe hooks</text>
+    <text x="36" y="422" fill="#59636e">removed; the table is the authority</text>
+    <line x1="274" y1="400" x2="338" y2="334" stroke="#cf222e" stroke-width="1.5" stroke-dasharray="6 4" marker-end="url(#arrow-red)"/>
     <text x="296" y="372" fill="#cf222e" text-anchor="end">✗ replaced by the table</text>
+
+    <rect x="24" y="452" width="250" height="56" rx="6" fill="#ffebe9" stroke="#cf222e" stroke-dasharray="6 4"/>
+    <text x="36" y="474" fill="#cf222e" font-weight="600">✗ delivery lock, subscription_retries</text>
+    <text x="36" y="494" fill="#59636e">replaced by the task-binding transaction</text>
+    <polyline points="24,480 12,480 12,240 22,240" fill="none" stroke="#cf222e" stroke-width="1.5" stroke-dasharray="6 4" marker-end="url(#arrow-red)"/>
 
     <!-- Legend -->
     <line x1="24" y1="586" x2="64" y2="586" stroke="#1f2328" stroke-width="1.5"/>
