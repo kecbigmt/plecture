@@ -11,15 +11,14 @@ supersedes:
 Plugin-owned `[[services]]` declarations start resident processes when a plugin
 is enabled. The supervisor passes its environment to every child, exposing
 unrelated credentials. A plugin update can replace running service code even
-though the operator never declared that service. Slack and GitHub plugins also
+though the operator never declared that service. Some plugins also
 keep separate subscription registries, sweep logic, and event fan-out. Core
 already manages node subscriptions and subscription retries, so these stores
 answer the same lifecycle question in different places.
 
-A deployment can run one dispatcher for mentions of a bot and create review
-sessions for matching GitHub pull requests. It can use several Slack bots.
-The subscription and delivery contract must serve these without making a
-service's private state an authority over session membership.
+A deployment can run standing and per-resource sessions alongside one or more
+resident services. The subscription and delivery contract must serve these
+without making a service's private state an authority over session membership.
 
 ### Local transport threat model
 
@@ -63,8 +62,7 @@ marked `service = true`, an `env_file`, and optional `args`, `restart`,
 `health`, and non-secret `[services.config]`. A service name starts with a
 lowercase ASCII letter, contains only lowercase letters, digits, and hyphens,
 and is at most 64 characters. Names are unique across service files. Two
-services naming the same executable are a load error. One Slack service holds
-several bot declarations instead of running an adapter process per bot.
+services naming the same executable are a load error.
 
 `env_file` is an absolute path to an owner-readable file of `KEY=VALUE` lines.
 Blank and `#` comment lines are ignored; duplicate or invalid keys, malformed
@@ -138,14 +136,15 @@ channel_id = "C0456"
 allowed_user_ids = ["U0456"]
 ```
 
-The adapter rejects duplicate `channel_id` values across its bots, so an
-outbound call selects one bot from the thread's channel. Plect supplies
-`PLECT_DATA_DIR` to the supervised service process only, set to the mode-`0700`
+This example illustrates the declaration shape. The plugin-specific bot
+semantics belong to [the Slack plugin decision](2026-11-15-slack-plugin-delivery.md).
+
+Plect supplies `PLECT_DATA_DIR` to the supervised service process only, set to the mode-`0700`
 `<data-home>/plugins/<plugin>/` directory. The data home resolves from
 `--data-home`, then `PLECT_DATA_HOME`, then `$XDG_DATA_HOME/plect`, then
-`~/.local/share/plect`. The directory holds authoritative service state such
-as GitHub per-resource last-seen state and Slack once-per-thread denial
-records. Actions never receive it. The service needs this directory because it
+`~/.local/share/plect`. The directory holds authoritative service state;
+per-resource watch positions are one example. Actions never receive it.
+The service needs this directory because it
 does not inherit the supervisor's environment. Plect does not rewrite any
 `XDG_*` values supplied by the service's env file. It receives no global
 data- or config-home path and never invokes the plect CLI. Plugins receive
@@ -163,8 +162,7 @@ only disposable data such as tokens, ETags, and rate backoff; correctness cannot
 depend on it. Plect never reads its contents and may delete it wholesale on a
 plugin update or cleanup. Plugins own their cache locking. Core subscription
 membership and the service's authoritative per-resource watch state are never
-shared through the cache. The GitHub watcher and standalone `observe` share an
-App token cache and rate budget there.
+shared through the cache.
 
 The first message plect writes to a service's stdin is
 `{"op":"config","config":{...}}`, carrying the validated non-secret
@@ -191,9 +189,7 @@ An action invocation keeps its ordinary action environment, then overlays the
 service's env-file values; the service values win on duplicate keys. An action
 invoking a service-marked executable without a declaration fails with an
 error naming the executable. Since one executable can name only one service,
-the binding is unambiguous. Slack thread creation, posts, status, and
-streaming call the provider Web API directly using these credentials;
-workflow `base_url` inputs are removed.
+the binding is unambiguous.
 
 ### Core subscription and delivery contract
 
@@ -238,94 +234,11 @@ and report the delivered session count. A failed append is reported, not
 treated as zero delivery. Core is provider-neutral: it stores resource
 identifiers and session references, then fans out events.
 
-The Slack bot user is a resource named `slack://<team_id>/<bot_user_id>`. Its
-`max_subscribers` is 1. Bringing up a session with this entry resource writes
-its `dispatch` row; a session with another entry resource can use
-`plect subscribe slack://T0123/U0123` to write a `runtime` row. Both persist
-while the session is down. Mentions use `user.emit`, so no channel `include`
-change or workflow-level `subscription` field is needed. These resource
-definitions show the relevant contract; their `observe` actions retain the
-ordinary resource
-status surface:
-
-```toml
-[slack_bot_user]
-kind = "resource"
-match = '^slack://(?P<team_id>[A-Z0-9]+)/(?P<bot_user_id>[A-Z0-9]+)$'
-name = { expr = "'slack-bot/' + match.team_id + '-' + match.bot_user_id" }
-max_subscribers = 1
-
-[slack_bot_user.observe]
-type = "exec"
-bin = "slack-adapter"
-args = ["resource", "observe", "--resource", { from = "resource.id" }]
-```
-
-```toml
-[slack_thread]
-kind = "resource"
-match = '^https://[A-Za-z0-9.-]+\.slack\.com/archives/(?P<channel_id>[A-Z0-9]+)/p(?P<ts16>\d{16})$'
-name = { expr = "'slack/' + match.channel_id + '-' + match.ts16" }
-
-[slack_thread.observe]
-type = "exec"
-bin = "slack-adapter"
-args = ["resource", "observe", "--resource", { from = "resource.id" }]
-```
-
-For a message that passes that bot's user and channel allow check, the adapter
-publishes `user.emit` to the thread resource through stdio. A positive
-delivered count ends routing. On zero delivery it publishes to the bot-user
-resource; zero delivery there drops the mention with a log line naming the
-channel, thread, and reason. Denial replies come from the adapter before
-routing. There is no population routing step.
-
-### Workflows and populations
-
-An orchestrator may use the bot user as its entry resource; a separately
-created worker may use a Slack thread. Bringing either up writes its
-`dispatch` subscription:
-
-```toml
-[orchestrator]
-kind = "workflow"
-resource = "slack_bot_user"
-
-[thread_worker]
-kind = "workflow"
-resource = "slack_thread"
-```
-
-Populations retain their query `uses` (`poll` or `subscribe`) and `[query]`
-contract. A GitHub poll population still creates review sessions for labeled
-pull requests:
-
-```toml
-[pull_review]
-kind = "workflow"
-resource = "pull_request"
-
-[[pull_review.populations]]
-name = "labeled_pulls"
-uses = ["poll"]
-poll_every = "5m"
-
-[pull_review.populations.query]
-repositories = ["example/project"]
-labels = ["agent-review"]
-state = "open"
-draft = false
-```
-
-The Slack thread resource's `query.subscribe` and the adapter's
-`/unbound-mentions` and `subscribe unbound-mentions` paths are removed.
-Creating a session for every new mention thread is deferred until a concrete
-use case calls for it. The GitHub watcher learns subscription membership from
-the stdio startup snapshot and deltas and keeps per-resource watch state in
-`PLECT_DATA_DIR`; it no longer owns `subscriptions.json`.
-Standalone GitHub `observe` remains callable without a watcher service and
-uses its own credentials. Both invocations share disposable App token and rate
-budget caches through `PLECT_CACHE_DIR`.
+The subscription contract supports both standing and per-resource sessions.
+Populations retain their existing query `uses` (`poll` or `subscribe`) and
+`[query]` contract. [The Slack plugin decision](2026-11-15-slack-plugin-delivery.md)
+shows how an adapter uses resource-addressed delivery and how its resource
+and workflow definitions use these subscriptions.
 
 ### Service listing and scope
 
@@ -340,34 +253,27 @@ slack  official/slack/slack-adapter       running    4102   0
        official/github/github-watcher     available
 ```
 
-`channel-server` remains a per-session MCP subprocess launched by Claude
-Code. It has no resident service declaration.
-
 ## Consequences
 
 The implementation has one stage: the core subscription table, transactional
 task binding and cleanup, source-scoped rows and deduplicated delivery,
 resource-addressed publish, `max_subscribers`, the stdio service protocol,
-service-config passing, plugin-scoped authoritative data and disposable cache
-directories, the one-process Slack adapter, and the bot-user resource arrive
-together with removal of the Slack
-unbound-mention feed. Populations retain their existing contract.
+service-config passing, and plugin-scoped authoritative data and disposable
+cache directories arrive together. Populations retain their existing contract.
+The [Slack plugin decision](2026-11-15-slack-plugin-delivery.md) records the
+adapter changes in this stage.
 
 The implementation removes plugin-owned service declarations, resource
-subscription hooks, the delivery lock and retry queue, Slack subscriber and
-instance registries, the #742 `--state-dir` split and bot-scoped `mentions`
-resource, and GitHub
-`subscriptions.json`. It adds schema and conformance fixtures and behavior
-tests for overlapping task, dispatch, runtime, and node sources, concurrent
-task setup and cleanup, subscriber limits, persistence, delivery once per
-session/resource, stdio snapshots and deltas, service config on every
-invocation, cache isolation and reuse, request/reply correlation and errors,
-and failure paths. The breaking change ships with a backup-first procedure in
-`docs/migrations/`. Its one-time migration maps existing GitHub watcher
-`subscriptions.json` rows, Slack adapter `subscribers.json` rows,
-`subscription_retries`, and `pending_delivery.json` into the new subscription
-table, or drops a row with a logged reason. It ships in the same implementation
-PR; there is no compatibility shim.
+subscription hooks, and the delivery lock and retry queue. Plugin-owned
+subscription ledgers move into the core table. It adds schema and conformance
+fixtures and behavior tests for overlapping task, dispatch, runtime, and node
+sources, concurrent task setup and cleanup, subscriber limits, persistence,
+delivery once per session/resource, stdio snapshots and deltas, service config
+on every invocation, cache isolation and reuse, request/reply correlation and
+errors, and failure paths. The breaking change ships with a backup-first
+procedure in `docs/migrations/` in the same implementation PR. Its one-time
+migration maps existing subscription and pending-delivery records into the new
+table or drops a row with a logged reason; there is no compatibility shim.
 
 `PLECT_CACHE_HOME` and `--cache-home` name plect's cache root, with catalog
 snapshots under its `catalogs/` child and disposable plugin caches under
@@ -378,20 +284,8 @@ No compatibility path interprets the old value.
 
 ## Alternatives considered
 
-### Separate Slack adapter processes per bot
-
-Separate processes do not isolate secrets from code running under the same OS
-user. One service configuration with multiple bot entries removes duplicated
-process and registry state.
-
 ### Service-owned subscription registries
 
-Separate registries in Slack and GitHub require each plugin to maintain its
-own membership, cleanup, and fan-out while core already manages session
-lifecycle. The core table supplies one durable authority.
-
-### Resident channel-server
-
-The channel-server connection and permission nonce state belongs to one
-Claude Code session. A resident instance would need a separate multiplexing
-contract and would not reproduce that session's MCP lifecycle.
+Plugin-owned registries require each plugin to maintain its own membership,
+cleanup, and fan-out while core already manages session lifecycle. The core
+table supplies one durable authority.
