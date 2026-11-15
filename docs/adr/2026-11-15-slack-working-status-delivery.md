@@ -22,7 +22,7 @@ This decision replaces only the streaming part of
 
 ## Decision
 
-![A status message starts Slack's working display. A complete reply is posted in one action, which clears the status after a successful post. An empty status message also clears the display when a turn ends without a reply. Live delta streaming through the resident service is deferred.](assets/2026-11-15-slack-working-status-delivery.svg)
+![A nonempty status message starts Slack's working display. A complete reply is posted in one action, which clears the status after a successful post. An empty status message clears the display at turn end, including turns with no reply. Streaming deltas by calling the Slack Web API from each action is superseded, and live streaming through the resident service is deferred.](assets/2026-11-15-slack-working-status-delivery.svg)
 
 The `stream` channel posts one complete `plect.message` as a thread reply.
 Nonempty `plect.status_message` events set Slack's assistant status to
