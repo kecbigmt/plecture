@@ -61,6 +61,11 @@ lifecycle follows [the down and sleep decision](2026-11-04-down-and-sleep.md).
   turn.
 - Automatic sleep releases `max_up_children` capacity and keeps the existing
   inbound wake behavior.
+- An inbound that wakes a slept session but is not delivered to the worker
+  because its type is outside the runtime channel's `include` or it has no
+  text starts a run with no completed turn. The session holds its
+  `max_up_children` slot and does not sleep again until a delivered event
+  produces a turn and a fresh clear that starts a new idle-sleep wait.
 - Directly created top-level sessions stay up even when their workflow declares
   an idle-sleep duration; parented and population-admitted sessions use it.
 - No storage schema change or data migration is required.
