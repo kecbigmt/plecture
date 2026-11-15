@@ -1,13 +1,14 @@
 # The generic Resource contract applied to a GitHub issue, callable standalone
 # via `plect resource status` outside any one task instance.
 #
-# An issue-keyed session tracks its LINKED pull request once one exists
-# (found through the issue's closing references), so checks_status
-# becomes that pull request's rollup and revision its head SHA. Judges thus
-# re-pend on code changes rather than on issue-metadata edits, and a chain
-# gated on checks SUCCESS can never fire before the pull request is up and
-# green. Discovery failures degrade to the no-pull-request shape rather than
-# failing the observation; issue_status still gates.
+# An issue-keyed session tracks its LINKED pull request once one exists, so
+# checks_status becomes that pull request's rollup and revision its head SHA:
+# a chain gated on checks SUCCESS never fires before the pull request is green.
+#
+# A same-repository pull request is a candidate when GitHub lists it as closing
+# the issue (default-branch pull requests only), when its description says
+# `Closes #N` (any base branch), or when its head is `issue/<number>`. Ranking:
+# open first; closing reference, keyword, branch; latest update; highest number.
 
 [issue]
 kind  = "resource"

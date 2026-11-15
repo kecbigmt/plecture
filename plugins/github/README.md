@@ -18,6 +18,15 @@ service. The watcher and observation helpers share App token and rate budget
 caches through `PLECT_CACHE_DIR`. Pull-request query populations use their
 declared poll and subscribe means.
 
+An issue observation links a pull request in the same repository that GitHub
+lists as closing the issue, whose description closes it with a closing keyword
+(`Closes #N`, `Fixes owner/repo#N`, ...) whatever branch it targets, or whose
+head is the default `issue/<number>` branch. `resources/issue.toml` states how
+one is chosen among several. The observation sees only the issue, not a
+session, so a pull request on a custom `issue_branch_template` branch or a
+tagged session's branch (`issue/<number>+<tag>`) is linked only when its
+description closes the issue; without one it stays unlinked.
+
 ## Contents
 
 - `plugin.toml` — declares the executables this plugin builds or ships:
