@@ -18,6 +18,8 @@ decisions.
 
 ## Decision
 
+![The empty status a runtime writes at turn end is the one idle fact. The idle-sleep deadline starts at that status in the current run and elapses after sleep_after_idle with no newer inbound; dispatched sessions then sleep and release capacity, while operator-created top-level sessions, sessions with no completed turn, and workflows without the duration never sleep automatically. The resume decision reads the previous run's last status before setup and ignores the waking inbound: an empty status suppresses plect.session.resumed, while a nonempty status or a runtime that never writes status keeps it. The PR #574 draft's idle_down_after is superseded; its destroy policy and population field removals are not taken over.](assets/2026-11-16-empty-status-idle-sleep-decision.svg)
+
 The workflow's optional `[<id>.session].sleep_after_idle` is a positive
 duration. A resident sweep sleeps an up session when its latest status is an
 explicit clear written after the current run began, no inbound event is
