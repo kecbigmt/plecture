@@ -6,6 +6,14 @@ plugin subscription ledgers as delivery authorities. Stop plect, its services,
 and plugin daemons before starting. Keep them stopped until verification is
 complete.
 
+Install the new binary, update any explicit cache-home override, and update
+the lock for every enabled plugin to a schema 3 manifest before running the
+importer. The importer resolves resources through plect's loaded plugin
+configuration. Declare the replacement services and start plect only after
+the import and the remaining configuration changes are complete. See
+[operator-declared services](operator-declared-services.md) and
+[Slack multi-bot service](slack-multi-bot-service.md).
+
 ## Backup and manifest
 
 Record the data home and the paths to every existing GitHub watcher
@@ -28,10 +36,9 @@ Record the data home and the paths to every existing GitHub watcher
 Include one Slack entry per adapter state directory. The team, bot, and
 workspace host identify mention and thread resources: the old ledger stores
 only the channel and thread timestamp. Mention memberships resolve to the
-`slack://<team>/<bot>` bot-user declaration supplied by the Slack adapter
-change stacked on this PR. That declaration owns their type, name, and
-subscriber limit. Apply the coordinated adapter change before running this
-migration. Use empty arrays when no ledger exists.
+`slack://<team>/<bot>` bot-user declaration supplied by the updated Slack
+plugin. That declaration owns their type, name, and subscriber limit. Use
+empty arrays when no ledger exists.
 
 Run the one-time importer from a checkout of this release, with the installed
 `plect` binary available on `PATH`:

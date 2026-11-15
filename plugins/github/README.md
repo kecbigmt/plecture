@@ -13,6 +13,13 @@ rollup, and linked-PR discovery.
 The supervised GitHub watcher receives core subscription membership through a
 stdio snapshot at startup and subsequent deltas. It keeps per-resource watch
 state in its service-only `PLECT_DATA_DIR`. Core owns the subscription ledger.
+
+For a v0.4.0 upgrade, the old baseline is inside the watcher's
+`subscriptions.json`, not a separate watch-state file. Follow the
+[watcher state migration](../../docs/migrations/github-watcher-state.md) before
+starting the new service to retain that baseline; the core subscription
+importer moves membership separately.
+
 Standalone issue and pull-request `observe` actions run without the watcher
 service. The watcher and observation helpers share App token and rate budget
 caches through `PLECT_CACHE_DIR`. Pull-request query populations use their
