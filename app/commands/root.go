@@ -64,6 +64,9 @@ identifier no resolver matches selects a workflow explicitly (see
 			// first would refuse before that flag ever took effect.
 			return nil
 		}
+		if cmd == pluginUpdateCmd && pluginUpdateDryRun {
+			return nil
+		}
 		if cmd == storageImportCmd {
 			// legacyimport.Run targets a directory with no live database yet
 			// (often the same default path this hook would otherwise touch)

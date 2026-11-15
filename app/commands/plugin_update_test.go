@@ -39,8 +39,10 @@ func TestWritePluginUpdatePreviewGroupsFilesByKind(t *testing.T) {
 func TestPluginUpdateDryRunShowsChangesWithoutChangingLock(t *testing.T) {
 	t.Setenv("HOME", t.TempDir())
 	configHome, cacheHome := t.TempDir(), t.TempDir()
+	dataHome := t.TempDir()
 	t.Setenv("PLECT_CONFIG_HOME", configHome)
 	t.Setenv("PLECT_CACHE_HOME", cacheHome)
+	t.Setenv("PLECT_DATA_HOME", dataHome)
 	t.Cleanup(func() { pluginUpdateDryRun = false; dataHomeFlag = "" })
 	paths := service.PluginPaths{
 		CatalogsPath: filepath.Join(configHome, "catalogs.toml"),
@@ -76,7 +78,7 @@ func TestPluginUpdateDryRunShowsChangesWithoutChangingLock(t *testing.T) {
 	if err := os.WriteFile(filepath.Join(pluginDir, "README.md"), []byte("Updated.\n"), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	out, err := execRoot(t, "--data-home", t.TempDir(), "plugin", "update", "local/work", "--dry-run")
+	out, err := execRoot(t, "--data-home", dataHome, "plugin", "update", "local/work", "--dry-run")
 	if err != nil {
 		t.Fatalf("plugin update --dry-run: %v\n%s", err, out)
 	}
@@ -91,5 +93,12 @@ func TestPluginUpdateDryRunShowsChangesWithoutChangingLock(t *testing.T) {
 	}
 	if string(before) != string(after) {
 		t.Fatal("plugin update --dry-run changed plect.lock")
+	}
+	files, err := os.ReadDir(dataHome)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(files) != 0 {
+		t.Fatalf("plugin update --dry-run wrote data-home files: %v", files)
 	}
 }

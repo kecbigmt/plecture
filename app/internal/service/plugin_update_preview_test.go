@@ -111,6 +111,13 @@ func TestPluginUpdateReportsBeforeBuildAndDryRunDoesNotApply(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	updatedBytes, err := os.ReadFile(paths.LockfilePath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if reflect.DeepEqual(lockBefore, updatedBytes) {
+		t.Fatal("update did not change plect.lock")
+	}
 	entry, _ := lockAfterUpdate.FindPlugin("local/work")
 	if entry.ContentHash == "" {
 		t.Fatal("update did not persist plugin content hash")
