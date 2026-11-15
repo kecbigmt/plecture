@@ -31,6 +31,9 @@ binding. `plect up` may omit it, creating an environment a person may use.
 `plect up --task <task>` binds the entry identifier unless `--task-resource`
 names another concrete resource; an incompatible selection fails before the
 session is created. The task becomes the session's `initial` instance.
+The binding records a `task` subscription to that resource until the last
+bound task instance in the session is cleaned up. It coexists with an entry
+resource's `dispatch` subscription.
 Repeating the same selection keeps that instance, and a different selection
 fails until the existing instance is cleaned.
 Chains and populations use the same one-task selection surface, not a workflow
@@ -52,15 +55,12 @@ lifecycle.
 A node may declare `subscription = { from = "self.outputs.<key>" }` to bind
 its session to the resource identifier produced at that output. This is a
 single projection, separate from the node's setup inputs; it reads no other
-node or value root and supplies an empty resource action input object. After
-setup produces the node, core persists the identifier and runs the matching
-resource's `subscribe` action. After successful cleanup, core runs its
-`unsubscribe` action when no entry resource, task, or other live node still
-needs that identifier. A failed subscription is queued for retry. A resource
-requiring action inputs cannot be bound this way: an identifier known at load
-time causes a load error, and a runtime identifier reports a subscription
-failure. Omitting `subscription` leaves the node's output available without
-binding delivery.
+node or value root. After setup produces the node, core stores a subscription
+row with source `node`. After cleanup, core removes it when no other live node
+in that session binds the same resource. A `dispatch`, `task`, or `runtime` row
+remains independent. Admission fails if the
+resource's `max_subscribers` bound is reached. Omitting `subscription` leaves
+the node's output available without binding delivery.
 
 Changing only `subscription` in a workflow revision follows the ordinary
 node-change classification: a session-scoped node requires recreation and a

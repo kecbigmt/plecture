@@ -1,8 +1,9 @@
 # Actions
 
 An action is a lifecycle execution: an effect's `setup` or `cleanup`, a health
-or terminal probe, a resource's `observe`, `finalize`, `subscribe`, or
-`unsubscribe`, and a channel's delivery.
+or terminal probe, a resource's `observe` or `finalize`, a resource query's
+`poll` or `subscribe`, and a channel's delivery. Core manages resource
+subscriptions without resource subscribe/unsubscribe actions.
 
 Every action declares a `type`: `exec` and `shell` everywhere, and `noop`,
 legal only under `[health.alive]`.
@@ -46,6 +47,10 @@ assignees = { type = "string" }
 
 `args` elements are values: literals, projections, computations, JSON
 serializations, or capability tags.
+When `bin` names a service-marked executable, an explicit argument may read
+its validated non-secret config with `{ from = "service.config" }` or a
+declared sub-path. Plect supplies no config environment variable. The same
+projection is available in `stdin` and shell `bind` values for that executable.
 
 `stdin` writes one value to the process's standard input instead of its argv.
 It exists for data that must not be visible in the process table, and for data

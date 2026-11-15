@@ -1,5 +1,7 @@
 ---
-superseded_by: 2026-08-17-plugin-boundary-contracts
+superseded_by:
+  - 2026-08-17-plugin-boundary-contracts
+  - 2026-11-09-operator-declared-plugin-services
 ---
 
 # Plugin service lifecycle

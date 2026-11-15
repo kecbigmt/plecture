@@ -1,0 +1,131 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1080 600" width="1080" height="600" role="img" aria-label="One slack-adapter service checks each mention against its bot's allowed users and channel and replies to a denied mention. An allowed mention is published as user.emit to the thread resource; core delivers it to the thread's subscribers and returns the delivered count. When none received it, the adapter publishes to the bot-user resource, whose single subscriber is the orchestrator session. When that also delivers to none, the adapter drops the mention with a log line. Rejected: an unbound-mention feed and a separate adapter process per bot. Creating a session per new mention thread is deferred. The Claude Code channel-server stays a per-session MCP subprocess rather than a resident service.">
+  <defs>
+    <marker id="arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M0,0 L10,5 L0,10 z" fill="#1f2328"/>
+    </marker>
+    <marker id="arrow-red" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M0,0 L10,5 L0,10 z" fill="#cf222e"/>
+    </marker>
+  </defs>
+  <rect x="0" y="0" width="1080" height="600" fill="#ffffff"/>
+  <g font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="12" fill="#1f2328">
+    <text x="24" y="32" font-size="15" font-weight="600">Mention routing: thread subscriber, then bot subscriber, then drop</text>
+
+    <g transform="translate(0,-40)">
+    <!-- Rejected ghost: one adapter process per bot -->
+    <rect x="137" y="114" width="360" height="400" rx="8" fill="none" stroke="#cf222e" stroke-dasharray="6 4"/>
+
+    <!-- Lanes -->
+    <rect x="24" y="128" width="90" height="372" rx="6" fill="#f6f8fa" stroke="#8c959f"/>
+    <text x="69" y="152" text-anchor="middle" font-weight="600">Slack</text>
+
+    <rect x="134" y="104" width="366" height="400" rx="8" fill="#ffffff" stroke="#8c959f"/>
+    <text x="146" y="124" font-weight="600">slack-adapter · one service</text>
+    <text x="146" y="141" fill="#59636e">bots[] from the first stdio config message</text>
+
+    <rect x="520" y="104" width="270" height="400" rx="8" fill="#ddf4ff" stroke="#0969da" stroke-width="1.5"/>
+    <text x="532" y="124" font-weight="600">plect core</text>
+    <text x="532" y="141" fill="#59636e">resource-addressed publish</text>
+
+    <rect x="810" y="104" width="246" height="400" rx="8" fill="#ffffff" stroke="#8c959f"/>
+    <text x="822" y="124" font-weight="600">sessions</text>
+    <text x="822" y="141" fill="#59636e">receive user.emit</text>
+
+    <!-- Slack <-> allow check -->
+    <line x1="114" y1="178" x2="198" y2="178" stroke="#1f2328" stroke-width="1.5" marker-end="url(#arrow)"/>
+    <text x="140" y="171">mention</text>
+    <line x1="200" y1="196" x2="116" y2="196" stroke="#1f2328" stroke-width="1.5" marker-end="url(#arrow)"/>
+    <text x="140" y="226">denial reply</text>
+
+    <!-- Step 1 -->
+    <rect x="200" y="160" width="220" height="50" rx="6" fill="#f6f8fa" stroke="#8c959f"/>
+    <text x="212" y="181" font-weight="600">allow check</text>
+    <text x="212" y="199" fill="#59636e">bot's allowed users and channel</text>
+    <line x1="310" y1="210" x2="310" y2="248" stroke="#1f2328" stroke-width="1.5" marker-end="url(#arrow)"/>
+    <text x="318" y="234">allowed</text>
+
+    <!-- Step 2: thread -->
+    <rect x="200" y="250" width="220" height="62" rx="6" fill="#f6f8fa" stroke="#8c959f"/>
+    <text x="212" y="270" font-weight="600">publish user.emit</text>
+    <text x="212" y="288" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" font-size="11.5">resource = thread URL</text>
+    <text x="212" y="304" fill="#59636e">stop if delivered ≥ 1</text>
+    <line x1="422" y1="281" x2="534" y2="281" stroke="#1f2328" stroke-width="1.5" marker-start="url(#arrow)" marker-end="url(#arrow)"/>
+    <text x="494" y="273" text-anchor="end">delivered: N</text>
+
+    <rect x="536" y="250" width="238" height="62" rx="6" fill="#ffffff" stroke="#0969da"/>
+    <text x="548" y="270" font-weight="600">thread resource</text>
+    <text x="548" y="288" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" font-size="11.5">https://…/archives/C…/p…</text>
+    <text x="548" y="304" fill="#59636e">subscribers from any source row</text>
+    <line x1="774" y1="281" x2="826" y2="281" stroke="#1f2328" stroke-width="1.5" marker-end="url(#arrow)"/>
+
+    <rect x="828" y="257" width="212" height="48" rx="6" fill="#f6f8fa" stroke="#8c959f"/>
+    <text x="840" y="277" font-weight="600">thread_worker session</text>
+    <text x="840" y="295" fill="#59636e">entry resource: the thread</text>
+
+    <line x1="310" y1="312" x2="310" y2="348" stroke="#1f2328" stroke-width="1.5" marker-end="url(#arrow)"/>
+    <text x="318" y="335">delivered 0</text>
+
+    <!-- Step 3: bot user -->
+    <rect x="200" y="350" width="220" height="62" rx="6" fill="#f6f8fa" stroke="#8c959f"/>
+    <text x="212" y="370" font-weight="600">publish user.emit</text>
+    <text x="212" y="388" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" font-size="11.5">resource = slack://T/U</text>
+    <text x="212" y="404" fill="#59636e">stop if delivered ≥ 1</text>
+    <line x1="422" y1="381" x2="534" y2="381" stroke="#1f2328" stroke-width="1.5" marker-start="url(#arrow)" marker-end="url(#arrow)"/>
+    <text x="494" y="373" text-anchor="end">delivered: N</text>
+
+    <rect x="536" y="350" width="238" height="62" rx="6" fill="#ffffff" stroke="#0969da"/>
+    <text x="548" y="370" font-weight="600">bot-user resource</text>
+    <text x="548" y="388" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" font-size="11.5">slack://&lt;team_id&gt;/&lt;bot_user_id&gt;</text>
+    <text x="548" y="404" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" font-size="11.5">max_subscribers = 1</text>
+    <line x1="774" y1="381" x2="826" y2="381" stroke="#1f2328" stroke-width="1.5" marker-end="url(#arrow)"/>
+
+    <rect x="828" y="357" width="212" height="48" rx="6" fill="#f6f8fa" stroke="#8c959f"/>
+    <text x="840" y="377" font-weight="600">orchestrator session</text>
+    <text x="840" y="395" fill="#59636e">dispatch or runtime row</text>
+
+    <line x1="310" y1="412" x2="310" y2="438" stroke="#1f2328" stroke-width="1.5" marker-end="url(#arrow)"/>
+    <text x="318" y="430">delivered 0</text>
+
+    <!-- Step 4: drop -->
+    <rect x="200" y="440" width="220" height="50" rx="6" fill="#f6f8fa" stroke="#8c959f"/>
+    <text x="212" y="461" font-weight="600">drop</text>
+    <text x="212" y="479" fill="#59636e">log: channel, thread, reason</text>
+
+    <!-- Rejected: population feed -->
+    <line x1="422" y1="465" x2="534" y2="465" stroke="#cf222e" stroke-width="1.5" stroke-dasharray="6 4" marker-end="url(#arrow-red)"/>
+    <text x="494" y="457" text-anchor="end" fill="#cf222e">✗ feed step</text>
+    <rect x="536" y="440" width="238" height="50" rx="6" fill="#ffebe9" stroke="#cf222e" stroke-dasharray="6 4"/>
+    <text x="548" y="461" fill="#cf222e" font-weight="600">✗ unbound-mention feed</text>
+    <text x="548" y="479" fill="#59636e">/unbound-mentions, query.subscribe</text>
+    <line x1="774" y1="465" x2="826" y2="465" stroke="#59636e" stroke-width="1.5" stroke-dasharray="2 3"/>
+    <rect x="828" y="440" width="212" height="50" rx="6" fill="#ffffff" stroke="#59636e" stroke-dasharray="2 3"/>
+    <text x="840" y="461" fill="#59636e" font-weight="600">deferred: session per new thread</text>
+    <text x="840" y="479" fill="#59636e">until a concrete use case exists</text>
+
+    <!-- Channel-server: per-session subprocess, resident service rejected -->
+    <line x1="934" y1="504" x2="934" y2="542" stroke="#1f2328" stroke-width="1.5" marker-end="url(#arrow)"/>
+    <text x="942" y="528">starts one per session</text>
+    <rect x="828" y="544" width="212" height="44" rx="6" fill="#f6f8fa" stroke="#8c959f"/>
+    <text x="840" y="563" font-weight="600">channel-server</text>
+    <text x="840" y="580" fill="#59636e">per-session MCP subprocess</text>
+    <line x1="655" y1="504" x2="655" y2="542" stroke="#cf222e" stroke-width="1.5" stroke-dasharray="6 4" marker-end="url(#arrow-red)"/>
+    <text x="663" y="528" fill="#cf222e">✗ supervises</text>
+    <rect x="560" y="544" width="230" height="44" rx="6" fill="#ffebe9" stroke="#cf222e" stroke-dasharray="6 4"/>
+    <text x="572" y="563" fill="#cf222e" font-weight="600">✗ resident channel-server</text>
+    <text x="572" y="580" fill="#59636e">would need a multiplexing contract</text>
+
+    <!-- Ghost label -->
+    <text x="146" y="532" fill="#cf222e">✗ a separate adapter process per bot: no isolation from same-user code</text>
+
+    <!-- Legend -->
+    <line x1="24" y1="616" x2="64" y2="616" stroke="#1f2328" stroke-width="1.5"/>
+    <text x="72" y="620">decided</text>
+    <line x1="140" y1="616" x2="180" y2="616" stroke="#cf222e" stroke-width="1.5" stroke-dasharray="6 4"/>
+    <text x="188" y="620" fill="#cf222e">✗ rejected alternative</text>
+    <line x1="340" y1="616" x2="380" y2="616" stroke="#59636e" stroke-width="1.5" stroke-dasharray="2 3"/>
+    <text x="388" y="620" fill="#59636e">deferred</text>
+    <rect x="470" y="608" width="24" height="16" rx="3" fill="#ddf4ff" stroke="#0969da"/>
+    <text x="502" y="620">plect core</text>
+    </g>
+  </g>
+</svg>

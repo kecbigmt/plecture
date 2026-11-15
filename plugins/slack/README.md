@@ -4,6 +4,29 @@ The Slack adapter service, thread subscriptions, and Slack delivery channels.
 The adapter publishes inbound thread messages to subscribed sessions' event
 logs. Runtime delivery uses the core dispatcher and workflow channels.
 
+## Planned service and delivery contract
+
+The [operator-declared service design](../../docs/adr/2026-11-09-operator-declared-plugin-services.md)
+and [Slack delivery decision](../../docs/adr/2026-11-15-slack-plugin-delivery.md)
+describe the follow-up implementation. One declared service serves multiple
+bots. Its config schema requires a nonempty `bots` array; each bot has
+`app_token_env`, `bot_token_env`, `channel_id`, and `allowed_user_ids` fields.
+The token fields name variables in the service's private `env_file`. The
+adapter rejects duplicate `channel_id` values across bots so outbound calls
+can select a bot by the thread's channel. Thread creation, posts, status, and
+streaming call the Slack Web API directly; workflow `base_url` inputs go away.
+
+The bot-user resource is `slack://<team_id>/<bot_user_id>` with
+`max_subscribers = 1`. A session handling otherwise undelivered mentions
+subscribes to that resource. After its user and channel allow check, the
+adapter publishes `user.emit` to the thread resource. If no session receives
+it, the adapter publishes to the bot-user resource. If neither resource has a
+subscriber, it drops the mention and logs the channel, thread, and reason.
+The adapter handles denied messages before publication. The thread resource's
+`query.subscribe`, the adapter's `/unbound-mentions` path, and its subscriber
+registry go away. Creating a session for each new mention thread waits for a
+concrete use case.
+
 ## Contents
 
 - `config/tasks/thread_dir.toml` — declares the session-scoped `thread_dir`

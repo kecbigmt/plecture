@@ -1,7 +1,9 @@
 # Plugin boundary contracts
 
 This design is governed by
-[`../adr/2026-08-17-plugin-boundary-contracts.md`](../adr/2026-08-17-plugin-boundary-contracts.md).
+[`../adr/2026-08-17-plugin-boundary-contracts.md`](../adr/2026-08-17-plugin-boundary-contracts.md)
+and
+[`../adr/2026-11-09-operator-declared-plugin-services.md`](../adr/2026-11-09-operator-declared-plugin-services.md).
 
 ## Design Core
 
@@ -34,7 +36,7 @@ plugins:
 | Plugin | Owns | Core contracts used | Excludes |
 |---|---|---|---|
 | `tmux` | tmux-backed interactive endpoint task and terminal operation declarations | interactive endpoint, terminal operations, task lifecycle | agent CLIs, agent-TUI submit/readiness logic, chat delivery, VCS guards |
-| `claude` | Claude Code launch tasks, initial-prompt submit/readiness logic, structured Claude Code delivery, channel-server service, Claude activity hook | interactive endpoint, terminal operations, conversation events, task lifecycle | tmux, Codex, chat-service adapters, VCS guards |
+| `claude` | Claude Code launch tasks, initial-prompt submit/readiness logic, structured Claude Code delivery, per-session channel-server MCP subprocess, Claude activity hook | interactive endpoint, terminal operations, conversation events, task lifecycle | tmux, Codex, chat-service adapters, VCS guards |
 | `codex` | Codex TUI and `codex exec` launch tasks, initial-prompt and terminal-submit readiness logic, queue worker, enqueue channel, Codex activity hook | interactive endpoint, terminal operations, conversation events, task lifecycle | tmux, Claude, chat-service adapters, VCS guards |
 | `slack` | Slack adapter service, Slack thread binding and the `thread_dir` effect, Slack event ingress and egress | conversation events, session-scoped effects, plugin services, channel delivery | agent runtimes, channel-server sockets, VCS guards |
 | `github` | GitHub resource observation, the `worktree` effect, watcher service, GitHub CLI write guard | resource definitions, session-scoped effects, subscriptions, plugin services | session runtime tasks, chat-service adapters |

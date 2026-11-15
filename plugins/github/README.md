@@ -8,6 +8,19 @@ plect core knows nothing about GitHub. Everything GitHub-shaped lives here:
 URL parsing, branch resolution, worktree acquisition, check-run/status
 rollup, and linked-PR discovery.
 
+## Planned watcher and observation contract
+
+The [operator-declared service design](../../docs/adr/2026-11-09-operator-declared-plugin-services.md)
+and [plugin delivery decision](../../docs/adr/2026-11-15-slack-plugin-delivery.md)
+describe the follow-up implementation. The GitHub watcher receives core
+subscription membership from a stdio snapshot at start and subsequent deltas.
+It keeps per-resource watch state in its service-only `PLECT_DATA_DIR` and no
+longer owns a subscription ledger. Standalone issue and pull-request
+`observe` actions need no watcher service and use their own credentials. The
+watcher and standalone observation share disposable App token and rate budget
+caches through `PLECT_CACHE_DIR`. GitHub query populations retain their poll
+form.
+
 ## Contents
 
 - `plugin.toml` — declares the executables this plugin builds or ships:

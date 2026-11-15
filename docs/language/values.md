@@ -112,8 +112,6 @@ receiving everything and relying on a later check to reject the rest.
 | Resource `name` | `match.<capture>` |
 | Resource `observe` | `resource.id` |
 | Resource `finalize` | `resource.id`, `session.name`, `resource.revision`, `judges` |
-| Resource `subscribe` | `session.name`, `resource.id`, `resource.inputs.<key>` |
-| Resource `unsubscribe` | `session.name`, `resource.id`, `resource.inputs.<key>` |
 | Resource query means | `inputs.<key>` |
 | Workflow public `outputs` | `nodes.<id>.outputs.<key>`, `session.inputs.<key>` |
 | Workflow population session `inputs` | `resource.id`, `item.<key>` |
@@ -131,6 +129,12 @@ receiving everything and relying on a later check to reject the rest.
 | Task `done_when`, chain `when` | `resource.state.<key>`, `self.state.<key>` |
 | Task instruction body | `resource.id`, `resource.state.<key>`, `self.state.<key>`, `inputs.<key>`, `session.*`, `workflow.outputs.<key>` |
 | Chain `inputs`, chain `resource` | `task.session`, `task.instance`, `task.workflow`, `task.done_when.pending_judge_ids`, `resource.state.<key>`, `self.state.<key>` |
+
+An action whose `bin` resolves to an executable marked `service = true` may
+also project `service.config` or a declared sub-path in an explicit `args`,
+`stdin`, or shell `bind` value. The root is unavailable on other action
+surfaces. It is the validated `[services.config]` of the unique service
+declared for that executable; plect does not add it to the action environment.
 
 Where a surface observes `session.*`, `session.tag` is the tag the session was
 created with, and is absent for an untagged session. It is the recorded tag

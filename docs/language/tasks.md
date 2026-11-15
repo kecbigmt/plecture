@@ -286,6 +286,14 @@ states a type, instantiation checks compatibility up front: binding an instance
 to a resource that does not resolve to the declared resource fails immediately,
 rather than producing an instance that can never satisfy.
 
+Every resource-bound task instance, including one created by `plect up
+--task-resource` or `plect task setup --resource`, records a `task` subscription
+for that session and resource. The
+row remains while any task instance in the session binds the resource. Cleanup
+removes it after the last such instance is cleaned up; another subscription
+source for that session and resource continues delivery. Binding and admission,
+or cleanup and removal, commit in one database transaction.
+
 The initiating caller selects an optional initial task: `plect up --task`, a
 chain's `task`, or a population's `session.task`. A workflow does not select
 it, and a session input named `task` carries no selection. Each surface
