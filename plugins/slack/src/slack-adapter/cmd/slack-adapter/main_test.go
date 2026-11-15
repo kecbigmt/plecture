@@ -47,7 +47,7 @@ func TestReplyCommandIgnoresMessageDelta(t *testing.T) {
 	}
 }
 
-func TestReplyCommandAcceptsOtherEventTypes(t *testing.T) {
+func TestReplyCommandRejectsUnknownOrMissingEventType(t *testing.T) {
 	for _, args := range [][]string{
 		{"reply", "post"},
 		{"reply", "post", "--event-type", "user.emit"},
@@ -55,7 +55,7 @@ func TestReplyCommandAcceptsOtherEventTypes(t *testing.T) {
 		t.Run(strings.Join(args, " "), func(t *testing.T) {
 			var output, errors bytes.Buffer
 			err := run(args, strings.NewReader(""), &output, &errors)
-			if err == nil || !strings.Contains(err.Error(), "--config and --channel-id are required") {
+			if err == nil || err.Error() != "reply post requires --event-type plect.message or plect.message_delta" {
 				t.Fatalf("reply command error = %v", err)
 			}
 		})
