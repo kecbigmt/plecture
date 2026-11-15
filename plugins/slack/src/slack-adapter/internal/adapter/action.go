@@ -2,6 +2,7 @@ package adapter
 
 import (
 	"fmt"
+	"io"
 
 	"github.com/slack-go/slack"
 )
@@ -36,11 +37,15 @@ func (a *Action) PostMessage(threadTS, text string) error {
 	return err
 }
 
-func (a *Action) PostReply(threadTS, text string) error {
+// A successful post must not be retried when clearing status fails, or the reply is duplicated.
+func (a *Action) PostReply(threadTS, text string, errorOutput io.Writer) error {
 	if err := a.PostMessage(threadTS, text); err != nil {
 		return err
 	}
-	return a.SetStatus(threadTS, "")
+	if err := a.SetStatus(threadTS, ""); err != nil {
+		fmt.Fprintf(errorOutput, "slack status clear after reply: %v\n", err)
+	}
+	return nil
 }
 
 func (a *Action) SetStatus(threadTS, status string) error {

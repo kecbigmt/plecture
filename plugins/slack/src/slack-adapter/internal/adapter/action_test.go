@@ -1,6 +1,7 @@
 package adapter
 
 import (
+	"bytes"
 	"net/http"
 	"net/http/httptest"
 	"reflect"
@@ -83,7 +84,7 @@ func TestReplyClearsWorkingStatus(t *testing.T) {
 	if err := action.SetStatus("T1", "working"); err != nil {
 		t.Fatal(err)
 	}
-	if err := action.PostReply("T1", "complete reply"); err != nil {
+	if err := action.PostReply("T1", "complete reply", &bytes.Buffer{}); err != nil {
 		t.Fatal(err)
 	}
 	want := []string{"status:processing", "post:complete reply", "status:"}
@@ -130,11 +131,38 @@ func TestFailedReplyDoesNotClearWorkingStatus(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := action.PostReply("T1", "reply"); err == nil {
+	if err := action.PostReply("T1", "reply", &bytes.Buffer{}); err == nil {
 		t.Fatal("failed post accepted")
 	}
 	if !reflect.DeepEqual(paths, []string{"/chat.postMessage"}) {
 		t.Fatalf("paths = %v", paths)
+	}
+}
+
+func TestSuccessfulReplyDoesNotRetryWhenStatusClearFails(t *testing.T) {
+	var paths []string
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		paths = append(paths, r.URL.Path)
+		if r.URL.Path == "/agents.sessions.setStatus" {
+			w.Write([]byte(`{"ok":false,"error":"missing_scope"}`))
+			return
+		}
+		w.Write([]byte(`{"ok":true,"channel":"C1","ts":"T2"}`))
+	}))
+	defer server.Close()
+	action, err := NewAction([]Bot{{ChannelID: "C1", BotToken: "token"}}, "C1", server.URL+"/")
+	if err != nil {
+		t.Fatal(err)
+	}
+	var errors bytes.Buffer
+	if err := action.PostReply("T1", "reply", &errors); err != nil {
+		t.Fatalf("successful post reported retryable failure: %v", err)
+	}
+	if !reflect.DeepEqual(paths, []string{"/chat.postMessage", "/agents.sessions.setStatus"}) {
+		t.Fatalf("paths = %v", paths)
+	}
+	if !strings.Contains(errors.String(), "missing_scope") {
+		t.Fatalf("status clear failure absent from stderr: %q", errors.String())
 	}
 }
 

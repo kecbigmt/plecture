@@ -24,3 +24,11 @@ func TestServeRequiresConfigAsFirstProtocolMessage(t *testing.T) {
 		t.Fatalf("error = %v", err)
 	}
 }
+
+func TestReplyCommandDispatchesToAction(t *testing.T) {
+	var output, errors bytes.Buffer
+	err := run([]string{"reply", "post"}, strings.NewReader(""), &output, &errors)
+	if err == nil || !strings.Contains(err.Error(), "--config and --channel-id are required") {
+		t.Fatalf("reply command error = %v", err)
+	}
+}

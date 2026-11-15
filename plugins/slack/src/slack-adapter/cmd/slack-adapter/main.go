@@ -24,7 +24,7 @@ func main() {
 
 func run(args []string, input io.Reader, output, errors io.Writer) error {
 	if len(args) == 0 {
-		return fmt.Errorf("usage: slack-adapter <serve|resource|thread|message|status> ...")
+		return fmt.Errorf("usage: slack-adapter <serve|resource|thread|message|reply|status> ...")
 	}
 	switch args[0] {
 	case "serve":
@@ -35,7 +35,7 @@ func run(args []string, input io.Reader, output, errors io.Writer) error {
 		}
 		_, err := fmt.Fprintln(output, "{}")
 		return err
-	case "thread", "message", "status":
+	case "thread", "message", "reply", "status":
 		return action(args, output, errors)
 	default:
 		return fmt.Errorf("unknown command %q", args[0])
@@ -131,7 +131,7 @@ func action(args []string, output, errors io.Writer) error {
 		if *thread == "" {
 			return fmt.Errorf("--thread-ts is required")
 		}
-		return client.PostReply(*thread, *body)
+		return client.PostReply(*thread, *body, errors)
 	case "status set":
 		if *thread == "" {
 			return fmt.Errorf("--thread-ts is required")
