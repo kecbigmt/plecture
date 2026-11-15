@@ -52,7 +52,7 @@ func previewPluginUpdate(paths PluginPaths, id, path string, entry plugins.Catal
 		return PluginUpdatePreview{}, err
 	}
 	preview := PluginUpdatePreview{ID: id, ResolvedRevision: fetched.ResolvedRevision, OldTreeUnavailable: !available, Changes: changes}
-	if !scheme.IsEditable() && (!locked || oldEntry.ContentHash != newHash || (scheme.IsGit() && oldEntry.CatalogResolvedRevision != fetched.ResolvedRevision)) {
+	if !scheme.IsEditable() && (!locked || oldEntry.ContentHash != newHash) {
 		mounted := []plugins.Mounted{{ID: id, Dir: newDir, Manifest: newManifest}}
 		decls, _ := pluginservice.BuildDeclarationsFrom(filepath.Dir(paths.CatalogsPath), mounted, nil)
 		for _, decl := range decls {

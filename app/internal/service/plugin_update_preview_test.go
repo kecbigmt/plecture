@@ -214,6 +214,18 @@ func TestPluginUpdateComparesPinnedSnapshotsAndReportsMissingOldTree(t *testing.
 	if _, err := PluginAdd(context.Background(), paths, "local/work"); err != nil {
 		t.Fatal(err)
 	}
+	serviceDir := filepath.Join(filepath.Dir(paths.CatalogsPath), "services")
+	if err := os.MkdirAll(serviceDir, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	envPath := filepath.Join(serviceDir, "worker.env")
+	if err := os.WriteFile(envPath, nil, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	declaration := "[[services]]\nname = \"worker-service\"\nexecutable = \"local/work/worker\"\nenv_file = \"" + envPath + "\"\n"
+	if err := os.WriteFile(filepath.Join(serviceDir, "worker.toml"), []byte(declaration), 0o600); err != nil {
+		t.Fatal(err)
+	}
 	write("work/bin/worker", "#!/bin/sh\necho new\n")
 	write("work/scripts/helper.sh", "#!/bin/sh\necho new\n")
 	write("work/config/settings.toml", "enabled = true\n")
@@ -278,5 +290,20 @@ func TestPluginUpdateComparesPinnedSnapshotsAndReportsMissingOldTree(t *testing.
 	locked, ok := installed.FindPlugin("local/work")
 	if !ok || locked.CatalogResolvedRevision != second {
 		t.Fatalf("installed plugin = %+v, want revision %q", locked, second)
+	}
+	third := git("rev-parse", "HEAD")
+	if _, err := PluginUpdate(context.Background(), paths, "local/work", PluginUpdateParams{Revision: third}); err != nil {
+		t.Fatal(err)
+	}
+	write("catalog.toml", "schema_version = 2\nplugins = [\"work\"]\n# catalog-only change\n")
+	git("add", "-A")
+	git("commit", "--quiet", "-m", "fourth")
+	fourth := git("rev-parse", "HEAD")
+	_, err = PluginUpdate(context.Background(), paths, "local/work", PluginUpdateParams{Revision: fourth, DryRun: true, OnPreview: func(p PluginUpdatePreview) error { preview = p; return nil }})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(preview.ServicesToRestart) != 0 {
+		t.Fatalf("catalog-only update would not restart a service, preview = %+v", preview.ServicesToRestart)
 	}
 }
