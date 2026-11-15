@@ -19,6 +19,17 @@ type Subscription struct {
 	CreatedAt  string            `json:"created_at"`
 }
 
+type SubscriberLimitError struct {
+	ResourceID string
+	Locator    string
+	Limit      int64
+	Source     string
+}
+
+func (e *SubscriberLimitError) Error() string {
+	return fmt.Sprintf("resource %q has reached max_subscribers (%d)", e.Locator, e.Limit)
+}
+
 func (db *DB) AddSubscription(ctx context.Context, session string, resource *contract.Resource, source string, inputs map[string]any, maxSubscribers int) error {
 	if source != "runtime" && source != "dispatch" && source != "task" && source != "node" {
 		return fmt.Errorf("invalid subscription source %q", source)
@@ -43,7 +54,7 @@ func (db *DB) AddSubscription(ctx context.Context, session string, resource *con
 		if _, err := tx.ExecContext(ctx, `UPDATE resources SET max_subscribers = ? WHERE id = ?`, limit, resource.ID); err != nil {
 			return err
 		}
-		if err := checkSubscriberLimitTx(ctx, tx, id, resource.ID); err != nil {
+		if err := checkSubscriberLimitTx(ctx, tx, id, resource.ID, source); err != nil {
 			return err
 		}
 		_, err = tx.ExecContext(ctx, `INSERT INTO subscriptions (session_id, resource_id, source, inputs_json, created_at) VALUES (?, ?, ?, ?, ?) ON CONFLICT(session_id, resource_id, source) DO NOTHING`, id, resource.ID, source, inputsJSON, formatTime(time.Now()))
@@ -112,7 +123,7 @@ func reconcileSubscriptionsTx(ctx context.Context, tx *sql.Tx, sessionID string,
 		return err
 	}
 	if entryResourceID != "" {
-		if err := checkSubscriberLimitTx(ctx, tx, sessionID, entryResourceID); err != nil {
+		if err := checkSubscriberLimitTx(ctx, tx, sessionID, entryResourceID, "dispatch"); err != nil {
 			return err
 		}
 		if _, err := tx.ExecContext(ctx, `INSERT INTO subscriptions (session_id, resource_id, source, inputs_json, created_at) VALUES (?, ?, 'dispatch', '{}', ?) ON CONFLICT DO NOTHING`, sessionID, entryResourceID, formatTime(time.Now())); err != nil {
@@ -145,7 +156,7 @@ func reconcileSubscriptionsTx(ctx context.Context, tx *sql.Tx, sessionID string,
 			return err
 		}
 		for _, resourceID := range wanted {
-			if err := checkSubscriberLimitTx(ctx, tx, sessionID, resourceID); err != nil {
+			if err := checkSubscriberLimitTx(ctx, tx, sessionID, resourceID, kind.source); err != nil {
 				return err
 			}
 			if _, err := tx.ExecContext(ctx, `INSERT INTO subscriptions (session_id, resource_id, source, inputs_json, created_at) VALUES (?, ?, ?, '{}', ?) ON CONFLICT DO NOTHING`, sessionID, resourceID, kind.source, formatTime(time.Now())); err != nil {
@@ -164,7 +175,7 @@ func reconcileSubscriptionsTx(ctx context.Context, tx *sql.Tx, sessionID string,
 	return err
 }
 
-func checkSubscriberLimitTx(ctx context.Context, tx *sql.Tx, sessionID, resourceID string) error {
+func checkSubscriberLimitTx(ctx context.Context, tx *sql.Tx, sessionID, resourceID, source string) error {
 	var limit sql.NullInt64
 	var locator string
 	if err := tx.QueryRowContext(ctx, `SELECT max_subscribers, locator FROM resources WHERE id = ?`, resourceID).Scan(&limit, &locator); err != nil {
@@ -185,7 +196,7 @@ func checkSubscriberLimitTx(ctx context.Context, tx *sql.Tx, sessionID, resource
 		return err
 	}
 	if count >= limit.Int64 {
-		return fmt.Errorf("resource %q has reached max_subscribers (%d)", locator, limit.Int64)
+		return &SubscriberLimitError{ResourceID: resourceID, Locator: locator, Limit: limit.Int64, Source: source}
 	}
 	return nil
 }

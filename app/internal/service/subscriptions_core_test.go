@@ -147,6 +147,95 @@ func TestNodeSubscriptionEndsWithReleasedNode(t *testing.T) {
 	}
 }
 
+func TestNodeSubscriptionLimitKeepsSetupResultsVisible(t *testing.T) {
+	cfg := subscriptionFixture(t, "max_subscribers = 1")
+	store := state.NewStore(t.TempDir())
+	for _, name := range []string{"holder", "target"} {
+		if err := store.Put(&domain.Session{Name: name}); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if err := Subscribe(cfg, store, SubscribeParams{SessionName: "holder", ResourceID: "item://one"}); err != nil {
+		t.Fatal(err)
+	}
+	resource, err := ResolveSubscriptionResource(cfg, "", "item://one")
+	if err != nil {
+		t.Fatal(err)
+	}
+	watchProcess := &contract.ProcessIdentity{PID: 4242, Start: 1}
+	otherProcess := &contract.ProcessIdentity{PID: 4343, Start: 1}
+	session := &domain.Session{Name: "target", Nodes: map[string]*contract.TaskState{
+		"watch": {TaskID: "watch", Scope: contract.TaskScopeSession, Status: contract.TaskStatusProduced, Subscription: resource, Process: watchProcess, NewExecution: true},
+		"other": {TaskID: "other", Scope: contract.TaskScopeSession, Status: contract.TaskStatusProduced, Process: otherProcess, NewExecution: true},
+	}}
+	err = mergeTasksWithSubscriptions(cfg, store, "target", session, map[string]*contract.Resource{"watch": resource})
+	if err == nil || !strings.Contains(err.Error(), "reached max_subscribers (1)") {
+		t.Fatalf("merge error = %v, want subscriber limit", err)
+	}
+	got, err := store.GetE("target")
+	if err != nil {
+		t.Fatal(err)
+	}
+	watch := got.Nodes["watch"]
+	if watch == nil || watch.Status != contract.TaskStatusFailed || watch.Subscription != nil || !strings.Contains(watch.Error, "reached max_subscribers (1)") || watch.Process == nil || watch.Process.PID != 4242 {
+		t.Fatalf("watch after rejected subscription = %+v", watch)
+	}
+	other := got.Nodes["other"]
+	if other == nil || other.Status != contract.TaskStatusProduced || other.Process == nil || other.Process.PID != 4343 {
+		t.Fatalf("other after rejected subscription = %+v", other)
+	}
+	rows, err := store.ListSubscriptions("target", "")
+	if err != nil || len(rows) != 0 {
+		t.Fatalf("rejected subscription rows = %+v, err = %v", rows, err)
+	}
+	if err := store.Update("target", func(s *domain.Session) error { return nil }); err != nil {
+		t.Fatalf("later state write: %v", err)
+	}
+}
+
+func TestUpPersistsOtherNodesWhenNodeSubscriptionLimitIsReached(t *testing.T) {
+	cfg := writeWorkflowFixture(t, "flow",
+		[]taskFixture{
+			{id: "watch", scope: "session", setup: `printf '{"resource":"item://one"}'`},
+			{id: "other", scope: "session", setup: `printf '{"ready":true}'`},
+		},
+		[]nodeFixture{{id: "watch", subscription: "self.outputs.resource"}, {id: "other"}},
+	)
+	writeResourceDoc(t, cfg, "item", `[item]
+kind = "resource"
+match = '^item://(?P<name>[a-z]+)$'
+name = { from = "match.name" }
+max_subscribers = 1
+[item.observe]
+type = "exec"
+command = "printf"
+args = ['{}']
+`)
+	store := state.NewStore(t.TempDir())
+	if err := store.Put(&domain.Session{Name: "holder"}); err != nil {
+		t.Fatal(err)
+	}
+	if err := Subscribe(cfg, store, SubscribeParams{SessionName: "holder", ResourceID: "item://one"}); err != nil {
+		t.Fatal(err)
+	}
+	_, err := Up(cfg, store, UpParams{Identifier: "https://github.com/o/r/issues/2"})
+	if err == nil || !strings.Contains(err.Error(), "reached max_subscribers (1)") {
+		t.Fatalf("Up error = %v, want subscriber limit", err)
+	}
+	got, err := store.GetE("o/r-2")
+	if err != nil || got == nil {
+		t.Fatalf("session after failed Up = %+v, err = %v", got, err)
+	}
+	watch := got.Nodes["watch"]
+	if watch == nil || watch.Status != contract.TaskStatusFailed || watch.Subscription != nil || !strings.Contains(watch.Error, "reached max_subscribers (1)") {
+		t.Fatalf("watch after failed Up = %+v", watch)
+	}
+	other := got.Nodes["other"]
+	if other == nil || other.Status != contract.TaskStatusProduced || other.Outputs["ready"] != true {
+		t.Fatalf("other after failed Up = %+v", other)
+	}
+}
+
 func TestRuntimeSubscriptionUsesRemovedDeclarationLimit(t *testing.T) {
 	cfg := subscriptionFixture(t, "max_subscribers = 1")
 	store := state.NewStore(t.TempDir())

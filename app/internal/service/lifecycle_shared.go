@@ -110,25 +110,56 @@ func mergeTasks(store *state.Store, sessionName string, session *domain.Session)
 }
 
 func mergeTasksWithSubscriptions(cfg *config.Config, store *state.Store, sessionName string, session *domain.Session, subscriptions map[string]*contract.Resource) error {
-	if err := store.Update(sessionName, func(s *domain.Session) error {
-		if s.Nodes == nil {
-			s.Nodes = make(map[string]*contract.TaskState)
+	var admissionErrors []error
+	for {
+		err := store.Update(sessionName, func(s *domain.Session) error {
+			if s.Nodes == nil {
+				s.Nodes = make(map[string]*contract.TaskState)
+			}
+			for k, v := range session.Nodes {
+				s.Nodes[k] = v
+			}
+			if s.Tasks == nil {
+				s.Tasks = make(map[string]*contract.TaskState)
+			}
+			for k, v := range session.Tasks {
+				s.Tasks[k] = v
+			}
+			s.UpdatedAt = session.UpdatedAt
+			return nil
+		})
+		if err == nil {
+			break
 		}
-		for k, v := range session.Nodes {
-			s.Nodes[k] = v
+		var limitErr *state.SubscriberLimitError
+		if !errors.As(err, &limitErr) || limitErr.Source != "node" {
+			return errors.Join(append(admissionErrors, err)...)
 		}
-		if s.Tasks == nil {
-			s.Tasks = make(map[string]*contract.TaskState)
+		marked := false
+		for nodeID, resource := range subscriptions {
+			if resource == nil || resource.ID != limitErr.ResourceID {
+				continue
+			}
+			st := session.Nodes[nodeID]
+			if st == nil || st.Status != contract.TaskStatusProduced || st.Subscription == nil {
+				continue
+			}
+			st.Status = contract.TaskStatusFailed
+			st.Error = limitErr.Error()
+			st.FailedAt = time.Now()
+			st.Subscription = nil
+			admissionErrors = append(admissionErrors, fmt.Errorf("node %q subscription: %w", nodeID, limitErr))
+			delete(subscriptions, nodeID)
+			marked = true
 		}
-		for k, v := range session.Tasks {
-			s.Tasks[k] = v
+		if !marked {
+			return errors.Join(append(admissionErrors, err)...)
 		}
-		s.UpdatedAt = session.UpdatedAt
-		return nil
-	}); err != nil {
-		return err
 	}
-	return refreshNodeIdentities(store, sessionName, session)
+	if err := refreshNodeIdentities(store, sessionName, session); err != nil {
+		return errors.Join(append(admissionErrors, err)...)
+	}
+	return errors.Join(admissionErrors...)
 }
 
 func replaceRuntimeState(store *state.Store, sessionName string, session *domain.Session) error {

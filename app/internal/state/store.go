@@ -30,6 +30,8 @@ type PopulationState = domain.PopulationState
 // PopulationMember is an alias for the shared domain type; see UpReservation.
 type PopulationMember = domain.PopulationMember
 
+type SubscriberLimitError = persistence.SubscriberLimitError
+
 // ErrUpAlreadyReserved: childName's reservation is held by another live
 // process — a second concurrent `plect up` for that child, not a sibling.
 var ErrUpAlreadyReserved = domain.ErrUpAlreadyReserved
