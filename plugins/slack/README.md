@@ -67,9 +67,11 @@ Denied mentions are handled before publication.
   as its `workdir`.
 - `config/channels/slack.toml` posts an event's body or summary to a thread.
 - `config/channels/status.toml` sets the thread's agent session status. Bind
-  it to `plect.status_message` events.
+  it to `plect.status_message` events. Nonempty events show Slack's working
+  display; an empty event clears it when the turn ends.
 - `config/channels/stream.toml` posts a complete `plect.message` event as one
-  thread reply. Bind it to that event type.
+  thread reply and clears the working display after the post. Bind it to that
+  event type.
 
 The three channels take `channel_id` and `thread_ts` and run `slack-adapter`
 actions. Query populations use their declared `poll` or `subscribe` means and

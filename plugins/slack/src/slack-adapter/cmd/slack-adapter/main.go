@@ -127,6 +127,11 @@ func action(args []string, output, errors io.Writer) error {
 			return fmt.Errorf("--thread-ts is required")
 		}
 		return client.PostMessage(*thread, *body)
+	case "reply post":
+		if *thread == "" {
+			return fmt.Errorf("--thread-ts is required")
+		}
+		return client.PostReply(*thread, *body)
 	case "status set":
 		if *thread == "" {
 			return fmt.Errorf("--thread-ts is required")

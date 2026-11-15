@@ -26,9 +26,9 @@ deploying the updated runtime plugins and adapter.
    channels, but Slack now displays its own “Working…” text rather than the
    event's explanation. Use an ordinary message channel if that explanation
    must appear in the thread.
-5. Deploy the adapter and check one streamed answer, one answer delivered
-   after `chat.startStream` fails, and one turn with no answer. Confirm the
-   loading display disappears after the turn ends in each case. The app owner
+5. Deploy the adapter and check one complete answer and one turn with no
+   answer. Confirm that the working display appears before the answer and
+   disappears after the answer is posted or the turn ends. The app owner
    performs these checks in a real Slack workspace.
 
 The adapter does not subscribe to `agent_session_stopped`. Slack may include

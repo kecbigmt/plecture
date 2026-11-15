@@ -1,0 +1,25 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 920 310" width="920" height="310" role="img" aria-label="Status events set processing before a complete reply. A successful reply post clears status. An empty status event also clears it when a turn ends without a reply. Live streaming through the resident service is deferred.">
+  <defs>
+    <marker id="arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0 0 L10 5 L0 10 Z" fill="#1f2328"/></marker>
+  </defs>
+  <rect width="920" height="310" fill="white"/>
+  <g font-family="Arial, sans-serif" fill="#1f2328">
+    <text x="24" y="32" font-size="17" font-weight="bold">One complete reply, with working status</text>
+    <rect x="24" y="64" width="220" height="68" rx="7" fill="#ddf4ff" stroke="#0969da"/>
+    <text x="38" y="90" font-size="14" font-weight="bold">Nonempty status event</text>
+    <text x="38" y="112" font-size="13">set processing</text>
+    <line x1="244" y1="98" x2="293" y2="98" stroke="#1f2328" stroke-width="2" marker-end="url(#arrow)"/>
+    <rect x="294" y="64" width="260" height="68" rx="7" fill="#f6f8fa" stroke="#8c959f"/>
+    <text x="308" y="90" font-size="14" font-weight="bold">Slack working display</text>
+    <text x="308" y="112" font-size="13">until reply or turn end</text>
+    <line x1="554" y1="98" x2="603" y2="98" stroke="#1f2328" stroke-width="2" marker-end="url(#arrow)"/>
+    <rect x="604" y="64" width="290" height="68" rx="7" fill="#dafbe1" stroke="#1a7f37"/>
+    <text x="618" y="90" font-size="14" font-weight="bold">Complete reply posted</text>
+    <text x="618" y="112" font-size="13">then clear status</text>
+    <line x1="424" y1="132" x2="424" y2="190" stroke="#1f2328" stroke-width="2" marker-end="url(#arrow)"/>
+    <rect x="294" y="192" width="260" height="68" rx="7" fill="#dafbe1" stroke="#1a7f37"/>
+    <text x="308" y="218" font-size="14" font-weight="bold">Turn ends without reply</text>
+    <text x="308" y="240" font-size="13">empty status event clears display</text>
+    <text x="24" y="289" font-size="12" fill="#59636e">Deferred: live delta streaming through the resident service.</text>
+  </g>
+</svg>

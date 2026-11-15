@@ -31,14 +31,6 @@ func (c *slackSessionClient) SetStatus(channelID, threadTS, status string) error
 	})
 }
 
-func (c *slackSessionClient) StopStream(channelID, ts, text, status string) error {
-	values := url.Values{"channel": {channelID}, "ts": {ts}, "session_status": {status}}
-	if text != "" {
-		values.Set("markdown_text", text)
-	}
-	return c.post("chat.stopStream", values)
-}
-
 func (c *slackSessionClient) post(method string, values url.Values) error {
 	req, err := http.NewRequest(http.MethodPost, c.baseURL+method, strings.NewReader(values.Encode()))
 	if err != nil {

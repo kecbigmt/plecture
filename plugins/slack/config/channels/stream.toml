@@ -3,7 +3,7 @@ kind = "channel"
 type = "exec"
 bin = "slack-adapter"
 args = [
-  "message", "post",
+  "reply", "post",
   "--config", { json = { from = "service.config" } },
   "--channel-id", { from = "inputs.channel_id" },
   "--thread-ts", { from = "inputs.thread_ts" },

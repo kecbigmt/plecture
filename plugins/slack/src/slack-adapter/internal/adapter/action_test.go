@@ -3,6 +3,7 @@ package adapter
 import (
 	"net/http"
 	"net/http/httptest"
+	"reflect"
 	"strings"
 	"testing"
 )
@@ -52,5 +53,106 @@ func TestActionUsesTheBotForTheSelectedChannel(t *testing.T) {
 	}
 	if _, err := NewAction(bots, "C3", server.URL+"/"); err == nil {
 		t.Fatal("unknown channel accepted")
+	}
+}
+
+func TestReplyClearsWorkingStatus(t *testing.T) {
+	var calls []string
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if err := r.ParseForm(); err != nil {
+			t.Fatal(err)
+		}
+		switch r.URL.Path {
+		case "/agents.sessions.setStatus":
+			calls = append(calls, "status:"+r.PostForm.Get("status"))
+			if r.PostForm.Get("thread_ts") != "T1" {
+				t.Errorf("thread_ts = %q", r.PostForm.Get("thread_ts"))
+			}
+		case "/chat.postMessage":
+			calls = append(calls, "post:"+r.PostForm.Get("text"))
+		default:
+			t.Errorf("unexpected path %q", r.URL.Path)
+		}
+		w.Write([]byte(`{"ok":true,"channel":"C1","ts":"T2"}`))
+	}))
+	defer server.Close()
+	action, err := NewAction([]Bot{{ChannelID: "C1", BotToken: "token"}}, "C1", server.URL+"/")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := action.SetStatus("T1", "working"); err != nil {
+		t.Fatal(err)
+	}
+	if err := action.PostReply("T1", "complete reply"); err != nil {
+		t.Fatal(err)
+	}
+	want := []string{"status:processing", "post:complete reply", "status:"}
+	if !reflect.DeepEqual(calls, want) {
+		t.Fatalf("calls = %v, want %v", calls, want)
+	}
+}
+
+func TestEmptyStatusClearsAtTurnEnd(t *testing.T) {
+	var statuses []string
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		r.ParseForm()
+		statuses = append(statuses, r.PostForm.Get("status"))
+		w.Write([]byte(`{"ok":true}`))
+	}))
+	defer server.Close()
+	action, err := NewAction([]Bot{{ChannelID: "C1", BotToken: "token"}}, "C1", server.URL+"/")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := action.SetStatus("T1", "working"); err != nil {
+		t.Fatal(err)
+	}
+	if err := action.SetStatus("T1", ""); err != nil {
+		t.Fatal(err)
+	}
+	if !reflect.DeepEqual(statuses, []string{"processing", ""}) {
+		t.Fatalf("statuses = %v", statuses)
+	}
+}
+
+func TestFailedReplyDoesNotClearWorkingStatus(t *testing.T) {
+	var paths []string
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		paths = append(paths, r.URL.Path)
+		if r.URL.Path == "/chat.postMessage" {
+			w.Write([]byte(`{"ok":false,"error":"channel_not_found"}`))
+			return
+		}
+		w.Write([]byte(`{"ok":true}`))
+	}))
+	defer server.Close()
+	action, err := NewAction([]Bot{{ChannelID: "C1", BotToken: "token"}}, "C1", server.URL+"/")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := action.PostReply("T1", "reply"); err == nil {
+		t.Fatal("failed post accepted")
+	}
+	if !reflect.DeepEqual(paths, []string{"/chat.postMessage"}) {
+		t.Fatalf("paths = %v", paths)
+	}
+}
+
+func TestOrdinaryMessageDoesNotClearWorkingStatus(t *testing.T) {
+	var paths []string
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		paths = append(paths, r.URL.Path)
+		w.Write([]byte(`{"ok":true,"channel":"C1","ts":"T2"}`))
+	}))
+	defer server.Close()
+	action, err := NewAction([]Bot{{ChannelID: "C1", BotToken: "token"}}, "C1", server.URL+"/")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := action.PostMessage("T1", "other event"); err != nil {
+		t.Fatal(err)
+	}
+	if !reflect.DeepEqual(paths, []string{"/chat.postMessage"}) {
+		t.Fatalf("paths = %v", paths)
 	}
 }

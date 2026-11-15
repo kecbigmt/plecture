@@ -36,6 +36,13 @@ func (a *Action) PostMessage(threadTS, text string) error {
 	return err
 }
 
+func (a *Action) PostReply(threadTS, text string) error {
+	if err := a.PostMessage(threadTS, text); err != nil {
+		return err
+	}
+	return a.SetStatus(threadTS, "")
+}
+
 func (a *Action) SetStatus(threadTS, status string) error {
 	if status != "" {
 		status = "processing"
