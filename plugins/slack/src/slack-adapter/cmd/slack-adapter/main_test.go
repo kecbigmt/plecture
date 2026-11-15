@@ -27,8 +27,22 @@ func TestServeRequiresConfigAsFirstProtocolMessage(t *testing.T) {
 
 func TestReplyCommandDispatchesToAction(t *testing.T) {
 	var output, errors bytes.Buffer
-	err := run([]string{"reply", "post"}, strings.NewReader(""), &output, &errors)
+	err := run([]string{"reply", "post", "--event-type", "plect.message"}, strings.NewReader(""), &output, &errors)
 	if err == nil || !strings.Contains(err.Error(), "--config and --channel-id are required") {
 		t.Fatalf("reply command error = %v", err)
+	}
+}
+
+func TestReplyCommandIgnoresMessageDelta(t *testing.T) {
+	var output, errors bytes.Buffer
+	err := run([]string{"reply", "post", "--event-type", "plect.message_delta"}, strings.NewReader(""), &output, &errors)
+	if err != nil {
+		t.Fatalf("delta delivery returned an error: %v", err)
+	}
+	if output.Len() != 0 {
+		t.Fatalf("delta delivery wrote stdout: %q", output.String())
+	}
+	if got, want := errors.String(), "plect.message_delta should be removed from include\n"; got != want {
+		t.Fatalf("stderr = %q, want %q", got, want)
 	}
 }

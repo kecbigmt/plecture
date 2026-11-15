@@ -4,6 +4,7 @@ type = "exec"
 bin = "slack-adapter"
 args = [
   "reply", "post",
+  "--event-type", { from = "event.type" },
   "--config", { json = { from = "service.config" } },
   "--channel-id", { from = "inputs.channel_id" },
   "--thread-ts", { from = "inputs.thread_ts" },
