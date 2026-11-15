@@ -6,10 +6,63 @@ import (
 	"testing"
 	"time"
 
+	"github.com/kecbigmt/plecture/app/internal/domain"
 	"github.com/kecbigmt/plecture/app/internal/eventlog"
 	"github.com/kecbigmt/plecture/contracts/event"
 	contract "github.com/kecbigmt/plecture/contracts/state"
 )
+
+func TestSleepIfIdle_RequiresDispatchProvenance(t *testing.T) {
+	for _, tc := range []struct {
+		name       string
+		population bool
+		wantSleep  bool
+	}{
+		{name: "direct session stays up"},
+		{name: "population admission sleeps", population: true, wantSleep: true},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			store := testStore(t)
+			cfg := writeWorkflowFixture(t, "default", []taskFixture{{id: "runtime", scope: "run", setup: `echo '{"pid":123}'`, cleanup: "true"}}, []nodeFixture{{id: "runtime"}})
+			path := filepath.Join(cfg.BaseDir, "workflows", "default.toml")
+			f, err := os.OpenFile(path, os.O_APPEND|os.O_WRONLY, 0)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if _, err := f.WriteString("\n[default.session]\nsleep_after_idle = \"10m\"\n"); err != nil {
+				t.Fatal(err)
+			}
+			if err := f.Close(); err != nil {
+				t.Fatal(err)
+			}
+			name := "work-20"
+			seedSessionWithNodes(t, store, name, "acct", 20, "default", nil)
+			if tc.population {
+				provenance := &contract.PopulationProvenance{Workflow: "default", Name: "workers"}
+				seedPopulationRowForTest(t, store, provenance)
+				if err := store.Update(name, func(s *domain.Session) error {
+					s.Population = provenance
+					return nil
+				}); err != nil {
+					t.Fatal(err)
+				}
+			}
+			if _, err := Up(cfg, store, UpParams{Identifier: name}); err != nil {
+				t.Fatal(err)
+			}
+			if err := SetMessage(cfg, store, name, "", nil); err != nil {
+				t.Fatal(err)
+			}
+			slept, err := SleepIfIdle(cfg, store, name, time.Now().Add(time.Hour))
+			if err != nil || slept != tc.wantSleep {
+				t.Fatalf("slept = %t, err = %v; want %t", slept, err, tc.wantSleep)
+			}
+			if got := store.Get(name).Status; (got == contract.SessionStatusDown) != tc.wantSleep {
+				t.Fatalf("status = %s; want sleep = %t", got, tc.wantSleep)
+			}
+		})
+	}
+}
 
 func TestSleepIfIdle_CompletedTurnReleasesRunScope(t *testing.T) {
 	store := testStore(t)
@@ -83,7 +136,9 @@ func TestSleepIfIdle_InboundCancelsPendingSleepUntilNextClear(t *testing.T) {
 		t.Fatal(err)
 	}
 	name := "work-20"
+	seedSessionWithNodes(t, store, "parent", "acct", 21, "default", nil)
 	seedSessionWithNodes(t, store, name, "acct", 20, "default", nil)
+	setParent(t, store, name, "parent")
 	if _, err := Up(cfg, store, UpParams{Identifier: name}); err != nil {
 		t.Fatal(err)
 	}
@@ -138,7 +193,9 @@ func TestSleepIfIdle_InboundDuringCleanupRequestsWake(t *testing.T) {
 		t.Fatal(err)
 	}
 	name := "work-20"
+	seedSessionWithNodes(t, store, "parent", "acct", 21, "default", nil)
 	seedSessionWithNodes(t, store, name, "acct", 20, "default", nil)
+	setParent(t, store, name, "parent")
 	if _, err := Up(cfg, store, UpParams{Identifier: name}); err != nil {
 		t.Fatal(err)
 	}

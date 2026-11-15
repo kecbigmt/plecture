@@ -28,6 +28,9 @@ func SleepIfIdle(cfg *config.Config, store *state.Store, name string, now time.T
 		if wf == nil || wf.Session.SleepAfterIdle.Duration <= 0 {
 			return nil
 		}
+		if s.ParentSession == "" && s.Population == nil {
+			return nil
+		}
 		log := eventlog.NewStore(store.Dir())
 		status, ok, err := log.LatestByType(name, event.TypeStatusMessage)
 		if err != nil || !ok || status.Metadata["cleared"] != "true" {

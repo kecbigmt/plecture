@@ -417,7 +417,10 @@ timeout. An omitted cap is unlimited.
 ## Idle sleep
 
 `[<workflow>.session].sleep_after_idle` is an optional positive duration. A
-session with no declaration stays up while idle. For example, the valid
+dispatched session (with a parent session or population provenance) uses this
+duration. A directly created top-level session, such as one started with bare
+`plect up`, never sleeps automatically. A session with no declaration stays up
+while idle. For example, the valid
 [`sleep-after-idle.toml`](../../testdata/config-language/workflows/sleep-after-idle.toml)
 fixture declares:
 

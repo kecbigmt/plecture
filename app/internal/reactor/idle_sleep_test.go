@@ -22,7 +22,10 @@ func TestSupervisor_SleepsAfterDurableIdleDeadline(t *testing.T) {
 	cfg := &config.Config{PluginDirs: []string{pluginDir}}
 	store := state.NewStore(t.TempDir())
 	now := time.Now()
-	s := &domain.Session{Name: "worker-1", Workflow: "worker", CreatedAt: now.Add(-time.Hour), Status: contract.SessionStatusUp,
+	if err := store.Put(&domain.Session{Name: "parent", Status: contract.SessionStatusDown, CreatedAt: now.Add(-time.Hour)}); err != nil {
+		t.Fatal(err)
+	}
+	s := &domain.Session{Name: "worker-1", Workflow: "worker", ParentSession: "parent", CreatedAt: now.Add(-time.Hour), Status: contract.SessionStatusUp,
 		Nodes: map[string]*contract.TaskState{"runner": {Scope: contract.TaskScopeRun, Status: contract.TaskStatusProduced}},
 	}
 	pinRevision(t, cfg, s)
