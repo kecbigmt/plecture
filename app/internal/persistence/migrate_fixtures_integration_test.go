@@ -82,8 +82,8 @@ var blockersLost = rowCheck{blockersKept.query, nil}
 
 var sidecarRows = []rowCheck{
 	{`SELECT instance || '|' || chain_id || '|' || fingerprint FROM chain_attempts`, []string{"initial|review|fp-1"}},
-	{`SELECT sr.action FROM subscription_retries sr JOIN resources r ON r.id = sr.resource_id WHERE r.locator = 'tracker:item/7'`,
-		[]string{"subscribe"}},
+	{`SELECT sub.source FROM subscriptions sub JOIN resources r ON r.id = sub.resource_id WHERE r.locator = 'tracker:item/7' AND sub.source = 'runtime'`,
+		[]string{"runtime"}},
 }
 
 // revisionBackfillPending is the flag an upgrade across the

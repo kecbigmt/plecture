@@ -140,24 +140,6 @@ func TestResources_ARowIsRemovedOnceNothingReferencesIt(t *testing.T) {
 				mustUpdatePopulation(t, db, func(p *domain.PopulationState) { delete(p.Members, "case-1") })
 			},
 		},
-		{
-			name: "subscription retry deleted",
-			seed: func(t *testing.T, db *DB) {
-				mustPut(t, db, sessionWithResource("s1", nil))
-				if err := db.QueueSubscriptionRetry(ctx, "s1", subscriptionRetrySubscribe, *caseResource("case://1")); err != nil {
-					t.Fatal(err)
-				}
-			},
-			release: func(t *testing.T, db *DB) {
-				retries, err := db.SubscriptionRetriesForLiveSession(ctx, "s1")
-				if err != nil || len(retries) != 1 {
-					t.Fatalf("retries = %v, %v", retries, err)
-				}
-				if err := db.DeleteSubscriptionRetryForLiveSession(ctx, "s1", subscriptionRetrySubscribe, retries[0].Resource.ID); err != nil {
-					t.Fatal(err)
-				}
-			},
-		},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -234,66 +216,7 @@ func mustUpdatePopulation(t *testing.T, db *DB, fn func(*domain.PopulationState)
 	}
 }
 
-func TestResources_APendingUnsubscribeRetryKeepsTheRowAfterItsBindingIsGone(t *testing.T) {
-	db := migratedTestDB(t)
-	ctx := context.Background()
-	s := sessionWithResource("s1", nil)
-	s.Tasks = map[string]*contract.TaskState{"t#1": {Scope: "run", Status: contract.TaskStatusProduced, TaskID: "t", Resource: caseResource("case://1")}}
-	mustPut(t, db, s)
-	if err := db.QueueSubscriptionRetry(ctx, "s1", subscriptionRetryUnsubscribe, *caseResource("case://1")); err != nil {
-		t.Fatal(err)
-	}
-
-	mustUpdate(t, db, "s1", func(s *domain.Session) { s.Tasks = nil })
-	if n := countResources(t, db); n != 1 {
-		t.Fatalf("resources rows = %d while the unsubscribe retry is pending, want 1", n)
-	}
-	retries, err := db.SubscriptionRetriesForLiveSession(ctx, "s1")
-	if err != nil || len(retries) != 1 || retries[0].Resource.Locator != "case://1" {
-		t.Fatalf("retries = %+v, %v; want the pending unsubscribe still naming case://1", retries, err)
-	}
-
-	if err := db.DeleteSubscriptionRetry(ctx, retries[0].SessionID, retries[0].Action, retries[0].Resource.ID); err != nil {
-		t.Fatal(err)
-	}
-	if n := countResources(t, db); n != 0 {
-		t.Errorf("resources rows = %d once the retry is gone, want 0", n)
-	}
-}
-
-func TestQueueSubscriptionRetry_AdoptsTheRowAnotherBindingRecordedAfterItsOwnWasReleased(t *testing.T) {
-	db := migratedTestDB(t)
-	ctx := context.Background()
-	s1 := sessionWithResource("s1", nil)
-	s1.Tasks = map[string]*contract.TaskState{"t#1": {Scope: "run", Status: contract.TaskStatusProduced, TaskID: "t", Resource: caseResource("case://1")}}
-	mustPut(t, db, s1)
-	stored, err := db.GetSession(ctx, "s1")
-	if err != nil {
-		t.Fatal(err)
-	}
-	retained := *stored.Tasks["t#1"].Resource
-
-	mustUpdate(t, db, "s1", func(s *domain.Session) { s.Tasks = nil })
-	mustPut(t, db, sessionWithResource("s2", caseResource("case://1?reply=2")))
-
-	if err := db.QueueSubscriptionRetry(ctx, "s1", subscriptionRetryUnsubscribe, retained); err != nil {
-		t.Fatalf("queue unsubscribe with the released row's id: %v", err)
-	}
-	retries, err := db.SubscriptionRetriesForLiveSession(ctx, "s1")
-	if err != nil || len(retries) != 1 {
-		t.Fatalf("retries = %+v, %v; want the pending unsubscribe", retries, err)
-	}
-	s2, err := db.GetSession(ctx, "s2")
-	if err != nil {
-		t.Fatal(err)
-	}
-	if retries[0].Resource.ID != s2.Resource.ID {
-		t.Errorf("retry references %s, want the row now recorded under the name (%s)", retries[0].Resource.ID, s2.Resource.ID)
-	}
-}
-
 func TestResources_ARawSQLWriteDroppingTheLastReferenceRemovesTheRow(t *testing.T) {
-	ctx := context.Background()
 	seedSession := func(mutate func(*domain.Session)) func(t *testing.T, db *DB) {
 		return func(t *testing.T, db *DB) {
 			s := sessionWithResource("s1", nil)
@@ -315,12 +238,6 @@ func TestResources_ARawSQLWriteDroppingTheLastReferenceRemovesTheRow(t *testing.
 			p.Members["case-1"] = &domain.PopulationMember{Resource: *caseResource("case://1"), Generation: 1}
 		})
 	}
-	withRetry := func(t *testing.T, db *DB) {
-		mustPut(t, db, sessionWithResource("s1", nil))
-		if err := db.QueueSubscriptionRetry(ctx, "s1", subscriptionRetryUnsubscribe, *caseResource("case://1")); err != nil {
-			t.Fatal(err)
-		}
-	}
 	withSession := func(t *testing.T, db *DB) {
 		mustPut(t, db, sessionWithResource("s1", caseResource("case://1")))
 	}
@@ -332,10 +249,10 @@ func TestResources_ARawSQLWriteDroppingTheLastReferenceRemovesTheRow(t *testing.
 		wantKept bool
 	}{
 		{name: "session deleted", seed: withSession, write: `DELETE FROM sessions`},
-		{name: "session resource cleared", seed: withSession, write: `UPDATE sessions SET resource_id = NULL`},
+		{name: "session resource cleared", seed: withSession, write: `UPDATE sessions SET resource_id = NULL`, wantKept: true},
 		{name: "session resource rewritten to itself", seed: withSession, write: `UPDATE sessions SET resource_id = resource_id`, wantKept: true},
-		{name: "task instance deleted", seed: withTask, write: `DELETE FROM task_instances`},
-		{name: "task instance resource cleared", seed: withTask, write: `UPDATE task_instances SET resource_id = NULL`},
+		{name: "task instance deleted", seed: withTask, write: `DELETE FROM task_instances`, wantKept: true},
+		{name: "task instance resource cleared", seed: withTask, write: `UPDATE task_instances SET resource_id = NULL`, wantKept: true},
 		{name: "task instance deleted while the session still references it", seed: func(t *testing.T, db *DB) {
 			s := sessionWithResource("s1", caseResource("case://1"))
 			s.Tasks = map[string]*contract.TaskState{"t#1": {Scope: "run", Status: contract.TaskStatusProduced, TaskID: "t", Resource: caseResource("case://1")}}
@@ -344,14 +261,11 @@ func TestResources_ARawSQLWriteDroppingTheLastReferenceRemovesTheRow(t *testing.
 		{name: "node instance deleted, cascading to its execution", seed: withNodeResource, write: `DELETE FROM node_instances`},
 		{name: "node execution deleted", seed: withNodeResource, write: `DELETE FROM node_executions`},
 		{name: "node execution resource cleared", seed: withNodeResource, write: `UPDATE node_executions SET resource_id = NULL`},
-		{name: "node execution subscription deleted", seed: withNodeSubscription, write: `DELETE FROM node_executions`},
-		{name: "node execution subscription cleared", seed: withNodeSubscription, write: `UPDATE node_executions SET subscription_id = NULL`},
+		{name: "node execution subscription deleted", seed: withNodeSubscription, write: `DELETE FROM node_executions`, wantKept: true},
+		{name: "node execution subscription cleared", seed: withNodeSubscription, write: `UPDATE node_executions SET subscription_id = NULL`, wantKept: true},
 		{name: "population member deleted", seed: withMember, write: `DELETE FROM population_members`},
 		{name: "population deleted, cascading to its members", seed: withMember, write: `DELETE FROM populations`},
 		{name: "population member moved to another resource", seed: withMember, write: `UPDATE population_members SET resource_id = 'other'`},
-		{name: "subscription retry deleted", seed: withRetry, write: `DELETE FROM subscription_retries`},
-		{name: "subscription retry moved to another resource", seed: withRetry, write: `UPDATE subscription_retries SET resource_id = 'other'`},
-		{name: "session deleted, cascading to its subscription retry", seed: withRetry, write: `DELETE FROM sessions`},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -377,37 +291,5 @@ func TestResources_ARawSQLWriteDroppingTheLastReferenceRemovesTheRow(t *testing.
 				t.Errorf("row kept = %v after %q, want %v", kept, tt.write, tt.wantKept)
 			}
 		})
-	}
-}
-
-func TestUpdateSessionWithSubscriptionRetries_TheQueuedUnsubscribeHoldsTheRowItsWriteUnbinds(t *testing.T) {
-	db := migratedTestDB(t)
-	ctx := context.Background()
-	s := sessionWithResource("s1", nil)
-	s.Tasks = map[string]*contract.TaskState{"t#1": {Scope: "run", Status: contract.TaskStatusProduced, TaskID: "t", Resource: caseResource("case://1")}}
-	mustPut(t, db, s)
-	const recordedAt = "2000-01-01T00:00:00Z"
-	if _, err := db.write.Exec(`UPDATE resources SET created_at = ?`, recordedAt); err != nil {
-		t.Fatal(err)
-	}
-	var id string
-	if err := db.write.QueryRow(`SELECT id FROM resources`).Scan(&id); err != nil {
-		t.Fatal(err)
-	}
-
-	err := db.UpdateSessionWithSubscriptionRetries(ctx, "s1", func(s *domain.Session) error {
-		s.Tasks = nil
-		return nil
-	}, subscriptionRetryUnsubscribe, []contract.Resource{*caseResource("case://1")})
-	if err != nil {
-		t.Fatal(err)
-	}
-
-	var gotID, gotCreatedAt string
-	if err := db.write.QueryRow(`SELECT id, created_at FROM resources`).Scan(&gotID, &gotCreatedAt); err != nil {
-		t.Fatal(err)
-	}
-	if gotID != id || gotCreatedAt != recordedAt {
-		t.Errorf("resource row = (%s, %s), want the original (%s, %s) never released and recorded again", gotID, gotCreatedAt, id, recordedAt)
 	}
 }

@@ -430,7 +430,7 @@ func (q *Queries) GetPopulation(ctx context.Context, arg GetPopulationParams) (P
 }
 
 const getResourceByName = `-- name: GetResourceByName :one
-SELECT id, type, name, locator, created_at FROM resources WHERE name = ?
+SELECT id, type, name, locator, created_at, max_subscribers FROM resources WHERE name = ?
 `
 
 func (q *Queries) GetResourceByName(ctx context.Context, name string) (Resource, error) {
@@ -442,12 +442,13 @@ func (q *Queries) GetResourceByName(ctx context.Context, name string) (Resource,
 		&i.Name,
 		&i.Locator,
 		&i.CreatedAt,
+		&i.MaxSubscribers,
 	)
 	return i, err
 }
 
 const getUntypedResourceByLocator = `-- name: GetUntypedResourceByLocator :one
-SELECT id, type, name, locator, created_at FROM resources WHERE type = '' AND locator = ? ORDER BY created_at, id LIMIT 1
+SELECT id, type, name, locator, created_at, max_subscribers FROM resources WHERE type = '' AND locator = ? ORDER BY created_at, id LIMIT 1
 `
 
 func (q *Queries) GetUntypedResourceByLocator(ctx context.Context, locator string) (Resource, error) {
@@ -459,6 +460,7 @@ func (q *Queries) GetUntypedResourceByLocator(ctx context.Context, locator strin
 		&i.Name,
 		&i.Locator,
 		&i.CreatedAt,
+		&i.MaxSubscribers,
 	)
 	return i, err
 }
@@ -1712,7 +1714,7 @@ func (q *Queries) ListPopulationMembers(ctx context.Context, arg ListPopulationM
 }
 
 const listResourcesByIDs = `-- name: ListResourcesByIDs :many
-SELECT id, type, name, locator, created_at
+SELECT id, type, name, locator, created_at, max_subscribers
 FROM resources WHERE id IN (/*SLICE:ids*/?)
 `
 
@@ -1741,6 +1743,7 @@ func (q *Queries) ListResourcesByIDs(ctx context.Context, ids []string) ([]Resou
 			&i.Name,
 			&i.Locator,
 			&i.CreatedAt,
+			&i.MaxSubscribers,
 		); err != nil {
 			return nil, err
 		}

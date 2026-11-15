@@ -1479,11 +1479,9 @@
         "finalize": {
           "$ref": "#/$defs/action"
         },
-        "subscribe": {
-          "$ref": "#/$defs/action"
-        },
-        "unsubscribe": {
-          "$ref": "#/$defs/action"
+        "max_subscribers": {
+          "type": "integer",
+          "minimum": 1
         },
         "inputs_schema": {
           "$ref": "#/$defs/schemaDocument"

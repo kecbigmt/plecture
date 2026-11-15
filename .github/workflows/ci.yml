@@ -208,8 +208,8 @@ jobs:
   #
   # The ADR lifecycle check lives here rather than in its own job: its
   # whole-repo links and scope heading run on every event, and its
-  # immutability comparison needs the PR's base/head shas and full history,
-  # so that part runs only on pull_request events.
+  # immutability comparison needs main and the PR head with full history:
+  # an ADR on an unmerged base PR is still a proposal.
   check-all:
     name: check-all
     runs-on: ubuntu-latest
@@ -238,9 +238,9 @@ jobs:
       - name: Check ADR supersession links, immutability, and scope
         if: github.event_name != 'pull_request'
         run: ./scripts/check-adr-lifecycle.sh
-      - name: Check ADR supersession links, immutability, and scope against the PR diff
+      - name: Check ADR supersession links, immutability, and scope against main
         if: github.event_name == 'pull_request'
-        run: ./scripts/check-adr-lifecycle.sh "${{ github.event.pull_request.base.sha }}" "${{ github.event.pull_request.head.sha }}"
+        run: ./scripts/check-adr-lifecycle.sh origin/main "${{ github.event.pull_request.head.sha }}"
 
   gh-guard:
     name: gh-guard

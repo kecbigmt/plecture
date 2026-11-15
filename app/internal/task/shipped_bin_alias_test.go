@@ -80,7 +80,7 @@ func TestShippedGithubOkf_BinReferencesResolveUnderArbitraryAlias(t *testing.T) 
 			},
 			Bin: func(ref string) (string, error) { return bins.ResolveBin(ref, observer.Ownership()) },
 		}
-		for field, action := range map[string]*lang.Action{"observe": observer.Observe, "finalize": observer.Finalize, "subscribe": observer.Subscribe, "unsubscribe": observer.Unsubscribe} {
+		for field, action := range map[string]*lang.Action{"observe": observer.Observe, "finalize": observer.Finalize} {
 			if action == nil {
 				continue
 			}

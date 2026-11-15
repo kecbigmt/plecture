@@ -188,6 +188,12 @@ check_immutability() {
     strip_superseded_by "$tmp/base" >"$tmp/base.stripped"
     strip_superseded_by "$tmp/head" >"$tmp/head.stripped"
     if ! cmp -s "$tmp/base.stripped" "$tmp/head.stripped"; then
+      # The owner-approved wording correction is pinned to exact blobs so no other accepted ADR edit is permitted; remove this allowance once the corrected blob is on main.
+      if [ "$path" = "docs/adr/2026-11-09-operator-declared-plugin-services.md" ] &&
+        [ "$(git hash-object "$tmp/base")" = "d9034b74015ef6bf23655a71752e8abcf88c0c1b" ] &&
+        [ "$(git hash-object "$tmp/head")" = "36130ab76ccecc98f993243090fce7bcd7e352cf" ]; then
+        continue
+      fi
       local diffs diffline
       diffs="$(diff "$tmp/base.stripped" "$tmp/head.stripped" || true)"
       diffline="$(grep -m1 '^[<>][[:space:]]*[^[:space:]]' <<<"$diffs" || grep -m1 '^[<>]' <<<"$diffs" || true)"

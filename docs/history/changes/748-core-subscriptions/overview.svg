@@ -1,0 +1,161 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1220 770" width="1220" height="770" role="img" aria-label="Before: plect subscribe ran a resource subscribe hook, and session create, task setup and cleanup, and node subscriptions went through a per-session delivery lock to the same hooks, with failures queued in subscription_retries; the hooks wrote plugin ledgers that each plugin service read to publish to every subscribed session. After: subscribe, unsubscribe, up, destroy, task setup and cleanup, and node start and end write source rows into a core subscriptions table, the session write transaction reconciles dispatch, task, and node rows, and plect event publish --resource appends once per distinct session and reports the delivered count. After a backup, a schema migration maps live rows and subscription_retries, and an importer maps plugin ledgers and any legacy pending_delivery.json into runtime rows.">
+  <defs>
+    <marker id="arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M0,0 L10,5 L0,10 z" fill="#1f2328"/>
+    </marker>
+    <marker id="arrow-red" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M0,0 L10,5 L0,10 z" fill="#cf222e"/>
+    </marker>
+  </defs>
+  <rect x="0" y="0" width="1220" height="770" fill="#ffffff"/>
+  <g font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="12" fill="#1f2328">
+    <text x="24" y="32" font-size="15" font-weight="600">#748 core subscriptions: what changes in subscription and delivery</text>
+
+    <!-- ===== BEFORE ===== -->
+    <rect x="12" y="50" width="1196" height="234" rx="8" fill="none" stroke="#d0d7de"/>
+    <text x="24" y="72" font-weight="600">Before <tspan fill="#59636e" font-weight="400">· main: membership lives in plugin ledgers, written through hooks</tspan></text>
+
+    <rect x="24" y="88" width="200" height="32" rx="5" fill="#f6f8fa" stroke="#8c959f"/>
+    <text x="36" y="108" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" font-size="11.5">plect subscribe &lt;id&gt;</text>
+    <rect x="24" y="134" width="200" height="32" rx="5" fill="#f6f8fa" stroke="#8c959f"/>
+    <text x="36" y="154">session create / destroy</text>
+    <rect x="24" y="176" width="200" height="32" rx="5" fill="#f6f8fa" stroke="#8c959f"/>
+    <text x="36" y="196">task setup / cleanup</text>
+    <rect x="24" y="218" width="200" height="32" rx="5" fill="#f6f8fa" stroke="#8c959f"/>
+    <text x="36" y="238">node with subscription</text>
+
+    <rect x="258" y="134" width="170" height="116" rx="6" fill="#ffebe9" stroke="#cf222e" stroke-dasharray="6 4"/>
+    <text x="270" y="157" font-weight="600" fill="#cf222e">delivery lock</text>
+    <text x="270" y="177" fill="#59636e">per-session file lock</text>
+    <text x="270" y="195" fill="#59636e">around wire / unwire</text>
+    <line x1="224" y1="150" x2="256" y2="150" stroke="#1f2328" stroke-width="1.5" marker-end="url(#arrow)"/>
+    <line x1="224" y1="192" x2="256" y2="192" stroke="#1f2328" stroke-width="1.5" marker-end="url(#arrow)"/>
+    <line x1="224" y1="234" x2="256" y2="234" stroke="#1f2328" stroke-width="1.5" marker-end="url(#arrow)"/>
+
+    <rect x="482" y="88" width="210" height="90" rx="6" fill="#ffebe9" stroke="#cf222e" stroke-dasharray="6 4"/>
+    <text x="494" y="110" font-weight="600" fill="#cf222e">subscribe / unsubscribe hook</text>
+    <text x="494" y="130" fill="#59636e">exec action declared in each</text>
+    <text x="494" y="148" fill="#59636e">plugin resource TOML</text>
+    <line x1="224" y1="104" x2="480" y2="104" stroke="#1f2328" stroke-width="1.5" marker-end="url(#arrow)"/>
+    <line x1="428" y1="160" x2="480" y2="160" stroke="#1f2328" stroke-width="1.5" marker-end="url(#arrow)"/>
+    <text x="454" y="153" text-anchor="middle" font-size="11">runs</text>
+
+    <rect x="482" y="200" width="210" height="64" rx="6" fill="#ffebe9" stroke="#cf222e" stroke-dasharray="6 4"/>
+    <text x="494" y="220" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" font-size="11.5" fill="#cf222e">subscription_retries</text>
+    <text x="494" y="238" fill="#59636e">retry queue, drained by</text>
+    <text x="494" y="255" fill="#59636e">reactor, up, and destroy</text>
+    <line x1="428" y1="226" x2="480" y2="226" stroke="#1f2328" stroke-width="1.5" marker-end="url(#arrow)"/>
+    <text x="454" y="219" text-anchor="middle" font-size="11">fails</text>
+    <line x1="560" y1="200" x2="560" y2="180" stroke="#1f2328" stroke-width="1.5" marker-end="url(#arrow)"/>
+    <text x="568" y="194" font-size="11">retries</text>
+
+    <rect x="746" y="88" width="200" height="90" rx="6" fill="#ffebe9" stroke="#cf222e" stroke-dasharray="6 4"/>
+    <text x="758" y="110" font-weight="600" fill="#cf222e">plugin ledgers</text>
+    <text x="758" y="130" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" font-size="11.5" fill="#cf222e">subscriptions.json</text>
+    <text x="758" y="148" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" font-size="11.5" fill="#cf222e">subscribers.json</text>
+    <text x="758" y="166" fill="#59636e">one authority per plugin</text>
+    <line x1="692" y1="133" x2="744" y2="133" stroke="#1f2328" stroke-width="1.5" marker-end="url(#arrow)"/>
+    <text x="719" y="126" text-anchor="middle" font-size="11">writes</text>
+
+    <rect x="1000" y="88" width="196" height="90" rx="6" fill="#f6f8fa" stroke="#8c959f"/>
+    <text x="1012" y="110" font-weight="600">plugin service</text>
+    <text x="1012" y="130" fill="#59636e">reads its ledger, then per row</text>
+    <text x="1012" y="148" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" font-size="11.5">plect event publish</text>
+    <text x="1012" y="166" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" font-size="11.5" dx="14">&lt;session&gt;</text>
+    <line x1="946" y1="133" x2="998" y2="133" stroke="#1f2328" stroke-width="1.5" marker-end="url(#arrow)"/>
+    <text x="973" y="126" text-anchor="middle" font-size="11">reads</text>
+
+    <rect x="1000" y="210" width="196" height="40" rx="6" fill="#f6f8fa" stroke="#8c959f"/>
+    <text x="1098" y="235" text-anchor="middle">session event logs</text>
+    <line x1="1098" y1="178" x2="1098" y2="208" stroke="#1f2328" stroke-width="1.5" marker-end="url(#arrow)"/>
+
+    <!-- ===== AFTER ===== -->
+    <rect x="12" y="300" width="1196" height="322" rx="8" fill="none" stroke="#d0d7de"/>
+    <text x="24" y="322" font-weight="600">After <tspan fill="#59636e" font-weight="400">· #748: core owns membership; a resource publish fans out once per session</tspan></text>
+
+    <rect x="24" y="338" width="200" height="32" rx="5" fill="#fff8c5" stroke="#9a6700"/>
+    <text x="36" y="358" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" font-size="11.5">plect subscribe &lt;id&gt;</text>
+    <rect x="24" y="380" width="200" height="32" rx="5" fill="#dafbe1" stroke="#1a7f37"/>
+    <text x="36" y="400" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" font-size="11.5">plect unsubscribe &lt;id&gt;</text>
+    <rect x="24" y="422" width="200" height="32" rx="5" fill="#fff8c5" stroke="#9a6700"/>
+    <text x="36" y="442">plect up / destroy</text>
+    <rect x="24" y="464" width="200" height="32" rx="5" fill="#fff8c5" stroke="#9a6700"/>
+    <text x="36" y="484">task setup / cleanup</text>
+    <rect x="24" y="506" width="200" height="32" rx="5" fill="#fff8c5" stroke="#9a6700"/>
+    <text x="36" y="526">node start / end</text>
+
+    <rect x="258" y="422" width="170" height="116" rx="6" fill="#dafbe1" stroke="#1a7f37"/>
+    <text x="270" y="445" font-weight="600">session write tx</text>
+    <text x="270" y="465" fill="#59636e">reconciles dispatch,</text>
+    <text x="270" y="483" fill="#59636e">task, and node rows</text>
+    <text x="270" y="511" fill="#59636e">replaces the lock</text>
+    <text x="270" y="529" fill="#59636e">and the retry queue</text>
+    <line x1="224" y1="438" x2="256" y2="438" stroke="#1f2328" stroke-width="1.5" marker-end="url(#arrow)"/>
+    <line x1="224" y1="480" x2="256" y2="480" stroke="#1f2328" stroke-width="1.5" marker-end="url(#arrow)"/>
+    <line x1="224" y1="522" x2="256" y2="522" stroke="#1f2328" stroke-width="1.5" marker-end="url(#arrow)"/>
+
+    <rect x="482" y="338" width="210" height="200" rx="6" fill="#dafbe1" stroke="#1a7f37" stroke-width="1.5"/>
+    <text x="494" y="360" font-weight="600">subscriptions table</text>
+    <g font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" font-size="11.5">
+      <text x="494" y="380">PK (session_id,</text>
+      <text x="522" y="396">resource_id, source)</text>
+      <text x="494" y="418">source: runtime | dispatch</text>
+      <text x="536" y="434">| task | node</text>
+    </g>
+    <line x1="482" y1="450" x2="692" y2="450" stroke="#1a7f37"/>
+    <text x="494" y="472" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" font-size="11.5">resources.max_subscribers</text>
+    <text x="494" y="492" fill="#59636e">counts distinct sessions;</text>
+    <text x="494" y="510" fill="#59636e">an excess subscribe is rejected</text>
+    <line x1="224" y1="354" x2="480" y2="354" stroke="#1f2328" stroke-width="1.5" marker-end="url(#arrow)"/>
+    <text x="341" y="347" text-anchor="middle" font-size="11">writes runtime row, no hook</text>
+    <line x1="224" y1="396" x2="480" y2="396" stroke="#1f2328" stroke-width="1.5" marker-end="url(#arrow)"/>
+    <text x="341" y="389" text-anchor="middle" font-size="11">removes runtime row only</text>
+    <line x1="428" y1="480" x2="480" y2="480" stroke="#1f2328" stroke-width="1.5" marker-end="url(#arrow)"/>
+    <text x="454" y="473" text-anchor="middle" font-size="11">rows</text>
+
+    <rect x="482" y="564" width="210" height="44" rx="6" fill="#dafbe1" stroke="#1a7f37"/>
+    <text x="494" y="583" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" font-size="11.5">plect subscription list</text>
+    <text x="494" y="600" fill="#59636e">--session, --resource-type, --json</text>
+    <line x1="587" y1="538" x2="587" y2="562" stroke="#1f2328" stroke-width="1.5" marker-end="url(#arrow)"/>
+
+    <rect x="746" y="338" width="200" height="56" rx="6" fill="#dafbe1" stroke="#1a7f37"/>
+    <text x="758" y="360" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" font-size="11.5">plect event publish</text>
+    <text x="758" y="378" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" font-size="11.5" dx="14">--resource &lt;id&gt;</text>
+
+    <rect x="746" y="430" width="200" height="72" rx="6" fill="#dafbe1" stroke="#1a7f37"/>
+    <text x="758" y="452" font-weight="600">append once per</text>
+    <text x="758" y="470" font-weight="600">distinct session</text>
+    <text x="758" y="490" fill="#59636e">returns the delivered count</text>
+    <line x1="846" y1="394" x2="846" y2="428" stroke="#1f2328" stroke-width="1.5" marker-start="url(#arrow)" marker-end="url(#arrow)"/>
+    <line x1="692" y1="466" x2="744" y2="466" stroke="#1f2328" stroke-width="1.5" marker-end="url(#arrow)"/>
+    <text x="719" y="459" text-anchor="middle" font-size="11">sessions</text>
+
+    <rect x="1000" y="446" width="196" height="40" rx="6" fill="#f6f8fa" stroke="#8c959f"/>
+    <text x="1098" y="471" text-anchor="middle">session event logs</text>
+    <line x1="946" y1="466" x2="998" y2="466" stroke="#1f2328" stroke-width="1.5" marker-end="url(#arrow)"/>
+
+    <rect x="1000" y="338" width="196" height="80" rx="6" fill="#f6f8fa" stroke="#8c959f"/>
+    <text x="1012" y="360" font-weight="600">plugin services</text>
+    <text x="1012" y="380" fill="#59636e">not changed by this PR; the</text>
+    <text x="1012" y="396" fill="#59636e">stacked service and adapter</text>
+    <text x="1012" y="412" fill="#59636e">PRs move them to this publish</text>
+
+    <!-- ===== MIGRATION ===== -->
+    <rect x="12" y="638" width="1196" height="80" rx="8" fill="none" stroke="#d0d7de"/>
+    <text x="24" y="660" font-weight="600">One-time migration <tspan fill="#59636e" font-weight="400">· backup first, no compatibility path (docs/migrations/core-subscriptions.md)</tspan></text>
+    <rect x="24" y="672" width="556" height="36" rx="5" fill="#dafbe1" stroke="#1a7f37"/>
+    <text x="36" y="695">schema migration: live entry, task, node rows and <tspan font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" font-size="11.5">subscription_retries</tspan> → rows</text>
+    <rect x="600" y="672" width="596" height="36" rx="5" fill="#dafbe1" stroke="#1a7f37"/>
+    <text x="612" y="695">importer script: plugin ledgers and legacy <tspan font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" font-size="11.5">pending_delivery.json</tspan> → runtime rows</text>
+
+    <!-- Legend -->
+    <rect x="24" y="738" width="24" height="16" rx="3" fill="#dafbe1" stroke="#1a7f37"/>
+    <text x="56" y="750">added</text>
+    <rect x="120" y="738" width="24" height="16" rx="3" fill="#fff8c5" stroke="#9a6700"/>
+    <text x="152" y="750">changed</text>
+    <rect x="230" y="738" width="24" height="16" rx="3" fill="#ffebe9" stroke="#cf222e" stroke-dasharray="4 3"/>
+    <text x="262" y="750" fill="#cf222e">removed</text>
+    <rect x="340" y="738" width="24" height="16" rx="3" fill="#f6f8fa" stroke="#8c959f"/>
+    <text x="372" y="750">unchanged</text>
+  </g>
+</svg>

@@ -2,8 +2,6 @@ package service
 
 import (
 	"fmt"
-	"log/slog"
-	"sort"
 	"time"
 
 	"github.com/kecbigmt/plecture/app/internal/config"
@@ -51,46 +49,5 @@ func releaseNodeSubscriptions(cfg *config.Config, store *state.Store, sessionNam
 	}); err != nil {
 		return err
 	}
-	subscribed := make(map[string]*contract.Resource)
-	for id, st := range released {
-		if st.Status == contract.TaskStatusCleaned && st.Subscription != nil {
-			subscribed[id] = st.Subscription
-		}
-	}
-	for _, resource := range distinctResources(subscribed) {
-		if _, msg := unwireDeliveryOnTeardown(cfg, store, sessionName, projectRoot, resource, ""); msg != "" {
-			slog.Warn("node subscription teardown failed", "session", sessionName, "resource", resource.Locator, "error", msg)
-		}
-	}
 	return nil
-}
-
-func wireProducedNodeSubscriptions(cfg *config.Config, store *state.Store, sessionName, projectRoot string, nodes map[string]*contract.Resource) {
-	for _, resource := range distinctResources(nodes) {
-		if _, msg := wireDeliveryOnSetup(cfg, store, sessionName, projectRoot, resource, true); msg != "" {
-			slog.Warn("node subscription setup failed", "session", sessionName, "resource", resource.Locator, "error", msg)
-		} else if err := dequeuePendingSubscribe(store, sessionName, *resource); err != nil {
-			slog.Warn("node subscription retry cleanup failed", "session", sessionName, "resource", resource.Locator, "error", err)
-		}
-	}
-}
-
-// Nodes subscribing to one resource in different spellings share one
-// registration, so each resource is wired or unwired once.
-func distinctResources(byNode map[string]*contract.Resource) []*contract.Resource {
-	var out []*contract.Resource
-	for _, resource := range byNode {
-		if resource == nil {
-			continue
-		}
-		duplicate := false
-		for _, seen := range out {
-			duplicate = duplicate || sameResource(seen, resource)
-		}
-		if !duplicate {
-			out = append(out, resource)
-		}
-	}
-	sort.Slice(out, func(i, j int) bool { return out[i].Locator < out[j].Locator })
-	return out
 }

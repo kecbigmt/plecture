@@ -115,10 +115,6 @@ var (
 		"resource.id")
 	surfaceResourceFinalize = newSurface("resource.finalize", LayerSemantic,
 		"resource.id", "session.name", "resource.revision", "judges")
-	surfaceResourceSubscribe = newSurface("resource.subscribe", LayerSemantic,
-		"resource.id", "resource.inputs.<key>", "session.name")
-	surfaceResourceUnsubscribe = newSurface("resource.unsubscribe", LayerSemantic,
-		"resource.id", "resource.inputs.<key>", "session.name")
 	surfaceResourceQuery = newSurface("resource.query", LayerSemantic,
 		"inputs.<key>")
 

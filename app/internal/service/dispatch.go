@@ -154,7 +154,7 @@ func dispatchResource(cfg *config.Config, projectRoot, flag, resource string) (r
 		if wf.Resource != key {
 			return dispatchResult{}, false, &Error{Code: ErrInvalidInput, Message: fmt.Sprintf("workflow %q accepts resource %q, but %q resolves to resource %q", flag, wf.Resource, resource, key)}
 		}
-		return dispatchResult{Workflow: wf, Resource: contract.Resource{Type: key, Name: name, Locator: resource}}, true, nil
+		return dispatchResult{Workflow: wf, Resource: contract.Resource{Type: key, Name: name, Locator: resource, MaxSubscribers: resources[key].MaxSubscribers, MaxSubscribersDeclared: true}}, true, nil
 	}
 
 	var candidates, explicitOnly []config.WorkflowFile
@@ -174,7 +174,7 @@ func dispatchResource(cfg *config.Config, projectRoot, flag, resource string) (r
 	case 0:
 		return dispatchResult{}, false, noWorkflowError(key, resource, explicitOnly, workflows, addresses)
 	case 1:
-		return dispatchResult{Workflow: candidates[0], Resource: contract.Resource{Type: key, Name: name, Locator: resource}}, true, nil
+		return dispatchResult{Workflow: candidates[0], Resource: contract.Resource{Type: key, Name: name, Locator: resource, MaxSubscribers: resources[key].MaxSubscribers, MaxSubscribersDeclared: true}}, true, nil
 	}
 	// Addresses, not ids: two plugins may declare one id, and a list that
 	// printed it twice would name nothing the reader could pass back.

@@ -498,7 +498,7 @@ func TestMigrate_ResourcesRecordEveryExistingIdentifierOnceAndRepointEachReferen
 		{`SELECT subscription_id FROM node_executions WHERE id = 'ne-1'`, "case://5"},
 		{`SELECT resource_id FROM population_members WHERE workflow = 'wf'`, "case://2"},
 		{`SELECT resource_id FROM population_member_blockers WHERE workflow = 'wf'`, "case://2"},
-		{`SELECT resource_id FROM subscription_retries WHERE session_id = 's-live'`, "case://4"},
+		{`SELECT resource_id FROM subscriptions WHERE session_id = 's-live' AND source = 'runtime'`, "case://4"},
 	}
 	for _, ref := range references {
 		var got string
