@@ -68,11 +68,12 @@ services naming the same executable are a load error.
 
 `env_file` is an absolute path to an owner-readable file of `KEY=VALUE` lines.
 Blank and `#` comment lines are ignored; duplicate or invalid keys, malformed
-lines, relative paths, unreadable files, interpolation, and any `PLECT_*` key
-fail loading. A service receives the env-file entries plus `PLECT_DATA_DIR`
-and `PLECT_CACHE_DIR`; it does not inherit the supervisor's environment. The
-executable validates its own required variables. `restart` defaults to `on-failure` and
-may be `never`; `health` defaults to `{ type = "process" }`, the only health
+lines, relative paths, unreadable files, interpolation, and a key conflicting
+with plect-provided `PLECT_DATA_DIR` or `PLECT_CACHE_DIR` fail loading. A service
+receives the env-file entries plus `PLECT_DATA_DIR` and `PLECT_CACHE_DIR`; it
+does not inherit the supervisor's environment. The executable validates its
+own required variables. `restart` defaults to `on-failure` and may be `never`;
+`health` defaults to `{ type = "process" }`, the only health
 kind here. An explicit `plect plugin update` authorizes restarting an already
 declared service when its code changes. Enabling or updating a plugin creates
 no service declaration.

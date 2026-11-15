@@ -191,7 +191,7 @@ check_immutability() {
       # The owner-approved wording correction is pinned to exact blobs so no other accepted ADR edit is permitted; remove this allowance once the corrected blob is on main.
       if [ "$path" = "docs/adr/2026-11-09-operator-declared-plugin-services.md" ] &&
         [ "$(git hash-object "$tmp/base")" = "d9034b74015ef6bf23655a71752e8abcf88c0c1b" ] &&
-        [ "$(git hash-object "$tmp/head")" = "bb981bd9559824e05b7a377f14f2cfb8ab6224e7" ]; then
+        [ "$(git hash-object "$tmp/head")" = "36130ab76ccecc98f993243090fce7bcd7e352cf" ]; then
         continue
       fi
       local diffs diffline

@@ -80,9 +80,10 @@ letter, contains only lowercase letters, digits, and hyphens, and is at most
 `env_file` is an absolute path to an owner-readable file of literal
 `KEY=VALUE` lines. Blank and `#` comment lines are ignored. Duplicate keys,
 invalid names, malformed lines, unreadable files, and relative paths fail
-loading. Interpolation is not allowed. Any `PLECT_*` key in the env file fails
-loading. The service receives env-file entries plus `PLECT_DATA_DIR` and
-`PLECT_CACHE_DIR`, and validates its own required inputs.
+loading. Interpolation is not allowed. An env-file key conflicting with
+plect-provided `PLECT_DATA_DIR` or `PLECT_CACHE_DIR` fails loading. The service
+receives env-file entries plus `PLECT_DATA_DIR` and `PLECT_CACHE_DIR`, and
+validates its own required inputs.
 
 `[services.config]` is optional, non-secret plugin-specific configuration.
 The executable declares its `config_schema` inline in `plugin.toml`, using a
