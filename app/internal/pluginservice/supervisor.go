@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"log/slog"
+	"sync/atomic"
 	"time"
 
 	"github.com/kecbigmt/plecture/app/internal/domain"
@@ -57,9 +58,10 @@ func NewSupervisor(source PluginSource) *Supervisor {
 
 // runningService is one currently-active service goroutine.
 type runningService struct {
-	cancel    context.CancelFunc
-	done      chan struct{}
-	signature [32]byte
+	cancel      context.CancelFunc
+	done        chan struct{}
+	signature   [32]byte
+	declaration atomic.Pointer[Declaration]
 }
 
 // Run reconciles declared services against currently running ones every
@@ -104,7 +106,9 @@ func (sup *Supervisor) reconcile(ctx context.Context, running map[string]*runnin
 	seen := make(map[string]bool, len(decls))
 	for _, decl := range decls {
 		seen[decl.ID] = true
-		serialized, err := json.Marshal(decl)
+		identity := decl
+		identity.ExecPath = ""
+		serialized, err := json.Marshal(identity)
 		if err != nil {
 			sup.logger.Error("pluginservice: invalid declaration", "service", decl.ID, "error", err)
 			continue
@@ -112,6 +116,7 @@ func (sup *Supervisor) reconcile(ctx context.Context, running map[string]*runnin
 		signature := sha256.Sum256(serialized)
 		if rs, ok := running[decl.ID]; ok {
 			if rs.signature == signature {
+				rs.declaration.Store(&decl)
 				continue
 			}
 			// The owning plugin's content changed (a `plect plugin update`
@@ -136,11 +141,13 @@ func (sup *Supervisor) reconcile(ctx context.Context, running map[string]*runnin
 func (sup *Supervisor) start(ctx context.Context, decl Declaration, signature [32]byte) *runningService {
 	dctx, cancel := context.WithCancel(ctx)
 	done := make(chan struct{})
+	rs := &runningService{cancel: cancel, done: done, signature: signature}
+	rs.declaration.Store(&decl)
 	go func() {
 		defer close(done)
-		sup.runOne(dctx, decl)
+		sup.runOne(dctx, rs)
 	}()
-	return &runningService{cancel: cancel, done: done, signature: signature}
+	return rs
 }
 
 // runOne owns one service's whole lifetime: start, wait, and — per its
@@ -151,7 +158,8 @@ func (sup *Supervisor) start(ctx context.Context, decl Declaration, signature [3
 // service's failure must never take the whole supervisor, and every other
 // service, down with it — this goroutine boundary plus the recover is what
 // makes that guarantee hold regardless of what runProcess does.
-func (sup *Supervisor) runOne(ctx context.Context, decl Declaration) {
+func (sup *Supervisor) runOne(ctx context.Context, rs *runningService) {
+	decl := *rs.declaration.Load()
 	defer func() {
 		if r := recover(); r != nil {
 			sup.logger.Error("pluginservice: recovered panic in service goroutine", "service", decl.ID, "panic", r)
@@ -178,6 +186,7 @@ func (sup *Supervisor) runOne(ctx context.Context, decl Declaration) {
 		if ctx.Err() != nil {
 			return
 		}
+		decl = *rs.declaration.Load()
 		runErr := runProcess(ctx, decl, sup.logger, sup.waitDelay, func(pid int) {
 			sup.Status.Update(decl.ID, func(st *Status) {
 				st.Running = true

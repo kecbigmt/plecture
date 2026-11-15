@@ -306,3 +306,65 @@ func TestSupervisor_RestartsServiceWhenPluginContentChanges(t *testing.T) {
 		return ok && st.Running && st.PID != firstPID.PID && st.ContentHash == "sha256:v2"
 	})
 }
+
+func TestSupervisorKeepsServiceOnCatalogOnlyRevisionAndUsesNewPathAfterCrash(t *testing.T) {
+	dir := t.TempDir()
+	t.Setenv("PLECT_CONFIG_HOME", dir)
+	started := filepath.Join(dir, "started")
+	body := "printf '%s\\n' \"$0\" >> \"" + started + "\"\ntrap 'exit 0' TERM\nwhile true; do :; done\n"
+	rev1, rev2 := filepath.Join(dir, "rev1"), filepath.Join(dir, "rev2")
+	for _, rev := range []string{rev1, rev2} {
+		if err := os.MkdirAll(rev, 0o755); err != nil {
+			t.Fatal(err)
+		}
+		writeScript(t, rev, "svc", body)
+	}
+	mounted := mountWithService(t, "p", "svc", "svc", plugins.ServiceRestartOnFailure)
+	var revision atomic.Int32
+	var seenRev2 atomic.Bool
+	source := func() ([]plugins.Mounted, *plugins.Lockfile, error) {
+		current := mounted
+		current.Dir = rev1
+		if revision.Load() == 2 {
+			current.Dir = rev2
+			seenRev2.Store(true)
+		}
+		lock := &plugins.Lockfile{Plugins: []plugins.PluginLockEntry{{ID: "p", ContentHash: "sha256:same"}}}
+		return []plugins.Mounted{current}, lock, nil
+	}
+	sup := newTestSupervisor(source)
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	go sup.Run(ctx)
+	waitFor(t, time.Second, func() bool {
+		st, ok := sup.Status.Get("svc")
+		return ok && st.Running
+	})
+	first, _ := sup.Status.Get("svc")
+	revision.Store(2)
+	waitFor(t, time.Second, seenRev2.Load)
+	time.Sleep(30 * time.Millisecond)
+	current, _ := sup.Status.Get("svc")
+	if !current.Running || current.PID != first.PID {
+		t.Fatalf("catalog-only revision restarted service: before = %+v, after = %+v", first, current)
+	}
+	if err := syscall.Kill(first.PID, syscall.SIGKILL); err != nil {
+		t.Fatal(err)
+	}
+	waitFor(t, time.Second, func() bool {
+		st, ok := sup.Status.Get("svc")
+		return ok && st.Running && st.PID != first.PID
+	})
+	want := filepath.Join(rev1, "svc") + "\n" + filepath.Join(rev2, "svc") + "\n"
+	waitFor(t, time.Second, func() bool {
+		content, err := os.ReadFile(started)
+		return err == nil && len(content) >= len(want)
+	})
+	content, err := os.ReadFile(started)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if string(content) != want {
+		t.Fatalf("service starts = %q, want rev1 then rev2", content)
+	}
+}
