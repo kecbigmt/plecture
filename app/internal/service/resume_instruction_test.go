@@ -96,6 +96,74 @@ func TestUp_ResumeInstructionForRecreatedRun(t *testing.T) {
 	}
 }
 
+func TestUp_CompletedTurnSuppressesResumeAcrossLifecycleTriggers(t *testing.T) {
+	for _, tt := range []struct {
+		name    string
+		sleep   bool
+		inbound bool
+	}{
+		{name: "wake after inbound", sleep: true, inbound: true},
+		{name: "full stop and up"},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			store := testStore(t)
+			cfg := writeWorkflowFixture(t, "default", []taskFixture{{id: "runtime", scope: "run", setup: `echo '{"session_id":"prior"}'`, cleanup: "true"}}, []nodeFixture{{id: "runtime"}})
+			name := "work-20"
+			seedSessionWithNodes(t, store, name, "acct", 20, "default", nil)
+			if _, err := Up(cfg, store, UpParams{Identifier: name}); err != nil {
+				t.Fatal(err)
+			}
+			if err := SetMessage(cfg, store, name, "", nil); err != nil {
+				t.Fatal(err)
+			}
+			if _, err := Down(cfg, store, DownParams{Identifier: name, Sleep: tt.sleep}); err != nil {
+				t.Fatal(err)
+			}
+			if tt.inbound {
+				if _, _, _, err := eventlog.NewStore(store.Dir()).Append(event.Event{SessionName: name, Type: "user.emit", Direction: event.Inbound, Body: "new work"}); err != nil {
+					t.Fatal(err)
+				}
+			}
+			if _, err := Up(cfg, store, UpParams{Identifier: name}); err != nil {
+				t.Fatal(err)
+			}
+			evs, _, _, err := eventlog.NewStore(store.Dir()).List(name, 0, event.Filter{Types: []string{event.TypeSessionResumed}})
+			if err != nil || len(evs) != 0 {
+				t.Fatalf("resumed events = %+v, %v; want none", evs, err)
+			}
+		})
+	}
+}
+
+func TestUp_ClearFromOlderRunDoesNotSuppressResumeForLaterRun(t *testing.T) {
+	store := testStore(t)
+	cfg := writeWorkflowFixture(t, "default", []taskFixture{{id: "runtime", scope: "run", setup: `echo '{"session_id":"prior"}'`, cleanup: "true"}}, []nodeFixture{{id: "runtime"}})
+	name := "work-20"
+	seedSessionWithNodes(t, store, name, "acct", 20, "default", nil)
+	if _, err := Up(cfg, store, UpParams{Identifier: name}); err != nil {
+		t.Fatal(err)
+	}
+	if err := SetMessage(cfg, store, name, "", nil); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := Down(cfg, store, DownParams{Identifier: name, Sleep: true}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := Up(cfg, store, UpParams{Identifier: name}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := Down(cfg, store, DownParams{Identifier: name, Sleep: true}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := Up(cfg, store, UpParams{Identifier: name}); err != nil {
+		t.Fatal(err)
+	}
+	evs, _, _, err := eventlog.NewStore(store.Dir()).List(name, 0, event.Filter{Types: []string{event.TypeSessionResumed}})
+	if err != nil || len(evs) != 1 {
+		t.Fatalf("resumed events = %+v, %v; want one for run without status", evs, err)
+	}
+}
+
 func TestUp_SidecarOnlyRebuildPublishesOneResumeInstruction(t *testing.T) {
 	store := testStore(t)
 	flagsDir := t.TempDir()
@@ -194,5 +262,39 @@ func TestRepairSession_PublishesResumeInstruction(t *testing.T) {
 	}
 	if evs[0].Metadata["trigger"] != "repair" {
 		t.Fatalf("resume metadata = %+v", evs[0].Metadata)
+	}
+}
+
+func TestRepairSession_LastStatusDistinguishesIdleAndInterruptedTurns(t *testing.T) {
+	for _, tt := range []struct {
+		name     string
+		statuses []string
+		want     int
+	}{
+		{name: "idle TUI or headless", statuses: []string{"working", ""}, want: 0},
+		{name: "interrupted after prior idle", statuses: []string{"", "working"}, want: 1},
+		{name: "never reported", want: 1},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			store := testStore(t)
+			cfg := repairWorkflowFixture(t, `echo '{"session_id":"prior"}'`, "false", 2)
+			name := "session-1"
+			seedRepairSession(t, store, name, nil)
+			if _, err := Up(cfg, store, UpParams{Identifier: name}); err != nil {
+				t.Fatal(err)
+			}
+			for _, status := range tt.statuses {
+				if err := SetMessage(cfg, store, name, status, nil); err != nil {
+					t.Fatal(err)
+				}
+			}
+			if attempted, err := RepairSession(cfg, store, name, &HealthReport{Repairable: true, Reason: "runtime stopped"}, NewRepairGate()); err != nil || !attempted {
+				t.Fatalf("repair = (%t, %v)", attempted, err)
+			}
+			evs, _, _, err := eventlog.NewStore(store.Dir()).List(name, 0, event.Filter{Types: []string{event.TypeSessionResumed}})
+			if err != nil || len(evs) != tt.want {
+				t.Fatalf("resumed events = %+v, %v; want %d", evs, err, tt.want)
+			}
+		})
 	}
 }

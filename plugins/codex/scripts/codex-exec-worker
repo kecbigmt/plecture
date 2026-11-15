@@ -110,6 +110,12 @@ while true; do
             continue
         fi
 
+        if [ -n "${PLECT_SESSION_NAME:-}" ] && ! plect state set-message "$PLECT_SESSION_NAME" "working" >/dev/null 2>&1; then
+            echo "working status write failed; leaving turn queued" >&2
+            write_health 1 "$event_type"
+            break
+        fi
+
         thread_id="$(cat "$state_dir/thread_id" 2>/dev/null || true)"
         log_file="$state_dir/log/$(date +%s%N).jsonl"
         last_message_file="$(mktemp "$state_dir/.last-message.XXXXXX")"

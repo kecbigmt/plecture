@@ -591,41 +591,50 @@ func SetMessage(cfg *config.Config, store *state.Store, identifier string, text 
 	if guardErr := checkSessionGuard(cfg, sessionName); guardErr != nil {
 		return guardErr
 	}
-	log := eventlog.NewStore(store.Dir())
-	latest, ok, err := log.LatestByType(sessionName, event.TypeStatusMessage)
-	if err != nil {
-		return &Error{Code: ErrExecutionFailed, Message: err.Error()}
-	}
-	previous := ""
-	if ok && latest.Metadata["cleared"] != "true" {
-		previous = latest.Metadata["text"]
-	}
-	latestTurnID, latestHasTurnID := latest.Metadata["turn_id"]
-	turnIDMatches := turnID == nil && !latestHasTurnID || turnID != nil && latestHasTurnID && *turnID == latestTurnID
-	if text != "" && previous == text && ok && turnIDMatches {
+	return tryLifecycleLock(store, sessionName, func() error {
+		session, err := store.GetE(sessionName)
+		if err != nil {
+			return err
+		}
+		if session == nil || !session.SleepSince.IsZero() || session.Status == contract.SessionStatusDestroyed {
+			return &Error{Code: ErrExecutionFailed, Message: "session is sleeping or destroyed"}
+		}
+		log := eventlog.NewStore(store.Dir())
+		latest, ok, err := log.LatestByType(sessionName, event.TypeStatusMessage)
+		if err != nil {
+			return &Error{Code: ErrExecutionFailed, Message: err.Error()}
+		}
+		previous := ""
+		if ok && latest.Metadata["cleared"] != "true" {
+			previous = latest.Metadata["text"]
+		}
+		latestTurnID, latestHasTurnID := latest.Metadata["turn_id"]
+		turnIDMatches := turnID == nil && !latestHasTurnID || turnID != nil && latestHasTurnID && *turnID == latestTurnID
+		if text != "" && previous == text && ok && turnIDMatches {
+			return nil
+		}
+		cleared := "false"
+		if text == "" {
+			cleared = "true"
+		}
+		metadata := map[string]string{
+			"text":     text,
+			"cleared":  cleared,
+			"previous": previous,
+		}
+		if turnID != nil {
+			metadata["turn_id"] = *turnID
+		}
+		if _, _, _, err := log.Append(event.Event{
+			SessionName: sessionName,
+			Type:        event.TypeStatusMessage,
+			Source:      event.SourcePlect,
+			Direction:   event.Outbound,
+			Summary:     text,
+			Metadata:    metadata,
+		}); err != nil {
+			return &Error{Code: ErrExecutionFailed, Message: err.Error()}
+		}
 		return nil
-	}
-	cleared := "false"
-	if text == "" {
-		cleared = "true"
-	}
-	metadata := map[string]string{
-		"text":     text,
-		"cleared":  cleared,
-		"previous": previous,
-	}
-	if turnID != nil {
-		metadata["turn_id"] = *turnID
-	}
-	if _, _, _, err := log.Append(event.Event{
-		SessionName: sessionName,
-		Type:        event.TypeStatusMessage,
-		Source:      event.SourcePlect,
-		Direction:   event.Outbound,
-		Summary:     text,
-		Metadata:    metadata,
-	}); err != nil {
-		return &Error{Code: ErrExecutionFailed, Message: err.Error()}
-	}
-	return nil
+	})
 }

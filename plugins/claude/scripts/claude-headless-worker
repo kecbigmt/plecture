@@ -164,6 +164,12 @@ while true; do
             continue
         fi
 
+        if [ -n "${PLECT_SESSION_NAME:-}" ] && ! plect state set-message "$PLECT_SESSION_NAME" "working" >/dev/null 2>&1; then
+            echo "working status write failed; leaving turn queued" >&2
+            write_health 1 "$event_type"
+            break
+        fi
+
         # A conversation exists once claude has reported its session id for
         # it, even from a turn that later failed; a turn that never got that
         # far persisted nothing, so --resume would find no conversation. The

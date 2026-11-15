@@ -1,0 +1,8 @@
+# plect-fixture: result=invalid layer=structural diagnostic=PLECTURE-CFG-FIELD-REQUIRED entry=definitions
+# reason: a session policy table must name its positive idle-sleep duration.
+
+[review_worker]
+kind = "workflow"
+resource = "issue"
+
+[review_worker.session]

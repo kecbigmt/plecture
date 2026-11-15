@@ -34,6 +34,8 @@ turn-boundary hook).
 
 An empty string clears the message. Each empty report is recorded as a fresh
 idle confirmation, even when the message is already empty.
+Reports fail while the session is sleeping or a lifecycle transition is in
+progress.
 
 Use --turn-id to associate the report with a runtime turn. Reports with the
 same text from different turns are recorded separately.

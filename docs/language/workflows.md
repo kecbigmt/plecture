@@ -345,10 +345,15 @@ resume_instruction = "Check the worktree and the review thread before continuing
 ```
 
 When `Up` re-sets up at least one run-scoped node whose setup receives `prev`,
-core publishes one inbound `plect.session.resumed` event even if only a sidecar
-is rebuilt while the agent runtime is reused. Its body is the effective
-instruction, and `trigger` metadata is `repair`, `up`, or `wake`. A first
-launch and an `up` that reuses every run-scoped node publish no event. The
+core publishes one inbound `plect.session.resumed` event if the latest status
+from the previous run is not an explicit empty status written after that run's
+setup. The previous status is
+read before the new run's setup. A completed turn's empty status suppresses
+the event for repair, wake, and explicit up alike, including for interactive
+runtimes that report it. A runtime that never reports status retains the
+resume event. Its body is the effective instruction, and `trigger` metadata
+is `repair`, `up`, or `wake`. A first launch and an `up` that reuses every
+run-scoped node publish no event. The
 event is delivered through any channel whose `include` matches
 `plect.instruction`.
 The [event reference](events.md#session-resume-instructions) defines each trigger.
@@ -408,6 +413,34 @@ gone, a retry reclaims the admission, and destroy clears it immediately.
 
 An admission remains while its up process legitimately runs, not for a fixed
 timeout. An omitted cap is unlimited.
+
+## Idle sleep
+
+`[<workflow>.session].sleep_after_idle` is an optional positive duration. A
+session with no declaration stays up while idle. For example, the valid
+[`sleep-after-idle.toml`](../../testdata/config-language/workflows/sleep-after-idle.toml)
+fixture declares:
+
+```toml
+# plect-fixture: result=valid entry=definitions
+
+[review_worker]
+kind = "workflow"
+resource = "issue"
+
+[review_worker.session]
+sleep_after_idle = "10m"
+```
+
+The deadline begins with the latest durable empty `plect.status_message`
+written after a turn in the current run. A session with no completed turn has
+no such status and does not sleep automatically. A later nonempty status or
+inbound event cancels the deadline; the next completed turn's empty status
+starts a new wait. Once the deadline elapses, core applies the same sleep
+transition as `plect down --sleep`: run-scoped cleanup releases capacity, and
+the next inbound event requests wake. An inbound accepted during cleanup also
+requests wake. The duration prevents a burst of
+inbound events from repeatedly sleeping and waking the session.
 
 ## Populations and chains
 

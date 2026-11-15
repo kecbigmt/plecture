@@ -69,6 +69,8 @@ chmod +x "$bin_dir/codex"
 cat > "$bin_dir/plect" <<'EOF'
 #!/usr/bin/env bash
 printf '%s\n' "$*" >> "$PLECT_CALLS"
+[ "$1 $2" = "state set-message" ] && [ "$4" = "working" ] && [ -f "$PLECT_FAIL_WORKING" ] && exit 1
+true
 EOF
 chmod +x "$bin_dir/plect"
 
@@ -83,6 +85,7 @@ export XDG_STATE_HOME="$tmp/xdg-state"
 # below just overwrites the file at that path.
 export STUB_REPLY_FILE="$tmp/next-reply.txt"
 export STUB_ARGV="$tmp/argv"
+export PLECT_FAIL_WORKING="$tmp/fail-working"
 : > "$STUB_ARGV"
 : > "$PLECT_CALLS"
 "$activity" reset "$PLECT_SESSION_NAME"
@@ -216,6 +219,26 @@ fi
 kill "$worker_pid" 2>/dev/null || true
 wait "$worker_pid" 2>/dev/null || true
 worker_pid=""
+
+blocked_queue="$tmp/blocked-queue"
+blocked_state="$tmp/blocked-state"
+mkdir -p "$blocked_queue"
+echo '{"type":"user.emit","text":"blocked turn"}' > "$blocked_queue/1.json"
+: > "$STUB_ARGV"
+touch "$PLECT_FAIL_WORKING"
+"$worker" "$blocked_queue" "$blocked_state" > "$tmp/blocked.out" 2>&1 &
+worker_pid=$!
+sleep 7
+if [ -s "$STUB_ARGV" ] || [ ! -e "$blocked_queue/1.json" ] || ! grep -q 'working' "$tmp/blocked.out"; then
+  echo "FAIL a failed working status write started or lost a turn without reporting failure" >&2
+  fail=1
+else
+  echo "ok   a failed working status write leaves the turn queued and reports failure"
+fi
+kill "$worker_pid" 2>/dev/null || true
+wait "$worker_pid" 2>/dev/null || true
+worker_pid=""
+rm -f "$PLECT_FAIL_WORKING"
 
 [ "$fail" -eq 0 ] || { echo "codex-exec-worker selftest failed" >&2; exit 1; }
 echo "codex-exec-worker selftest passed"

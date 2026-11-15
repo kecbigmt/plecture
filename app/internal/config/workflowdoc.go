@@ -73,6 +73,20 @@ func workflowFrom(def *lang.Definition, sourcePath string) (WorkflowFile, error)
 		value := int(count)
 		w.MaxUpChildren = &value
 	}
+	if raw, ok := def.Body["session"]; ok {
+		tbl, ok := raw.(map[string]any)
+		if !ok {
+			return w, fmt.Errorf("workflow [session] is a table")
+		}
+		duration, err := durationField(tbl, "sleep_after_idle")
+		if err != nil {
+			return w, err
+		}
+		w.Session.SleepAfterIdle = duration
+		if w.Session.SleepAfterIdle.Duration <= 0 {
+			return w, fmt.Errorf("workflow [session].sleep_after_idle must be a positive duration")
+		}
+	}
 	if raw, ok := def.Body["inputs_schema"]; ok {
 		schema, ok := raw.(map[string]any)
 		if !ok {

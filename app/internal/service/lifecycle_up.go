@@ -294,10 +294,18 @@ func upUnlocked(cfg *config.Config, store *state.Store, params UpParams) (*UpRes
 		return nil, cleanupErr
 	}
 	previousRunSetups := make(map[string]time.Time)
+	previousRunStarted := time.Time{}
 	for _, node := range plan.Run {
 		if old := session.Nodes[node.NodeID]; old != nil && old.Scope == contract.TaskScopeRun && old.Outputs != nil {
 			previousRunSetups[node.NodeID] = old.SetupAt
+			if old.SetupAt.After(previousRunStarted) {
+				previousRunStarted = old.SetupAt
+			}
 		}
+	}
+	previousStatus, hasPreviousStatus, statusErr := eventlog.NewStore(store.Dir()).LatestByType(sessionName, event.TypeStatusMessage)
+	if statusErr != nil {
+		return nil, &Error{Code: ErrExecutionFailed, Message: fmt.Sprintf("read prior runtime status: %v", statusErr)}
 	}
 	wiredNodes, setupErr := runNodeSetup(context.Background(), cfg, store, plan.UpOrder(), sessionVars(cfg, session, plan), session, params.Observer)
 	session.UpdatedAt = time.Now()
@@ -335,7 +343,8 @@ func upUnlocked(cfg *config.Config, store *state.Store, params UpParams) (*UpRes
 			break
 		}
 	}
-	if resumedRun && wf.Health.ResumeInstruction != "" {
+	previousRunIdle := hasPreviousStatus && previousStatus.Metadata["cleared"] == "true" && !previousStatus.Time.Before(previousRunStarted)
+	if resumedRun && wf.Health.ResumeInstruction != "" && !previousRunIdle {
 		trigger := "up"
 		if params.repair {
 			trigger = "repair"
