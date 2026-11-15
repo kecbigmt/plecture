@@ -62,16 +62,11 @@ restart, within one refresh interval.`,
 		if err := os.MkdirAll(filepath.Dir(socket), 0o700); err != nil {
 			return fmt.Errorf("create socket dir: %w", err)
 		}
-		// A stale socket from a previous run would make Listen fail with EADDRINUSE.
-		_ = os.Remove(socket)
-		ln, err := net.Listen("unix", socket)
+		ln, err := listenBusSocket(socket)
 		if err != nil {
-			return fmt.Errorf("listen on %s: %w", socket, err)
+			return err
 		}
-		defer func() { ln.Close(); os.Remove(socket) }()
-		if err := os.Chmod(socket, 0o600); err != nil {
-			return fmt.Errorf("chmod socket: %w", err)
-		}
+		defer ln.Close()
 
 		// Resolve the log dir the same way writers do (eventlog.NewStore("") =>
 		// $XDG_DATA_HOME/plect/events, matching service.EventPublish). Log it so a
@@ -181,6 +176,50 @@ restart, within one refresh interval.`,
 		}
 		return nil
 	},
+}
+
+type busSocketListener struct {
+	*net.UnixListener
+	path string
+	file os.FileInfo
+}
+
+func listenBusSocket(path string) (*busSocketListener, error) {
+	if _, err := os.Lstat(path); err == nil {
+		conn, dialErr := net.DialTimeout("unix", path, 200*time.Millisecond)
+		if dialErr == nil {
+			conn.Close()
+			return nil, fmt.Errorf("listen on %s: live listener already owns socket", path)
+		}
+		return nil, fmt.Errorf("listen on %s: socket path already exists: %w", path, dialErr)
+	} else if !os.IsNotExist(err) {
+		return nil, fmt.Errorf("inspect socket %s: %w", path, err)
+	}
+	ln, err := net.ListenUnix("unix", &net.UnixAddr{Name: path, Net: "unix"})
+	if err != nil {
+		return nil, fmt.Errorf("listen on %s: %w", path, err)
+	}
+	ln.SetUnlinkOnClose(false)
+	if err := os.Chmod(path, 0o600); err != nil {
+		ln.Close()
+		return nil, fmt.Errorf("chmod socket %s: %w", path, err)
+	}
+	file, err := os.Lstat(path)
+	if err != nil {
+		ln.Close()
+		return nil, fmt.Errorf("inspect bound socket %s: %w", path, err)
+	}
+	return &busSocketListener{UnixListener: ln, path: path, file: file}, nil
+}
+
+func (ln *busSocketListener) Close() error {
+	err := ln.UnixListener.Close()
+	if file, statErr := os.Lstat(ln.path); statErr == nil && os.SameFile(file, ln.file) {
+		if removeErr := os.Remove(ln.path); err == nil {
+			err = removeErr
+		}
+	}
+	return err
 }
 
 // defaultBusSocket mirrors the plect-mcp convention (%t/plect/... = $XDG_RUNTIME_DIR).
