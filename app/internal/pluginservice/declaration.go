@@ -68,6 +68,10 @@ func BuildDeclarations(mounted []plugins.Mounted, lock *plugins.Lockfile) ([]Dec
 	if err != nil {
 		return nil, err
 	}
+	return BuildDeclarationsFrom(home, mounted, lock)
+}
+
+func BuildDeclarationsFrom(home string, mounted []plugins.Mounted, lock *plugins.Lockfile) ([]Declaration, error) {
 	files, err := filepath.Glob(filepath.Join(home, "services", "*.toml"))
 	if err != nil {
 		return nil, err
