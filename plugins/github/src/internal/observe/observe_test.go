@@ -440,9 +440,6 @@ func TestObserve_RejectsAnIdentifierNeitherObserverRecognizes(t *testing.T) {
 	}
 }
 
-// linkedPRFixture answers an issue observation whose discovery query returns
-// discovery, and whose only linked-PR fetches are for PR 12 at head sha
-// "stacked1".
 func linkedPRFixture(discoveryKey, discovery string) *fakeGHClient {
 	return &fakeGHClient{responses: map[string]string{
 		"repos/acme/widgets/issues/7":                    `{"state":"open","updated_at":"2026-01-01T00:00:00Z"}`,
@@ -477,8 +474,6 @@ func TestObserve_Issue_LinkedPRTargetingANonDefaultBranchThatNamesTheIssue(t *te
 }
 
 func TestObserve_Issue_LinkedPROnTheIssueBranchWithoutNamingTheIssue(t *testing.T) {
-	// The discovery response is keyed on the branch argument, so it answers
-	// only when the query asks for the shipped default issue branch.
 	client := linkedPRFixture("graphql -F owner=acme -F repo=widgets -F number=7 -f branch=issue/7", `{"data":{"repository":{
 		"issue":{"closedByPullRequestsReferences":{"nodes":[]},"timelineItems":{"nodes":[]}},
 		"pullRequests":{"nodes":[
@@ -619,5 +614,84 @@ func TestChooseLinkedPR(t *testing.T) {
 				t.Errorf("chooseLinkedPR depends on candidate order")
 			}
 		})
+	}
+}
+
+const (
+	firstPageKey         = "graphql -F owner=acme -F repo=widgets -F number=7 -f branch=issue/7 -F closing=true -F timeline=true -F branches=true -f query="
+	timelinePageTwoKey   = "graphql -F owner=acme -F repo=widgets -F number=7 -f branch=issue/7 -F closing=false -F timeline=true -F branches=false -f timelineAfter=T1 -f query="
+	branchesPageTwoKey   = "graphql -F owner=acme -F repo=widgets -F number=7 -f branch=issue/7 -F closing=false -F timeline=false -F branches=true -f branchAfter=B1 -f query="
+	staleClosedCandidate = `{"number":5,"url":"https://github.com/acme/widgets/pull/5","state":"CLOSED","updatedAt":"2026-01-01T00:00:00Z","body":"Closes #7","repository":{"nameWithOwner":"acme/widgets"},"isCrossRepository":false}`
+)
+
+func TestObserve_Issue_LinkedPRDiscoveryReadsEveryPage(t *testing.T) {
+	tests := []struct {
+		name     string
+		firstTL  string
+		firstBR  string
+		pageKey  string
+		pageBody string
+	}{
+		{
+			name:     "cross references",
+			firstTL:  `{"pageInfo":{"hasNextPage":true,"endCursor":"T1"},"nodes":[{"source":` + staleClosedCandidate + `}]}`,
+			firstBR:  `{"pageInfo":{"hasNextPage":false},"nodes":[]}`,
+			pageKey:  timelinePageTwoKey,
+			pageBody: `{"data":{"repository":{"issue":{"timelineItems":{"pageInfo":{"hasNextPage":false},"nodes":[{"source":{"number":12,"url":"https://github.com/acme/widgets/pull/12","state":"OPEN","updatedAt":"2026-01-02T00:00:00Z","body":"Closes #7","repository":{"nameWithOwner":"acme/widgets"}}}]}}}}}`,
+		},
+		{
+			name:     "issue branch pull requests",
+			firstTL:  `{"pageInfo":{"hasNextPage":false},"nodes":[]}`,
+			firstBR:  `{"pageInfo":{"hasNextPage":true,"endCursor":"B1"},"nodes":[` + staleClosedCandidate + `]}`,
+			pageKey:  branchesPageTwoKey,
+			pageBody: `{"data":{"repository":{"pullRequests":{"pageInfo":{"hasNextPage":false},"nodes":[{"number":12,"url":"https://github.com/acme/widgets/pull/12","state":"OPEN","updatedAt":"2026-01-02T00:00:00Z","isCrossRepository":false}]}}}}`,
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			client := linkedPRFixture(firstPageKey, `{"data":{"repository":{
+				"issue":{"closedByPullRequestsReferences":{"pageInfo":{"hasNextPage":false},"nodes":[]},"timelineItems":`+tt.firstTL+`},
+				"pullRequests":`+tt.firstBR+`
+			}}}`)
+			client.responses[tt.pageKey] = tt.pageBody
+			result, err := Observe(context.Background(), Options{ResourceID: "https://github.com/acme/widgets/issues/7", GHClient: client})
+			if err != nil {
+				t.Fatalf("Observe: %v", err)
+			}
+			if result.PRURL != "https://github.com/acme/widgets/pull/12" {
+				t.Errorf("pr_url = %q, want the open PR from the second page over the closed one on the first", result.PRURL)
+			}
+		})
+	}
+}
+
+func TestObserve_Issue_LaterPageFailureDegradesToIssueOnlyState(t *testing.T) {
+	client := linkedPRFixture(firstPageKey, `{"data":{"repository":{
+		"issue":{"closedByPullRequestsReferences":{"pageInfo":{"hasNextPage":false},"nodes":[]},
+			"timelineItems":{"pageInfo":{"hasNextPage":true,"endCursor":"T1"},"nodes":[{"source":`+staleClosedCandidate+`}]}},
+		"pullRequests":{"pageInfo":{"hasNextPage":false},"nodes":[]}
+	}}}`)
+	client.errs = map[string]error{timelinePageTwoKey: errors.New("HTTP 502")}
+	result, err := Observe(context.Background(), Options{ResourceID: "https://github.com/acme/widgets/issues/7", GHClient: client})
+	if err != nil {
+		t.Fatalf("Observe: %v", err)
+	}
+	if result.PRURL != "" || result.Revision != "issue:2026-01-01T00:00:00Z" {
+		t.Errorf("result = %+v, want the issue-only state rather than a choice among a partial candidate set", result)
+	}
+}
+
+func TestObserve_Issue_NonAdvancingCursorDegradesToIssueOnlyState(t *testing.T) {
+	client := linkedPRFixture(firstPageKey, `{"data":{"repository":{
+		"issue":{"closedByPullRequestsReferences":{"pageInfo":{"hasNextPage":false},"nodes":[]},
+			"timelineItems":{"pageInfo":{"hasNextPage":true,"endCursor":""},"nodes":[{"source":`+staleClosedCandidate+`}]}},
+		"pullRequests":{"pageInfo":{"hasNextPage":false},"nodes":[]}
+	}}}`)
+	result, err := Observe(context.Background(), Options{ResourceID: "https://github.com/acme/widgets/issues/7", GHClient: client})
+	if err != nil {
+		t.Fatalf("Observe: %v", err)
+	}
+	if result.PRURL != "" {
+		t.Errorf("pr_url = %q, want none: a page that cannot be followed leaves the candidate set partial", result.PRURL)
 	}
 }

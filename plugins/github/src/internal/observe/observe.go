@@ -220,25 +220,31 @@ func discoverLinkedPR(ctx context.Context, client github.GHClient, parsed *githu
 	return ""
 }
 
-const linkedPRsQuery = `query($owner:String!,$repo:String!,$number:Int!,$branch:String!){
+// Each connection is included only while it still has pages, so one loop
+// pages all three without refetching a finished one.
+const linkedPRsQuery = `query($owner:String!,$repo:String!,$number:Int!,$branch:String!,
+  $closing:Boolean!,$timeline:Boolean!,$branches:Boolean!,
+  $closingAfter:String,$timelineAfter:String,$branchAfter:String){
   repository(owner:$owner,name:$repo){
     issue(number:$number){
-      closedByPullRequestsReferences(first:10,includeClosedPrs:true){
+      closedByPullRequestsReferences(first:100,after:$closingAfter,includeClosedPrs:true) @include(if:$closing){
+        pageInfo{hasNextPage endCursor}
         nodes{number url state updatedAt}
       }
-      timelineItems(last:100,itemTypes:[CROSS_REFERENCED_EVENT]){
+      timelineItems(first:100,after:$timelineAfter,itemTypes:[CROSS_REFERENCED_EVENT]) @include(if:$timeline){
+        pageInfo{hasNextPage endCursor}
         nodes{... on CrossReferencedEvent{source{... on PullRequest{
           number url state updatedAt body repository{nameWithOwner}
         }}}}
       }
     }
-    pullRequests(headRefName:$branch,first:10){
+    pullRequests(headRefName:$branch,first:100,after:$branchAfter) @include(if:$branches){
+      pageInfo{hasNextPage endCursor}
       nodes{number url state updatedAt isCrossRepository}
     }
   }
 }`
 
-// linkSource is why a pull request is a candidate, strongest first.
 type linkSource int
 
 const (
@@ -255,29 +261,98 @@ type linkCandidate struct {
 	source    linkSource
 }
 
+type pageInfo struct {
+	HasNextPage bool   `json:"hasNextPage"`
+	EndCursor   string `json:"endCursor"`
+}
+
+// connectionCursor tracks one paged connection; a cursor that fails to
+// advance is an error rather than a silent stop, since stopping early would
+// rank a partial candidate set.
+type connectionCursor struct {
+	name, variable string
+	more           bool
+	after          string
+}
+
+func (c *connectionCursor) advance(p pageInfo) error {
+	if !p.HasNextPage {
+		c.more = false
+		return nil
+	}
+	if p.EndCursor == "" || p.EndCursor == c.after {
+		return fmt.Errorf("%s pagination did not advance", c.name)
+	}
+	c.after = p.EndCursor
+	return nil
+}
+
 // linkCandidates assumes the worktree effect's default branch name because
 // the observe surface sees only the resource id; closedByPullRequestsReferences
-// alone misses every pull request that targets a non-default branch.
+// alone misses every pull request that targets a non-default branch. Any page
+// failing fails the whole lookup, since a partial candidate set could rank
+// stale closed work above the open pull request on a later page.
 func linkCandidates(ctx context.Context, client github.GHClient, parsed *github.ParsedURL) ([]linkCandidate, error) {
-	raw, err := client.JSON(ctx, "graphql",
-		"-F", "owner="+parsed.Owner,
-		"-F", "repo="+parsed.Repo,
-		"-F", fmt.Sprintf("number=%d", parsed.Number),
-		"-f", "branch="+github.ExpandIssueBranch("", parsed.Owner, parsed.Repo, parsed.Number),
-		"-f", "query="+linkedPRsQuery,
-	)
-	if err != nil {
-		return nil, err
+	closing := &connectionCursor{name: "closing references", variable: "closingAfter", more: true}
+	timeline := &connectionCursor{name: "cross references", variable: "timelineAfter", more: true}
+	branches := &connectionCursor{name: "issue branch pull requests", variable: "branchAfter", more: true}
+	var out []linkCandidate
+	for closing.more || timeline.more || branches.more {
+		args := []string{"graphql",
+			"-F", "owner=" + parsed.Owner,
+			"-F", "repo=" + parsed.Repo,
+			"-F", fmt.Sprintf("number=%d", parsed.Number),
+			"-f", "branch=" + github.ExpandIssueBranch("", parsed.Owner, parsed.Repo, parsed.Number),
+			"-F", fmt.Sprintf("closing=%t", closing.more),
+			"-F", fmt.Sprintf("timeline=%t", timeline.more),
+			"-F", fmt.Sprintf("branches=%t", branches.more),
+		}
+		for _, c := range []*connectionCursor{closing, timeline, branches} {
+			if c.more && c.after != "" {
+				args = append(args, "-f", c.variable+"="+c.after)
+			}
+		}
+		raw, err := client.JSON(ctx, append(args, "-f", "query="+linkedPRsQuery)...)
+		if err != nil {
+			return nil, err
+		}
+		page, err := parseLinkPage(raw, parsed)
+		if err != nil {
+			return nil, err
+		}
+		out = append(out, page.candidates...)
+		for _, step := range []struct {
+			c *connectionCursor
+			p pageInfo
+		}{{closing, page.closing}, {timeline, page.timeline}, {branches, page.branches}} {
+			if !step.c.more {
+				continue
+			}
+			if err := step.c.advance(step.p); err != nil {
+				return nil, err
+			}
+		}
 	}
+	return out, nil
+}
+
+type linkPage struct {
+	candidates                  []linkCandidate
+	closing, timeline, branches pageInfo
+}
+
+func parseLinkPage(raw []byte, parsed *github.ParsedURL) (*linkPage, error) {
 	var resp struct {
 		Data struct {
 			Repository struct {
 				Issue struct {
 					ClosedByPullRequestsReferences struct {
-						Nodes []linkCandidate `json:"nodes"`
+						PageInfo pageInfo        `json:"pageInfo"`
+						Nodes    []linkCandidate `json:"nodes"`
 					} `json:"closedByPullRequestsReferences"`
 					TimelineItems struct {
-						Nodes []struct {
+						PageInfo pageInfo `json:"pageInfo"`
+						Nodes    []struct {
 							Source struct {
 								linkCandidate
 								Body       string `json:"body"`
@@ -289,7 +364,8 @@ func linkCandidates(ctx context.Context, client github.GHClient, parsed *github.
 					} `json:"timelineItems"`
 				} `json:"issue"`
 				PullRequests struct {
-					Nodes []struct {
+					PageInfo pageInfo `json:"pageInfo"`
+					Nodes    []struct {
 						linkCandidate
 						IsCrossRepository bool `json:"isCrossRepository"`
 					} `json:"nodes"`
@@ -301,10 +377,14 @@ func linkCandidates(ctx context.Context, client github.GHClient, parsed *github.
 		return nil, fmt.Errorf("parse linked pull request candidates: %w", err)
 	}
 	repo := resp.Data.Repository
-	var out []linkCandidate
+	page := &linkPage{
+		closing:  repo.Issue.ClosedByPullRequestsReferences.PageInfo,
+		timeline: repo.Issue.TimelineItems.PageInfo,
+		branches: repo.PullRequests.PageInfo,
+	}
 	for _, c := range repo.Issue.ClosedByPullRequestsReferences.Nodes {
 		c.source = linkClosingReference
-		out = append(out, c)
+		page.candidates = append(page.candidates, c)
 	}
 	// Another repository's number would be fetched as a pull request here.
 	for _, n := range repo.Issue.TimelineItems.Nodes {
@@ -316,7 +396,7 @@ func linkCandidates(ctx context.Context, client github.GHClient, parsed *github.
 			continue
 		}
 		src.linkCandidate.source = linkNamesIssue
-		out = append(out, src.linkCandidate)
+		page.candidates = append(page.candidates, src.linkCandidate)
 	}
 	// A fork's branch of the same name is someone else's work.
 	for _, n := range repo.PullRequests.Nodes {
@@ -324,9 +404,9 @@ func linkCandidates(ctx context.Context, client github.GHClient, parsed *github.
 			continue
 		}
 		n.linkCandidate.source = linkIssueBranch
-		out = append(out, n.linkCandidate)
+		page.candidates = append(page.candidates, n.linkCandidate)
 	}
-	return out, nil
+	return page, nil
 }
 
 var closingKeywordRE = regexp.MustCompile(`(?i)\b(?:close[sd]?|fix(?:e[sd])?|resolve[sd]?):?\s+(?:https://github\.com/([\w.-]+)/([\w.-]+)/issues/|([\w.-]+)/([\w.-]+)#|#)(\d+)\b`)
