@@ -48,6 +48,8 @@ It replaces these decisions of `2026-08-17-plugin-boundary-contracts`:
 
 ## Decision
 
+![Operators declare services and owner-only env files; plect validates and starts only declared services, which receive their env file, a service-only data directory, and a plugin cache directory and speak only over stdio. Starting on plugin enablement, inheriting the supervisor environment, and a local listener are rejected.](assets/2026-11-09-operator-declared-plugin-services-boundaries.svg)
+
 ### Service declarations and configuration
 
 Plugins mark resident-capable executables with `service = true` in
@@ -192,6 +194,8 @@ error naming the executable. Since one executable can name only one service,
 the binding is unambiguous.
 
 ### Core subscription and delivery contract
+
+![Runtime, dispatch, task, and node sources write rows into one core subscriptions table; a publish appends once per distinct session and resource and reports the delivered count, and services learn membership from a snapshot and deltas. Plugin-owned registries, subscribe hooks, the delivery lock, and the retry queue are rejected.](assets/2026-11-09-operator-declared-plugin-services-delivery.svg)
 
 Core owns a `subscriptions` table keyed by
 `(session_id, resource_id, source)`, with `source` equal to `runtime`,

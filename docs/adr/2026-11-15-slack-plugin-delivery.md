@@ -16,6 +16,8 @@ and a bot subscriber only when no thread subscriber receives it.
 
 ## Decision
 
+![One adapter service checks each mention, publishes it to the thread resource, falls back to the bot-user resource when no thread subscriber received it, and otherwise drops it with a log line. An unbound-mention feed with per-thread session creation and a separate adapter process per bot are rejected.](assets/2026-11-15-slack-plugin-delivery-mention-routing.svg)
+
 ### One adapter and outbound calls
 
 One declared `slack-adapter` service holds multiple bot declarations in its

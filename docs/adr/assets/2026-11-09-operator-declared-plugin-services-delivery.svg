@@ -1,0 +1,124 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1000 610" width="1000" height="610" role="img" aria-label="Four sources write rows into one core subscriptions table keyed by session, resource and source: plect subscribe writes runtime, plect up writes dispatch, a task binding writes task in the same transaction as the binding, and a starting node writes node. A publish from a service over stdio or from plect event publish appends the event once per distinct session and resource, so three rows for resource r1 across two sessions yield two appends and a delivered count of two. Services learn membership from a snapshot and deltas. Rejected: subscription registries owned by each plugin, and resource subscribe hooks with a delivery lock and retry queue.">
+  <defs>
+    <marker id="arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M0,0 L10,5 L0,10 z" fill="#1f2328"/>
+    </marker>
+    <marker id="arrow-red" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M0,0 L10,5 L0,10 z" fill="#cf222e"/>
+    </marker>
+  </defs>
+  <rect x="0" y="0" width="1000" height="610" fill="#ffffff"/>
+  <g font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="12" fill="#1f2328">
+    <text x="24" y="32" font-size="15" font-weight="600">One subscription authority; delivery once per (session, resource)</text>
+
+    <!-- Sources -->
+    <text x="24" y="62" fill="#59636e" font-weight="600">WRITES A ROW</text>
+    <g>
+      <rect x="24" y="72" width="250" height="56" rx="6" fill="#f6f8fa" stroke="#8c959f"/>
+      <text x="36" y="94" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" font-size="11.5">plect subscribe &lt;id&gt;</text>
+      <text x="36" y="114" fill="#59636e">removed by plect unsubscribe &lt;id&gt;</text>
+
+      <rect x="24" y="142" width="250" height="56" rx="6" fill="#f6f8fa" stroke="#8c959f"/>
+      <text x="36" y="164" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" font-size="11.5">plect up &lt;url&gt;</text>
+      <text x="36" y="184" fill="#59636e">entry resource; removed on destroy</text>
+
+      <rect x="24" y="212" width="250" height="56" rx="6" fill="#f6f8fa" stroke="#8c959f"/>
+      <text x="36" y="234">task binds a resource</text>
+      <text x="36" y="254" fill="#59636e">removed with the last task, same tx</text>
+
+      <rect x="24" y="282" width="250" height="56" rx="6" fill="#f6f8fa" stroke="#8c959f"/>
+      <text x="36" y="304">node with subscription starts</text>
+      <text x="36" y="324" fill="#59636e">removed when the last node ends</text>
+    </g>
+    <g font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" font-size="11.5">
+      <line x1="274" y1="100" x2="338" y2="100" stroke="#1f2328" stroke-width="1.5" marker-end="url(#arrow)"/>
+      <text x="306" y="93" text-anchor="middle">runtime</text>
+      <line x1="274" y1="170" x2="338" y2="170" stroke="#1f2328" stroke-width="1.5" marker-end="url(#arrow)"/>
+      <text x="306" y="163" text-anchor="middle">dispatch</text>
+      <line x1="274" y1="240" x2="338" y2="240" stroke="#1f2328" stroke-width="1.5" marker-end="url(#arrow)"/>
+      <text x="306" y="233" text-anchor="middle">task</text>
+      <line x1="274" y1="310" x2="338" y2="310" stroke="#1f2328" stroke-width="1.5" marker-end="url(#arrow)"/>
+      <text x="306" y="303" text-anchor="middle">node</text>
+    </g>
+
+    <!-- Core table -->
+    <rect x="340" y="72" width="320" height="266" rx="6" fill="#ddf4ff" stroke="#0969da" stroke-width="1.5"/>
+    <text x="356" y="95" font-weight="600">subscriptions <tspan fill="#59636e" font-weight="400">· plect core</tspan></text>
+    <text x="356" y="113" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" font-size="11.5">key (session_id, resource_id, source)</text>
+    <rect x="356" y="126" width="288" height="128" fill="#ffffff" stroke="#8c959f"/>
+    <g font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" font-size="11.5">
+      <text x="368" y="146" fill="#59636e">session</text>
+      <text x="460" y="146" fill="#59636e">resource</text>
+      <text x="556" y="146" fill="#59636e">source</text>
+      <line x1="356" y1="154" x2="644" y2="154" stroke="#d0d7de"/>
+      <text x="368" y="174">S1</text><text x="460" y="174">r1</text><text x="556" y="174">dispatch</text>
+      <text x="368" y="196">S1</text><text x="460" y="196">r1</text><text x="556" y="196">task</text>
+      <text x="368" y="218">S2</text><text x="460" y="218">r1</text><text x="556" y="218">runtime</text>
+      <text x="368" y="240">S3</text><text x="460" y="240">r2</text><text x="556" y="240">node</text>
+    </g>
+    <text x="356" y="278">max_subscribers counts distinct sessions:</text>
+    <text x="356" y="296">r1 has 3 rows but 2 subscribers</text>
+    <text x="356" y="320" fill="#59636e">plect subscription list --json reads it</text>
+
+    <!-- Service -->
+    <rect x="740" y="72" width="236" height="122" rx="6" fill="#f6f8fa" stroke="#8c959f"/>
+    <text x="752" y="95" font-weight="600">Service process</text>
+    <text x="752" y="115" fill="#59636e">learns membership; keeps only</text>
+    <text x="752" y="133" fill="#59636e">its own watch state</text>
+    <rect x="752" y="146" width="212" height="36" rx="4" fill="#ffebe9" stroke="#cf222e" stroke-dasharray="6 4"/>
+    <text x="858" y="168" text-anchor="middle" fill="#cf222e">✗ own subscriber registry</text>
+
+    <line x1="660" y1="110" x2="738" y2="110" stroke="#1f2328" stroke-width="1.5" marker-end="url(#arrow)"/>
+    <text x="699" y="102" text-anchor="middle">snapshot,</text>
+    <text x="699" y="128" text-anchor="middle">deltas</text>
+
+    <!-- CLI publisher -->
+    <rect x="800" y="258" width="176" height="56" rx="6" fill="#f6f8fa" stroke="#8c959f"/>
+    <text x="812" y="281" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" font-size="11.5">plect event publish</text>
+    <text x="812" y="299" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" font-size="11.5">  --resource r1</text>
+
+    <!-- Publish paths -->
+    <polyline points="760,194 760,410 662,410" fill="none" stroke="#1f2328" stroke-width="1.5" marker-start="url(#arrow)" marker-end="url(#arrow)"/>
+    <text x="768" y="222" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" font-size="11.5">publish {id, r1}</text>
+    <text x="768" y="240" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" font-size="11.5">published {id, 2}</text>
+    <polyline points="888,314 888,440 662,440" fill="none" stroke="#1f2328" stroke-width="1.5" marker-start="url(#arrow)" marker-end="url(#arrow)"/>
+    <text x="896" y="380">delivered: 2</text>
+
+    <!-- Table to fan-out -->
+    <line x1="500" y1="338" x2="500" y2="388" stroke="#1f2328" stroke-width="1.5" marker-end="url(#arrow)"/>
+    <text x="508" y="368">subscribers of r1</text>
+
+    <!-- Fan-out -->
+    <rect x="340" y="390" width="320" height="70" rx="6" fill="#ddf4ff" stroke="#0969da" stroke-width="1.5"/>
+    <text x="356" y="413" font-weight="600">append once per distinct (session, resource)</text>
+    <text x="356" y="433">3 rows for r1 → 2 appends</text>
+    <text x="356" y="451" fill="#59636e">a failed append is reported, not counted as 0</text>
+
+    <!-- Sessions -->
+    <line x1="420" y1="460" x2="420" y2="506" stroke="#1f2328" stroke-width="1.5" marker-end="url(#arrow)"/>
+    <line x1="580" y1="460" x2="580" y2="506" stroke="#1f2328" stroke-width="1.5" marker-end="url(#arrow)"/>
+    <text x="428" y="488">+1 event</text>
+    <text x="588" y="488">+1 event</text>
+    <rect x="340" y="508" width="150" height="44" rx="6" fill="#f6f8fa" stroke="#8c959f"/>
+    <text x="415" y="535" text-anchor="middle">S1 event log</text>
+    <rect x="510" y="508" width="150" height="44" rx="6" fill="#f6f8fa" stroke="#8c959f"/>
+    <text x="585" y="535" text-anchor="middle">S2 event log</text>
+
+    <!-- Rejected: hooks, lock, retry queue -->
+    <rect x="24" y="390" width="250" height="88" rx="6" fill="#ffebe9" stroke="#cf222e" stroke-dasharray="6 4"/>
+    <text x="36" y="413" fill="#cf222e" font-weight="600">✗ resource subscribe/unsubscribe</text>
+    <text x="36" y="431" fill="#cf222e" font-weight="600">   hooks, delivery lock,</text>
+    <text x="36" y="449" fill="#cf222e" font-weight="600">   subscription_retries</text>
+    <text x="36" y="469" fill="#59636e">replaced by one DB transaction</text>
+    <line x1="274" y1="420" x2="338" y2="334" stroke="#cf222e" stroke-width="1.5" stroke-dasharray="6 4" marker-end="url(#arrow-red)"/>
+    <text x="296" y="372" fill="#cf222e" text-anchor="end">✗ replaced by the table</text>
+
+    <!-- Legend -->
+    <line x1="24" y1="586" x2="64" y2="586" stroke="#1f2328" stroke-width="1.5"/>
+    <text x="72" y="590">decided</text>
+    <line x1="140" y1="586" x2="180" y2="586" stroke="#cf222e" stroke-width="1.5" stroke-dasharray="6 4"/>
+    <text x="188" y="590" fill="#cf222e">✗ rejected alternative</text>
+    <rect x="340" y="578" width="24" height="16" rx="3" fill="#ddf4ff" stroke="#0969da"/>
+    <text x="372" y="590">plect core</text>
+  </g>
+</svg>

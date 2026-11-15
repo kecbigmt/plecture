@@ -1,0 +1,146 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1000 730" width="1000" height="730" role="img" aria-label="The plugin manifest only marks an executable as a service and ships its config schema; the operator's services file and owner-only env file are what plect reads to start a service. The supervised service gets its env file, a service-only data directory, and a plugin cache directory, and talks to plect only over stdio. An action invoking the same executable gets the env file and the cache directory, and config only through an explicit service.config reference. Rejected: starting a process on plugin enablement, inheriting the supervisor environment, and a local socket or HTTP listener.">
+  <defs>
+    <marker id="arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M0,0 L10,5 L0,10 z" fill="#1f2328"/>
+    </marker>
+    <marker id="arrow-red" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M0,0 L10,5 L0,10 z" fill="#cf222e"/>
+    </marker>
+  </defs>
+  <rect x="0" y="0" width="1000" height="730" fill="#ffffff"/>
+  <g font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="12" fill="#1f2328">
+    <text x="24" y="32" font-size="15" font-weight="600">Who declares a service, who starts it, and what each process receives</text>
+
+    <!-- Row 1: declarations -->
+    <rect x="24" y="56" width="290" height="140" rx="6" fill="#f6f8fa" stroke="#8c959f"/>
+    <text x="36" y="78" font-weight="600">plugin.toml · plugin author</text>
+    <line x1="24" y1="88" x2="314" y2="88" stroke="#d0d7de"/>
+    <g font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" font-size="11.5">
+      <text x="36" y="108">[[executables]]</text>
+      <text x="36" y="126">name = "slack-adapter"</text>
+      <text x="36" y="144">service = true</text>
+      <text x="36" y="162">[executables.config_schema]</text>
+    </g>
+    <text x="36" y="184" fill="#59636e" font-style="italic">describes the program; starts nothing</text>
+
+    <rect x="340" y="56" width="330" height="140" rx="6" fill="#f6f8fa" stroke="#8c959f"/>
+    <text x="352" y="78" font-weight="600">&lt;config-home&gt;/services/*.toml · operator</text>
+    <line x1="340" y1="88" x2="670" y2="88" stroke="#d0d7de"/>
+    <g font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" font-size="11.5">
+      <text x="352" y="108">[[services]]</text>
+      <text x="352" y="126">name = "slack"</text>
+      <text x="352" y="144">executable = "official/slack/slack-adapter"</text>
+      <text x="352" y="162">env_file = "/srv/…/slack.env"</text>
+      <text x="352" y="180">[services.config]   <tspan fill="#59636e"># no secrets</tspan></text>
+    </g>
+
+    <rect x="696" y="56" width="280" height="140" rx="6" fill="#f6f8fa" stroke="#8c959f"/>
+    <text x="708" y="78" font-weight="600">env_file · operator, owner-only</text>
+    <line x1="696" y1="88" x2="976" y2="88" stroke="#d0d7de"/>
+    <g font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" font-size="11.5">
+      <text x="708" y="108">SLACK_APP_TOKEN_PRIMARY=…</text>
+      <text x="708" y="126">SLACK_BOT_TOKEN_PRIMARY=…</text>
+      <text x="708" y="144">…</text>
+    </g>
+    <text x="708" y="184" fill="#59636e" font-style="italic">secret values live only here</text>
+
+    <!-- Row 1 to row 2 -->
+    <line x1="240" y1="196" x2="240" y2="254" stroke="#1f2328" stroke-width="1.5" marker-end="url(#arrow)"/>
+    <text x="248" y="230">config_schema</text>
+    <line x1="505" y1="196" x2="505" y2="254" stroke="#1f2328" stroke-width="1.5" marker-end="url(#arrow)"/>
+    <text x="513" y="230">declares</text>
+    <line x1="836" y1="196" x2="836" y2="254" stroke="#1f2328" stroke-width="1.5" marker-end="url(#arrow)"/>
+    <text x="844" y="230">reads</text>
+
+    <!-- Row 2: supervisor -->
+    <rect x="170" y="256" width="680" height="92" rx="6" fill="#ddf4ff" stroke="#0969da" stroke-width="1.5"/>
+    <text x="186" y="279" font-weight="600">plect · supervisor</text>
+    <text x="186" y="300">validates [services.config] against config_schema</text>
+    <text x="186" y="318">starts only declared services</text>
+    <text x="186" y="336">restarts on-failure; plect plugin update authorizes a restart</text>
+    <rect x="600" y="268" width="150" height="58" rx="4" fill="#ffffff" stroke="#8c959f" stroke-dasharray="3 3"/>
+    <text x="675" y="292" text-anchor="middle" fill="#59636e">supervisor</text>
+    <text x="675" y="310" text-anchor="middle" fill="#59636e">environment</text>
+
+    <!-- Rejected: start on enable -->
+    <line x1="60" y1="196" x2="60" y2="418" stroke="#cf222e" stroke-width="1.5" stroke-dasharray="6 4" marker-end="url(#arrow-red)"/>
+    <text x="70" y="300" fill="#cf222e">✗ starts on</text>
+    <text x="70" y="316" fill="#cf222e">plugin enable</text>
+
+    <!-- Row 2 to row 3 -->
+    <line x1="300" y1="350" x2="300" y2="418" stroke="#1f2328" stroke-width="1.5" marker-start="url(#arrow)" marker-end="url(#arrow)"/>
+    <text x="308" y="382">starts; private stdio</text>
+    <text x="308" y="398" fill="#59636e">(nothing calls in)</text>
+    <line x1="640" y1="326" x2="452" y2="418" stroke="#cf222e" stroke-width="1.5" stroke-dasharray="6 4" marker-end="url(#arrow-red)"/>
+    <text x="548" y="400" fill="#cf222e">✗ inherited</text>
+    <line x1="800" y1="350" x2="800" y2="418" stroke="#1f2328" stroke-width="1.5" marker-end="url(#arrow)"/>
+    <text x="808" y="388">runs per invocation</text>
+
+    <!-- Row 3: processes -->
+    <rect x="24" y="420" width="450" height="150" rx="6" fill="#f6f8fa" stroke="#8c959f"/>
+    <text x="36" y="443" font-weight="600">Service process · supervised, resident</text>
+    <line x1="24" y1="453" x2="474" y2="453" stroke="#d0d7de"/>
+    <g fill="#59636e">
+      <text x="36" y="474">environment</text>
+      <text x="36" y="496">stdin</text>
+      <text x="36" y="518">stdin</text>
+      <text x="36" y="540">stdout</text>
+      <text x="36" y="562">stderr</text>
+    </g>
+    <g font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" font-size="11.5">
+      <text x="120" y="474">env_file + PLECT_DATA_DIR + PLECT_CACHE_DIR</text>
+      <text x="120" y="496">{"op":"config"} <tspan font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="12">first, then correlated replies</tspan></text>
+      <text x="120" y="518">{"op":"subscriptions"} <tspan font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="12">snapshot, then deltas</tspan></text>
+      <text x="120" y="540">{"op":"publish","id":…}</text>
+    </g>
+    <text x="120" y="562">logs</text>
+
+    <rect x="526" y="420" width="450" height="150" rx="6" fill="#f6f8fa" stroke="#8c959f"/>
+    <text x="538" y="443" font-weight="600">Action invoking the same executable</text>
+    <text x="964" y="443" text-anchor="end" fill="#59636e">node, channel, hook (e.g. observe)</text>
+    <line x1="526" y1="453" x2="976" y2="453" stroke="#d0d7de"/>
+    <g fill="#59636e">
+      <text x="538" y="474">environment</text>
+      <text x="538" y="496">config</text>
+      <text x="538" y="518">data dir</text>
+      <text x="538" y="540">undeclared</text>
+    </g>
+    <g font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" font-size="11.5">
+      <text x="622" y="474">action env + env_file + PLECT_CACHE_DIR</text>
+      <text x="622" y="496">{ from = "service.config" } <tspan font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="12">only, explicit</tspan></text>
+    </g>
+    <text x="622" y="518">never receives PLECT_DATA_DIR</text>
+    <text x="622" y="540">fails, naming the executable</text>
+    <text x="622" y="562" fill="#59636e">env_file values win on duplicate keys</text>
+
+    <!-- Row 3 to row 4 -->
+    <line x1="124" y1="570" x2="124" y2="618" stroke="#cf222e" stroke-width="1.5" stroke-dasharray="6 4"/>
+    <text x="132" y="598" fill="#cf222e">✗ no listener</text>
+    <line x1="362" y1="570" x2="362" y2="618" stroke="#1f2328" stroke-width="1.5" marker-end="url(#arrow)"/>
+    <text x="354" y="598" text-anchor="end">PLECT_DATA_DIR</text>
+    <polyline points="460,570 500,600 600,600 600,618" fill="none" stroke="#1f2328" stroke-width="1.5" marker-end="url(#arrow)"/>
+    <line x1="800" y1="570" x2="800" y2="618" stroke="#1f2328" stroke-width="1.5" marker-end="url(#arrow)"/>
+    <text x="808" y="598">PLECT_CACHE_DIR</text>
+
+    <!-- Row 4: listener (rejected) and directories -->
+    <rect x="24" y="620" width="200" height="56" rx="6" fill="#ffebe9" stroke="#cf222e" stroke-dasharray="6 4"/>
+    <text x="36" y="643" fill="#cf222e" font-weight="600">✗ local socket / HTTP API</text>
+    <text x="36" y="663" fill="#59636e">browser pages, other OS users</text>
+
+    <rect x="250" y="620" width="224" height="56" rx="6" fill="#f6f8fa" stroke="#8c959f"/>
+    <text x="262" y="643" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" font-size="11.5">&lt;data-home&gt;/plugins/&lt;p&gt;/</text>
+    <text x="262" y="663" fill="#59636e">authoritative · service only</text>
+
+    <rect x="526" y="620" width="450" height="56" rx="6" fill="#f6f8fa" stroke="#8c959f"/>
+    <text x="538" y="643" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" font-size="11.5">&lt;cache-home&gt;/plugins/&lt;p&gt;/</text>
+    <text x="538" y="663" fill="#59636e">disposable (tokens, ETags, backoff) · service and every action</text>
+
+    <!-- Legend -->
+    <line x1="24" y1="706" x2="64" y2="706" stroke="#1f2328" stroke-width="1.5"/>
+    <text x="72" y="710">decided</text>
+    <line x1="140" y1="706" x2="180" y2="706" stroke="#cf222e" stroke-width="1.5" stroke-dasharray="6 4"/>
+    <text x="188" y="710" fill="#cf222e">✗ rejected alternative</text>
+    <rect x="340" y="698" width="24" height="16" rx="3" fill="#ddf4ff" stroke="#0969da"/>
+    <text x="372" y="710">plect core</text>
+  </g>
+</svg>
