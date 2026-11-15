@@ -108,19 +108,22 @@ func resolveCatalogForEnable(ctx context.Context, paths PluginPaths, entry plugi
 	return &fetched, nil
 }
 
-// PluginUpdateResult reports what PluginUpdate persisted.
 type PluginUpdateResult struct {
 	ID               string
 	ResolvedRevision string
 	ContentHash      string
 }
 
-// PluginUpdate fetches the newest matching catalog snapshot (git: an
-// explicit --revision is required, mirroring `catalog update`'s no-implicit-
-// tracking rule; locked path: re-resolved directly) and repoints only this
-// plugin's lock entry — sibling plugins enabled from the same catalog keep
-// their previously locked coordinates.
-func PluginUpdate(ctx context.Context, paths PluginPaths, id string, revision string) (*PluginUpdateResult, error) {
+type PluginUpdateParams struct {
+	Revision  string
+	DryRun    bool
+	OnPreview func(PluginUpdatePreview) error
+}
+
+// PluginUpdate keeps sibling plugins pinned to their own coordinates even
+// when this update moves the shared catalog lock record. The preview runs
+// before any build because build outputs are not part of the source diff.
+func PluginUpdate(ctx context.Context, paths PluginPaths, id string, params PluginUpdateParams) (*PluginUpdateResult, error) {
 	alias, path, err := splitPluginRef(id)
 	if err != nil {
 		return nil, err
@@ -142,9 +145,9 @@ func PluginUpdate(ctx context.Context, paths PluginPaths, id string, revision st
 		return nil, &Error{Code: ErrExecutionFailed, Message: err.Error()}
 	}
 	switch {
-	case scheme.IsGit() && revision == "":
+	case scheme.IsGit() && params.Revision == "":
 		return nil, &Error{Code: ErrInvalidInput, Message: "`--revision` is required to update a plugin from a git-sourced catalog"}
-	case !scheme.IsGit() && revision != "":
+	case !scheme.IsGit() && params.Revision != "":
 		return nil, &Error{Code: ErrInvalidInput, Message: "`--revision` does not apply to a path-sourced catalog"}
 	}
 
@@ -156,12 +159,24 @@ func PluginUpdate(ctx context.Context, paths PluginPaths, id string, revision st
 		return nil, &Error{Code: ErrInvalidInput, Message: err.Error()}
 	}
 
-	fetched, err := plugins.FetchCatalog(ctx, procexec.Default, entry.Source, revision, entry.Subdir, paths.CacheRoot)
+	fetched, err := plugins.FetchCatalog(ctx, procexec.Default, entry.Source, params.Revision, entry.Subdir, paths.CacheRoot)
 	if err != nil {
 		return nil, &Error{Code: ErrExecutionFailed, Message: err.Error()}
 	}
 	if !stringSliceContains(fetched.Manifest.Plugins, path) {
 		return nil, &Error{Code: ErrExecutionFailed, Message: fmt.Sprintf("catalog %q: plugin %q is no longer published by the new snapshot", alias, path)}
+	}
+	preview, err := previewPluginUpdate(paths, id, path, entry, lock, &fetched, scheme)
+	if err != nil {
+		return nil, &Error{Code: ErrExecutionFailed, Message: err.Error()}
+	}
+	if params.OnPreview != nil {
+		if err := params.OnPreview(preview); err != nil {
+			return nil, err
+		}
+	}
+	if params.DryRun {
+		return &PluginUpdateResult{ID: id, ResolvedRevision: fetched.ResolvedRevision}, nil
 	}
 
 	locked, err := lockPluginAtPath(ctx, &fetched, entry, alias, path)

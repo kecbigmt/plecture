@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"strings"
 	"text/tabwriter"
 
 	"github.com/spf13/cobra"
@@ -13,6 +14,7 @@ import (
 
 var (
 	pluginUpdateRevision string
+	pluginUpdateDryRun   bool
 	pluginVerifyLocked   bool
 	pluginListJSON       bool
 )
@@ -47,16 +49,62 @@ var pluginUpdateCmd = &cobra.Command{
 	Long: `Fetch the newest matching catalog snapshot (--revision is required for a
 git-sourced catalog; rejected for a path-sourced one) and rewrite only this
 plugin's lock entry. Other plugins enabled from the same catalog keep their
-previously locked coordinates.`,
+previously locked coordinates. Before building or switching, show changed files
+by kind and declared services that will restart. --dry-run shows the same
+summary without building, changing the lockfile, or restarting services.`,
 	Args: cobra.ExactArgs(1),
 	RunE: func(cmd *cobra.Command, args []string) error {
-		result, err := service.PluginUpdate(cmd.Context(), mustPluginPaths(), args[0], pluginUpdateRevision)
+		result, err := service.PluginUpdate(cmd.Context(), mustPluginPaths(), args[0], service.PluginUpdateParams{
+			Revision: pluginUpdateRevision,
+			DryRun:   pluginUpdateDryRun,
+			OnPreview: func(preview service.PluginUpdatePreview) error {
+				return writePluginUpdatePreview(cmd.OutOrStdout(), preview)
+			},
+		})
 		if err != nil {
 			return err
+		}
+		if pluginUpdateDryRun {
+			fmt.Fprintln(cmd.OutOrStdout(), "dry-run: no changes made")
+			return nil
 		}
 		fmt.Fprintf(cmd.OutOrStdout(), "updated %s: revision=%s content_hash=%s\n", result.ID, orNone(result.ResolvedRevision), result.ContentHash)
 		return nil
 	},
+}
+
+func writePluginUpdatePreview(out io.Writer, preview service.PluginUpdatePreview) error {
+	var b strings.Builder
+	fmt.Fprintf(&b, "Changes for %s:\n", preview.ID)
+	if preview.OldTreeUnavailable {
+		fmt.Fprintln(&b, "  Previous plugin tree unavailable; every file in the fetched tree is listed as changed.")
+	}
+	if len(preview.Changes) == 0 {
+		fmt.Fprintln(&b, "  No changed files.")
+	}
+	for _, kind := range []string{"executables", "scripts and sources", "toml", "prompts and docs"} {
+		printed := false
+		for _, change := range preview.Changes {
+			if change.Kind != kind {
+				continue
+			}
+			if !printed {
+				fmt.Fprintf(&b, "  %s:\n", kind)
+				printed = true
+			}
+			fmt.Fprintf(&b, "    %s %s\n", change.Change, change.Path)
+		}
+	}
+	fmt.Fprintln(&b, "Services to restart:")
+	if len(preview.ServicesToRestart) == 0 {
+		fmt.Fprintln(&b, "  (none)")
+	} else {
+		for _, name := range preview.ServicesToRestart {
+			fmt.Fprintf(&b, "  %s\n", name)
+		}
+	}
+	_, err := io.WriteString(out, b.String())
+	return err
 }
 
 var pluginRemoveCmd = &cobra.Command{
@@ -144,6 +192,7 @@ func writePluginList(out io.Writer, entries []service.PluginListEntry) error {
 
 func init() {
 	pluginUpdateCmd.Flags().StringVar(&pluginUpdateRevision, "revision", "", "New git revision to resolve (required for a git-sourced catalog)")
+	pluginUpdateCmd.Flags().BoolVar(&pluginUpdateDryRun, "dry-run", false, "Show changed files and affected services without building or updating the lockfile")
 	pluginVerifyCmd.Flags().BoolVar(&pluginVerifyLocked, "locked", false, "Skip plugins from an editable path catalog, which are never pinned or verified")
 	pluginListCmd.Flags().BoolVar(&pluginListJSON, "json", false, "Output as JSON")
 
