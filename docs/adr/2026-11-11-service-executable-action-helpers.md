@@ -22,6 +22,8 @@ This decision replaces one decision of
 
 ## Decision
 
+![An action invoking a service-marked executable runs as a helper with its action environment and the plugin cache when no operator declaration exists, replacing the rule that it fails; a valid declaration adds its env-file values and config, and an invalid one for this executable fails the action. Splitting each helper into its own manifest executable is rejected.](assets/2026-11-11-service-executable-action-helpers-decision.svg)
+
 An action may invoke a service-marked executable without an operator service
 declaration. It receives the plugin's shared cache directory and its ordinary
 action environment. It receives no service env-file values. An action that
