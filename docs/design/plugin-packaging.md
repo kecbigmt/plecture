@@ -200,8 +200,7 @@ The schema requires at least one bot. Each bot requires the four fields shown;
 unknown fields fail validation. The two token fields name variables in the
 service's `env_file`, not token values. Plugin authors keep secret values out
 of service config because plect cannot infer whether an arbitrary field is
-secret. The adapter rejects duplicate `channel_id` values across bots so
-outbound calls can select the bot from the thread's channel.
+secret. See the [Slack plugin](../../plugins/slack/README.md) for adapter rules.
 
 Only user-owned service declarations start a process. In this example,
 `<config-home>` is `/srv/plect/config`. One Slack service serves two bots:
@@ -293,8 +292,7 @@ and exposes validated config only through explicit argument, stdin, or shell
 binding references such as `{ from = "service.config" }`. No config environment
 variable is set. Service env-file values win duplicate keys. No declaration for
 that executable is an invocation error naming it. One service per executable
-makes the binding unique. Slack outbound actions call the provider Web API
-directly, with no workflow `base_url` input.
+makes the binding unique.
 
 Core stores subscriptions keyed by `(session, resource, source)`. An explicit
 `plect subscribe` writes a `runtime` row and `plect unsubscribe` removes only
@@ -309,20 +307,10 @@ session/resource even when several source rows exist. `plect event publish
 --resource <id>` and a service's stdio `publish` request both use this table.
 Resources retain `observe` but have no subscribe or unsubscribe hooks.
 
-For an allowed mention, the Slack adapter publishes `user.emit` to the thread
-resource. A zero delivered count leads to a publish to the bot-user resource
-`slack://<team_id>/<bot_user_id>`, which permits one subscriber. Zero again
-drops the mention and logs its channel, thread, and reason. The adapter handles
-denied users or channels before publication. Slack thread
-`query.subscribe`, `/unbound-mentions`, and the adapter's subscriber registry
-are removed. Per-mention session creation waits for a concrete use case;
-GitHub query populations retain their `poll` and `subscribe` contract.
-
-The GitHub watcher receives core subscriptions by stdio snapshot and deltas
-and keeps its per-resource watch state in `PLECT_DATA_DIR`. GitHub
-`observe` remains callable without a watcher service, using its own
-credentials. Both invocations share disposable App token and rate budget
-caches through `PLECT_CACHE_DIR`.
+Provider delivery behavior is specified by the
+[Slack plugin](../../plugins/slack/README.md) and
+[GitHub plugin](../../plugins/github/README.md). Populations retain their
+`poll` and `subscribe` query contract.
 
 Build-less script executables are the primary v1 form. They must carry their
 interpreter through a shebang. Built binaries are the additional case for

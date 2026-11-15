@@ -362,9 +362,8 @@ other's still-open streak. `session_channel_health` holds at most one row
 per `(session_id, kind)`; a kind with no open streak simply has no row.
 
 The database does not contain plugin-owned configuration or plugin-private
-state. In particular, plugin catalog and lock files remain configuration, and
-the Slack adapter's subscriber file remains adapter-owned data. These files
-are not part of the runtime import.
+state. Plugin catalog and lock files remain configuration; plugin-private
+state stays outside the core database. Neither is part of the runtime import.
 
 ## Node execution identity
 

@@ -87,12 +87,15 @@ values, and validates its own required inputs.
 `[services.config]` is optional, non-secret plugin-specific configuration.
 The executable declares its `config_schema` inline in `plugin.toml`, using a
 JSON Schema-shaped TOML table. A config table without a schema or one that
-fails validation is a load error. Core does not interpret its fields. The
-Slack schema requires a nonempty `bots` array; each bot requires string
-`app_token_env`, `bot_token_env`, and `channel_id` fields and an
-`allowed_user_ids` string array, with no extra fields. Token fields name keys
-in `env_file`; their values remain there. The adapter rejects duplicate
-`channel_id` values across bots. On every service executable invocation,
+fails validation is a load error. Core does not interpret its fields.
+
+In the Slack example above, the schema requires a nonempty `bots` array.
+Each bot requires string `app_token_env`, `bot_token_env`, and `channel_id`
+fields and an `allowed_user_ids` string array, with no extra fields. Token
+fields name keys in `env_file`; their values remain there. See the
+[Slack plugin](../../plugins/slack/README.md) for adapter behavior.
+
+On every service executable invocation,
 including a node, channel, or hook action, plect overlays the service env
 values on the action's ordinary environment. The service reads its validated
 non-secret config as the first stdio message; actions access it only through
@@ -120,7 +123,6 @@ these notifications carry no `id`. Logs go to stderr. It never calls the
 plect CLI. No local control listener exists. Browser content on the same host
 and other OS users cannot reach one; same-user code is outside this boundary.
 The env file is owner-readable; validated service config contains no secrets.
-Slack outbound actions call the provider Web API directly.
 
 Every plugin executable invocation receives `PLECT_CACHE_DIR` set to
 `<cache-home>/plugins/<plugin>/`, including services and node, channel, and
@@ -141,20 +143,10 @@ adds a `node` row while any live node binds that resource. A resource's
 and delivery happens once per session/resource. Core publishes to subscribed
 sessions and sends each service subscription snapshots and deltas by stdio.
 
-The Slack bot-user resource `slack://<team_id>/<bot_user_id>` allows one
-subscriber. An allowed mention is delivered as `user.emit` to a subscribed
-thread, then to the bot-user subscriber if the thread delivery count is zero;
-otherwise it is dropped and logged. The adapter handles denied messages.
-Slack thread `query.subscribe` and `/unbound-mentions` are absent. Creating a
-session for each new mention thread is deferred until a use case exists.
 Population `uses`, `[query]`, and executable query means remain as specified
-in [workflows](workflows.md).
-
-The GitHub watcher receives subscription snapshots and deltas through stdio.
-Standalone issue and pull-request observation needs no watcher service; it
-uses action-process credentials. The watcher and standalone `observe` share
-disposable App token and rate budget caches through `PLECT_CACHE_DIR`. GitHub
-query populations retain their poll form.
+in [workflows](workflows.md). Provider behavior belongs to the
+[Slack plugin](../../plugins/slack/README.md) and
+[GitHub plugin](../../plugins/github/README.md).
 
 `plect service list` shows declared name, executable, state, pid, and restart
 count. With `--all`, an enabled service-marked executable with no declaration

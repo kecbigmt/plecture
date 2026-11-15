@@ -65,10 +65,8 @@ full membership snapshot and later deltas from their supervising plect over
 stdio; `plect subscription list [--session] [--resource-type] --json` is the
 operator-facing query.
 
-The Slack bot-user resource form is `slack://<team_id>/<bot_user_id>` and sets
-`max_subscribers = 1`. A session that handles otherwise-undelivered mentions
-subscribes explicitly. The adapter publishes allowed mentions as `user.emit`
-by resource identifier; core routes them using its subscription table.
+A provider-specific resource using this subscription contract is documented
+in the [Slack plugin](../../plugins/slack/README.md).
 
 ## Query
 
