@@ -1,9 +1,9 @@
 # Definition-root discovery
 
 Every configuration surface is now on the ratified language, so a cascade
-layer is read as one **definition root**: everything under it is discovered in
-a single pass, and which kind a declaration is comes from its own `kind` field
-rather than from the directory it sits in.
+layer is read as one **definition root**: its definition files are discovered
+in a single pass, and which kind a declaration is comes from its own `kind`
+field rather than from the directory it sits in.
 
 Three things follow, and each can turn a config that loaded yesterday into one
 that does not:
