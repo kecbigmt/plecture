@@ -75,8 +75,19 @@ plugins = ["svc"]
 	sup := pluginservice.NewSupervisor(config.LoadPlugins)
 
 	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
-	go sup.Run(ctx)
+	done := make(chan struct{})
+	go func() {
+		sup.Run(ctx)
+		close(done)
+	}()
+	t.Cleanup(func() {
+		cancel()
+		select {
+		case <-done:
+		case <-time.After(2 * time.Second):
+			t.Error("supervisor did not stop its service")
+		}
+	})
 
 	waitForService(t, 2*time.Second, func() bool {
 		st, ok := sup.Status.Get("svc")
