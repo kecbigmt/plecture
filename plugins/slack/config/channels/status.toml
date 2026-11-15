@@ -1,25 +1,16 @@
-# The session status line's text means only that work is in progress. Slack
-# renders its own processing text; the event's wording remains available to
-# other consumers. An empty status line confirms that the turn has ended.
 [status]
-kind    = "channel"
-type    = "exec"
-command = "curl"
+kind = "channel"
+type = "exec"
+bin = "slack-adapter"
 args = [
-  "-sf",
-  "--max-time",
-  "10",
-  "-X",
-  "POST",
-  { expr = "inputs.base_url + '/status'" },
-  "-H",
-  "Content-Type: application/json",
-  "-d",
-  { json = { thread_ts = { from = "inputs.thread_ts" }, channel_id = { from = "inputs.channel_id" }, status = { expr = "event.body != '' ? event.body : event.summary" }, turn_id = { from = "event.metadata.turn_id", default = "" } } },
+  "status", "set",
+  "--config", { json = { from = "service.config" } },
+  "--channel-id", { from = "inputs.channel_id" },
+  "--thread-ts", { from = "inputs.thread_ts" },
+  "--text", { expr = "event.body != '' ? event.body : event.summary" },
 ]
 timeout = "10s"
 
 [status.input_schema]
-base_url   = { type = "string", required = true }
 channel_id = { type = "string", required = true }
-thread_ts  = { type = "string", required = true }
+thread_ts = { type = "string", required = true }

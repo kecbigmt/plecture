@@ -294,115 +294,15 @@ func TestShippedCatalog_GitHubPullQueryItemSchemaBoundary(t *testing.T) {
 	}
 }
 
-func TestShippedCatalog_SlackThreadQueryInvokesDocumentedFlags(t *testing.T) {
+func TestShippedCatalog_SlackThreadHasNoQuerySubscription(t *testing.T) {
 	cfg := loadShippedCatalog(t, "official")
-	observers, err := cfg.LoadResourceDefs("")
+	defs, err := cfg.LoadResourceDefs("")
 	if err != nil {
-		t.Fatalf("LoadResourceDefs(shipped catalog): %v", err)
+		t.Fatal(err)
 	}
-	def, ok := observers["official.slack.thread"]
-	if !ok {
-		t.Fatal("shipped catalog resource observer \"official.slack.thread\" not found")
-	}
-	if def.Query == nil {
-		t.Fatal("official.slack.thread declares no query face")
-	}
-	if def.Query.Poll != nil {
-		t.Error("official.slack.thread declares a poll means, but a mention appearance is not enumerable")
-	}
-	if def.Query.Subscribe == nil {
-		t.Fatal("official.slack.thread's query declares no subscribe means")
-	}
-
-	inputs := map[string]any{
-		"base_url":    "http://127.0.0.1:7890",
-		"channel_ids": []any{"C01234567"},
-	}
-	argv := renderQueryArgv(t, cfg, def, def.Query.Subscribe, inputs)
-	if len(argv) == 0 || !strings.HasSuffix(argv[0], "slack-adapter") {
-		t.Fatalf("argv[0] = %v, want it to resolve slack-adapter", argv)
-	}
-	if len(argv) < 3 || argv[1] != "subscribe" || argv[2] != "unbound-mentions" {
-		t.Errorf("argv = %v, want it to start with subscribe unbound-mentions", argv)
-	}
-	flags := map[string]string{}
-	for i := 3; i+1 < len(argv); i += 2 {
-		flags[argv[i]] = argv[i+1]
-	}
-	if flags["--base-url"] != "http://127.0.0.1:7890" {
-		t.Errorf("--base-url = %q, want %q", flags["--base-url"], "http://127.0.0.1:7890")
-	}
-	var channelIDs []string
-	if err := json.Unmarshal([]byte(flags["--channel-ids"]), &channelIDs); err != nil {
-		t.Fatalf("--channel-ids %q is not JSON: %v", flags["--channel-ids"], err)
-	}
-	if len(channelIDs) != 1 || channelIDs[0] != "C01234567" {
-		t.Errorf("--channel-ids = %v, want [C01234567]", channelIDs)
-	}
-
-	required, _ := def.Query.ItemSchema["required"].([]any)
-	if len(required) != 1 || required[0] != "resource" {
-		t.Errorf("query.item_schema.required = %v, want exactly [\"resource\"]", required)
-	}
-	itemProps, _ := def.Query.ItemSchema["properties"].(map[string]any)
-	stateProps, _ := def.StateSchema["properties"].(map[string]any)
-	for prop := range itemProps {
-		if _, clash := stateProps[prop]; clash {
-			t.Errorf("query item_schema property %q also appears in state_schema", prop)
-		}
-	}
-}
-
-func TestShippedCatalog_SlackThreadQueryPassesUserPolicyFlags(t *testing.T) {
-	cfg := loadShippedCatalog(t, "official")
-	observers, err := cfg.LoadResourceDefs("")
-	if err != nil {
-		t.Fatalf("LoadResourceDefs(shipped catalog): %v", err)
-	}
-	def := observers["official.slack.thread"]
-	if def.Query == nil || def.Query.Subscribe == nil {
-		t.Fatal("official.slack.thread declares no subscribe means")
-	}
-
-	itemProps, _ := def.Query.ItemSchema["properties"].(map[string]any)
-	if _, ok := itemProps["user_id"]; !ok {
-		t.Error("query.item_schema does not declare user_id")
-	}
-
-	flagsFor := func(inputs map[string]any) map[string]string {
-		argv := renderQueryArgv(t, cfg, def, def.Query.Subscribe, inputs)
-		flags := map[string]string{}
-		for i := 3; i+1 < len(argv); i += 2 {
-			flags[argv[i]] = argv[i+1]
-		}
-		return flags
-	}
-	base := map[string]any{"base_url": "http://127.0.0.1:7890", "channel_ids": []any{"C01234567"}}
-
-	unset := flagsFor(base)
-	if unset["--user-ids"] != "[]" || unset["--denied-user-message"] != "" || unset["--denied-channel-message"] != "" {
-		t.Errorf("without the user policy inputs, flags = %v, want --user-ids [] and empty denied messages", unset)
-	}
-
-	set := flagsFor(map[string]any{
-		"base_url":               "http://127.0.0.1:7890",
-		"channel_ids":            []any{"C01234567"},
-		"user_ids":               []any{"U01234567", "U07654321"},
-		"denied_user_message":    "Not allowed.",
-		"denied_channel_message": "Use the other channel.",
-	})
-	var userIDs []string
-	if err := json.Unmarshal([]byte(set["--user-ids"]), &userIDs); err != nil {
-		t.Fatalf("--user-ids %q is not JSON: %v", set["--user-ids"], err)
-	}
-	if len(userIDs) != 2 || userIDs[0] != "U01234567" || userIDs[1] != "U07654321" {
-		t.Errorf("--user-ids = %v, want [U01234567 U07654321]", userIDs)
-	}
-	if set["--denied-user-message"] != "Not allowed." {
-		t.Errorf("--denied-user-message = %q, want %q", set["--denied-user-message"], "Not allowed.")
-	}
-	if set["--denied-channel-message"] != "Use the other channel." {
-		t.Errorf("--denied-channel-message = %q, want %q", set["--denied-channel-message"], "Use the other channel.")
+	thread := defs["official.slack.thread"]
+	if thread.Query != nil {
+		t.Fatalf("Slack thread still declares a query: %+v", thread.Query)
 	}
 }
 
@@ -440,58 +340,45 @@ draft        = false
 	}
 }
 
-// expire_after (not poll_every) is required here because
-// official.slack.thread declares no poll means.
-func TestShippedCatalog_WorkflowPopulationResolvesSlackThreadQuery(t *testing.T) {
+func TestShippedCatalog_SlackThreadRejectsSubscribePopulation(t *testing.T) {
 	cfg := loadShippedCatalog(t, "official")
 	cfg.BaseDir = t.TempDir()
 	writeFile(t, filepath.Join(cfg.BaseDir, "ops.toml"), `
 [ops]
-kind     = "workflow"
+kind = "workflow"
 resource = "official.slack.thread"
-
 [[ops.populations]]
-name              = "mentions"
-uses              = ["subscribe"]
-expire_after      = "8h"
-auto_down         = true
-auto_destroy      = true
-
+name = "mentions"
+uses = ["subscribe"]
 [ops.populations.query]
-base_url               = "http://127.0.0.1:7890"
-channel_ids            = ["C01234567"]
-user_ids               = ["U01234567"]
-denied_user_message    = "Not allowed."
-denied_channel_message = "Use the other channel."
+channel_ids = ["C01234567"]
 `)
-	workflows, err := cfg.LoadWorkflows("")
-	if err != nil {
-		t.Fatalf("LoadWorkflows: %v", err)
-	}
-	populations := workflows["ops"].Populations
-	if len(populations) != 1 {
-		t.Fatalf("populations = %+v", populations)
+	if _, err := cfg.LoadWorkflows(""); err == nil || !strings.Contains(err.Error(), "declares no query face") {
+		t.Fatalf("LoadWorkflows error = %v", err)
 	}
 }
 
-func TestShippedCatalog_SlackMentionsResourceIsScopedByBot(t *testing.T) {
+func TestShippedCatalog_SlackBotResourceIsScopedByIdentity(t *testing.T) {
 	cfg := loadShippedCatalog(t, "official")
 	defs, err := cfg.LoadResourceDefs("")
 	if err != nil {
 		t.Fatalf("LoadResourceDefs: %v", err)
 	}
-	def, ok := defs["official.slack.mentions"]
+	def, ok := defs["official.slack.slack_bot_user"]
 	if !ok {
-		t.Fatalf("official.slack.mentions not declared; have %d resources", len(defs))
+		t.Fatalf("official.slack.slack_bot_user not declared; have %d resources", len(defs))
+	}
+	if def.MaxSubscribers != 1 {
+		t.Fatalf("max_subscribers = %d", def.MaxSubscribers)
 	}
 	tests := []struct {
 		id      string
 		want    string
 		matched bool
 	}{
-		{id: "slack://T1/UA/mentions", want: "slack/T1-UA-mentions", matched: true},
-		{id: "slack://T1/UB/mentions", want: "slack/T1-UB-mentions", matched: true},
-		{id: "slack://T1/mentions", matched: false},
+		{id: "slack://T1/UA", want: "slack-bot/T1-UA", matched: true},
+		{id: "slack://T1/UB", want: "slack-bot/T1-UB", matched: true},
+		{id: "slack://T1/UA/mentions", matched: false},
 	}
 	for _, tt := range tests {
 		name, matched, err := def.InstanceName(tt.id)

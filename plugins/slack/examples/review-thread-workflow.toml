@@ -13,11 +13,10 @@ workdir  = { from = "nodes.worktree.outputs.workspace_dir" }
 
 [pr_review_with_slack.inputs_schema]
 type                 = "object"
-required             = ["slack_base_url", "slack_channel_id", "pr_title", "pr_url", "head_sha"]
+required             = ["slack_channel_id", "pr_title", "pr_url", "head_sha"]
 additionalProperties = false
 
 [pr_review_with_slack.inputs_schema.properties]
-slack_base_url   = { type = "string" }
 slack_channel_id = { type = "string" }
 pr_title         = { type = "string" }
 pr_url           = { type = "string" }
@@ -33,7 +32,6 @@ uses = "official.slack.slack_thread"
 subscription = { from = "self.outputs.permalink" }
 
 [pr_review_with_slack.nodes.inputs]
-base_url   = { from = "session.inputs.slack_base_url" }
 channel_id = { from = "session.inputs.slack_channel_id" }
 # The end bound is clamped with size(): unlike `cut -c 1-12`, CEL's
 # substring(start, end) errors once end exceeds the operand's own length.
@@ -43,17 +41,13 @@ root_text  = { expr = "'[AI review] ' + session.inputs.pr_title + ' — ' + sess
 id   = "reviewer"
 uses = "official.codex.codex"
 
-# One channel, one `include` list, covers both a streaming runtime (Claude:
-# plect.message_delta previews, followed by a plect.message the adapter
-# recognizes as already-rendered and drops) and a non-streaming one (Codex,
-# the reviewer node above: plect.message alone, posted as a single chunk).
+# The final plect.message is posted once for either runtime.
 [[pr_review_with_slack.event.channel]]
 name    = "agent_messages"
 uses    = "official.slack.stream"
-include = ["plect.message", "plect.message_delta"]
+include = ["plect.message"]
 
 [pr_review_with_slack.event.channel.inputs]
-base_url   = { from = "session.inputs.slack_base_url" }
 channel_id = { from = "nodes.slack_thread.outputs.channel_id" }
 thread_ts  = { from = "nodes.slack_thread.outputs.thread_ts" }
 
@@ -63,7 +57,6 @@ uses    = "official.slack.slack"
 include = ["plect.judge.recorded"]
 
 [pr_review_with_slack.event.channel.inputs]
-base_url   = { from = "session.inputs.slack_base_url" }
 channel_id = { from = "nodes.slack_thread.outputs.channel_id" }
 thread_ts  = { from = "nodes.slack_thread.outputs.thread_ts" }
 
@@ -75,6 +68,5 @@ include = ["plect.status_message"]
 # The channel reads the event text itself: nonempty means processing and
 # empty confirms that the turn has ended.
 [pr_review_with_slack.event.channel.inputs]
-base_url   = { from = "session.inputs.slack_base_url" }
 channel_id = { from = "nodes.slack_thread.outputs.channel_id" }
 thread_ts  = { from = "nodes.slack_thread.outputs.thread_ts" }

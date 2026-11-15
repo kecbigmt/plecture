@@ -1,0 +1,1 @@
+printf '%s\n' '{"thread_ts":"1234.5678","channel_id":"C0123","permalink":"https://example.slack.com/archives/C0123/p12345678"}'

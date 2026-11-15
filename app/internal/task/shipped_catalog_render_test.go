@@ -116,6 +116,30 @@ func shippedCatalogConfig(t *testing.T) *config.Config {
 // key any shipped action reads, so this exercises actual resolution rather
 // than TOML decoding.
 func TestShippedCatalog_EffectActionsResolve(t *testing.T) {
+	configHome := t.TempDir()
+	t.Setenv("PLECT_CONFIG_HOME", configHome)
+	fixtureDir := filepath.Join(repoRootForTest(t), "plugins", "slack", "testdata", "effects")
+	env, err := os.ReadFile(filepath.Join(fixtureDir, "service.env"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	envPath := filepath.Join(configHome, "slack.env")
+	if err := os.WriteFile(envPath, env, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	declaration, err := os.ReadFile(filepath.Join(fixtureDir, "service.toml"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	serviceDir := filepath.Join(configHome, "services")
+	if err := os.MkdirAll(serviceDir, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	content := strings.ReplaceAll(string(declaration), "@EXECUTABLE@", "official/slack/slack-adapter")
+	content = strings.ReplaceAll(content, "@ENV_FILE@", envPath)
+	if err := os.WriteFile(filepath.Join(serviceDir, "slack.toml"), []byte(content), 0o600); err != nil {
+		t.Fatal(err)
+	}
 	tasks, mounted := loadShippedCatalogTasks(t)
 
 	session := SessionVars{

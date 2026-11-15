@@ -1,0 +1,179 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1220 870" width="1220" height="870" role="img" aria-label="Before: each Slack App ran its own slack-adapter process with its own config file, listen address, state directory, and instance-registry entry, behind an HTTP API. The adapter kept a subscribers.json ledger swept with plect ls, published a mention to each ledger subscriber with plect event publish, and handed unbound mentions to an on_unbound_mention command and an unbound-mentions feed read by the thread resource's query.subscribe. Channels and the thread effect called that HTTP API with curl and a base_url input, and the stream endpoint streamed deltas with chat.startStream, appendStream, and stopStream. After: one operator-declared slack-adapter service holds one Socket Mode client per configured bot and talks to plect over stdio. An allowed mention is published as user.emit to the thread resource, then to the bot resource slack://team/bot with at most one subscriber, then dropped with a log line; core subscriptions deliver it and return the delivered count. Denials reply once per bot, channel, thread, and user. Channels and the thread effect run slack-adapter actions that call the Slack Web API with the declared config and env-file tokens. The status channel sets the working display for a nonempty status event; the stream channel posts one complete reply and then clears it; an empty status event clears it at turn end; ordinary messages leave it alone. Live delta streaming is deferred.">
+  <defs>
+    <marker id="arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M0,0 L10,5 L0,10 z" fill="#1f2328"/>
+    </marker>
+  </defs>
+  <rect x="0" y="0" width="1220" height="870" fill="#ffffff"/>
+  <g font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="12" fill="#1f2328">
+    <text x="24" y="32" font-size="15" font-weight="600">#750 Slack adapter: one service for several bots, with mentions routed through core subscriptions</text>
+
+    <!-- ===== BEFORE ===== -->
+    <rect x="12" y="50" width="1196" height="258" rx="8" fill="none" stroke="#d0d7de"/>
+    <text x="24" y="72" font-weight="600">Before <tspan fill="#59636e" font-weight="400">· main: one adapter process per Slack App, each with its own HTTP API and subscriber ledger</tspan></text>
+
+    <rect x="24" y="88" width="300" height="108" rx="6" fill="#f6f8fa" stroke="#8c959f"/>
+    <text x="36" y="110" font-weight="600">slack-adapter <tspan fill="#59636e" font-weight="400">× one process per App</tspan></text>
+    <text x="36" y="128" fill="#59636e">one Socket Mode connection each</text>
+    <rect x="36" y="138" width="276" height="48" rx="4" fill="#ffebe9" stroke="#cf222e" stroke-dasharray="6 4"/>
+    <text x="48" y="157" fill="#cf222e">own config.toml, listen_addr, state dir</text>
+    <text x="48" y="175" fill="#cf222e" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" font-size="11.5">instances/&lt;team&gt;-&lt;bot&gt;.json</text>
+
+    <rect x="348" y="88" width="300" height="108" rx="6" fill="#ffebe9" stroke="#cf222e" stroke-dasharray="6 4"/>
+    <text x="360" y="110" fill="#cf222e" font-weight="600">HTTP API on listen_addr</text>
+    <g font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" font-size="11.5" fill="#cf222e">
+      <text x="360" y="132">POST /threads /messages /status /stream</text>
+      <text x="360" y="152">POST, DELETE /subscribe</text>
+      <text x="360" y="172">GET /subscribers /unbound-mentions</text>
+      <text x="360" y="190">POST /notify</text>
+    </g>
+    <line x1="324" y1="142" x2="346" y2="142" stroke="#1f2328" stroke-width="1.5" marker-end="url(#arrow)"/>
+
+    <rect x="672" y="88" width="524" height="116" rx="6" fill="#f6f8fa" stroke="#8c959f"/>
+    <text x="684" y="110" font-weight="600">mention routing in the adapter</text>
+    <rect x="684" y="118" width="500" height="78" rx="4" fill="#ffebe9" stroke="#cf222e" stroke-dasharray="6 4"/>
+    <text x="696" y="137" fill="#cf222e"><tspan font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" font-size="11.5">subscribers.json</tspan> ledger, swept with <tspan font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" font-size="11.5">plect ls --json</tspan></text>
+    <text x="696" y="155" fill="#cf222e">bound thread: <tspan font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" font-size="11.5">plect event publish &lt;session&gt;</tspan> per ledger row</text>
+    <text x="696" y="173" fill="#cf222e">unbound: <tspan font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" font-size="11.5">on_unbound_mention</tspan> command, and a feed read by</text>
+    <text x="696" y="190" fill="#cf222e">thread <tspan font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" font-size="11.5">query.subscribe</tspan>; resource <tspan font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" font-size="11.5">slack://T/U/mentions</tspan></text>
+
+    <rect x="24" y="212" width="624" height="84" rx="6" fill="#f6f8fa" stroke="#8c959f"/>
+    <text x="36" y="234" font-weight="600">channels <tspan font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" font-size="11.5">slack</tspan>, <tspan font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" font-size="11.5">status</tspan>, <tspan font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" font-size="11.5">stream</tspan> and effect <tspan font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" font-size="11.5">slack_thread</tspan></text>
+    <rect x="36" y="244" width="600" height="42" rx="4" fill="#ffebe9" stroke="#cf222e" stroke-dasharray="6 4"/>
+    <text x="48" y="262" fill="#cf222e"><tspan font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" font-size="11.5">curl</tspan> to <tspan font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" font-size="11.5">inputs.base_url</tspan> + <tspan font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" font-size="11.5">/messages</tspan>, <tspan font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" font-size="11.5">/status</tspan>, <tspan font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" font-size="11.5">/stream</tspan>, <tspan font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" font-size="11.5">/threads</tspan></text>
+    <text x="48" y="278" fill="#cf222e">every workflow binds <tspan font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" font-size="11.5">base_url</tspan> to its adapter</text>
+    <line x1="498" y1="212" x2="498" y2="198" stroke="#1f2328" stroke-width="1.5" marker-end="url(#arrow)"/>
+
+    <rect x="672" y="212" width="524" height="84" rx="6" fill="#ffebe9" stroke="#cf222e" stroke-dasharray="6 4"/>
+    <text x="684" y="234" fill="#cf222e" font-weight="600">/stream: live reply from message deltas</text>
+    <text x="684" y="254" fill="#59636e"><tspan font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" font-size="11.5">chat.startStream</tspan> / <tspan font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" font-size="11.5">appendStream</tspan> / <tspan font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" font-size="11.5">stopStream</tspan></text>
+    <text x="684" y="272" fill="#59636e"><tspan font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" font-size="11.5">plect.message_delta</tspan> chunks; stream state in <tspan font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" font-size="11.5">streams.json</tspan></text>
+
+    <!-- ===== AFTER ===== -->
+    <rect x="12" y="324" width="1196" height="500" rx="8" fill="none" stroke="#d0d7de"/>
+    <text x="24" y="346" font-weight="600">After <tspan fill="#59636e" font-weight="400">· #750: one supervised service holds every bot; core subscriptions decide who receives a mention</tspan></text>
+
+    <!-- Declaration -->
+    <rect x="24" y="362" width="300" height="114" rx="6" fill="#dafbe1" stroke="#1a7f37"/>
+    <text x="36" y="383" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" font-size="11.5" font-weight="600">&lt;config-home&gt;/services/slack.toml</text>
+    <text x="36" y="402">one <tspan font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" font-size="11.5">[[services]]</tspan>, <tspan font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" font-size="11.5">config.bots[]</tspan>; per bot:</text>
+    <text x="36" y="420" fill="#59636e" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" font-size="11.5">app_token_env, bot_token_env,</text>
+    <text x="36" y="436" fill="#59636e"><tspan font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" font-size="11.5">channel_id</tspan> (unique), <tspan font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" font-size="11.5">allowed_user_ids</tspan>,</text>
+    <text x="36" y="452" fill="#59636e">optional denial messages</text>
+    <text x="36" y="468" fill="#59636e">token values in the private <tspan font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" font-size="11.5">env_file</tspan></text>
+
+    <!-- Service -->
+    <rect x="372" y="362" width="320" height="114" rx="6" fill="#fff8c5" stroke="#9a6700"/>
+    <text x="384" y="383" font-weight="600">slack-adapter serve <tspan fill="#59636e" font-weight="400">· one process</tspan></text>
+    <text x="384" y="401" fill="#59636e">stdio: config first, then <tspan font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" font-size="11.5">publish {id}</tspan></text>
+    <rect x="384" y="410" width="140" height="28" rx="4" fill="#ffffff" stroke="#9a6700"/>
+    <text x="454" y="428" text-anchor="middle">bot A · Socket Mode</text>
+    <rect x="538" y="410" width="140" height="28" rx="4" fill="#ffffff" stroke="#9a6700"/>
+    <text x="608" y="428" text-anchor="middle">bot B · Socket Mode</text>
+    <text x="384" y="464" fill="#59636e">denial records in <tspan font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" font-size="11.5">PLECT_DATA_DIR</tspan></text>
+    <line x1="324" y1="419" x2="370" y2="419" stroke="#1f2328" stroke-width="1.5" marker-end="url(#arrow)"/>
+    <text x="347" y="411" text-anchor="middle" font-size="11">starts</text>
+
+    <!-- Actions -->
+    <rect x="740" y="362" width="456" height="114" rx="6" fill="#fff8c5" stroke="#9a6700"/>
+    <text x="752" y="383" font-weight="600">channels <tspan font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" font-size="11.5">slack</tspan>, <tspan font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" font-size="11.5">status</tspan>, <tspan font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" font-size="11.5">stream</tspan> and effect <tspan font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" font-size="11.5">slack_thread</tspan></text>
+    <text x="752" y="402" fill="#59636e">run <tspan font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" font-size="11.5" fill="#1f2328">slack-adapter</tspan> <tspan font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" font-size="11.5" fill="#1f2328">message post</tspan> | <tspan font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" font-size="11.5" fill="#1f2328">status set</tspan> |</text>
+    <text x="752" y="419" fill="#59636e"><tspan font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" font-size="11.5" fill="#1f2328">reply post</tspan> | <tspan font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" font-size="11.5" fill="#1f2328">thread create</tspan> with <tspan font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" font-size="11.5" fill="#1f2328">--config service.config</tspan></text>
+    <text x="752" y="436" fill="#59636e">core gives these actions the env-file tokens; the bot is</text>
+    <text x="752" y="452" fill="#59636e">chosen by <tspan font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" font-size="11.5">channel_id</tspan>; Slack Web API called directly</text>
+    <text x="752" y="468" fill="#59636e">inputs: <tspan font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" font-size="11.5">channel_id</tspan>, <tspan font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" font-size="11.5">thread_ts</tspan>; no <tspan font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" font-size="11.5">base_url</tspan></text>
+
+    <!-- Mention into routing -->
+    <polyline points="640,476 640,495 150,495 150,508" fill="none" stroke="#1f2328" stroke-width="1.5" marker-end="url(#arrow)"/>
+    <text x="395" y="490" text-anchor="middle" font-size="11">mention from any bot (app_mention or message event)</text>
+
+    <!-- Routing lane -->
+    <rect x="24" y="510" width="254" height="90" rx="6" fill="#fff8c5" stroke="#9a6700"/>
+    <text x="36" y="531" font-weight="600">allow check</text>
+    <text x="36" y="549" fill="#59636e">the bot's channel and allowed users</text>
+    <text x="36" y="567" fill="#59636e">denied: reply once per bot,</text>
+    <text x="36" y="584" fill="#59636e">channel, thread, and user</text>
+    <line x1="278" y1="555" x2="328" y2="555" stroke="#1f2328" stroke-width="1.5" marker-end="url(#arrow)"/>
+    <text x="303" y="548" text-anchor="middle" font-size="11">allowed</text>
+
+    <rect x="330" y="510" width="254" height="90" rx="6" fill="#dafbe1" stroke="#1a7f37"/>
+    <text x="342" y="531" font-weight="600">1 · publish <tspan font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" font-size="11.5">user.emit</tspan></text>
+    <text x="342" y="549" fill="#59636e">resource = thread permalink</text>
+    <text x="342" y="567" fill="#59636e">stop if delivered ≥ 1</text>
+    <line x1="584" y1="555" x2="634" y2="555" stroke="#1f2328" stroke-width="1.5" marker-end="url(#arrow)"/>
+    <text x="609" y="548" text-anchor="middle" font-size="11">0</text>
+
+    <rect x="636" y="510" width="254" height="90" rx="6" fill="#dafbe1" stroke="#1a7f37"/>
+    <text x="648" y="531" font-weight="600">2 · publish <tspan font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" font-size="11.5">user.emit</tspan></text>
+    <text x="648" y="549" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" font-size="11.5">slack://&lt;team&gt;/&lt;bot_user&gt;</text>
+    <text x="648" y="567" fill="#59636e"><tspan font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" font-size="11.5">max_subscribers = 1</tspan></text>
+    <text x="648" y="585" fill="#59636e">stop if delivered ≥ 1</text>
+    <line x1="890" y1="555" x2="940" y2="555" stroke="#1f2328" stroke-width="1.5" marker-end="url(#arrow)"/>
+    <text x="915" y="548" text-anchor="middle" font-size="11">0</text>
+
+    <rect x="942" y="510" width="254" height="90" rx="6" fill="#dafbe1" stroke="#1a7f37"/>
+    <text x="954" y="531" font-weight="600">3 · drop</text>
+    <text x="954" y="549" fill="#59636e">log line: no subscriber</text>
+    <text x="954" y="567" fill="#59636e">a publish error also stops</text>
+    <text x="954" y="584" fill="#59636e">routing, with a warning</text>
+
+    <!-- Core -->
+    <line x1="457" y1="600" x2="457" y2="626" stroke="#1f2328" stroke-width="1.5" marker-start="url(#arrow)" marker-end="url(#arrow)"/>
+    <line x1="763" y1="600" x2="763" y2="626" stroke="#1f2328" stroke-width="1.5" marker-start="url(#arrow)" marker-end="url(#arrow)"/>
+    <text x="465" y="618" font-size="11">publish / delivered: N</text>
+    <text x="771" y="618" font-size="11">publish / delivered: N</text>
+    <rect x="330" y="628" width="560" height="46" rx="6" fill="#ddf4ff" stroke="#0969da" stroke-width="1.5"/>
+    <text x="342" y="647" font-weight="600">plect core subscriptions <tspan fill="#59636e" font-weight="400">· unchanged from #748</tspan></text>
+    <text x="342" y="665" fill="#59636e">appends once per subscribed session and returns the delivered count</text>
+    <line x1="890" y1="651" x2="940" y2="651" stroke="#1f2328" stroke-width="1.5" marker-end="url(#arrow)"/>
+    <rect x="942" y="622" width="254" height="58" rx="6" fill="#f6f8fa" stroke="#8c959f"/>
+    <text x="954" y="643">thread worker · thread entry</text>
+    <text x="954" y="663">orchestrator · bot resource entry</text>
+
+    <!-- Working status -->
+    <text x="24" y="708" fill="#59636e" font-weight="600">WORKING STATUS</text>
+    <rect x="24" y="722" width="270" height="62" rx="6" fill="#fff8c5" stroke="#9a6700"/>
+    <text x="36" y="742" font-weight="600"><tspan font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" font-size="11.5">status</tspan> channel · <tspan font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" font-size="11.5">status set</tspan></text>
+    <text x="36" y="760" fill="#59636e">nonempty <tspan font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" font-size="11.5">plect.status_message</tspan></text>
+    <text x="36" y="776" fill="#59636e">sets processing</text>
+    <line x1="294" y1="753" x2="328" y2="753" stroke="#1f2328" stroke-width="1.5" marker-end="url(#arrow)"/>
+
+    <rect x="330" y="722" width="220" height="62" rx="6" fill="#f6f8fa" stroke="#8c959f"/>
+    <text x="342" y="748" font-weight="600">Slack working display</text>
+    <text x="342" y="766" fill="#59636e">while the turn is in progress</text>
+
+    <line x1="550" y1="753" x2="574" y2="753" stroke="#1f2328" stroke-width="1.5"/>
+    <polyline points="574,753 574,724 598,724" fill="none" stroke="#1f2328" stroke-width="1.5" marker-end="url(#arrow)"/>
+    <polyline points="574,753 574,786 598,786" fill="none" stroke="#1f2328" stroke-width="1.5" marker-end="url(#arrow)"/>
+
+    <rect x="600" y="700" width="316" height="50" rx="6" fill="#fff8c5" stroke="#9a6700"/>
+    <text x="612" y="720" font-weight="600"><tspan font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" font-size="11.5">stream</tspan> channel · <tspan font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" font-size="11.5">reply post</tspan></text>
+    <text x="612" y="738" fill="#59636e">one complete <tspan font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" font-size="11.5">plect.message</tspan>, then clears status</text>
+
+    <rect x="600" y="762" width="316" height="50" rx="6" fill="#fff8c5" stroke="#9a6700"/>
+    <text x="612" y="782" font-weight="600"><tspan font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" font-size="11.5">status</tspan> channel · empty event</text>
+    <text x="612" y="800" fill="#59636e">clears at turn end, also with no reply</text>
+
+    <rect x="942" y="700" width="254" height="50" rx="6" fill="#fff8c5" stroke="#9a6700"/>
+    <text x="954" y="720" font-weight="600"><tspan font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" font-size="11.5">slack</tspan> channel · <tspan font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" font-size="11.5">message post</tspan></text>
+    <text x="954" y="738" fill="#59636e">leaves the working display alone</text>
+
+    <rect x="942" y="762" width="254" height="50" rx="6" fill="#ffffff" stroke="#59636e" stroke-dasharray="2 3"/>
+    <text x="954" y="782" fill="#59636e" font-weight="600">deferred: live delta streaming</text>
+    <text x="954" y="800" fill="#59636e">through the resident service</text>
+
+    <!-- Legend -->
+    <rect x="24" y="842" width="24" height="16" rx="3" fill="#dafbe1" stroke="#1a7f37"/>
+    <text x="56" y="854">added</text>
+    <rect x="120" y="842" width="24" height="16" rx="3" fill="#fff8c5" stroke="#9a6700"/>
+    <text x="152" y="854">changed</text>
+    <rect x="230" y="842" width="24" height="16" rx="3" fill="#ffebe9" stroke="#cf222e" stroke-dasharray="4 3"/>
+    <text x="262" y="854" fill="#cf222e">removed</text>
+    <rect x="340" y="842" width="24" height="16" rx="3" fill="#f6f8fa" stroke="#8c959f"/>
+    <text x="372" y="854">unchanged</text>
+    <rect x="460" y="842" width="24" height="16" rx="3" fill="#ddf4ff" stroke="#0969da"/>
+    <text x="492" y="854">plect core</text>
+    <rect x="580" y="842" width="24" height="16" rx="3" fill="#ffffff" stroke="#59636e" stroke-dasharray="2 3"/>
+    <text x="612" y="854" fill="#59636e">deferred</text>
+  </g>
+</svg>

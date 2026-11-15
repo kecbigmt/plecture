@@ -1,0 +1,59 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 920 420" width="920" height="420" role="img" aria-label="A nonempty status event sets Slack's working display while a turn is in progress. The stream channel posts one complete plect.message as a thread reply in one action and clears the status after a successful post. An empty status event clears the display at turn end, including turns with no reply. Superseded: streaming message deltas by calling the Slack Web API from each action, because separate action processes share no stream timestamp or recipient. Deferred: live streaming through the resident service, which needs a new cross-process contract.">
+  <defs>
+    <marker id="arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M0,0 L10,5 L0,10 z" fill="#1f2328"/>
+    </marker>
+  </defs>
+  <rect x="0" y="0" width="920" height="420" fill="#ffffff"/>
+  <g font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="12" fill="#1f2328">
+    <text x="24" y="32" font-size="15" font-weight="600">One complete reply, with working status</text>
+
+    <!-- Status set -->
+    <rect x="24" y="120" width="230" height="72" rx="6" fill="#f6f8fa" stroke="#8c959f"/>
+    <text x="36" y="142" font-weight="600">nonempty status event</text>
+    <text x="36" y="161" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" font-size="11.5">plect.status_message</text>
+    <text x="36" y="180" fill="#59636e">status channel sets processing</text>
+    <line x1="254" y1="156" x2="292" y2="156" stroke="#1f2328" stroke-width="1.5" marker-end="url(#arrow)"/>
+
+    <!-- Working display -->
+    <rect x="294" y="120" width="240" height="72" rx="6" fill="#ddf4ff" stroke="#0969da"/>
+    <text x="306" y="146" font-weight="600">Slack working display</text>
+    <text x="306" y="166" fill="#59636e">while the turn is in progress</text>
+
+    <line x1="534" y1="156" x2="566" y2="156" stroke="#1f2328" stroke-width="1.5"/>
+    <polyline points="566,156 566,104 602,104" fill="none" stroke="#1f2328" stroke-width="1.5" marker-end="url(#arrow)"/>
+    <polyline points="566,156 566,208 602,208" fill="none" stroke="#1f2328" stroke-width="1.5" marker-end="url(#arrow)"/>
+
+    <!-- Complete reply -->
+    <rect x="604" y="64" width="292" height="80" rx="6" fill="#dafbe1" stroke="#1a7f37"/>
+    <text x="616" y="86" font-weight="600">stream channel posts a complete reply</text>
+    <text x="616" y="106" fill="#59636e">one <tspan font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" font-size="11.5" fill="#1f2328">plect.message</tspan> in one action</text>
+    <text x="616" y="125" fill="#59636e">clears the status after a successful post</text>
+
+    <!-- Turn end -->
+    <rect x="604" y="168" width="292" height="80" rx="6" fill="#dafbe1" stroke="#1a7f37"/>
+    <text x="616" y="190" font-weight="600">turn ends</text>
+    <text x="616" y="210" fill="#59636e">an empty status event clears the display,</text>
+    <text x="616" y="229" fill="#59636e">including turns with no reply</text>
+
+    <!-- Superseded and deferred -->
+    <text x="24" y="290" fill="#59636e" font-weight="600">REPLACED AND DEFERRED</text>
+    <rect x="24" y="302" width="430" height="74" rx="6" fill="#ffebe9" stroke="#cf222e" stroke-dasharray="6 4"/>
+    <text x="36" y="324" fill="#cf222e" font-weight="600">✗ stream deltas: each action calls the Slack Web API</text>
+    <text x="36" y="344" fill="#59636e">superseded: separate action processes share no stream</text>
+    <text x="36" y="362" fill="#59636e">timestamp or recipient across message deltas</text>
+
+    <rect x="474" y="302" width="422" height="74" rx="6" fill="#ffffff" stroke="#59636e" stroke-dasharray="2 3"/>
+    <text x="486" y="324" fill="#59636e" font-weight="600">deferred: live streaming through the resident service</text>
+    <text x="486" y="344" fill="#59636e">the service would keep stream state and accept deltas;</text>
+    <text x="486" y="362" fill="#59636e">needs a new cross-process contract</text>
+
+    <!-- Legend -->
+    <rect x="24" y="394" width="24" height="16" rx="3" fill="#dafbe1" stroke="#1a7f37"/>
+    <text x="56" y="406">clears the display</text>
+    <line x1="180" y1="402" x2="220" y2="402" stroke="#cf222e" stroke-width="1.5" stroke-dasharray="6 4"/>
+    <text x="228" y="406" fill="#cf222e">✗ superseded</text>
+    <line x1="330" y1="402" x2="370" y2="402" stroke="#59636e" stroke-width="1.5" stroke-dasharray="2 3"/>
+    <text x="378" y="406" fill="#59636e">deferred</text>
+  </g>
+</svg>

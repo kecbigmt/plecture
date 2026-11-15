@@ -71,14 +71,13 @@ func deliveryEval(inputs map[string]any, ev event.Event, opts DeliverOptions, ru
 	if inputs == nil {
 		inputs = map[string]any{}
 	}
-	e := lang.Eval{Roots: lang.Roots{"event": eventMap(ev), "inputs": inputs}}
+	e := lang.Eval{Roots: lang.Roots{"event": eventMap(ev), "inputs": inputs}, BinRuntime: opts.BinRuntime}
 	if opts.Terminal != nil {
 		e.Terminal = func(verb string) (string, error) { return opts.Terminal(verb, runDir) }
 	}
 	if opts.Bin != nil {
 		e.Bin = opts.Bin
 	}
-	e.BinRuntime = opts.BinRuntime
 	return e
 }
 
@@ -195,21 +194,21 @@ func deliverProcess(ctx context.Context, def config.ChannelDefinition, eval lang
 		return fmt.Errorf("channel %s: %w", def.Type, err)
 	}
 	cmd := exec.CommandContext(ctx, execution.Argv[0], execution.Argv[1:]...)
-	// A channel has no way to bind env explicitly, and no known channel
-	// destination depends on inheriting either data-home or cache-home
-	// variable, so this is a full, unconditional strip.
+	// Strip ambient homes before adding only this executable's plugin-scoped
+	// bindings; otherwise a channel can inherit another plugin's paths.
 	env := cachehome.StripIsolated(datahome.IsolatedEnv())
-	if shimDir, shimErr := plectshim.ForCurrentProcess(); shimErr == nil {
-		env = plectshim.PatchPath(env, shimDir)
-	}
-	cmd.Env = append(env, execution.PluginEnv...)
+	env = append(env, execution.PluginEnv...)
 	if execution.Prepare != nil {
 		private, err := execution.Prepare()
 		if err != nil {
-			return err
+			return fmt.Errorf("channel %s: %w", def.Type, err)
 		}
-		cmd.Env = append(cmd.Env, private...)
+		env = append(env, private...)
 	}
+	if shimDir, shimErr := plectshim.ForCurrentProcess(); shimErr == nil {
+		env = plectshim.PatchPath(env, shimDir)
+	}
+	cmd.Env = env
 	if len(execution.Stdin) > 0 {
 		cmd.Stdin = bytes.NewReader(execution.Stdin)
 	}

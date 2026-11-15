@@ -1,3 +1,7 @@
+---
+superseded_by: 2026-11-15-slack-working-status-delivery
+---
+
 # Slack plugin delivery through core subscriptions
 
 ## Context

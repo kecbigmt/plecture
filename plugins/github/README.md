@@ -4,28 +4,25 @@ The GitHub catalog plugin: a worktree effect and a resource observation
 contract, plus watcher subscription wiring, reconciled from the production
 GitHub configuration this repository was originally bootstrapped with.
 
-plect core knows nothing about GitHub. Everything GitHub-shaped lives here:
+Plecture core knows nothing about GitHub. Everything GitHub-shaped lives here:
 URL parsing, branch resolution, worktree acquisition, check-run/status
 rollup, and linked-PR discovery.
 
-## Watcher and observation contract
+## Watcher and observation
 
-The [operator-declared service design](../../docs/adr/2026-11-09-operator-declared-plugin-services.md)
-and [plugin delivery decision](../../docs/adr/2026-11-15-slack-plugin-delivery.md)
-describe this contract. The GitHub watcher receives core
-subscription membership from a stdio snapshot at start and subsequent deltas.
-It keeps per-resource watch state in its service-only `PLECT_DATA_DIR` and no
-longer owns a subscription ledger. Standalone issue and pull-request
-`observe` actions need no watcher service and use their own credentials. The
-watcher and standalone observation share disposable App token and rate budget
-caches through `PLECT_CACHE_DIR`. GitHub query populations retain their poll
-form.
+The supervised GitHub watcher receives core subscription membership through a
+stdio snapshot at startup and subsequent deltas. It keeps per-resource watch
+state in its service-only `PLECT_DATA_DIR`. Core owns the subscription ledger.
+Standalone issue and pull-request `observe` actions run without the watcher
+service. The watcher and observation helpers share App token and rate budget
+caches through `PLECT_CACHE_DIR`. Pull-request query populations use their
+declared poll and subscribe means.
 
 ## Contents
 
 - `plugin.toml` — declares the executables this plugin builds or ships:
   `github-worktree` (setup/cleanup), `github-issue-pr` (observe,
-  query-pulls), `github-watcher` (subscribe/serve/gh-api),
+  query-pulls), `github-watcher` (serve/gh-api),
   `github-webhook-receiver` (subscribe-pulls), and `gh-app-token`
   (mint/cache a GitHub App installation token), all built from `src/`, this
   plugin's own Go module (`src/cmd/github-worktree`,

@@ -137,3 +137,32 @@ func TestOperatorDeclarationsValidateConfigAndPrivateEnvironment(t *testing.T) {
 		t.Fatalf("env_file error = %v", err)
 	}
 }
+
+func TestOperatorDeclarationsAcceptNestedConfigButRejectUnknownServiceKeys(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("PLECT_CONFIG_HOME", home)
+	envPath := filepath.Join(home, "service.env")
+	if err := os.WriteFile(envPath, []byte("TOKEN=private\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	serviceDir := filepath.Join(home, "services")
+	if err := os.MkdirAll(serviceDir, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	path := filepath.Join(serviceDir, "service.toml")
+	content := "[[services]]\nname = \"worker\"\nexecutable = \"official/work/worker\"\nenv_file = \"" + envPath + "\"\n[services.config]\n[[services.config.bots]]\nchannel_id = \"C1\"\n"
+	if err := os.WriteFile(path, []byte(content), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	mounted := []plugins.Mounted{{ID: "official/work", Dir: home, Manifest: plugins.Manifest{Executables: []plugins.Executable{{Name: "worker", Path: "bin/worker", Service: true, ConfigSchema: map[string]any{"type": "object", "properties": map[string]any{"bots": map[string]any{"type": "array", "items": map[string]any{"type": "object", "properties": map[string]any{"channel_id": map[string]any{"type": "string"}}}}}}}}}}}
+	decls, err := BuildDeclarations(mounted, nil)
+	if err != nil || len(decls) != 1 {
+		t.Fatalf("declarations = %+v, err = %v", decls, err)
+	}
+	if err := os.WriteFile(path, []byte(strings.Replace(content, "name = \"worker\"", "name = \"worker\"\nunknown = true", 1)), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := BuildDeclarations(mounted, nil); err == nil || !strings.Contains(err.Error(), "unknown key") {
+		t.Fatalf("unknown key error = %v", err)
+	}
+}
