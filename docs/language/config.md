@@ -10,8 +10,11 @@ catalogs.toml
 plect.lock
 ```
 
-Because they are reserved, discovery skips them: a definition root's recursive
-sweep reads every other `.toml` file as a definition document.
+Because they are reserved, discovery skips them. The user config home's
+`services/` directory also lies outside the definition sweep; its `*.toml`
+files declare operator services and are validated by the service loader.
+Every other `.toml` file under the definition root is read as a definition
+document.
 
 ## config.toml
 
