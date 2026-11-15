@@ -12,11 +12,17 @@ import (
 	contract "github.com/kecbigmt/plecture/contracts/state"
 )
 
-// SleepIfIdle sleeps an up session once its last explicit status clear has
-// stayed newer than every inbound event for its workflow's declared duration.
 func SleepIfIdle(cfg *config.Config, store *state.Store, name string, now time.Time) (bool, error) {
+	s, err := store.GetE(name)
+	if err != nil || s == nil || s.Status != contract.SessionStatusUp || !cfg.RunScopeUp(s) || (s.ParentSession == "" && s.Population == nil) {
+		return false, err
+	}
+	wf, err := cfg.ResolveSessionWorkflow(s)
+	if err != nil || wf == nil || wf.Session.SleepAfterIdle.Duration <= 0 {
+		return false, err
+	}
 	slept := false
-	err := withLifecycleLock(store, name, func() error {
+	err = tryLifecycleLock(store, name, func() error {
 		s, err := store.GetE(name)
 		if err != nil || s == nil || s.Status != contract.SessionStatusUp || !cfg.RunScopeUp(s) {
 			return err
@@ -70,10 +76,12 @@ func SleepIfIdle(cfg *config.Config, store *state.Store, name string, now time.T
 		slept = true
 		return nil
 	})
+	if err == errLifecycleBusy {
+		return false, nil
+	}
 	return slept, err
 }
 
-// SleepIdleSessions evaluates the opt-in idle sleep policy for every session.
 func SleepIdleSessions(cfg *config.Config, store *state.Store, now time.Time) error {
 	sessions, err := store.AllE()
 	if err != nil {

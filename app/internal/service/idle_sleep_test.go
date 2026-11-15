@@ -64,6 +64,71 @@ func TestSleepIfIdle_RequiresDispatchProvenance(t *testing.T) {
 	}
 }
 
+func TestSleepIfIdle_SkipsBusyLifecycle(t *testing.T) {
+	store := testStore(t)
+	cfg := writeWorkflowFixture(t, "default", []taskFixture{{id: "runtime", scope: "run", setup: `echo '{"pid":123}'`, cleanup: "true"}}, []nodeFixture{{id: "runtime"}})
+	path := filepath.Join(cfg.BaseDir, "workflows", "default.toml")
+	f, err := os.OpenFile(path, os.O_APPEND|os.O_WRONLY, 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := f.WriteString("\n[default.session]\nsleep_after_idle = \"10m\"\n"); err != nil {
+		t.Fatal(err)
+	}
+	if err := f.Close(); err != nil {
+		t.Fatal(err)
+	}
+	name := "work-20"
+	seedSessionWithNodes(t, store, "parent", "acct", 21, "default", nil)
+	seedSessionWithNodes(t, store, name, "acct", 20, "default", nil)
+	setParent(t, store, name, "parent")
+	if _, err := Up(cfg, store, UpParams{Identifier: name}); err != nil {
+		t.Fatal(err)
+	}
+	if err := SetMessage(cfg, store, name, "", nil); err != nil {
+		t.Fatal(err)
+	}
+	locked := make(chan struct{})
+	release := make(chan struct{})
+	holderDone := make(chan error, 1)
+	go func() {
+		holderDone <- withLifecycleLock(store, name, func() error {
+			close(locked)
+			<-release
+			return nil
+		})
+	}()
+	<-locked
+	type result struct {
+		slept bool
+		err   error
+	}
+	done := make(chan result, 1)
+	go func() {
+		slept, err := SleepIfIdle(cfg, store, name, time.Now().Add(time.Hour))
+		done <- result{slept, err}
+	}()
+	var got result
+	select {
+	case got = <-done:
+	case <-time.After(time.Second):
+		close(release)
+		<-holderDone
+		<-done
+		t.Fatal("idle sleep blocked behind another lifecycle action")
+	}
+	close(release)
+	if err := <-holderDone; err != nil {
+		t.Fatal(err)
+	}
+	if got.err != nil || got.slept {
+		t.Fatalf("busy lifecycle: slept = %t, err = %v", got.slept, got.err)
+	}
+	if slept, err := SleepIfIdle(cfg, store, name, time.Now().Add(time.Hour)); err != nil || !slept {
+		t.Fatalf("after lifecycle finished: slept = %t, err = %v", slept, err)
+	}
+}
+
 func TestSleepIfIdle_CompletedTurnReleasesRunScope(t *testing.T) {
 	store := testStore(t)
 	cfg := writeWorkflowFixture(t, "default", []taskFixture{{id: "runtime", scope: "run", setup: `echo '{"pid":123}'`, cleanup: "true"}}, []nodeFixture{{id: "runtime"}})
