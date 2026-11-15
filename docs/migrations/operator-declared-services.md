@@ -12,6 +12,15 @@ Stop the resident daemon. Back up the active config home, including
 the data home before replacing a plugin with authoritative service state.
 Keep the backups outside both homes until the migration is verified.
 
+Install the new binary and update any explicit cache-home override. If you
+maintain a plugin, make the manifest changes described below before updating
+its lock entry. Update the lock for every enabled plugin to a schema 3
+manifest, then run the [core subscription importer](core-subscriptions.md).
+Keep services stopped while importing and making the service declaration
+changes below. If the deployment ran the GitHub watcher, move its watch
+baseline as described in [GitHub watcher state](github-watcher-state.md)
+before starting services.
+
 ## Move declarations
 
 Update each plugin manifest to `schema_version = 3`. For each executable that
