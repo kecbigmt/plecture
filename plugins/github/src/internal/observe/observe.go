@@ -220,8 +220,6 @@ func discoverLinkedPR(ctx context.Context, client github.GHClient, parsed *githu
 	return ""
 }
 
-// Each connection is included only while it still has pages, so one loop
-// pages all three without refetching a finished one.
 const linkedPRsQuery = `query($owner:String!,$repo:String!,$number:Int!,$branch:String!,
   $closing:Boolean!,$timeline:Boolean!,$branches:Boolean!,
   $closingAfter:String,$timelineAfter:String,$branchAfter:String){
@@ -266,9 +264,6 @@ type pageInfo struct {
 	EndCursor   string `json:"endCursor"`
 }
 
-// connectionCursor tracks one paged connection; a cursor that fails to
-// advance is an error rather than a silent stop, since stopping early would
-// rank a partial candidate set.
 type connectionCursor struct {
 	name, variable string
 	more           bool
@@ -289,9 +284,10 @@ func (c *connectionCursor) advance(p pageInfo) error {
 
 // linkCandidates assumes the worktree effect's default branch name because
 // the observe surface sees only the resource id; closedByPullRequestsReferences
-// alone misses every pull request that targets a non-default branch. Any page
-// failing fails the whole lookup, since a partial candidate set could rank
-// stale closed work above the open pull request on a later page.
+// alone misses every pull request that targets a non-default branch. A page
+// that fails or does not advance fails the whole lookup, since a partial
+// candidate set could rank stale closed work above the open pull request on a
+// later page.
 func linkCandidates(ctx context.Context, client github.GHClient, parsed *github.ParsedURL) ([]linkCandidate, error) {
 	closing := &connectionCursor{name: "closing references", variable: "closingAfter", more: true}
 	timeline := &connectionCursor{name: "cross references", variable: "timelineAfter", more: true}

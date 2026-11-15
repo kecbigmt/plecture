@@ -560,7 +560,7 @@ func TestChooseLinkedPR(t *testing.T) {
 	tests := []struct {
 		name       string
 		candidates []linkCandidate
-		want       int // 0 means no PR
+		want       int
 	}{
 		{"no candidates", nil, 0},
 		{"single closing reference", []linkCandidate{pr(5, "MERGED", "2026-01-01T00:00:00Z", linkClosingReference)}, 5},
