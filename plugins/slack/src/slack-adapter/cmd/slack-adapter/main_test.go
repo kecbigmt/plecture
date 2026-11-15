@@ -46,3 +46,18 @@ func TestReplyCommandIgnoresMessageDelta(t *testing.T) {
 		t.Fatalf("stderr = %q, want %q", got, want)
 	}
 }
+
+func TestReplyCommandAcceptsOtherEventTypes(t *testing.T) {
+	for _, args := range [][]string{
+		{"reply", "post"},
+		{"reply", "post", "--event-type", "user.emit"},
+	} {
+		t.Run(strings.Join(args, " "), func(t *testing.T) {
+			var output, errors bytes.Buffer
+			err := run(args, strings.NewReader(""), &output, &errors)
+			if err == nil || !strings.Contains(err.Error(), "--config and --channel-id are required") {
+				t.Fatalf("reply command error = %v", err)
+			}
+		})
+	}
+}
