@@ -7,6 +7,7 @@ import (
 
 	"github.com/kecbigmt/plecture/app/internal/lang"
 	"github.com/kecbigmt/plecture/app/internal/plugins"
+	"github.com/kecbigmt/plecture/app/internal/pluginservice"
 	"github.com/kecbigmt/plecture/app/internal/version"
 )
 
@@ -72,7 +73,7 @@ func resolveDeclaredPlugins(cfg *Config) (*Config, error) {
 		return nil, fmt.Errorf("load catalog registrations: %w", err)
 	}
 	if len(registrations.Catalogs) == 0 {
-		return cfg, nil
+		return validateOperatorServices(cfg)
 	}
 
 	lockPath, err := plugins.DefaultLockfilePath()
@@ -101,6 +102,13 @@ func resolveDeclaredPlugins(cfg *Config) (*Config, error) {
 	cfg.catalogRegistrations = registrations
 	cfg.catalogLock = lock
 	cfg.catalogCacheRoot = cacheRoot
+	return validateOperatorServices(cfg)
+}
+
+func validateOperatorServices(cfg *Config) (*Config, error) {
+	if _, err := pluginservice.BuildDeclarations(cfg.Plugins, cfg.catalogLock); err != nil {
+		return nil, err
+	}
 	return cfg, nil
 }
 
