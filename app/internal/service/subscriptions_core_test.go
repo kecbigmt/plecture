@@ -201,6 +201,7 @@ func TestUpPersistsOtherNodesWhenNodeSubscriptionLimitIsReached(t *testing.T) {
 		},
 		[]nodeFixture{{id: "watch", subscription: "self.outputs.resource"}, {id: "other"}},
 	)
+	useResource(t, cfg, "flow", "case", caseResourceDoc)
 	writeResourceDoc(t, cfg, "item", `[item]
 kind = "resource"
 match = '^item://(?P<name>[a-z]+)$'
@@ -218,11 +219,11 @@ args = ['{}']
 	if err := Subscribe(cfg, store, SubscribeParams{SessionName: "holder", ResourceID: "item://one"}); err != nil {
 		t.Fatal(err)
 	}
-	_, err := Up(cfg, store, UpParams{Identifier: "https://github.com/o/r/issues/2"})
+	_, err := Up(cfg, store, UpParams{Identifier: "case://2"})
 	if err == nil || !strings.Contains(err.Error(), "reached max_subscribers (1)") {
 		t.Fatalf("Up error = %v, want subscriber limit", err)
 	}
-	got, err := store.GetE("o/r-2")
+	got, err := store.GetE("case-2")
 	if err != nil || got == nil {
 		t.Fatalf("session after failed Up = %+v, err = %v", got, err)
 	}
