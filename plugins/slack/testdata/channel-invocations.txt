@@ -61,7 +61,7 @@ timeout: 10s
 == stream / with-body
 type: exec
 argv[0]: "<plugin>/bin/slack-adapter"
-argv[1]: "message"
+argv[1]: "reply"
 argv[2]: "post"
 argv[3]: "--config"
 argv[4]: "{\"bots\":[{\"allowed_user_ids\":[],\"app_token_env\":\"APP_TEST\",\"bot_token_env\":\"BOT_TEST\",\"channel_id\":\"stand-in-channel_id\"}]}"
@@ -76,7 +76,7 @@ timeout: 10s
 == stream / summary-only
 type: exec
 argv[0]: "<plugin>/bin/slack-adapter"
-argv[1]: "message"
+argv[1]: "reply"
 argv[2]: "post"
 argv[3]: "--config"
 argv[4]: "{\"bots\":[{\"allowed_user_ids\":[],\"app_token_env\":\"APP_TEST\",\"bot_token_env\":\"BOT_TEST\",\"channel_id\":\"stand-in-channel_id\"}]}"
