@@ -102,9 +102,15 @@ func action(args []string, output, errors io.Writer) error {
 	if err := fs.Parse(args[2:]); err != nil {
 		return err
 	}
-	if args[0] == "reply" && args[1] == "post" && *eventType == "plect.message_delta" {
-		fmt.Fprintln(errors, "plect.message_delta should be removed from include")
-		return nil
+	if args[0] == "reply" && args[1] == "post" {
+		switch *eventType {
+		case "plect.message_delta":
+			fmt.Fprintln(errors, "plect.message_delta should be removed from include")
+			return nil
+		case "plect.message":
+		default:
+			return fmt.Errorf("reply post requires --event-type plect.message or plect.message_delta")
+		}
 	}
 	if *configJSON == "" || *channel == "" {
 		return fmt.Errorf("--config and --channel-id are required")
