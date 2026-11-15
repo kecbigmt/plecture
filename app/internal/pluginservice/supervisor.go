@@ -165,6 +165,7 @@ func (sup *Supervisor) runOne(ctx context.Context, rs *runningService) {
 			sup.logger.Error("pluginservice: recovered panic in service goroutine", "service", decl.ID, "panic", r)
 			sup.Status.Update(decl.ID, func(st *Status) {
 				st.Running = false
+				st.PID = 0
 				st.LastError = fmt.Sprintf("panic: %v", r)
 				st.Health = domain.HealthUnhealthy
 			})
@@ -201,6 +202,7 @@ func (sup *Supervisor) runOne(ctx context.Context, rs *runningService) {
 			// intentional stop, not a failure, and never restart.
 			sup.Status.Update(decl.ID, func(st *Status) {
 				st.Running = false
+				st.PID = 0
 				st.Health = domain.HealthUndeclared
 				st.LastError = ""
 				st.LastExitAt = time.Now()
@@ -210,6 +212,7 @@ func (sup *Supervisor) runOne(ctx context.Context, rs *runningService) {
 
 		sup.Status.Update(decl.ID, func(st *Status) {
 			st.Running = false
+			st.PID = 0
 			st.LastExitAt = time.Now()
 			if runErr != nil {
 				st.LastError = runErr.Error()

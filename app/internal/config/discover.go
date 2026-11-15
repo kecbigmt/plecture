@@ -55,7 +55,11 @@ func discoverLayer(layer layerDir) ([]*lang.Definition, error) {
 	if layer.project {
 		reserved = lang.ProjectReservedFileNames
 	}
-	defs, err := lang.DiscoverRoot(layer.dir, reserved)
+	var excluded []string
+	if layer.global {
+		excluded = []string{"services"}
+	}
+	defs, err := lang.DiscoverRoot(layer.dir, reserved, excluded...)
 	if err != nil {
 		return nil, err
 	}

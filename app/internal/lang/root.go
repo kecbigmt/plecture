@@ -7,9 +7,8 @@ import (
 	"strings"
 )
 
-// DiscoverRoot reads every definition in a trusted definition root: a
-// plugin's config/ directory, or the user config home excluding reserved
-// root files. Every .toml file that is not a reserved root file is read in
+// DiscoverRoot reads definitions in a trusted definition root. Every .toml
+// file outside reserved root files and excluded root directories is read in
 // lexicographic order by slash-separated relative path (filepath.WalkDir
 // visits entries in that order already). A .md file is never itself a
 // definition — it is either a task declaration's instruction sidecar,
@@ -22,13 +21,20 @@ import (
 // carries no meaning inside a root, so skipping a nested file for its
 // basename alone would drop a declaration an author had every right to file
 // there.
-func DiscoverRoot(root string, reserved map[string]bool) ([]*Definition, error) {
+func DiscoverRoot(root string, reserved map[string]bool, excludedRootDirs ...string) ([]*Definition, error) {
 	var defs []*Definition
 	seen := map[string]*Definition{}
 
 	err := filepath.WalkDir(root, func(path string, d fs.DirEntry, err error) error {
 		if err != nil {
 			return err
+		}
+		if d.IsDir() && filepath.Dir(path) == root {
+			for _, name := range excludedRootDirs {
+				if d.Name() == name {
+					return filepath.SkipDir
+				}
+			}
 		}
 		if d.IsDir() || !strings.HasSuffix(d.Name(), ".toml") {
 			return nil

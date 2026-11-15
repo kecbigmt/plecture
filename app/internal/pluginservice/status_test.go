@@ -1,6 +1,8 @@
 package pluginservice
 
 import (
+	"os"
+	"path/filepath"
 	"testing"
 
 	"github.com/kecbigmt/plecture/app/internal/domain"
@@ -24,6 +26,40 @@ func TestStatusRegistry_UpdateAndGet(t *testing.T) {
 	}
 	if !st.Running || st.PID != 123 || st.Health != domain.HealthHealthy {
 		t.Fatalf("Status = %+v", st)
+	}
+}
+
+func TestReadStatusSnapshotTreatsExitedSupervisorAsStopped(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "services.json")
+	if err := os.WriteFile(path, []byte(`{"owner_pid":99999999,"statuses":[{"ID":"worker","Name":"worker","Running":true,"PID":123}]}`), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	got, err := ReadStatusSnapshot(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(got) != 1 || got[0].Running || got[0].PID != 0 {
+		t.Fatalf("stale snapshot = %+v", got)
+	}
+}
+
+func TestStatusSnapshotCanBeReadByAnotherProcess(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "services.json")
+	reg := NewStatusRegistry()
+	reg.SetSnapshotPath(path)
+	reg.Update("worker", func(st *Status) {
+		st.ID = "worker"
+		st.Name = "worker"
+		st.Running = true
+		st.PID = 123
+		st.RestartCount = 2
+	})
+	got, err := ReadStatusSnapshot(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(got) != 1 || got[0].Name != "worker" || got[0].PID != 123 || got[0].RestartCount != 2 {
+		t.Fatalf("snapshot = %+v", got)
 	}
 }
 

@@ -23,6 +23,7 @@ type Declaration struct {
 	ID          string
 	PluginID    string
 	Name        string
+	Executable  string
 	ExecPath    string
 	Args        []string
 	Env         map[string]string
@@ -194,7 +195,7 @@ func buildDeclaration(path string, svc operatorService, executables map[string]s
 	}
 	names[svc.Name] = true
 	bindings[svc.Executable] = true
-	return Declaration{ID: svc.Name, Name: svc.Name, PluginID: resolved.mounted.ID, ExecPath: filepath.Join(resolved.mounted.Dir, resolved.executable.Path), Args: svc.Args, Env: env, Config: svc.Config, Restart: svc.Restart, HealthType: svc.Health.Type, ContentHash: hash}, nil
+	return Declaration{ID: svc.Name, Name: svc.Name, PluginID: resolved.mounted.ID, Executable: svc.Executable, ExecPath: filepath.Join(resolved.mounted.Dir, resolved.executable.Path), Args: svc.Args, Env: env, Config: svc.Config, Restart: svc.Restart, HealthType: svc.Health.Type, ContentHash: hash}, nil
 }
 
 func readEnvFile(path string) (map[string]string, error) {

@@ -85,8 +85,10 @@ definition does not exist without a top-level `[<id>]` table and its `kind`.
 ## Discovery
 
 Each trusted config layer has a definition root: a plugin's `config/`
-directory, the user config home excluding reserved root files, or a trusted
-project's `.plect/` directory excluding its project marker.
+directory, the user config home excluding reserved root files and its
+`services/` directory, or a trusted project's `.plect/` directory excluding
+its project marker. The user config home's `services/*.toml` files are
+operator service declarations, validated separately from definitions.
 
 Within a definition root, every `.toml` file that is not a reserved root file
 is read recursively in lexicographic order by slash-separated relative path. A
@@ -243,7 +245,8 @@ executable name. See [`actions.md`](actions.md).
 ## Validation rules
 
 - A discovered TOML file in a trusted definition root with no top-level
-  definition table is a load error unless it is a reserved root file.
+  definition table is a load error. The user config home's reserved root files
+  and `services/` directory are outside that discovery sweep.
 - A definition table missing `kind`, or carrying an unknown `kind`, is a load
   error.
 - A definition id must match `^[A-Za-z_][A-Za-z0-9_]*$`.

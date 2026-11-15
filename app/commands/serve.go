@@ -143,6 +143,7 @@ restart, within one refresh interval.`,
 		// content change (a `plect plugin update` while the resident process is
 		// running) picked up on the supervisor's own, tighter poll cycle.
 		svcSup := pluginservice.NewSupervisor(config.LoadPlugins)
+		svcSup.Status.SetSnapshotPath(pluginservice.DefaultStatusSnapshotPath())
 		svcSup.Protocol = &pluginservice.Protocol{
 			Subscriptions: func(context.Context) ([]persistence.Subscription, error) {
 				return stateStore.ListSubscriptions("", "")

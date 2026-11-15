@@ -89,6 +89,24 @@ func TestLoad_NoConfigFile(t *testing.T) {
 	}
 }
 
+func TestLoadWorkflows_IgnoresOperatorServiceFiles(t *testing.T) {
+	home := t.TempDir()
+	writeFile(t, filepath.Join(home, "workflows", "example.toml"), "[example]\nkind = \"workflow\"\nresource = \"issue\"\n")
+	writeFile(t, filepath.Join(home, "services", "worker.toml"), "[[services]]\nname = \"worker\"\n")
+	writeFile(t, filepath.Join(home, "workflows", "services", "nested.toml"), "[nested]\nkind = \"workflow\"\nresource = \"issue\"\n")
+	cfg := &Config{BaseDir: home}
+	got, err := cfg.LoadWorkflows("")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, ok := got["example"]; !ok {
+		t.Fatalf("workflow missing: %v", got)
+	}
+	if _, ok := got["nested"]; !ok {
+		t.Fatalf("nested workflow missing: %v", got)
+	}
+}
+
 func TestLoad_RejectsSupersededDialect(t *testing.T) {
 	tmpHome := t.TempDir()
 	t.Setenv("HOME", tmpHome)

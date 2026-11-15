@@ -1,13 +1,15 @@
-package pluginservice
+package pluginservice_test
 
 import (
 	"context"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 
 	"github.com/kecbigmt/plecture/app/internal/config"
+	"github.com/kecbigmt/plecture/app/internal/pluginservice"
 )
 
 // TestSupervisor_OverConfigLoadPlugins_RunsADeclaredService is the
@@ -62,17 +64,47 @@ alias = "local"
 source = "path+editable://`+catalogDir+`"
 plugins = ["svc"]
 `)
+	cfg, err := config.Load()
+	if err != nil {
+		t.Fatalf("config load with service declaration: %v", err)
+	}
+	if _, err := cfg.LoadWorkflows(""); err != nil {
+		t.Fatalf("workflow load with service declaration: %v", err)
+	}
 
-	sup := newTestSupervisor(config.LoadPlugins)
+	sup := pluginservice.NewSupervisor(config.LoadPlugins)
 
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 	go sup.Run(ctx)
 
-	waitFor(t, 2*time.Second, func() bool {
+	waitForService(t, 2*time.Second, func() bool {
 		st, ok := sup.Status.Get("svc")
 		return ok && st.Running
 	})
+}
+
+func waitForService(t *testing.T, timeout time.Duration, check func() bool) {
+	t.Helper()
+	deadline := time.Now().Add(timeout)
+	for time.Now().Before(deadline) {
+		if check() {
+			return
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
+	t.Fatal("service did not reach expected state")
+}
+
+func TestConfigLoadReportsInvalidServiceDeclarationFile(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("PLECT_CONFIG_HOME", home)
+	path := filepath.Join(home, "services", "invalid.toml")
+	writeIntegrationFile(t, path, "[[services]]\nname = \"invalid\"\nexecutable = \"missing/worker\"\nenv_file = \"relative.env\"\n")
+	_, err := config.Load()
+	if err == nil || !strings.Contains(err.Error(), path) || !strings.Contains(err.Error(), "not mounted") {
+		t.Fatalf("error = %v, want declaration path and reason", err)
+	}
 }
 
 func writeIntegrationFile(t *testing.T, path, content string) {

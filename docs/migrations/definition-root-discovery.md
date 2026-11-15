@@ -1,9 +1,9 @@
 # Definition-root discovery
 
 Every configuration surface is now on the ratified language, so a cascade
-layer is read as one **definition root**: everything under it is discovered in
-a single pass, and which kind a declaration is comes from its own `kind` field
-rather than from the directory it sits in.
+layer is read as one **definition root**: its definition files are discovered
+in a single pass, and which kind a declaration is comes from its own `kind`
+field rather than from the directory it sits in.
 
 Three things follow, and each can turn a config that loaded yesterday into one
 that does not:
@@ -14,8 +14,10 @@ that does not:
   declarations sharing an id inside one layer are a load error even when their
   kinds differ. Across layers they coexist: a plugin and your config are
   different namespaces.
-- A non-reserved `.toml` under a root must be a definition document. There is
-  nowhere left for a file that is not one.
+- A non-reserved `.toml` under a root must be a definition document. The user
+  config home's `services/` directory is outside this sweep: its `*.toml`
+  files declare operator services. There is nowhere else in a definition root
+  for a file that is not a definition.
 
 ## Backup
 
