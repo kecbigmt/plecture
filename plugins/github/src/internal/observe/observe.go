@@ -207,43 +207,64 @@ func fetchReviewDecision(ctx context.Context, client github.GHClient, owner, rep
 	return resp.Data.Repository.PullRequest.ReviewDecision
 }
 
-// discoverLinkedPR finds the PR that closes an issue from the issue's own
-// closing-PR references. A PR whose body never named the issue is invisible
-// to GitHub's relation, so it is not reported. A failed lookup degrades to
-// "no linked PR yet" rather than failing the observation: with no other
-// source to contradict, the issue-only state is the honest answer, and
-// issue_status still gates.
+// discoverLinkedPR degrades a failed lookup to "no linked PR yet" rather than
+// failing the observation: issue_status still gates.
 func discoverLinkedPR(ctx context.Context, client github.GHClient, parsed *github.ParsedURL) string {
-	refs, err := closingPRRefs(ctx, client, parsed)
+	candidates, err := linkCandidates(ctx, client, parsed)
 	if err != nil {
 		return ""
 	}
-	return preferOpenPR(refs)
+	if c := chooseLinkedPR(candidates); c != nil {
+		return c.URL
+	}
+	return ""
 }
 
-const closingPRsQuery = `query($owner:String!,$repo:String!,$number:Int!){
+const linkedPRsQuery = `query($owner:String!,$repo:String!,$number:Int!,$branch:String!){
   repository(owner:$owner,name:$repo){
     issue(number:$number){
       closedByPullRequestsReferences(first:10,includeClosedPrs:true){
-        nodes{url state updatedAt}
+        nodes{number url state updatedAt}
       }
+      timelineItems(last:100,itemTypes:[CROSS_REFERENCED_EVENT]){
+        nodes{... on CrossReferencedEvent{source{... on PullRequest{
+          number url state updatedAt body repository{nameWithOwner}
+        }}}}
+      }
+    }
+    pullRequests(headRefName:$branch,first:10){
+      nodes{number url state updatedAt isCrossRepository}
     }
   }
 }`
 
-// closingPRRef is one pull request GitHub reports as closing the issue.
-type closingPRRef struct {
+// linkSource is why a pull request is a candidate, strongest first.
+type linkSource int
+
+const (
+	linkClosingReference linkSource = iota
+	linkNamesIssue
+	linkIssueBranch
+)
+
+type linkCandidate struct {
+	Number    int    `json:"number"`
 	URL       string `json:"url"`
 	State     string `json:"state"`
 	UpdatedAt string `json:"updatedAt"`
+	source    linkSource
 }
 
-func closingPRRefs(ctx context.Context, client github.GHClient, parsed *github.ParsedURL) ([]closingPRRef, error) {
+// linkCandidates assumes the worktree effect's default branch name because
+// the observe surface sees only the resource id; closedByPullRequestsReferences
+// alone misses every pull request that targets a non-default branch.
+func linkCandidates(ctx context.Context, client github.GHClient, parsed *github.ParsedURL) ([]linkCandidate, error) {
 	raw, err := client.JSON(ctx, "graphql",
 		"-F", "owner="+parsed.Owner,
 		"-F", "repo="+parsed.Repo,
 		"-F", fmt.Sprintf("number=%d", parsed.Number),
-		"-f", "query="+closingPRsQuery,
+		"-f", "branch="+github.ExpandIssueBranch("", parsed.Owner, parsed.Repo, parsed.Number),
+		"-f", "query="+linkedPRsQuery,
 	)
 	if err != nil {
 		return nil, err
@@ -253,34 +274,103 @@ func closingPRRefs(ctx context.Context, client github.GHClient, parsed *github.P
 			Repository struct {
 				Issue struct {
 					ClosedByPullRequestsReferences struct {
-						Nodes []closingPRRef `json:"nodes"`
+						Nodes []linkCandidate `json:"nodes"`
 					} `json:"closedByPullRequestsReferences"`
+					TimelineItems struct {
+						Nodes []struct {
+							Source struct {
+								linkCandidate
+								Body       string `json:"body"`
+								Repository struct {
+									NameWithOwner string `json:"nameWithOwner"`
+								} `json:"repository"`
+							} `json:"source"`
+						} `json:"nodes"`
+					} `json:"timelineItems"`
 				} `json:"issue"`
+				PullRequests struct {
+					Nodes []struct {
+						linkCandidate
+						IsCrossRepository bool `json:"isCrossRepository"`
+					} `json:"nodes"`
+				} `json:"pullRequests"`
 			} `json:"repository"`
 		} `json:"data"`
 	}
 	if err := json.Unmarshal(raw, &resp); err != nil {
-		return nil, fmt.Errorf("parse closing pull request references: %w", err)
+		return nil, fmt.Errorf("parse linked pull request candidates: %w", err)
 	}
-	return resp.Data.Repository.Issue.ClosedByPullRequestsReferences.Nodes, nil
+	repo := resp.Data.Repository
+	var out []linkCandidate
+	for _, c := range repo.Issue.ClosedByPullRequestsReferences.Nodes {
+		c.source = linkClosingReference
+		out = append(out, c)
+	}
+	// Another repository's number would be fetched as a pull request here.
+	for _, n := range repo.Issue.TimelineItems.Nodes {
+		src := n.Source
+		if src.URL == "" || !strings.EqualFold(src.Repository.NameWithOwner, parsed.Owner+"/"+parsed.Repo) {
+			continue
+		}
+		if !namesIssueAsClosed(src.Body, parsed.Owner, parsed.Repo, parsed.Number) {
+			continue
+		}
+		src.linkCandidate.source = linkNamesIssue
+		out = append(out, src.linkCandidate)
+	}
+	// A fork's branch of the same name is someone else's work.
+	for _, n := range repo.PullRequests.Nodes {
+		if n.IsCrossRepository {
+			continue
+		}
+		n.linkCandidate.source = linkIssueBranch
+		out = append(out, n.linkCandidate)
+	}
+	return out, nil
 }
 
-func preferOpenPR(refs []closingPRRef) string {
-	if len(refs) == 0 {
-		return ""
-	}
-	// Prefer the first OPEN reference; ISO 8601 timestamps sort correctly as
-	// plain strings, so the most recently updated otherwise wins.
-	latest := refs[0]
-	for _, n := range refs {
-		if strings.EqualFold(n.State, "OPEN") {
-			return n.URL
+var closingKeywordRE = regexp.MustCompile(`(?i)\b(?:close[sd]?|fix(?:e[sd])?|resolve[sd]?):?\s+(?:https://github\.com/([\w.-]+)/([\w.-]+)/issues/|([\w.-]+)/([\w.-]+)#|#)(\d+)\b`)
+
+// namesIssueAsClosed requires a closing keyword: a pull request that merely
+// mentions the issue must not take over its checks and revision.
+func namesIssueAsClosed(body, owner, repo string, number int) bool {
+	for _, m := range closingKeywordRE.FindAllStringSubmatch(body, -1) {
+		refOwner, refRepo := m[1]+m[3], m[2]+m[4]
+		if refOwner != "" && !(strings.EqualFold(refOwner, owner) && strings.EqualFold(refRepo, repo)) {
+			continue
 		}
-		if n.UpdatedAt > latest.UpdatedAt {
-			latest = n
+		if n, err := strconv.Atoi(m[5]); err == nil && n == number {
+			return true
 		}
 	}
-	return latest.URL
+	return false
+}
+
+// chooseLinkedPR ranks open state above source: a closed default-branch pull
+// request superseded by an open stacked one is history, not work in progress.
+func chooseLinkedPR(candidates []linkCandidate) *linkCandidate {
+	var best *linkCandidate
+	for i := range candidates {
+		c := &candidates[i]
+		if best == nil || ranksAbove(c, best) {
+			best = c
+		}
+	}
+	return best
+}
+
+func ranksAbove(a, b *linkCandidate) bool {
+	aOpen, bOpen := strings.EqualFold(a.State, "OPEN"), strings.EqualFold(b.State, "OPEN")
+	switch {
+	case aOpen != bOpen:
+		return aOpen
+	case a.source != b.source:
+		return a.source < b.source
+	case a.UpdatedAt != b.UpdatedAt:
+		return a.UpdatedAt > b.UpdatedAt
+	default:
+		return a.Number > b.Number
+	}
 }
 
 var prNumberRE = regexp.MustCompile(`/pull/(\d+)`)
