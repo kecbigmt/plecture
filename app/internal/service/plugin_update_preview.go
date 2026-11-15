@@ -22,6 +22,7 @@ type PluginFileChange struct {
 
 type PluginUpdatePreview struct {
 	ID                 string
+	ResolvedRevision   string
 	OldTreeUnavailable bool
 	Changes            []PluginFileChange
 	ServicesToRestart  []string
@@ -50,7 +51,7 @@ func previewPluginUpdate(paths PluginPaths, id, path string, entry plugins.Catal
 	if err != nil {
 		return PluginUpdatePreview{}, err
 	}
-	preview := PluginUpdatePreview{ID: id, OldTreeUnavailable: !available, Changes: changes}
+	preview := PluginUpdatePreview{ID: id, ResolvedRevision: fetched.ResolvedRevision, OldTreeUnavailable: !available, Changes: changes}
 	if !scheme.IsEditable() && (!locked || oldEntry.ContentHash != newHash || (scheme.IsGit() && oldEntry.CatalogResolvedRevision != fetched.ResolvedRevision)) {
 		mounted := []plugins.Mounted{{ID: id, Dir: newDir, Manifest: newManifest}}
 		decls, _ := pluginservice.BuildDeclarationsFrom(filepath.Dir(paths.CatalogsPath), mounted, nil)

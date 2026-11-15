@@ -76,6 +76,7 @@ summary without building, changing the lockfile, or restarting services.`,
 func writePluginUpdatePreview(out io.Writer, preview service.PluginUpdatePreview) error {
 	var b strings.Builder
 	fmt.Fprintf(&b, "Changes for %s:\n", preview.ID)
+	fmt.Fprintf(&b, "  Target revision: %s\n", orNone(preview.ResolvedRevision))
 	if preview.OldTreeUnavailable {
 		fmt.Fprintln(&b, "  Previous plugin tree unavailable; every file in the fetched tree is listed as changed.")
 	}

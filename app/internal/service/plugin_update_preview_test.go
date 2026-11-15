@@ -233,6 +233,9 @@ func TestPluginUpdateComparesPinnedSnapshotsAndReportsMissingOldTree(t *testing.
 	if preview.OldTreeUnavailable {
 		t.Fatal("old git snapshot was available")
 	}
+	if preview.ResolvedRevision != second {
+		t.Fatalf("dry-run revision = %q, want %q", preview.ResolvedRevision, second)
+	}
 	want := []PluginFileChange{
 		{Path: "bin/worker", Kind: "executables", Change: "modified"},
 		{Path: "scripts/helper.sh", Kind: "scripts and sources", Change: "modified"},
@@ -257,5 +260,23 @@ func TestPluginUpdateComparesPinnedSnapshotsAndReportsMissingOldTree(t *testing.
 		if change.Change != "changed" {
 			t.Fatalf("missing old tree change = %+v, want changed", change)
 		}
+	}
+	write("work/bin/worker", "#!/bin/sh\necho newest\n")
+	git("add", "-A")
+	git("commit", "--quiet", "-m", "third")
+	result, err := PluginUpdate(context.Background(), paths, "local/work", PluginUpdateParams{Revision: preview.ResolvedRevision})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if result.ResolvedRevision != second {
+		t.Fatalf("installed revision = %q, want dry-run revision %q", result.ResolvedRevision, second)
+	}
+	installed, err := plugins.LoadLockfile(paths.LockfilePath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	locked, ok := installed.FindPlugin("local/work")
+	if !ok || locked.CatalogResolvedRevision != second {
+		t.Fatalf("installed plugin = %+v, want revision %q", locked, second)
 	}
 }
