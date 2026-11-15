@@ -1,5 +1,7 @@
 ---
-superseded_by: 2026-11-11-service-executable-action-helpers
+superseded_by:
+  - 2026-11-11-service-executable-action-helpers
+  - 2026-11-15-plugin-update-preview
 supersedes:
   - 2026-08-16-plugin-service-lifecycle
   - 2026-08-17-plugin-boundary-contracts
@@ -76,12 +78,8 @@ does not inherit the supervisor's environment. The executable validates its
 own required variables. `restart` defaults to `on-failure` and may be `never`;
 `health` defaults to `{ type = "process" }`, the only health
 kind here. An explicit `plect plugin update` authorizes restarting an already
-declared service when the plugin's content hash changes. Before any build or
-lockfile change, the command shows changed files by kind and the declared
-services that will restart. `--dry-run` shows the same summary without a build,
-lockfile change, or service restart. The summary is an awareness aid, not a
-supply-chain control; no per-executable hashes are stored. Enabling or updating
-a plugin creates no service declaration.
+declared service when its code changes. Enabling or updating a plugin creates
+no service declaration.
 
 A service executable carries its JSON Schema inline as `config_schema` in its
 `plugin.toml` executable entry. Core validates `[services.config]` against it
