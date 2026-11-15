@@ -80,9 +80,9 @@ letter, contains only lowercase letters, digits, and hyphens, and is at most
 `env_file` is an absolute path to an owner-readable file of literal
 `KEY=VALUE` lines. Blank and `#` comment lines are ignored. Duplicate keys,
 invalid names, malformed lines, unreadable files, and relative paths fail
-loading. Interpolation is not allowed. A conflicting `PLECT_*` runtime key
-fails loading. The service receives only env-file entries and plect runtime
-values, and validates its own required inputs.
+loading. Interpolation is not allowed. Any `PLECT_*` key in the env file fails
+loading. The service receives env-file entries plus `PLECT_DATA_DIR` and
+`PLECT_CACHE_DIR`, and validates its own required inputs.
 
 `[services.config]` is optional, non-secret plugin-specific configuration.
 The executable declares its `config_schema` inline in `plugin.toml`, using a
@@ -105,8 +105,9 @@ duplicate keys; an undeclared service executable fails invocation by name.
 
 `restart` defaults to `on-failure` and may be `never`. `health` defaults to
 and only accepts `{ type = "process" }`. The supervised service gets only its
-`env_file` and plect runtime values. It receives `PLECT_DATA_DIR` set to the
-mode-`0700` `<data-home>/plugins/<plugin>/` directory for authoritative state;
+`env_file` entries, `PLECT_DATA_DIR`, and `PLECT_CACHE_DIR`.
+`PLECT_DATA_DIR` names the mode-`0700` `<data-home>/plugins/<plugin>/`
+directory for authoritative state;
 actions never receive it. The data home resolves from `--data-home`, then
 `PLECT_DATA_HOME`, then `$XDG_DATA_HOME/plect`, then `~/.local/share/plect`.
 The service inherits neither `XDG_*` nor `HOME` from the supervisor and gets

@@ -68,10 +68,10 @@ services naming the same executable are a load error.
 
 `env_file` is an absolute path to an owner-readable file of `KEY=VALUE` lines.
 Blank and `#` comment lines are ignored; duplicate or invalid keys, malformed
-lines, relative paths, unreadable files, interpolation, and a conflicting
-`PLECT_*` runtime key fail loading. A service receives these entries and
-plect-provided runtime values, not the supervisor environment. The executable
-validates its own required variables. `restart` defaults to `on-failure` and
+lines, relative paths, unreadable files, interpolation, and any `PLECT_*` key
+fail loading. A service receives the env-file entries plus `PLECT_DATA_DIR`
+and `PLECT_CACHE_DIR`; it does not inherit the supervisor's environment. The
+executable validates its own required variables. `restart` defaults to `on-failure` and
 may be `never`; `health` defaults to `{ type = "process" }`, the only health
 kind here. An explicit `plect plugin update` authorizes restarting an already
 declared service when its code changes. Enabling or updating a plugin creates
@@ -146,8 +146,8 @@ Plect supplies `PLECT_DATA_DIR` to the supervised service process only, set to t
 `--data-home`, then `PLECT_DATA_HOME`, then `$XDG_DATA_HOME/plect`, then
 `~/.local/share/plect`. The directory holds authoritative service state;
 per-resource watch positions are one example. Actions never receive it.
-The service needs this directory because it
-does not inherit the supervisor's environment. Plect does not rewrite any
+Plect supplies this directory explicitly because the service does not inherit
+the supervisor's data-home setting. Plect does not rewrite any
 `XDG_*` values supplied by the service's env file. It receives no global
 data- or config-home path and never invokes the plect CLI. Plugins receive
 neither `PLECT_CONFIG_HOME`, `PLECT_DATA_HOME`, nor `PLECT_CACHE_HOME`; their
