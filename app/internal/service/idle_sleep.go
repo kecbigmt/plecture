@@ -21,6 +21,10 @@ func SleepIfIdle(cfg *config.Config, store *state.Store, name string, now time.T
 	if err != nil || wf == nil || wf.Session.SleepAfterIdle.Duration <= 0 {
 		return false, err
 	}
+	_, ready, err := idleSleepReady(store, s, name, now, wf.Session.SleepAfterIdle.Duration)
+	if err != nil || !ready {
+		return false, err
+	}
 	slept := false
 	err = tryLifecycleLock(store, name, func() error {
 		s, err := store.GetE(name)
@@ -37,38 +41,18 @@ func SleepIfIdle(cfg *config.Config, store *state.Store, name string, now time.T
 		if s.ParentSession == "" && s.Population == nil {
 			return nil
 		}
-		log := eventlog.NewStore(store.Dir())
-		status, ok, err := log.LatestByType(name, event.TypeStatusMessage)
-		if err != nil || !ok || status.Metadata["cleared"] != "true" {
+		statusTime, ready, err := idleSleepReady(store, s, name, now, wf.Session.SleepAfterIdle.Duration)
+		if err != nil || !ready {
 			return err
-		}
-		activation := s.CreatedAt
-		for _, task := range domain.MergedTasks(s) {
-			if task != nil && task.Scope == contract.TaskScopeRun && task.Status == contract.TaskStatusProduced && task.SetupAt.After(activation) {
-				activation = task.SetupAt
-			}
-		}
-		if status.Time.Before(activation) {
-			return nil
-		}
-		if now.Sub(status.Time) < wf.Session.SleepAfterIdle.Duration {
-			return nil
-		}
-		inbound, err := log.Tail(name, event.Filter{Direction: event.Inbound}, 1)
-		if err != nil {
-			return fmt.Errorf("read latest inbound for idle sleep: %w", err)
-		}
-		if len(inbound) > 0 && inbound[0].Time.After(status.Time) {
-			return nil
 		}
 		if _, err := downUnlocked(cfg, store, DownParams{Identifier: name, Sleep: true, automatic: true}); err != nil {
 			return err
 		}
-		inbound, err = log.Tail(name, event.Filter{Direction: event.Inbound}, 1)
+		inbound, err := eventlog.NewStore(store.Dir()).Tail(name, event.Filter{Direction: event.Inbound}, 1)
 		if err != nil {
 			return fmt.Errorf("read inbound after idle sleep: %w", err)
 		}
-		if len(inbound) > 0 && inbound[0].Time.After(status.Time) {
+		if len(inbound) > 0 && inbound[0].Time.After(statusTime) {
 			if _, err := queueSleep(store, name, "event", inbound[0].Time); err != nil {
 				return fmt.Errorf("request wake after idle sleep: %w", err)
 			}
@@ -80,6 +64,31 @@ func SleepIfIdle(cfg *config.Config, store *state.Store, name string, now time.T
 		return false, nil
 	}
 	return slept, err
+}
+
+func idleSleepReady(store *state.Store, s *domain.Session, name string, now time.Time, duration time.Duration) (time.Time, bool, error) {
+	log := eventlog.NewStore(store.Dir())
+	status, ok, err := log.LatestByType(name, event.TypeStatusMessage)
+	if err != nil || !ok || status.Metadata["cleared"] != "true" {
+		return time.Time{}, false, err
+	}
+	activation := s.CreatedAt
+	for _, task := range domain.MergedTasks(s) {
+		if task != nil && task.Scope == contract.TaskScopeRun && task.Status == contract.TaskStatusProduced && task.SetupAt.After(activation) {
+			activation = task.SetupAt
+		}
+	}
+	if status.Time.Before(activation) || now.Sub(status.Time) < duration {
+		return time.Time{}, false, nil
+	}
+	inbound, err := log.Tail(name, event.Filter{Direction: event.Inbound}, 1)
+	if err != nil {
+		return time.Time{}, false, fmt.Errorf("read latest inbound for idle sleep: %w", err)
+	}
+	if len(inbound) > 0 && inbound[0].Time.After(status.Time) {
+		return time.Time{}, false, nil
+	}
+	return status.Time, true, nil
 }
 
 func SleepIdleSessions(cfg *config.Config, store *state.Store, now time.Time) error {

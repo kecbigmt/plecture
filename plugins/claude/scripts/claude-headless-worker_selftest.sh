@@ -56,6 +56,7 @@ chmod +x "$bin_dir/claude"
 
 cat > "$bin_dir/plect" <<'EOF'
 #!/usr/bin/env bash
+[ "$1 $2" = "state set-message" ] && [ "$4" = "working" ] && [ -f "$PLECT_FAIL_WORKING_ONCE" ] && { rm -f "$PLECT_FAIL_WORKING_ONCE"; exit 1; }
 [ "$1 $2" = "state set-message" ] && [ "$4" = "working" ] && [ -f "$PLECT_FAIL_WORKING" ] && exit 1
 true
 EOF
@@ -67,6 +68,7 @@ export STUB_KEYS="$tmp/keys"
 export STUB_MODE_FILE="$tmp/mode"
 export STUB_HANG_PID="$tmp/hang.pid"
 export PLECT_FAIL_WORKING="$tmp/fail-working"
+export PLECT_FAIL_WORKING_ONCE="$tmp/fail-working-once"
 export PLECT_SESSION_NAME="selftest/worker-1"
 export PLECT_CLAUDE_API_KEY_FILE="$tmp/api-key"
 printf 'sk-selftest-key\n' > "$PLECT_CLAUDE_API_KEY_FILE"
@@ -309,6 +311,29 @@ kill -TERM "$worker_pid" 2>/dev/null || true
 wait "$worker_pid" 2>/dev/null || true
 worker_pid=""
 rm -f "$PLECT_FAIL_WORKING"
+
+retry_queue="$tmp/retry-queue"
+retry_state="$tmp/retry-state"
+mkdir -p "$retry_queue"
+echo '{"type":"user.emit","text":"retry turn"}' > "$retry_queue/1.json"
+echo hang > "$STUB_MODE_FILE"
+rm -f "$STUB_HANG_PID"
+touch "$PLECT_FAIL_WORKING_ONCE"
+"$worker" "$retry_queue" "$retry_state" "$sid" "$tmp/mcp.json" "$tmp/hooks.json" > "$tmp/retry.out" 2>&1 &
+worker_pid=$!
+for _ in $(seq 1 100); do
+  [ -s "$STUB_HANG_PID" ] && break
+  sleep 0.1
+done
+if [ ! -s "$STUB_HANG_PID" ] || ! jq -e '.last_exit_code == 0' "$retry_state/health.json" >/dev/null 2>&1; then
+  echo "FAIL health probe is not passing during a turn after a retried working write" >&2
+  fail=1
+else
+  echo "ok   health probe passes during a turn after a retried working write"
+fi
+kill -TERM "$worker_pid" 2>/dev/null || true
+wait "$worker_pid" 2>/dev/null || true
+worker_pid=""
 
 [ "$fail" -eq 0 ] || { echo "claude-headless-worker selftest failed" >&2; exit 1; }
 echo "claude-headless-worker selftest passed"

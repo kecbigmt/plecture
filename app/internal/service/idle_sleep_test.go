@@ -163,8 +163,15 @@ func TestSleepIfIdle_CompletedTurnReleasesRunScope(t *testing.T) {
 	if err := SetMessage(cfg, store, name, "", nil); err != nil {
 		t.Fatal(err)
 	}
+	lockPath := filepath.Join(store.Dir(), "lifecycle-locks", name+".lock")
+	if err := os.Remove(lockPath); err != nil {
+		t.Fatal(err)
+	}
 	if slept, err := SleepIfIdle(cfg, store, name, time.Now().Add(5*time.Minute)); err != nil || slept {
 		t.Fatalf("before deadline slept = %t, err = %v", slept, err)
+	}
+	if _, err := os.Stat(lockPath); !os.IsNotExist(err) {
+		t.Fatalf("idle check took a lifecycle lock before the deadline: %v", err)
 	}
 	if slept, err := SleepIfIdle(cfg, store, name, time.Now().Add(11*time.Minute)); err != nil || !slept {
 		t.Fatalf("after deadline slept = %t, err = %v", slept, err)
