@@ -70,8 +70,10 @@ Denied mentions are handled before publication.
   it to `plect.status_message` events. Nonempty events show Slack's working
   display; an empty event clears it when the turn ends.
 - `config/channels/stream.toml` posts a complete `plect.message` event as one
-  thread reply and clears the working display after the post. Bind it to that
-  event type.
+  thread reply and clears the working display after the post. Its `include`
+  may list only `plect.message` and, during migration, `plect.message_delta`,
+  which posts nothing and logs a hint to remove it. Any other event type makes
+  the delivery fail.
 
 The three channels take `channel_id` and `thread_ts` and run `slack-adapter`
 actions. Query populations use their declared `poll` or `subscribe` means and
