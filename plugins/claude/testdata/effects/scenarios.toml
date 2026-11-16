@@ -21,8 +21,8 @@ output = "mcp_config"
 path   = ""
 
 [[runtime]]
-name   = "turn-end-tick-opt-in"
-inputs = { tick_on_turn_end = true, publish_events = ["message", "message_delta"] }
+name   = "message-delta-reporting"
+inputs = { publish_events = ["message", "message_delta"] }
 
 [[runtime.files]]
 path    = ".claude/sessions/aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee.json"

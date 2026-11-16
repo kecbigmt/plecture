@@ -9,8 +9,8 @@
 # Usage:
 #   claude-agent-activity working|waiting   # activity hook; session from $PLECT_SESSION_NAME
 #   claude-agent-activity reply             # Stop reporting hook; publishes plect.message
-#   claude-agent-activity finish            # Stop hook; reports reply, then completes status
-#   claude-agent-activity message_display   # MessageDisplay reporting hook; publishes plect.message_delta, then plect.message on its final delta
+#   claude-agent-activity finish [interactive]          # Stop hook; reports reply, then completes status
+#   claude-agent-activity message_display [interactive] # MessageDisplay reporting hook; publishes plect.message_delta, then plect.message on its final delta
 #   claude-agent-activity probe <session>   # activity probe; writes the envelope
 #   claude-agent-activity reset <session>   # drop the record and any buffered messages (setup/cleanup)
 #
@@ -195,7 +195,7 @@ case "${1:-}" in
       fi
       release_turn_lock "$turn_lock"
     fi
-    [ "$pending" = true ] || "$0" waiting <<<"$payload"
+    [ "$pending" = true ] || "$0" waiting "${2:-}" <<<"$payload"
     exit 0
     ;;
   probe)
@@ -413,7 +413,7 @@ case "${1:-}" in
         release_turn_lock "$turn_lock"
         if [ "$pending" = true ]; then
           completion_payload="$(jq -nc --arg prompt_id "$turn_id" '{prompt_id: $prompt_id}')"
-          "$0" waiting <<<"$completion_payload"
+          "$0" waiting "${2:-}" <<<"$completion_payload"
         fi
       fi
     fi
@@ -492,6 +492,6 @@ jq -nc \
   '{seq: $seq, silence_expected: $silence_expected, fingerprint: "\($activity):\($seq)", observed_at: $at}' \
   > "$file" 2>/dev/null
 
-[ "$activity" = waiting ] && [ "${PLECT_CLAUDE_TICK_ON_STOP:-}" = true ] && run_plect tick "$PLECT_SESSION_NAME"
+[ "$activity" = waiting ] && [ "${2:-}" = interactive ] && run_plect tick "$PLECT_SESSION_NAME"
 
 exit 0

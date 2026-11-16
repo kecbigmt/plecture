@@ -110,6 +110,9 @@ Code hooks that installs is this plugin's own concern:
   hooks fire under `claude -p` too; its schema accepts only `"message"`,
   because `MessageDisplay` rides the TUI's own rendering, which a print-mode
   turn never does.
+- The interactive runtime ticks its session after the completed turn's status
+  is recorded, including after a streamed reply's final display. The headless
+  worker ticks after its own turn, so its Stop hook does not tick.
 - A consumer that wants only finished messages includes `plect.message`;
   one that wants a live view includes `plect.message_delta` too and
   replaces its running preview with the `plect.message` for the same
@@ -128,7 +131,6 @@ replacing them (the parameterization rung of
 | `tasks/runtime.toml` | `launch_timeout` | How long the launch poll waits for `claude`'s session file to register, as a `"<seconds>s"` token. Default `120s`. On timeout, or any other non-zero setup exit after the process was started, the pane's `claude` child is terminated before the node fails, so a retry never types into a still-live process. |
 | `tasks/runtime.toml` | `permission_mode` | `--permission-mode <value>` on the launch line, one of `claude`'s own mode names or `""` to omit the flag. Default `bypassPermissions`, so a dispatched session never blocks on the CLI's first-run "Set up auto mode?" wizard. The default also seeds `skipDangerousModePermissionPrompt` into the hooks settings file, since `bypassPermissions` itself carries a one-time interactive disclaimer on an account/host that has never accepted it. |
 | `tasks/runtime.toml` | `publish_events` | Array of core event names to publish (`"message"`, `"message_delta"`), without their `plect.` prefix. Default `["message"]`. See Turn Reporting above. |
-| `tasks/runtime.toml` | `tick_on_turn_end` | Boolean. When `true`, the interactive Stop hook ticks the session after recording the completed turn; a pending final `MessageDisplay` hook ticks after finishing the message. Default `false`. Enable it for workflows that need turn-end re-evaluation. |
 | `tasks/headless_runtime.toml` | `model`, `effort`, `permission_mode`, `launch_env`, `mcp_servers`, `path_prepend`, `launch_timeout` | As for `runtime`, applied to every `claude -p` turn rather than one launch line. `launch_timeout` bounds the wait for the worker's readiness, and `permission_mode` still defaults to `bypassPermissions`, since `-p` denies every tool call nothing is present to approve. |
 | `tasks/headless_runtime.toml` | `api_key_file` | Path to a file holding an Anthropic API key. The worker reads it on every turn and passes it to `claude -p` alone as `ANTHROPIC_API_KEY`; it never reaches the pane's keystrokes. Empty = the CLI's own authentication. An unreadable or empty file fails the turn rather than falling back to another login. |
 | `tasks/headless_runtime.toml` | `state_root` | Directory the worker's per-session queue and state live under. Empty = a temporary directory. |

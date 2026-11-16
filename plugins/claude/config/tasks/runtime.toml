@@ -41,9 +41,6 @@ scope = "run"
 #   publish_events — core events to publish ("message" and/or
 #                  "message_delta"). Default ["message"]. See the README's
 #                  Turn Reporting section for the hook mapping and contract.
-#   tick_on_turn_end — ask plect to re-evaluate this session after each
-#                  completed turn. Default false; workflows that need prompt
-#                  review or work handoff opt in.
 #
 # Every value the script needs arrives through the binding transport, so
 # nothing below is spliced into this source and no value can become part of
@@ -148,18 +145,16 @@ HAS_MESSAGE_DELTA=false
 printf '%s' "$publish_events" | jq -e 'any(.[]?; . == "message_delta")' >/dev/null 2>&1 && HAS_MESSAGE_DELTA=true
 DEDUP_PREFIX=""
 [ "$HAS_MESSAGE" = true ] && [ "$HAS_MESSAGE_DELTA" = true ] && DEDUP_PREFIX="PLECT_CLAUDE_MESSAGE_DEDUP=true "
-TICK_PREFIX="PLECT_CLAUDE_TICK_ON_STOP=false "
-[ "${tick_on_turn_end-false}" = true ] && TICK_PREFIX="PLECT_CLAUDE_TICK_ON_STOP=true "
-jq -nc --arg activity "$activity_bin" --arg dedup_prefix "$DEDUP_PREFIX" --arg tick_prefix "$TICK_PREFIX" --arg has_message "$HAS_MESSAGE" --argjson has_message_delta "$HAS_MESSAGE_DELTA" --argjson skip_bypass_warning "$SKIP_BYPASS_WARNING" '
+jq -nc --arg activity "$activity_bin" --arg dedup_prefix "$DEDUP_PREFIX" --arg has_message "$HAS_MESSAGE" --argjson has_message_delta "$HAS_MESSAGE_DELTA" --argjson skip_bypass_warning "$SKIP_BYPASS_WARNING" '
   {
     hooks: (
       {
         UserPromptSubmit: [{hooks: [{type: "command", command: ($activity + " working")}]}],
         PreToolUse:       [{hooks: [{type: "command", command: ($activity + " working")}]}],
-        Stop: [{hooks: [{type: "command", command: ($dedup_prefix + $tick_prefix + "PLECT_CLAUDE_REPORT_REPLY=" + $has_message + " " + $activity + " finish")}]}]
+        Stop: [{hooks: [{type: "command", command: ($dedup_prefix + "PLECT_CLAUDE_REPORT_REPLY=" + $has_message + " " + $activity + " finish interactive")}]}]
       }
       + (if $has_message_delta then
-           {MessageDisplay: [{hooks: [{type: "command", command: ($dedup_prefix + $tick_prefix + $activity + " message_display")}]}]}
+           {MessageDisplay: [{hooks: [{type: "command", command: ($dedup_prefix + $activity + " message_display interactive")}]}]}
          else {} end)
     )
   } + (if $skip_bypass_warning then {skipDangerousModePermissionPrompt: true} else {} end)
@@ -313,7 +308,6 @@ mcp_servers         = { from = "inputs.mcp_servers", optional = true }
 path_prepend        = { from = "inputs.path_prepend", optional = true }
 launch_timeout      = { from = "inputs.launch_timeout", default = "120s" }
 publish_events      = { json = { from = "inputs.publish_events", default = ["message"] } }
-tick_on_turn_end     = { from = "inputs.tick_on_turn_end", default = false }
 activity_bin        = { bin = "claude-agent-activity" }
 mcp_servers_bin     = { bin = "claude-mcp-servers" }
 channel_server_bin  = { bin = "channel-server" }
@@ -424,7 +418,6 @@ launch_timeout = { type = "string", pattern = "^[1-9][0-9]*s$", default = "120s"
 # publish_events: the effective default of ["message"] is applied by this
 # effect's own setup.bind (the `json` binding's `default`), not by this key.
 publish_events = { type = "array", items = { type = "string", enum = ["message", "message_delta"] }, default = ["message"] }
-tick_on_turn_end = { type = "boolean", default = false }
 
 [runtime.outputs_schema]
 type     = "object"
