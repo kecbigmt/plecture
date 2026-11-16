@@ -2,6 +2,7 @@ package commands
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"net"
 	"net/http"
@@ -207,13 +208,22 @@ type busSocketListener struct {
 }
 
 func listenBusSocket(path string) (*busSocketListener, error) {
-	if _, err := os.Lstat(path); err == nil {
+	if existing, err := os.Lstat(path); err == nil {
 		conn, dialErr := net.DialTimeout("unix", path, 200*time.Millisecond)
 		if dialErr == nil {
 			conn.Close()
 			return nil, fmt.Errorf("listen on %s: live listener already owns socket", path)
 		}
-		return nil, fmt.Errorf("listen on %s: socket path already exists: %w", path, dialErr)
+		if existing.Mode()&os.ModeSocket == 0 || !errors.Is(dialErr, syscall.ECONNREFUSED) {
+			return nil, fmt.Errorf("listen on %s: socket path already exists: %w", path, dialErr)
+		}
+		current, err := os.Lstat(path)
+		if err != nil || !os.SameFile(existing, current) {
+			return nil, fmt.Errorf("listen on %s: socket path changed while checking it", path)
+		}
+		if err := os.Remove(path); err != nil {
+			return nil, fmt.Errorf("remove stale socket %s: %w", path, err)
+		}
 	} else if !os.IsNotExist(err) {
 		return nil, fmt.Errorf("inspect socket %s: %w", path, err)
 	}

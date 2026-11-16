@@ -145,3 +145,25 @@ func TestListenBusSocketPreservesExistingPath(t *testing.T) {
 		t.Fatalf("existing path changed: %q, %v", data, err)
 	}
 }
+
+func TestListenBusSocketReclaimsStaleSocket(t *testing.T) {
+	path := filepath.Join(sockettest.Dir(t), "bus.sock")
+	stale, err := net.ListenUnix("unix", &net.UnixAddr{Name: path, Net: "unix"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	stale.SetUnlinkOnClose(false)
+	if err := stale.Close(); err != nil {
+		t.Fatal(err)
+	}
+	ln, err := listenBusSocket(path)
+	if err != nil {
+		t.Fatalf("stale socket was not reclaimed: %v", err)
+	}
+	defer ln.Close()
+	conn, err := net.Dial("unix", path)
+	if err != nil {
+		t.Fatalf("reclaimed socket is not listening: %v", err)
+	}
+	conn.Close()
+}
