@@ -44,4 +44,21 @@ input="$(cat "$queue/.inflight/input")"
 [[ "$input" != *"id=a "* && "$input" == *"id=b "* && "$input" == *"unknown predecessor"* ]]
 [[ "$input" == *"snapshot one"* && "$input" == *"snapshot two"* ]]
 batch_ack "$queue"
+
+mkdir -p "$queue"
+jq -n '{id:"retry", type:"example", text:"retry me"}' > "$queue/13.json"
+batch_claim "$queue"
+batch_failed "$queue" agent 2>/dev/null
+first_due="$(cat "$queue/.inflight/retry-after")"
+batch_failed "$queue" agent 2>/dev/null
+second_due="$(cat "$queue/.inflight/retry-after")"
+[[ "$second_due" -gt "$first_due" ]]
+batch_failed "$queue" agent 2>/dev/null
+[[ ! -d "$queue/.inflight" && -f "$queue/.failed-$(cat "$queue"/.failed-*/batch-id)/13.json" ]]
+[[ "$(cat "$queue"/.failed-*/parked-reason)" = agent ]]
+
+non_c_locale="$(locale -a | grep -Ei '^en_US\.(utf8|utf-8)$' | head -1 || true)"
+if [ -z "${PLECT_CONFORMANCE_NON_C:-}" ] && [ -n "$non_c_locale" ]; then
+    PLECT_CONFORMANCE_NON_C=1 LC_ALL="$non_c_locale" bash "$0" "$helper"
+fi
 echo "headless queue conformance passed"

@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 
 batch_claim() {
-    local queue="$1" name f
+    local LC_ALL=C queue="$1" name f
     local dir="$queue/.inflight"
     local -a files=()
     if [ -f "$dir/manifest" ]; then
@@ -24,6 +24,37 @@ batch_claim() {
             mv "$queue/$name" "$dir/$name" || return 1
         fi
     done
+}
+
+batch_wait_retry() {
+    local dir="$1/.inflight" due now
+    due="$(cat "$dir/retry-after" 2>/dev/null || true)"
+    case "$due" in ''|*[!0-9]*) return 0 ;; esac
+    now="$(date +%s)"
+    while [ "$now" -lt "$due" ]; do
+        sleep 1
+        now="$(date +%s)"
+    done
+    rm -f "$dir/retry-after"
+}
+
+batch_failed() {
+    local queue="$1" phase="$2" dir="$1/.inflight" count id
+    count="$(cat "$dir/$phase-failures" 2>/dev/null || true)"
+    case "$count" in ''|*[!0-9]*) count=0 ;; esac
+    count=$((count + 1))
+    printf '%s' "$count" > "$dir/.$phase-failures.tmp" || return 1
+    mv "$dir/.$phase-failures.tmp" "$dir/$phase-failures" || return 1
+    id="$(cat "$dir/batch-id")" || return 1
+    if [ "$count" -ge 3 ]; then
+        printf '%s\n' "$phase" > "$dir/parked-reason" || return 1
+        mv "$dir" "$queue/.failed-$id" || return 1
+        echo "batch $id parked after $count $phase failures" >&2
+        return 0
+    fi
+    printf '%s' "$(($(date +%s) + count * 2))" > "$dir/.retry-after.tmp" || return 1
+    mv "$dir/.retry-after.tmp" "$dir/retry-after" || return 1
+    echo "batch $id $phase failure $count/3; retrying after backoff" >&2
 }
 
 batch_render() {

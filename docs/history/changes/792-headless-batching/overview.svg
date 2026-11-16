@@ -1,6 +1,6 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1040 650" width="1040" height="650" role="img" aria-labelledby="title desc">
   <title id="title">Headless inbound events before and after supersession and batching</title>
-  <desc id="desc">Before: tick and GitHub publishers write events without a supersession reference. Enqueue scripts coalesce GitHub snapshots by type and URL, and workers run one turn per queued entry. After: tick and GitHub publishers name previous event IDs, the durable log keeps all events, enqueue preserves IDs and references, and either headless worker claims a pending batch, omits superseded entries, invokes one turn, then acknowledges the batch after reply publication.</desc>
+  <desc id="desc">Before: tick and GitHub publishers write events without a supersession reference. Enqueue scripts coalesce GitHub snapshots by type and URL, and workers run one turn per queued entry. After: tick and GitHub publishers name previous event IDs, the durable log keeps all events, enqueue preserves IDs and references, and either headless worker claims a pending batch and omits superseded entries. It invokes one turn, saves the reply, retries failed publication without another invocation, and parks a batch after bounded failures.</desc>
   <defs>
     <style>
       svg { --bg:#ffffff; --fg:#1f2328; --muted:#59636e; --line:#d0d7de; --neutral:#8c959f; --neutral-bg:#f6f8fa; --added:#1a7f37; --added-bg:#dafbe1; --changed:#0969da; --changed-bg:#ddf4ff; --removed:#cf222e; --removed-bg:#ffebe9; }
@@ -67,8 +67,8 @@
   <rect class="added" x="556" y="472" width="428" height="100" rx="6"/>
   <text class="tag t-added" x="572" y="493">ADDED SHARED QUEUE RULE</text>
   <text class="name" x="572" y="512">Claude / Codex claim one durable batch</text>
-  <text class="note" x="572" y="532"><tspan x="572">Omit only entries named by pending superseders;</tspan><tspan x="572" dy="17">run one ordered turn, publish reply, acknowledge.</tspan></text>
-  <text class="note" x="572" y="563">Interrupted batches retry before newer entries.</text>
+  <text class="note" x="572" y="532"><tspan x="572">Omit superseded pending entries; run one ordered turn.</tspan><tspan x="572" dy="17">Save reply; retry its publish without another turn.</tspan></text>
+  <text class="note" x="572" y="566">Back off twice, then park persistent failures.</text>
 
   <rect class="added" x="32" y="613" width="24" height="15" rx="3"/><text x="65" y="625">Added</text>
   <rect class="changed" x="169" y="613" width="24" height="15" rx="3"/><text x="202" y="625">Changed</text>

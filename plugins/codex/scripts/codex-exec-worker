@@ -87,7 +87,6 @@ publish_reply() {
         | PLECT_REPLY_REQUIRED=true "${PLECT_AGENT_ACTIVITY_BIN:-codex-agent-activity}" reply >/dev/null 2>&1
 }
 
-status_write_failed=false
 source "$(dirname "$0")/headless-batch.sh"
 while true; do
     if batch_claim "$queue_dir" && batch_render "$queue_dir"; then
@@ -95,63 +94,68 @@ while true; do
         text="$(cat "$queue_dir/.inflight/input"; printf '\001')"
         text="${text%$'\001'}"
         reply_marker="$queue_dir/.inflight/reply-published"
+        completed_marker="$queue_dir/.inflight/agent-completed"
+        last_message_file="$queue_dir/.inflight/reply.txt"
         if [ -f "$reply_marker" ]; then
             batch_ack "$queue_dir"
             tick_session
             continue
         fi
+        batch_wait_retry "$queue_dir"
 
         if [ -n "${PLECT_SESSION_NAME:-}" ] && ! plect state set-message "$PLECT_SESSION_NAME" "working" >/dev/null 2>&1; then
             echo "working status write failed; leaving turn queued" >&2
             write_health 1 "$event_type"
-            status_write_failed=true
             sleep 1
             continue
         fi
-        if [ "$status_write_failed" = true ]; then
-            write_health 0 "$event_type"
-            status_write_failed=false
-        fi
+        write_health 0 "$event_type"
 
-        thread_id="$(cat "$state_dir/thread_id" 2>/dev/null || true)"
-        log_file="$state_dir/log/$(date +%s%N).jsonl"
-        last_message_file="$(mktemp "$state_dir/.last-message.XXXXXX")"
-
-        agent_activity "UserPromptSubmit" "working"
-        if [ -z "$thread_id" ]; then
-            codex exec --json \
-                --dangerously-bypass-approvals-and-sandbox \
-                --output-last-message "$last_message_file" \
-                "${extra_args[@]}" \
-                -- "$text" > "$log_file" 2>&1 &
-        else
-            codex exec resume --json \
-                --dangerously-bypass-approvals-and-sandbox \
-                --output-last-message "$last_message_file" \
-                "${extra_args[@]}" \
-                "$thread_id" -- "$text" > "$log_file" 2>&1 &
-        fi
-        child=$!
-        wait "$child"
-        exit_code=$?
-        child=""
-
-        if [ -z "$thread_id" ] && [ "$exit_code" -eq 0 ]; then
-            new_thread_id="$(jq -r 'select(.type == "thread.started") | (.thread_id // .payload.thread_id // empty)' "$log_file" 2>/dev/null | head -1)"
-            [ -n "$new_thread_id" ] && printf '%s' "$new_thread_id" > "$state_dir/thread_id"
-        fi
-
-        if [ "$exit_code" -eq 0 ]; then
-            if ! publish_reply "$last_message_file" || ! touch "$reply_marker"; then
-                exit_code=1
+        if [ ! -f "$completed_marker" ]; then
+            rm -f "$last_message_file"
+            thread_id="$(cat "$state_dir/thread_id" 2>/dev/null || true)"
+            log_file="$state_dir/log/$(date +%s%N).jsonl"
+            agent_activity "UserPromptSubmit" "working"
+            if [ -z "$thread_id" ]; then
+                codex exec --json \
+                    --dangerously-bypass-approvals-and-sandbox \
+                    --output-last-message "$last_message_file" \
+                    "${extra_args[@]}" \
+                    -- "$text" > "$log_file" 2>&1 &
+            else
+                codex exec resume --json \
+                    --dangerously-bypass-approvals-and-sandbox \
+                    --output-last-message "$last_message_file" \
+                    "${extra_args[@]}" \
+                    "$thread_id" -- "$text" > "$log_file" 2>&1 &
             fi
+            child=$!
+            wait "$child"
+            exit_code=$?
+            child=""
+
+            if [ -z "$thread_id" ] && [ "$exit_code" -eq 0 ]; then
+                new_thread_id="$(jq -r 'select(.type == "thread.started") | (.thread_id // .payload.thread_id // empty)' "$log_file" 2>/dev/null | head -1)"
+                [ -n "$new_thread_id" ] && printf '%s' "$new_thread_id" > "$state_dir/thread_id"
+            fi
+            if [ "$exit_code" -ne 0 ]; then
+                rm -f "$last_message_file"
+                write_health "$exit_code" "$event_type"
+                batch_failed "$queue_dir" agent || sleep 2
+                agent_activity "Stop" "waiting"
+                continue
+            fi
+            touch "$completed_marker" || { write_health 1 "$event_type"; sleep 2; continue; }
+            agent_activity "Stop" "waiting"
         fi
-        write_health "$exit_code" "$event_type"
-        rm -f "$last_message_file"
-        agent_activity "Stop" "waiting"
-        if [ "$exit_code" -eq 0 ]; then
+
+        if publish_reply "$last_message_file" && touch "$reply_marker"; then
+            write_health 0 "$event_type"
             batch_ack "$queue_dir"
             tick_session
+        else
+            write_health 1 "$event_type"
+            batch_failed "$queue_dir" reply || sleep 2
         fi
     fi
     sleep 1

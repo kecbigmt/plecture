@@ -182,7 +182,10 @@ case "${1:-}" in
     [ -n "${PLECT_SESSION_NAME:-}" ] || exit 0
     payload="$(cat)"
     reply_status=0
-    if [ "${PLECT_CLAUDE_REPORT_REPLY:-true}" = true ]; then
+    if [ -n "${PLECT_BATCH_REPLY_PAYLOAD:-}" ]; then
+      reply_tmp="$PLECT_BATCH_REPLY_PAYLOAD.tmp.$$"
+      printf '%s' "$payload" > "$reply_tmp" && mv "$reply_tmp" "$PLECT_BATCH_REPLY_PAYLOAD" || reply_status=1
+    elif [ "${PLECT_CLAUDE_REPORT_REPLY:-true}" = true ]; then
       "$0" reply <<<"$payload" || reply_status=$?
     fi
     turn_id="$(printf '%s' "$payload" | jq -r '.prompt_id // .turn_id // empty' 2>/dev/null)" || turn_id=""
@@ -199,10 +202,7 @@ case "${1:-}" in
       release_turn_lock "$turn_lock"
     fi
     [ "$pending" = true ] || "$0" waiting "${2:-}" <<<"$payload"
-    if [ "$reply_status" -eq 0 ] && [ -n "${PLECT_BATCH_REPLY_MARKER:-}" ]; then
-      touch "$PLECT_BATCH_REPLY_MARKER" 2>/dev/null
-    fi
-    exit 0
+    exit "$reply_status"
     ;;
   probe)
     session="${2:-}"

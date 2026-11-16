@@ -50,6 +50,9 @@ cat > "$bin_dir/codex" <<'EOF'
 #!/usr/bin/env bash
 printf '%s\n' "$*" >> "$STUB_ARGV"
 printf '%s' "${@: -1}" > "$STUB_PROMPT_FILE"
+[ -n "${STUB_HEALTH_FILE:-}" ] && jq -r '.last_exit_code // "missing"' "$STUB_HEALTH_FILE" >> "$STUB_HEALTH_LOG" 2>/dev/null
+mode="$(cat "$STUB_MODE_FILE" 2>/dev/null || true)"
+[ "$mode" = fail ] && exit 1
 out=""
 resume=false
 for i in "$@"; do
@@ -96,6 +99,10 @@ export STUB_PAUSE_TURN="$tmp/pause-turn"
 export STUB_IN_TURN="$tmp/in-turn"
 export STUB_CHILD_PID="$tmp/child-pid"
 export STUB_PROMPT_FILE="$tmp/prompt"
+export STUB_MODE_FILE="$tmp/mode"
+export STUB_HEALTH_FILE=""
+export STUB_HEALTH_LOG="$tmp/health-observed"
+printf 'ok' > "$STUB_MODE_FILE"
 : > "$STUB_ARGV"
 : > "$PLECT_CALLS"
 "$activity" reset "$PLECT_SESSION_NAME"
@@ -323,19 +330,84 @@ publish_state="$tmp/publish-state"
 mkdir -p "$publish_queue"
 echo '{"id":"publish","type":"example","text":"publish failure"}' > "$publish_queue/1.json"
 : > "$PLECT_CALLS"
+: > "$STUB_ARGV"
 touch "$PLECT_FAIL_PUBLISH"
 "$worker" "$publish_queue" "$publish_state" &
 worker_pid=$!
 for _ in $(seq 1 100); do
-  grep -q '^event publish' "$PLECT_CALLS" && break
+  grep -q '^event publish' "$PLECT_CALLS" && jq -e '.last_exit_code == 1' "$publish_state/health.json" >/dev/null 2>&1 && break
   sleep 0.1
 done
 if [ ! -f "$publish_queue/.inflight/1.json" ]; then
   echo "FAIL a reply publication failure acknowledged the batch" >&2
   fail=1
 fi
+kill -TERM "$worker_pid" 2>/dev/null || true
+wait "$worker_pid" 2>/dev/null || true
+worker_pid=""
 rm -f "$PLECT_FAIL_PUBLISH"
+"$worker" "$publish_queue" "$publish_state" &
+worker_pid=$!
 wait_for_drain "$publish_queue/1.json" || { echo "FAIL reply publication was not retried" >&2; fail=1; }
+if [ "$(grep -c 'publish failure' "$STUB_ARGV" || true)" -ne 1 ]; then
+  echo "FAIL a publish retry invoked the agent again" >&2
+  fail=1
+fi
+kill -TERM "$worker_pid" 2>/dev/null || true
+wait "$worker_pid" 2>/dev/null || true
+worker_pid=""
+
+bounded_queue="$tmp/bounded-queue"
+bounded_state="$tmp/bounded-state"
+mkdir -p "$bounded_queue"
+echo '{"id":"poison","type":"example","text":"poison turn"}' > "$bounded_queue/1.json"
+: > "$STUB_ARGV"
+: > "$STUB_HEALTH_LOG"
+export STUB_HEALTH_FILE="$bounded_state/health.json"
+printf 'fail' > "$STUB_MODE_FILE"
+"$worker" "$bounded_queue" "$bounded_state" > "$tmp/bounded.out" 2>&1 &
+worker_pid=$!
+for _ in $(seq 1 150); do
+  compgen -G "$bounded_queue/.failed-*" >/dev/null && break
+  sleep 0.1
+done
+if ! compgen -G "$bounded_queue/.failed-*" >/dev/null || [ "$(grep -c 'poison turn' "$STUB_ARGV" || true)" -ne 3 ]; then
+  echo "FAIL a deterministic agent failure was not parked after three attempts" >&2
+  fail=1
+fi
+if [ "$(sed -n '2,3p' "$STUB_HEALTH_LOG" | grep -c '^0$' || true)" -ne 2 ]; then
+  echo "FAIL health did not recover before each agent retry: $(cat "$STUB_HEALTH_LOG")" >&2
+  fail=1
+fi
+printf 'ok' > "$STUB_MODE_FILE"
+echo '{"id":"later","type":"example","text":"later turn"}' > "$bounded_queue/2.json"
+wait_for_drain "$bounded_queue/2.json" || { echo "FAIL a parked batch blocked newer work" >&2; fail=1; }
+kill -TERM "$worker_pid" 2>/dev/null || true
+wait "$worker_pid" 2>/dev/null || true
+worker_pid=""
+export STUB_HEALTH_FILE=""
+
+reply_queue="$tmp/reply-queue"
+reply_state="$tmp/reply-state"
+mkdir -p "$reply_queue"
+echo '{"id":"reply","type":"example","text":"stuck publication"}' > "$reply_queue/1.json"
+: > "$STUB_ARGV"
+touch "$PLECT_FAIL_PUBLISH"
+"$worker" "$reply_queue" "$reply_state" > "$tmp/reply.out" 2>&1 &
+worker_pid=$!
+for _ in $(seq 1 150); do
+  compgen -G "$reply_queue/.failed-*" >/dev/null && break
+  sleep 0.1
+done
+if ! compgen -G "$reply_queue/.failed-*" >/dev/null || [ "$(grep -c 'stuck publication' "$STUB_ARGV" || true)" -ne 1 ]; then
+  echo "FAIL repeated publication failures reran the agent or never parked" >&2
+  fail=1
+fi
+if ! compgen -G "$reply_queue/.failed-*/reply.txt" >/dev/null; then
+  echo "FAIL the parked batch lost its captured reply" >&2
+  fail=1
+fi
+rm -f "$PLECT_FAIL_PUBLISH"
 kill -TERM "$worker_pid" 2>/dev/null || true
 wait "$worker_pid" 2>/dev/null || true
 worker_pid=""

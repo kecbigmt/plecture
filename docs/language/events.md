@@ -18,8 +18,11 @@ metadata, and message text do not change the rule.
 
 Headless runtimes take all entries pending at the turn boundary, preserve queue
 order, and present the retained entries together in one agent turn. Events
-arriving during that turn wait for the next one. A failed turn retries the same
-batch before newer entries.
+arriving during that turn wait for the next one. A failed invocation retries
+the same batch twice with increasing delay, then parks it and processes newer
+entries. If the agent completes but reply publication fails, the runtime keeps
+the reply and retries publication without invoking the agent again. Repeated
+publication failures also park the batch after two retries.
 
 ## Session resume instructions
 
