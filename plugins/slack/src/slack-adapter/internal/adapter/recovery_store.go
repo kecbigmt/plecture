@@ -106,12 +106,20 @@ func (s *RecoveryStore) RetainThreads(key string, roots []string) error {
 func (s *RecoveryStore) Initialize(key string, at time.Time) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	if !s.state.Channels[key].Boundary.IsZero() {
+	prior, existed := s.state.Channels[key]
+	if !prior.Boundary.IsZero() {
 		return nil
 	}
-	s.state.Channels[key] = recoveryChannel{Boundary: at, Started: at}
+	channel := prior
+	channel.Boundary = at
+	channel.Started = at
+	s.state.Channels[key] = channel
 	if err := s.save(); err != nil {
-		delete(s.state.Channels, key)
+		if existed {
+			s.state.Channels[key] = prior
+		} else {
+			delete(s.state.Channels, key)
+		}
 		return err
 	}
 	return nil

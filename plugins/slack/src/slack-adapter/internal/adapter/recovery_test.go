@@ -120,6 +120,33 @@ func TestLiveMentionIsNotReplayedAfterRestart(t *testing.T) {
 	}
 }
 
+func TestLiveMentionBeforeFirstScanIsNotReplayed(t *testing.T) {
+	now := time.Unix(1700001000, 0).UTC()
+	messageTS := "1700000500.000001"
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/conversations.history" {
+			t.Errorf("unexpected API %s", r.URL.Path)
+		}
+		fmt.Fprint(w, `{"ok":true,"messages":[{"ts":"1700000500.000001","text":"<@UBOT> hello","user":"U1"}]}`)
+	}))
+	defer server.Close()
+	store, err := NewRecoveryStore(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	p := &recoveryPublisher{}
+	b := &BotAdapter{bot: Bot{ChannelID: "C1"}, api: slack.New("token", slack.OptionAPIURL(server.URL+"/")), teamID: "T1", botUserID: "UBOT", publisher: p, fetcher: routeFetcher{}, linker: routePermalink{}, logger: slog.New(slog.NewTextHandler(io.Discard, nil)), recovery: store, startup: now.Add(-time.Hour)}
+	if ok, delivered := b.routeMention(&slackevents.AppMentionEvent{User: "U1", Channel: "C1", TimeStamp: messageTS, Text: "<@UBOT> hello"}); !ok || delivered != 1 {
+		t.Fatalf("live route: ok=%t delivered=%d", ok, delivered)
+	}
+	if err := b.Recover(context.Background(), now, NewSubscriptions()); err != nil {
+		t.Fatal(err)
+	}
+	if len(p.calls) != 1 || !store.Seen("T1/UBOT/C1", messageTS) {
+		t.Fatalf("live mention replayed or lost: calls=%v seen=%t", p.calls, store.Seen("T1/UBOT/C1", messageTS))
+	}
+}
+
 func TestFailedRecoveryPreservesBoundaryAndKeepsLiveRouting(t *testing.T) {
 	now := time.Unix(1700001000, 0).UTC()
 	var logs strings.Builder
