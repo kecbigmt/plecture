@@ -19,6 +19,12 @@ func Resolve() string {
 	if v := os.Getenv(EnvVar); v != "" {
 		return v
 	}
+	return Default()
+}
+
+// Default excludes the plect-specific override so a caller can detect when
+// the selected data home needs its own socket.
+func Default() string {
 	dataHome := os.Getenv(XDGEnvVar)
 	if dataHome == "" {
 		home, _ := os.UserHomeDir()
