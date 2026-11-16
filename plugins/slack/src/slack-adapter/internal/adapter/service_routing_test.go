@@ -208,3 +208,30 @@ func TestPendingMentionWithoutSubscriberRemainsQueuedAndIsLogged(t *testing.T) {
 		t.Fatalf("calls = %v, pending = %+v, log = %s", publisher.calls, pending.List(), logs.String())
 	}
 }
+
+func TestPendingMentionFallsBackWhenCoverageIsRemoved(t *testing.T) {
+	pending, err := NewPendingStore(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	mention := PendingMention{Key: "T1/UBOT/C1/1700000000.000002", Resource: "https://example.slack.com/archives/C1/p1700000000000001", ChannelID: "C1", ThreadTS: "1700000000.000001", MentionTS: "1700000000.000002"}
+	if err := pending.Put(mention); err != nil {
+		t.Fatal(err)
+	}
+	coverage := NewCoverage([]Bot{{ChannelIDs: []string{"C1"}}}, "/run/feed.sock")
+	if err := coverage.Replace([]QueryRegistration{{ID: "ops/mentions", Inputs: map[string]any{"socket_path": "/run/feed.sock", "channel_ids": []any{"C1"}}}}); err != nil {
+		t.Fatal(err)
+	}
+	if err := coverage.Replace(nil); err != nil {
+		t.Fatal(err)
+	}
+	var logs strings.Builder
+	publisher := &routePublisher{counts: []int{1}}
+	bot := &BotAdapter{bot: Bot{ChannelIDs: []string{"C1"}}, teamID: "T1", botUserID: "UBOT", pending: pending, coverage: coverage, subs: NewSubscriptions(), publisher: publisher, logger: slog.New(slog.NewTextHandler(&logs, nil))}
+	if err := bot.ReplayPending(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	if len(publisher.calls) != 1 || publisher.calls[0] != "slack://T1/UBOT" || len(pending.List()) != 0 || !strings.Contains(logs.String(), "pending mention coverage removed") {
+		t.Fatalf("calls = %v, pending = %+v, log = %s", publisher.calls, pending.List(), logs.String())
+	}
+}

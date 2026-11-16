@@ -3,9 +3,11 @@ package pluginservice
 import (
 	"bytes"
 	"context"
+	"errors"
 	"log/slog"
 	"os"
 	"path/filepath"
+	"reflect"
 	"slices"
 	"strings"
 	"testing"
@@ -54,6 +56,77 @@ func TestRunProcessConfigFirstAndCorrelatedPublishReply(t *testing.T) {
 	}
 	if !strings.Contains(log.String(), "stderr marker") {
 		t.Fatalf("stderr = %s", log.String())
+	}
+}
+
+func TestRunProcessStopsChildWhenInitialQueriesFail(t *testing.T) {
+	dir := t.TempDir()
+	t.Setenv("PLECT_DATA_HOME", filepath.Join(dir, "data"))
+	t.Setenv("PLECT_CACHE_HOME", filepath.Join(dir, "cache"))
+	script := writeScript(t, dir, "worker", "read -r config\nread -r subscriptions\nread -r queries\n")
+	want := errors.New("query snapshot unavailable")
+	started := false
+	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
+	defer cancel()
+	err := runProcess(ctx, Declaration{ID: "worker", PluginID: "local/work", ExecPath: script}, slog.New(slog.NewTextHandler(&bytes.Buffer{}, nil)), time.Second, func(int) { started = true }, &Protocol{
+		Queries: func(context.Context, Declaration) ([]QueryRegistration, error) { return nil, want },
+	})
+	if !started || !errors.Is(err, want) {
+		t.Fatalf("started = %v, error = %v; want query error", started, err)
+	}
+}
+
+func TestPollQueriesKeepsLastSnapshotAcrossLoadErrorAndSkipsUnchanged(t *testing.T) {
+	previous := []QueryRegistration{{ID: "ops/old"}}
+	updated := []QueryRegistration{{ID: "ops/new"}}
+	var log bytes.Buffer
+	calls := make(chan int, 5)
+	writes := make(chan any, 4)
+	count := 0
+	list := func(context.Context, Declaration) ([]QueryRegistration, error) {
+		count++
+		calls <- count
+		switch count {
+		case 1:
+			return previous, nil
+		case 2:
+			return nil, errors.New("load unavailable")
+		case 3:
+			return previous, nil
+		default:
+			return updated, nil
+		}
+	}
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	stop := make(chan struct{})
+	done := make(chan struct{})
+	go func() {
+		pollQueries(ctx, stop, previous, Declaration{ID: "worker"}, list, func(value any) error {
+			writes <- value
+			return nil
+		}, slog.New(slog.NewTextHandler(&log, nil)))
+		close(done)
+	}()
+	for want := 1; want <= 5; want++ {
+		select {
+		case got := <-calls:
+			if got != want {
+				t.Fatalf("poll call = %d, want %d", got, want)
+			}
+		case <-time.After(6 * time.Second):
+			t.Fatal("query poll did not run")
+		}
+	}
+	cancel()
+	<-done
+	if len(writes) != 1 || !strings.Contains(log.String(), "load unavailable") {
+		t.Fatalf("writes = %d, log = %s", len(writes), log.String())
+	}
+	message := <-writes
+	got, ok := message.(map[string]any)
+	if !ok || got["op"] != "queries" || !reflect.DeepEqual(got["items"], updated) {
+		t.Fatalf("replacement = %#v", message)
 	}
 }
 

@@ -21,6 +21,24 @@ func TestCoverageUsesQueryDeclarationsAcrossStreamDisconnect(t *testing.T) {
 	if coverage.Owner("C2") != "ops/mentions" {
 		t.Fatal("invalid replacement changed coverage")
 	}
+	for _, tt := range []struct {
+		name   string
+		inputs map[string]any
+		want   string
+	}{
+		{"socket mismatch", map[string]any{"socket_path": "/run/other.sock", "channel_ids": []any{"C1"}}, "socket_path"},
+		{"unconfigured channel", map[string]any{"socket_path": "/run/slack-feed.sock", "channel_ids": []any{"C4"}}, "unconfigured channel"},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			err := coverage.Replace([]QueryRegistration{{ID: "other/mentions", Inputs: tt.inputs}})
+			if err == nil || !strings.Contains(err.Error(), tt.want) {
+				t.Fatalf("replacement error = %v, want %q", err, tt.want)
+			}
+			if coverage.Owner("C1") != "ops/mentions" || coverage.Owner("C4") != "" {
+				t.Fatalf("invalid replacement changed coverage: C1=%q, C4=%q", coverage.Owner("C1"), coverage.Owner("C4"))
+			}
+		})
+	}
 	if err := coverage.Replace(nil); err != nil || coverage.Owner("C1") != "" {
 		t.Fatalf("removed coverage = %q, err = %v", coverage.Owner("C1"), err)
 	}
