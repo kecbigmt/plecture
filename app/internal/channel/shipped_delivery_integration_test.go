@@ -141,6 +141,7 @@ func sampleEvents() []struct {
 				Direction:   event.Inbound,
 				Summary:     "a summary",
 				Body:        "a <tag> & an \"amp\"\nover two lines",
+				Supersedes:  "01OLD",
 				Time:        time.Date(2026, 8, 22, 9, 0, 0, 0, time.UTC),
 				Metadata:    map[string]string{"url": "https://example.test/x"},
 			},

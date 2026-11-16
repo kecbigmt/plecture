@@ -253,7 +253,8 @@ CREATE TABLE task_done_when_states (
     last_reason TEXT,
     last_body TEXT,
     escalated_at TEXT,
-    escalate_reason TEXT
+    escalate_reason TEXT,
+    last_kick_event_id TEXT
 );
 
 -- Ordered list; each heartbeat evaluation replaces it wholesale rather than diffing.
@@ -373,6 +374,7 @@ CREATE TABLE events (
     direction TEXT NOT NULL CHECK (direction IN ('inbound', 'outbound', 'internal')),
     summary TEXT NOT NULL,
     body TEXT NOT NULL DEFAULT '',
+    supersedes TEXT NOT NULL DEFAULT '',
     metadata_json TEXT NOT NULL CHECK (json_valid(metadata_json))
 );
 

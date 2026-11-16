@@ -18,8 +18,8 @@
 # last_assistant_message/turn_id shape, but exec_runtime's worker calls
 # reply directly with its own --output-last-message capture instead of
 # registering a hook — see that task's setup for why). All three are
-# fire-and-forget by design: a failure here must never fail the agent's
-# turn, so every exit path is 0. The probe path only fails loud (non-zero
+# fire-and-forget unless the headless worker requires reply publication
+# before acknowledging its batch. The probe path only fails loud (non-zero
 # exit, no stdout) when the session name itself is missing — an unreadable
 # or torn hook record degrades to "no hook evidence" instead, since the
 # log-file signal below can still carry the probe on its own.
@@ -56,8 +56,8 @@ error_log_path() {
 # stderr verbatim: a caller's own arguments can carry an arbitrary,
 # multi-line agent message (--body), and embedded newlines in an appended
 # line would let that content forge additional log records. Always returns
-# 0, so every caller keeps the fire-and-forget contract this hook operates
-# under regardless of whether the call underneath actually succeeded.
+# 0 for hooks; the headless worker requests a non-zero result for reply
+# publication so a failed publish leaves its batch in flight.
 run_plect() {
   local log out status verb
   verb="$1 $2"
@@ -69,20 +69,22 @@ run_plect() {
     out="$(printf '%s' "$out" | tr '\n\r\t' '   ')"
     printf '%s exit=%s plect %s: %s\n' "$(date -u +%Y-%m-%dT%H:%M:%SZ)" "$status" "$verb" "$out" >> "$log" 2>/dev/null
   fi
+  if [ "${PLECT_REPLY_REQUIRED:-}" = true ] && [ "$verb" = "event publish" ]; then
+    return "$status"
+  fi
   return 0
 }
 
 # publish_report fires the same event-shape rule the reporting hook follows:
 # empty text publishes nothing, and a non-empty one goes out with a
-# first-line summary. Never fails the caller — a publish failure is silently
-# swallowed, per the fire-and-forget contract this hook operates under.
+# first-line summary. The headless worker observes a failed publication.
 publish_report() {
   local event_type="$1" text="$2" firstline
   shift 2
   [ -n "$text" ] || return 0
   firstline="$(printf '%s' "$text" | head -n 1)"
   run_plect event publish "$PLECT_SESSION_NAME" --type "$event_type" --summary "${firstline:0:120}" --body "$text" "$@"
-  return 0
+  return $?
 }
 
 # jq_field_exact sets $REPLY to one jq filter's raw output byte-for-byte from
@@ -149,11 +151,8 @@ case "${1:-}" in
     ;;
   reset)
     session="${2:-}"
-    # The reply-seq counter is deliberately not touched here: setup calls
-    # reset on every launch, resumes included, and exec_runtime's reply has
-    # no turn_id to fall back from, ever — that counter is message_id's only
-    # source for this runtime's entire session lifetime, so restarting it
-    # would mint an id a prior turn already published.
+    # Reset cannot rewind fallback message IDs: a later reply without a
+    # turn_id could otherwise reuse one already published before restart.
     [ -n "$session" ] && rm -f "$(record_path "$session")"
     exit 0
     ;;
@@ -171,12 +170,9 @@ case "${1:-}" in
     turn_id="$(printf '%s' "$payload" | jq -r '.turn_id // empty' 2>/dev/null)" || turn_id=""
 
     # message_id is a deterministic synthetic id, per the core contract, not
-    # a random one: a caller with its own per-turn id (a real Codex hook)
-    # doubles it as the id. exec_runtime's worker has no such id to give —
-    # every turn is its own `codex exec` call, and Codex's own turn_id lives
-    # only inside its Stop hook payload, which this call path never receives
-    # — so the counter fallback is that caller's every call, not an edge
-    # case.
+    # a random one: a caller with its own per-turn id doubles it as the id.
+    # The headless worker supplies its durable batch id so retrying a
+    # published batch cannot mint a new reply id.
     if [ -n "$turn_id" ]; then
       message_id="$PLECT_SESSION_NAME/$turn_id"
     else
@@ -191,7 +187,7 @@ case "${1:-}" in
     meta=(--meta "message_id=$message_id" --meta "message_id_origin=synthetic" --meta "role=assistant" --meta "source=codex")
     [ -n "$turn_id" ] && meta+=(--meta "turn_id=$turn_id")
     publish_report plect.message "$message" "${meta[@]}"
-    exit 0
+    exit $?
     ;;
 esac
 

@@ -23,17 +23,18 @@ import (
 )
 
 type PublishRequest struct {
-	Op       string            `json:"op"`
-	ID       string            `json:"id"`
-	Resource string            `json:"resource"`
-	Type     string            `json:"type"`
-	Summary  string            `json:"summary"`
-	Body     string            `json:"body"`
-	Metadata map[string]string `json:"metadata"`
+	Op         string            `json:"op"`
+	ID         string            `json:"id"`
+	Resource   string            `json:"resource"`
+	Type       string            `json:"type"`
+	Summary    string            `json:"summary"`
+	Body       string            `json:"body"`
+	Supersedes map[string]string `json:"supersedes,omitempty"`
+	Metadata   map[string]string `json:"metadata"`
 }
 
 type Protocol struct {
-	Publish       func(context.Context, PublishRequest) (int, error)
+	Publish       func(context.Context, PublishRequest) (map[string]string, error)
 	Subscriptions func(context.Context) ([]persistence.Subscription, error)
 }
 
@@ -143,11 +144,11 @@ func runProcess(ctx context.Context, decl Declaration, logger *slog.Logger, wait
 			_ = write(map[string]any{"op": "error", "id": request.ID, "code": "invalid_request", "message": "unsupported operation"})
 			continue
 		}
-		count, err := protocol.Publish(ctx, request)
+		ids, err := protocol.Publish(ctx, request)
 		if err != nil {
-			_ = write(map[string]any{"op": "error", "id": request.ID, "code": "publish_failed", "message": err.Error()})
+			_ = write(map[string]any{"op": "error", "id": request.ID, "code": "publish_failed", "message": err.Error(), "events": ids})
 		} else {
-			_ = write(map[string]any{"op": "published", "id": request.ID, "delivered": count})
+			_ = write(map[string]any{"op": "published", "id": request.ID, "delivered": len(ids), "events": ids})
 		}
 	}
 	close(stopPoll)

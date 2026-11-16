@@ -235,6 +235,9 @@ components:
         body:
           type: string
           description: Absent and empty are equivalent, as with every optional field on this contract.
+        supersedes:
+          type: string
+          description: ID of an earlier event in this session that this event supersedes.
         metadata:
           type: object
           additionalProperties:

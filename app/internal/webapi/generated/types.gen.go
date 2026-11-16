@@ -316,9 +316,12 @@ type Event struct {
 	SessionName string             `json:"sessionName"`
 
 	// Source Who produced the event (`plect`, `web`, `cli`, `mcp`, or a provider's own source string). Not an enum for the same reason as `type`.
-	Source  string    `json:"source"`
-	Summary string    `json:"summary"`
-	Time    time.Time `json:"time"`
+	Source  string `json:"source"`
+	Summary string `json:"summary"`
+
+	// Supersedes ID of an earlier event in this session that this event supersedes.
+	Supersedes *string   `json:"supersedes,omitempty"`
+	Time       time.Time `json:"time"`
 
 	// Type A free-form dotted topic (e.g. `user.emit`, `lifecycle.created`). Not an enum: producers define their own types, and this API does not enumerate or restrict them.
 	Type string `json:"type"`

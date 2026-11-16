@@ -25,6 +25,7 @@ type Event struct {
 	Direction    string
 	Summary      string
 	Body         string
+	Supersedes   string
 	MetadataJson string
 }
 
@@ -210,6 +211,7 @@ type TaskDoneWhenState struct {
 	LastBody             sql.NullString
 	EscalatedAt          sql.NullString
 	EscalateReason       sql.NullString
+	LastKickEventID      sql.NullString
 }
 
 type TaskDoneWhenUnsatisfiedItem struct {

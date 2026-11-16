@@ -18,12 +18,14 @@ import (
 
 // EventPublishParams describes an event to publish to a session's log.
 type EventPublishParams struct {
-	Type      string
-	Source    string
-	Direction event.Direction
-	Summary   string
-	Body      string
-	Metadata  map[string]string
+	Type                string
+	Source              string
+	Direction           event.Direction
+	Summary             string
+	Body                string
+	Supersedes          string
+	SupersedesBySession map[string]string
+	Metadata            map[string]string
 }
 
 // EventPublish appends an event to the resolved session's log and returns the
@@ -75,6 +77,7 @@ func EventPublish(cfg *config.Config, store *state.Store, identifier string, p E
 		Direction:   direction,
 		Summary:     p.Summary,
 		Body:        p.Body,
+		Supersedes:  p.Supersedes,
 		Metadata:    meta,
 	})
 	if err != nil {
@@ -83,33 +86,36 @@ func EventPublish(cfg *config.Config, store *state.Store, identifier string, p E
 	return stored, nil
 }
 
-func EventPublishResource(cfg *config.Config, store *state.Store, resourceID string, p EventPublishParams) (int, error) {
+func EventPublishResource(cfg *config.Config, store *state.Store, resourceID string, p EventPublishParams) (map[string]string, error) {
 	if resourceID == "" {
-		return 0, &Error{Code: ErrInvalidInput, Message: "resource id is required"}
+		return nil, &Error{Code: ErrInvalidInput, Message: "resource id is required"}
 	}
 	name := ""
 	if cfg != nil {
 		matched, err := matchResourceDefs(cfg, "", resourceID)
 		if err != nil {
-			return 0, err
+			return nil, err
 		}
 		if len(matched) == 1 {
 			name, _, err = matched[0].def.InstanceName(resourceID)
 			if err != nil {
-				return 0, err
+				return nil, err
 			}
 		}
 	}
 	sessions, err := store.SubscriptionSessions(resourceID, name)
 	if err != nil {
-		return 0, &Error{Code: ErrExecutionFailed, Message: err.Error()}
+		return nil, &Error{Code: ErrExecutionFailed, Message: err.Error()}
 	}
-	delivered := 0
+	delivered := make(map[string]string, len(sessions))
 	for _, session := range sessions {
-		if _, err := EventPublish(cfg, store, session, p); err != nil {
-			return delivered, fmt.Errorf("publish resource %q to session %q after %d deliveries: %w", resourceID, session, delivered, err)
+		perSession := p
+		perSession.Supersedes = p.SupersedesBySession[session]
+		ev, err := EventPublish(cfg, store, session, perSession)
+		if err != nil {
+			return delivered, fmt.Errorf("publish resource %q to session %q after %d deliveries: %w", resourceID, session, len(delivered), err)
 		}
-		delivered++
+		delivered[session] = ev.ID
 	}
 	return delivered, nil
 }

@@ -356,14 +356,15 @@ func evaluateDocumentInstance(cfg *config.Config, store *state.Store, doc config
 	var computed *computedAction
 	var eval task.DoneWhenResult
 	if dw != nil {
-		lastAction, lastFingerprint := "", ""
+		lastAction, lastFingerprint, lastKickEventID := "", "", ""
 		if st.DoneWhen != nil {
 			lastAction, lastFingerprint = st.DoneWhen.LastAction, st.DoneWhen.LastFingerprint
+			lastKickEventID = st.DoneWhen.LastKickEventID
 		}
 		eval = task.EvaluateTaskDoneWhenWithContext(dw, live, doneWhenEvalContext(resolvedName, st, allSessions))
 		action := checkActionForResult(resolvedName, key, sessionResourceForCheck(session, st), dw, st, eval, trigger, liveChildren)
 		if action.Action != "" {
-			computed = &computedAction{instance: key, action: action, lastAction: lastAction, lastFingerprint: lastFingerprint, result: eval}
+			computed = &computedAction{instance: key, action: action, lastAction: lastAction, lastFingerprint: lastFingerprint, lastKickEventID: lastKickEventID, result: eval}
 		}
 	}
 	if len(doc.Chains) == 0 {

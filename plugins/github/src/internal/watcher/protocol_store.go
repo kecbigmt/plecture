@@ -24,8 +24,9 @@ type MembershipRow struct {
 	Resource   MembershipResource `json:"resource"`
 }
 type resourceState struct {
-	Last       map[string]string `json:"last,omitempty"`
-	FailStreak int               `json:"fail_streak,omitempty"`
+	Last       map[string]string            `json:"last,omitempty"`
+	LastEvents map[string]map[string]string `json:"last_events,omitempty"`
+	FailStreak int                          `json:"fail_streak,omitempty"`
 }
 type ProtocolStore struct {
 	stateFile string
@@ -102,6 +103,35 @@ func (s *ProtocolStore) SetLast(_, resource string, last map[string]string) erro
 		}
 		state := states[resource]
 		state.Last = last
+		states[resource] = state
+		return json.Marshal(states)
+	})
+}
+
+func (s *ProtocolStore) LastPublished(resource, eventType string) (map[string]string, error) {
+	var states map[string]resourceState
+	if err := readLockedJSON(s.stateFile, &states); err != nil {
+		return nil, err
+	}
+	return states[resource].LastEvents[eventType], nil
+}
+
+func (s *ProtocolStore) SetLastPublished(resource, eventType string, ids map[string]string) error {
+	return updateLockedJSON(s.stateFile, func(raw []byte) ([]byte, error) {
+		states, err := decodeStates(raw)
+		if err != nil {
+			return nil, err
+		}
+		state := states[resource]
+		if state.LastEvents == nil {
+			state.LastEvents = map[string]map[string]string{}
+		}
+		if state.LastEvents[eventType] == nil {
+			state.LastEvents[eventType] = map[string]string{}
+		}
+		for session, id := range ids {
+			state.LastEvents[eventType][session] = id
+		}
 		states[resource] = state
 		return json.Marshal(states)
 	})

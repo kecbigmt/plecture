@@ -244,6 +244,7 @@ type Event struct {
 	Direction   Direction         `json:"direction"`
 	Summary     string            `json:"summary"`        // one-line render for timelines
 	Body        string            `json:"body,omitempty"` // full text payload
+	Supersedes  string            `json:"supersedes,omitempty"`
 	Metadata    map[string]string `json:"metadata,omitempty"`
 }
 

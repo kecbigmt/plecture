@@ -137,14 +137,14 @@ var eventPublishCmd = &cobra.Command{
 			Metadata:  meta,
 		}
 		if evPubResource != "" {
-			count, err := service.EventPublishResource(cfg, store, evPubResource, params)
+			ids, err := service.EventPublishResource(cfg, store, evPubResource, params)
 			if err != nil {
 				return err
 			}
 			if eventJSON {
-				return printJSON(map[string]any{"delivered": count})
+				return printJSON(map[string]any{"delivered": len(ids)})
 			}
-			fmt.Fprintf(cmd.OutOrStdout(), "Delivered to %d sessions\n", count)
+			fmt.Fprintf(cmd.OutOrStdout(), "Delivered to %d sessions\n", len(ids))
 			return nil
 		}
 		ev, err := service.EventPublish(cfg, store, args[0], params)

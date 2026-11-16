@@ -23,12 +23,12 @@ const escalationKindDoneWhenNonConvergence = "done_when.non_convergence"
 // non-nil error means the delivery itself failed. A terminal push's target
 // wake can fail independently of the push (the event is already recorded by
 // then), so that failure is reported as a warning rather than an error.
-func publishTickAction(cfg *config.Config, store *state.Store, sessionName string, c computedAction, trigger TickTrigger) ([]string, bool, error) {
+func publishTickAction(cfg *config.Config, store *state.Store, sessionName string, c computedAction, trigger TickTrigger) ([]string, bool, string, error) {
 	instance, action := c.instance, c.action
 	switch action.Action {
 	case "satisfied":
 		if c.lastAction == "satisfied" {
-			return nil, false, nil
+			return nil, false, "", nil
 		}
 		_, wakeErr, err := PublishTerminalToParent(cfg, store, sessionName, TerminalParams{
 			Type:     event.TypeTerminalDone,
@@ -37,12 +37,12 @@ func publishTickAction(cfg *config.Config, store *state.Store, sessionName strin
 			DedupKey: instance + "|done|" + action.Fingerprint,
 		})
 		if err != nil {
-			return nil, false, err
+			return nil, false, "", err
 		}
-		return wakeWarnings(wakeErr), true, nil
+		return wakeWarnings(wakeErr), true, "", nil
 	case "review_required":
 		if repeatsUnchangedState(c, trigger) {
-			return nil, false, nil
+			return nil, false, "", nil
 		}
 		if _, err := EventPublish(cfg, store, sessionName, EventPublishParams{
 			Type:      event.TypeTickReviewRequired,
@@ -52,11 +52,11 @@ func publishTickAction(cfg *config.Config, store *state.Store, sessionName strin
 			Body:      action.Body,
 			Metadata:  unmetItemsMetadata(instance, action.UnmetItems),
 		}); err != nil {
-			return nil, false, err
+			return nil, false, "", err
 		}
 	case "kick":
 		if repeatsUnchangedState(c, trigger) {
-			return nil, false, nil
+			return nil, false, "", nil
 		}
 		meta := unmetItemsMetadata(instance, action.UnmetItems)
 		if len(action.LiveChildren) > 0 {
@@ -64,16 +64,19 @@ func publishTickAction(cfg *config.Config, store *state.Store, sessionName strin
 				meta["live_children"] = string(b)
 			}
 		}
-		if _, err := EventPublish(cfg, store, sessionName, EventPublishParams{
-			Type:      event.TypeUserEmit,
-			Direction: event.Outbound,
-			Source:    event.SourceTick,
-			Summary:   action.Summary,
-			Body:      action.Body,
-			Metadata:  meta,
-		}); err != nil {
-			return nil, false, err
+		kick, err := EventPublish(cfg, store, sessionName, EventPublishParams{
+			Type:       event.TypeUserEmit,
+			Direction:  event.Outbound,
+			Source:     event.SourceTick,
+			Summary:    action.Summary,
+			Body:       action.Body,
+			Supersedes: c.lastKickEventID,
+			Metadata:   meta,
+		})
+		if err != nil {
+			return nil, false, "", err
 		}
+		return nil, true, kick.ID, nil
 	case "escalate":
 		meta := unmetItemsMetadata(instance, action.UnmetItems)
 		if action.EscalationKind != "" {
@@ -93,7 +96,7 @@ func publishTickAction(cfg *config.Config, store *state.Store, sessionName strin
 			Body:      action.Body,
 			Metadata:  meta,
 		}); err != nil {
-			return nil, false, err
+			return nil, false, "", err
 		}
 		// Escalate is also pushed one hop to the parent (the goal loop's
 		// actuator layer), on top of the same-session record above (kept
@@ -106,11 +109,11 @@ func publishTickAction(cfg *config.Config, store *state.Store, sessionName strin
 			DedupKey: tickEscalationDedupKey(instance, action),
 		})
 		if err != nil {
-			return nil, false, err
+			return nil, false, "", err
 		}
-		return wakeWarnings(wakeErr), true, nil
+		return wakeWarnings(wakeErr), true, "", nil
 	}
-	return nil, action.Action == "kick" || action.Action == "review_required", nil
+	return nil, action.Action == "kick" || action.Action == "review_required", "", nil
 }
 
 // Only the bounded heartbeat cadence re-announces unchanged unmet work;
@@ -168,7 +171,7 @@ func stampLastTick(store *state.Store, sessionName string) error {
 	})
 }
 
-func persistTickAction(store *state.Store, sessionName, instance string, action CheckAction) error {
+func persistTickAction(store *state.Store, sessionName, instance string, action CheckAction, kickID string) error {
 	now := time.Now()
 	return store.Update(sessionName, func(s *domain.Session) error {
 		st := domain.TaskState(s, instance)
@@ -183,6 +186,9 @@ func persistTickAction(store *state.Store, sessionName, instance string, action 
 		st.DoneWhen.LastReason = action.Summary
 		st.DoneWhen.LastUnsatisfied = append([]string(nil), action.Items...)
 		st.DoneWhen.LastBody = action.Body
+		if kickID != "" {
+			st.DoneWhen.LastKickEventID = kickID
+		}
 		if action.HeartbeatChanged && action.Layer == "" {
 			st.DoneWhen.HeartbeatTicks = action.HeartbeatTicks
 		}

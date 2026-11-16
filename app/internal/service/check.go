@@ -142,6 +142,7 @@ type computedAction struct {
 	action          CheckAction
 	lastAction      string
 	lastFingerprint string
+	lastKickEventID string
 	result          task.DoneWhenResult
 }
 

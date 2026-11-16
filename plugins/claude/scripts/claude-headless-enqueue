@@ -4,7 +4,7 @@
 # a file and returns — it must never block on the turn itself, since it runs
 # inside the dispatcher's exec channel and shares its delivery timeout.
 #
-# Usage: claude-headless-enqueue <queue_dir> <envelope> <type> <body> <summary> <url>
+# Usage: claude-headless-enqueue <queue_dir> <envelope> <type> <body> <summary> <url> <id> <source> <supersedes>
 
 set -euo pipefail
 
@@ -14,6 +14,9 @@ event_type="${3:?event_type required}"
 body="${4-}"
 summary="${5-}"
 url="${6-}"
+event_id="${7-}"
+source="${8-}"
+supersedes="${9-}"
 
 # The envelope is the channel's `message_envelope` parameter: a user-supplied
 # format string expanded here, against exactly the fields the channel passes
@@ -36,22 +39,7 @@ mkdir -p "$queue_dir"
 
 tmp="$(mktemp "$queue_dir/.enqueue.XXXXXX")"
 jq -n --arg type "$event_type" --arg text "$text" --arg url "$url" \
-  '{type: $type, text: $text, url: $url}' > "$tmp"
-
-# A github.* notification is a snapshot of a resource's state, so an unconsumed
-# one for the same (type, url) is stale the moment a newer one arrives and
-# would only cost the agent a wasted turn. Other types (user.emit above all)
-# are instructions, not snapshots, and are never dropped. A file with no url
-# key predates this rule and an empty url identifies no resource; neither is
-# ever coalesced.
-if [[ "$event_type" == github.* && -n "$url" ]]; then
-  for old in "$queue_dir"/*.json; do
-    [ -e "$old" ] || continue
-    if jq -e --arg type "$event_type" --arg url "$url" \
-      'has("url") and .type == $type and .url == $url' "$old" > /dev/null 2>&1; then
-      rm -f "$old"
-    fi
-  done
-fi
+  --arg id "$event_id" --arg source "$source" --arg supersedes "$supersedes" \
+  '{type: $type, text: $text, url: $url, id: $id, source: $source, supersedes: $supersedes}' > "$tmp"
 
 mv "$tmp" "$queue_dir/$(date +%s%N)-$$.json"

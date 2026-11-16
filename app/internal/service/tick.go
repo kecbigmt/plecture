@@ -55,7 +55,7 @@ func TickSession(cfg *config.Config, store *state.Store, params TickParams) (*Ch
 		// Publish before persisting the marker: a publish failure must leave
 		// LastAction/fingerprint unadvanced so the next tick retries this same
 		// action instead of silently skipping delivery.
-		warnings, published, err := publishTickAction(cfg, store, resolvedName, c, params.Trigger)
+		warnings, published, kickID, err := publishTickAction(cfg, store, resolvedName, c, params.Trigger)
 		if err != nil {
 			return nil, err
 		}
@@ -63,7 +63,7 @@ func TickSession(cfg *config.Config, store *state.Store, params TickParams) (*Ch
 		action.Unchanged = !published && (action.Action == "kick" || action.Action == "review_required")
 		action.Warnings = append(action.Warnings, warnings...)
 		actions = append(actions, action)
-		if err := persistTickAction(store, resolvedName, c.instance, action); err != nil {
+		if err := persistTickAction(store, resolvedName, c.instance, action, kickID); err != nil {
 			return nil, err
 		}
 	}

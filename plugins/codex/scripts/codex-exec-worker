@@ -19,6 +19,13 @@ state_dir="${2:?state_dir required}"
 
 mkdir -p "$queue_dir" "$state_dir/log"
 
+child=""
+terminate() {
+    [ -n "$child" ] && kill -TERM "$child" 2>/dev/null
+    exit 143
+}
+trap terminate TERM INT HUP
+
 # comm is always "bash" for a script run this way, so this is the only way
 # the owning task's setup can identify (and later terminate) this worker.
 printf '%s' "$$" > "$state_dir/worker.pid"
@@ -75,39 +82,22 @@ publish_reply() {
     [ -n "${PLECT_SESSION_NAME:-}" ] && [ "${CODEX_PUBLISH_MESSAGE:-false}" = "true" ] || return 0
     local file="$1"
     [ -s "$file" ] || return 0
-    jq -n --rawfile text "$file" '{last_assistant_message: $text}' \
-        | "${PLECT_AGENT_ACTIVITY_BIN:-codex-agent-activity}" reply >/dev/null 2>&1 || true
+    jq -n --rawfile text "$file" --arg turn_id "$(cat "$queue_dir/.inflight/batch-id")" \
+        '{last_assistant_message: $text, turn_id: $turn_id}' \
+        | PLECT_REPLY_REQUIRED=true "${PLECT_AGENT_ACTIVITY_BIN:-codex-agent-activity}" reply >/dev/null 2>&1
 }
 
-if compgen -G "$queue_dir/*.json" > /dev/null; then
-    for _ in $(seq 1 50); do
-        for f in "$queue_dir"/*.json; do
-            [ -e "$f" ] || continue
-            [ "$(jq -r '.type' "$f" 2>/dev/null || true)" = "plect.session.resumed" ] && break 2
-        done
-        sleep 0.1
-    done
-fi
-
 status_write_failed=false
+source "$(dirname "$0")/headless-batch.sh"
 while true; do
-    resumed_files=()
-    other_files=()
-    for f in "$queue_dir"/*.json; do
-        [ -e "$f" ] || continue
-        if [ "$(jq -r '.type' "$f" 2>/dev/null || true)" = "plect.session.resumed" ]; then
-            resumed_files+=("$f")
-        else
-            other_files+=("$f")
-        fi
-    done
-    for f in "${resumed_files[@]}" "${other_files[@]}"; do
-        [ -e "$f" ] || continue
-
-        event_type="$(jq -r '.type' "$f" 2>/dev/null || true)"
-        text="$(jq -r '.text' "$f" 2>/dev/null || true)"
-        if [ -z "$text" ]; then
-            rm -f "$f"
+    if batch_claim "$queue_dir" && batch_render "$queue_dir"; then
+        event_type="batch"
+        text="$(cat "$queue_dir/.inflight/input"; printf '\001')"
+        text="${text%$'\001'}"
+        reply_marker="$queue_dir/.inflight/reply-published"
+        if [ -f "$reply_marker" ]; then
+            batch_ack "$queue_dir"
+            tick_session
             continue
         fi
 
@@ -115,7 +105,8 @@ while true; do
             echo "working status write failed; leaving turn queued" >&2
             write_health 1 "$event_type"
             status_write_failed=true
-            break
+            sleep 1
+            continue
         fi
         if [ "$status_write_failed" = true ]; then
             write_health 0 "$event_type"
@@ -132,28 +123,36 @@ while true; do
                 --dangerously-bypass-approvals-and-sandbox \
                 --output-last-message "$last_message_file" \
                 "${extra_args[@]}" \
-                -- "$text" > "$log_file" 2>&1
+                -- "$text" > "$log_file" 2>&1 &
         else
             codex exec resume --json \
                 --dangerously-bypass-approvals-and-sandbox \
                 --output-last-message "$last_message_file" \
                 "${extra_args[@]}" \
-                "$thread_id" -- "$text" > "$log_file" 2>&1
+                "$thread_id" -- "$text" > "$log_file" 2>&1 &
         fi
+        child=$!
+        wait "$child"
         exit_code=$?
+        child=""
 
         if [ -z "$thread_id" ] && [ "$exit_code" -eq 0 ]; then
             new_thread_id="$(jq -r 'select(.type == "thread.started") | (.thread_id // .payload.thread_id // empty)' "$log_file" 2>/dev/null | head -1)"
             [ -n "$new_thread_id" ] && printf '%s' "$new_thread_id" > "$state_dir/thread_id"
         fi
 
+        if [ "$exit_code" -eq 0 ]; then
+            if ! publish_reply "$last_message_file" || ! touch "$reply_marker"; then
+                exit_code=1
+            fi
+        fi
         write_health "$exit_code" "$event_type"
-        # Publish on success only; failures already surface via health.json.
-        # publish_reply itself skips an empty (or absent) capture.
-        [ "$exit_code" -eq 0 ] && publish_reply "$last_message_file"
-        rm -f "$last_message_file" "$f"
+        rm -f "$last_message_file"
         agent_activity "Stop" "waiting"
-        tick_session
-    done
+        if [ "$exit_code" -eq 0 ]; then
+            batch_ack "$queue_dir"
+            tick_session
+        fi
+    fi
     sleep 1
 done

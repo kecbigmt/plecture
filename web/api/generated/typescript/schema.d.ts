@@ -123,6 +123,8 @@ export interface components {
             summary: string;
             /** @description Absent and empty are equivalent, as with every optional field on this contract. */
             body?: string;
+            /** @description ID of an earlier event in this session that this event supersedes. */
+            supersedes?: string;
             /**
              * @description Arbitrary event metadata, passed through verbatim including keys this API
              *     does not itself interpret — e.g. `origin_session`

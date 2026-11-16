@@ -46,13 +46,23 @@ func TestRuntimeSubscriptionAndResourcePublishDeliverOnceAcrossSources(t *testin
 	if err := Subscribe(cfg, store, SubscribeParams{SessionName: "first", ResourceID: "item://one"}); err != nil {
 		t.Fatal(err)
 	}
-	count, err := EventPublishResource(cfg, store, "item://one?view=alternate", EventPublishParams{Type: event.TypeUserNote, Summary: "hello"})
-	if err != nil || count != 2 {
-		t.Fatalf("delivered = %d, err = %v", count, err)
+	ids, err := EventPublishResource(cfg, store, "item://one?view=alternate", EventPublishParams{Type: event.TypeUserNote, Summary: "hello"})
+	if err != nil || len(ids) != 2 {
+		t.Fatalf("delivered = %v, err = %v", ids, err)
+	}
+	newIDs, err := EventPublishResource(cfg, store, "item://one", EventPublishParams{Type: event.TypeUserNote, Summary: "new", SupersedesBySession: ids})
+	if err != nil || len(newIDs) != 2 {
+		t.Fatalf("second delivery = %v, err = %v", newIDs, err)
 	}
 	for _, name := range []string{"first", "second"} {
 		events, _, _, err := EventList(cfg, store, name, 0, event.Filter{})
-		if err != nil || len(events) != 1 {
+		if err != nil || len(events) != 2 || events[1].Supersedes != ids[name] {
+			t.Fatalf("%s supersession = %+v, err = %v", name, events, err)
+		}
+	}
+	for _, name := range []string{"first", "second"} {
+		events, _, _, err := EventList(cfg, store, name, 0, event.Filter{})
+		if err != nil || len(events) != 2 {
 			t.Fatalf("%s events = %+v, err = %v", name, events, err)
 		}
 	}

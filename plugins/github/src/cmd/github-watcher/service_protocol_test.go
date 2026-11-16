@@ -52,7 +52,22 @@ func TestServiceProtocolConfigSnapshotDeltaAndPublishReply(t *testing.T) {
 	if request["op"] != "publish" || request["resource"] != row.Resource.Locator || request["id"] == "" {
 		t.Fatalf("request = %v", request)
 	}
-	if err := encode.Encode(map[string]any{"op": "published", "id": request["id"], "delivered": 1}); err != nil {
+	if err := encode.Encode(map[string]any{"op": "published", "id": request["id"], "delivered": 1, "events": map[string]string{"s1": "event-1"}}); err != nil {
+		t.Fatal(err)
+	}
+	if err := <-result; err != nil {
+		t.Fatal(err)
+	}
+	go func() {
+		result <- protocol.Publish(context.Background(), row.Resource.Locator, "github.new_commits", "new push", nil)
+	}()
+	if err := json.NewDecoder(outputReader).Decode(&request); err != nil {
+		t.Fatal(err)
+	}
+	if got := request["supersedes"].(map[string]any)["s1"]; got != "event-1" {
+		t.Fatalf("supersedes = %v, want event-1", got)
+	}
+	if err := encode.Encode(map[string]any{"op": "published", "id": request["id"], "delivered": 1, "events": map[string]string{"s1": "event-2"}}); err != nil {
 		t.Fatal(err)
 	}
 	if err := <-result; err != nil {
@@ -101,8 +116,12 @@ func TestServiceProtocolRejectsErrorReply(t *testing.T) {
 	if err := json.NewDecoder(outputReader).Decode(&request); err != nil {
 		t.Fatal(err)
 	}
-	encode.Encode(map[string]any{"op": "error", "id": request["id"], "code": "denied", "message": "no subscribers"})
+	encode.Encode(map[string]any{"op": "error", "id": request["id"], "code": "denied", "message": "one subscriber failed", "events": map[string]string{"s1": "partial-event"}})
 	if err := <-result; err == nil || !strings.Contains(err.Error(), "denied") {
 		t.Fatalf("publish error = %v", err)
+	}
+	ids, err := protocol.store.LastPublished("r", "github.error")
+	if err != nil || ids["s1"] != "partial-event" {
+		t.Fatalf("partial publication IDs = %v, %v", ids, err)
 	}
 }

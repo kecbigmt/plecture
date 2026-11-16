@@ -200,6 +200,7 @@ func TestEventFromDomain_PreservesUnknownTypeAndMetadataVerbatim(t *testing.T) {
 		Direction:   event.Inbound,
 		Summary:     "widget moved",
 		Body:        "full detail",
+		Supersedes:  "older-event",
 		Metadata: map[string]string{
 			"origin_session": "team/other-session",
 			"widget_id":      "w-42",
@@ -222,6 +223,9 @@ func TestEventFromDomain_PreservesUnknownTypeAndMetadataVerbatim(t *testing.T) {
 	}
 	if got.Body == nil || *got.Body != ev.Body {
 		t.Errorf("Body = %v, want %q", got.Body, ev.Body)
+	}
+	if got.Supersedes == nil || *got.Supersedes != ev.Supersedes {
+		t.Errorf("Supersedes = %v, want %q", got.Supersedes, ev.Supersedes)
 	}
 	if got.Metadata == nil {
 		t.Fatal("Metadata = nil, want the seeded map")

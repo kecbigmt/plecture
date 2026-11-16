@@ -82,6 +82,7 @@ func TestAppendEvent_RoundTripsEveryField(t *testing.T) {
 		Direction:   event.Inbound,
 		Summary:     "hello",
 		Body:        "hello body",
+		Supersedes:  "older-event",
 		Metadata:    map[string]string{"k": "v"},
 	}
 	if _, err := db.AppendEvent(ctx, want); err != nil {
@@ -101,7 +102,7 @@ func TestAppendEvent_RoundTripsEveryField(t *testing.T) {
 	ev := got[0]
 	if ev.ID != want.ID || ev.SessionName != want.SessionName || !ev.Time.Equal(want.Time) ||
 		ev.Type != want.Type || ev.Source != want.Source || ev.Direction != want.Direction ||
-		ev.Summary != want.Summary || ev.Body != want.Body {
+		ev.Summary != want.Summary || ev.Body != want.Body || ev.Supersedes != want.Supersedes {
 		t.Fatalf("round-tripped event = %+v, want %+v", ev, want)
 	}
 	if ev.Metadata["k"] != "v" {
