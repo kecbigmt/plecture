@@ -28,14 +28,18 @@ func seedPendingJudgeWork(t *testing.T, store *state.Store, name string) {
 	})
 }
 
-func TestTickSession_QuietUnchangedKickDoesNotRepeatOrAdvanceHeartbeat(t *testing.T) {
+func TestTickSession_ManualUnchangedKickDoesNotRepeatOrAdvanceHeartbeat(t *testing.T) {
 	store := testStore(t)
 	cfg := checkScenarioConfig(t, 4)
 	seedPendingJudgeWork(t, store, "owner/repo-1")
 	setCheckStatus(t, store, "owner/repo-1", "FAILURE")
 	for i := range 2 {
-		if _, err := TickSession(cfg, store, TickParams{SessionName: "owner/repo-1", Trigger: TickTriggerQuiet}); err != nil {
-			t.Fatalf("quiet tick %d: %v", i, err)
+		result, err := TickSession(cfg, store, TickParams{SessionName: "owner/repo-1"})
+		if err != nil {
+			t.Fatalf("manual tick %d: %v", i, err)
+		}
+		if len(result.Actions) != 1 || result.Actions[0].Unchanged != (i == 1) {
+			t.Fatalf("tick %d action = %+v, want unchanged=%t", i, result.Actions, i == 1)
 		}
 	}
 	if got := tickEventCount(t, store, "owner/repo-1", event.TypeUserEmit); got != 1 {
@@ -43,7 +47,7 @@ func TestTickSession_QuietUnchangedKickDoesNotRepeatOrAdvanceHeartbeat(t *testin
 	}
 	first := store.Get("owner/repo-1").LastTickAt
 	if first.IsZero() {
-		t.Fatal("first quiet announcement did not stamp LastTickAt")
+		t.Fatal("first announcement did not stamp LastTickAt")
 	}
 	if err := store.Update("owner/repo-1", func(s *domain.Session) error {
 		s.LastTickAt = first.Add(-time.Minute)
@@ -51,11 +55,11 @@ func TestTickSession_QuietUnchangedKickDoesNotRepeatOrAdvanceHeartbeat(t *testin
 	}); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := TickSession(cfg, store, TickParams{SessionName: "owner/repo-1", Trigger: TickTriggerQuiet}); err != nil {
+	if _, err := TickSession(cfg, store, TickParams{SessionName: "owner/repo-1"}); err != nil {
 		t.Fatal(err)
 	}
 	if got := store.Get("owner/repo-1").LastTickAt; !got.Equal(first.Add(-time.Minute)) {
-		t.Fatalf("quiet repeat advanced LastTickAt: %v", got)
+		t.Fatalf("manual repeat advanced LastTickAt: %v", got)
 	}
 	if _, err := TickSession(cfg, store, TickParams{SessionName: "owner/repo-1", Trigger: TickTriggerHeartbeat}); err != nil {
 		t.Fatal(err)
@@ -65,12 +69,12 @@ func TestTickSession_QuietUnchangedKickDoesNotRepeatOrAdvanceHeartbeat(t *testin
 	}
 }
 
-func TestTickSession_QuietReviewRequiredPublishesChangedStateOnce(t *testing.T) {
+func TestTickSession_ManualReviewRequiredPublishesChangedStateOnce(t *testing.T) {
 	store := testStore(t)
 	cfg := checkScenarioConfig(t, 4)
 	seedPendingJudgeWork(t, store, "owner/repo-1")
 	for range 2 {
-		if _, err := TickSession(cfg, store, TickParams{SessionName: "owner/repo-1", Trigger: TickTriggerQuiet}); err != nil {
+		if _, err := TickSession(cfg, store, TickParams{SessionName: "owner/repo-1"}); err != nil {
 			t.Fatal(err)
 		}
 	}
@@ -78,7 +82,7 @@ func TestTickSession_QuietReviewRequiredPublishesChangedStateOnce(t *testing.T) 
 		t.Fatalf("review events = %d, want 1", got)
 	}
 	setCheckStatus(t, store, "owner/repo-1", "FAILURE")
-	if _, err := TickSession(cfg, store, TickParams{SessionName: "owner/repo-1", Trigger: TickTriggerQuiet}); err != nil {
+	if _, err := TickSession(cfg, store, TickParams{SessionName: "owner/repo-1"}); err != nil {
 		t.Fatal(err)
 	}
 	if got := tickEventCount(t, store, "owner/repo-1", event.TypeUserEmit); got != 1 {
@@ -248,9 +252,7 @@ func TestTickSession_EventTriggeredKickOmitsLiveChildren(t *testing.T) {
 	}
 }
 
-// A manual `plect tick` is a human asking for the signal now; it must not be
-// swallowed by a debounce meant for machine-driven re-evaluation.
-func TestTickSession_ManualTickRepublishesUnchangedReviewRequired(t *testing.T) {
+func TestTickSession_ManualTickSuppressesUnchangedReviewRequired(t *testing.T) {
 	store := testStore(t)
 	cfg := checkScenarioConfig(t, 4)
 	seedPendingJudgeWork(t, store, "owner/repo-1")
@@ -261,7 +263,7 @@ func TestTickSession_ManualTickRepublishesUnchangedReviewRequired(t *testing.T) 
 		}
 	}
 
-	if got := tickEventCount(t, store, "owner/repo-1", event.TypeTickReviewRequired); got != 2 {
-		t.Fatalf("review_required events = %d, want 2 (a manual tick always publishes)", got)
+	if got := tickEventCount(t, store, "owner/repo-1", event.TypeTickReviewRequired); got != 1 {
+		t.Fatalf("review_required events = %d, want 1", got)
 	}
 }

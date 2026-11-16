@@ -24,7 +24,6 @@ type TickTrigger string
 const (
 	TickTriggerManual    TickTrigger = "manual"
 	TickTriggerEvent     TickTrigger = "event"
-	TickTriggerQuiet     TickTrigger = "quiet"
 	TickTriggerHeartbeat TickTrigger = "heartbeat"
 )
 
@@ -41,7 +40,9 @@ func TickSession(cfg *config.Config, store *state.Store, params TickParams) (*Ch
 		return nil, err
 	}
 
-	if params.Trigger != TickTriggerQuiet {
+	// Reactive ticks keep the reactor's scheduling watermark even without an
+	// announcement; plain CLI ticks must not postpone a due heartbeat.
+	if params.Trigger == TickTriggerHeartbeat || params.Trigger == TickTriggerEvent {
 		if err := stampLastTick(store, resolvedName); err != nil {
 			return nil, err
 		}
@@ -59,13 +60,14 @@ func TickSession(cfg *config.Config, store *state.Store, params TickParams) (*Ch
 			return nil, err
 		}
 		announced = announced || published
+		action.Unchanged = !published && (action.Action == "kick" || action.Action == "review_required")
 		action.Warnings = append(action.Warnings, warnings...)
 		actions = append(actions, action)
 		if err := persistTickAction(store, resolvedName, c.instance, action); err != nil {
 			return nil, err
 		}
 	}
-	if params.Trigger == TickTriggerQuiet && announced {
+	if params.Trigger != TickTriggerHeartbeat && params.Trigger != TickTriggerEvent && announced {
 		if err := stampLastTick(store, resolvedName); err != nil {
 			return nil, err
 		}

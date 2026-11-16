@@ -86,7 +86,7 @@ PLECT_CALLS="$tmp/calls" \
 XDG_STATE_HOME="$tmp/state" \
 PATH="$bin_dir:$PATH" \
 "$subject" waiting <<<'{"hook_event_name":"Stop"}'
-[ "$(tail -n 1 "$tmp/calls")" = 'tick owner/repo-1 --quiet-unchanged' ] || { printf 'opted-in Stop tick = %q\n' "$(tail -n 1 "$tmp/calls")" >&2; exit 1; }
+[ "$(tail -n 1 "$tmp/calls")" = 'tick owner/repo-1' ] || { printf 'opted-in Stop tick = %q\n' "$(tail -n 1 "$tmp/calls")" >&2; exit 1; }
 
 : > "$tmp/calls"
 PLECT_SESSION_NAME="owner/repo-1" \

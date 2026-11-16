@@ -113,10 +113,10 @@ func publishTickAction(cfg *config.Config, store *state.Store, sessionName strin
 	return nil, action.Action == "kick" || action.Action == "review_required", nil
 }
 
-// Machine-driven ticks without a bounded cadence must not feed an unchanged
-// announcement back into the session that triggered them.
+// Only the bounded heartbeat cadence re-announces unchanged unmet work;
+// a manual or event tick can otherwise feed its own kick back into a turn loop.
 func repeatsUnchangedState(c computedAction, trigger TickTrigger) bool {
-	return (trigger == TickTriggerEvent || trigger == TickTriggerQuiet) &&
+	return trigger != TickTriggerHeartbeat &&
 		c.lastAction == c.action.Action &&
 		c.lastFingerprint == c.action.Fingerprint
 }

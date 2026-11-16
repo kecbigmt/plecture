@@ -100,7 +100,7 @@ write_health() {
 
 tick_session() {
     [ -n "${PLECT_SESSION_NAME:-}" ] || return 0
-    plect tick "$PLECT_SESSION_NAME" --quiet-unchanged >/dev/null 2>&1 || true
+    plect tick "$PLECT_SESSION_NAME" >/dev/null 2>&1 || true
 }
 
 if compgen -G "$queue_dir/*.json" > /dev/null; then

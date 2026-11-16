@@ -12,9 +12,8 @@ import (
 )
 
 var (
-	tickJSON           bool
-	tickNoRefresh      bool
-	tickQuietUnchanged bool
+	tickJSON      bool
+	tickNoRefresh bool
 )
 
 var tickCmd = &cobra.Command{
@@ -23,7 +22,8 @@ var tickCmd = &cobra.Command{
 	Long: `The Goal Loop actuator: evaluate each done_when-bearing task instance for
 a session and act on the result. Heartbeat-triggered ticks consume the
 heartbeat budget; event and manual ticks can act immediately without consuming
-that budget. It publishes the resulting kickback/review/escalation event, and
+that budget. Non-heartbeat ticks suppress an unchanged kick or review announcement.
+It publishes the resulting kickback/review/escalation event, and
 pushes a done/escalate terminal event to the parent exactly once per instance.
 Against that same fact set it also fires
 [[chains]]: a chain whose when holds and whose wired outputs are present
@@ -47,7 +47,7 @@ check/judge state.`,
 			SessionName: args[0],
 			SkipRefresh: tickNoRefresh,
 			Observer:    newTaskObserver(cfg),
-			Trigger:     tickTrigger(),
+			Trigger:     service.TickTriggerManual,
 		})
 		if err != nil {
 			return err
@@ -61,7 +61,7 @@ check/judge state.`,
 			return nil
 		}
 		for _, action := range result.Actions {
-			fmt.Fprintf(cmd.OutOrStdout(), "%s\t%s\t%s\n", action.Instance, action.Action, action.Summary)
+			fmt.Fprintf(cmd.OutOrStdout(), "%s\t%s\t%s\n", action.Instance, action.Action, tickActionSummary(action))
 			if action.ReviewerCommand != "" {
 				fmt.Fprintf(cmd.OutOrStdout(), "  reviewer:\t%s\n", action.ReviewerCommand)
 			}
@@ -73,11 +73,11 @@ check/judge state.`,
 	},
 }
 
-func tickTrigger() service.TickTrigger {
-	if tickQuietUnchanged {
-		return service.TickTriggerQuiet
+func tickActionSummary(action service.CheckAction) string {
+	if action.Unchanged {
+		return action.Summary + " (unchanged; no announcement sent)"
 	}
-	return service.TickTriggerManual
+	return action.Summary
 }
 
 // chainSpawnStatus renders one ChainSpawn's outcome as a single word/phrase
@@ -100,7 +100,6 @@ func chainSpawnStatus(sp service.ChainSpawn) string {
 func init() {
 	tickCmd.Flags().BoolVar(&tickJSON, "json", false, "Output actions as JSON")
 	tickCmd.Flags().BoolVar(&tickNoRefresh, "no-refresh", false, "Read persisted outputs without refreshing dynamic outputs first")
-	tickCmd.Flags().BoolVar(&tickQuietUnchanged, "quiet-unchanged", false, "Suppress unchanged kick and review announcements without delaying heartbeat")
 
 	rootCmd.AddCommand(tickCmd)
 }
