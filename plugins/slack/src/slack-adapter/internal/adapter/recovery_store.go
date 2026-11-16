@@ -17,9 +17,10 @@ type recoveryFile struct {
 	Channels map[string]recoveryChannel `json:"channels"`
 }
 type recoveryChannel struct {
-	Boundary  time.Time       `json:"boundary"`
-	Started   time.Time       `json:"started"`
-	Processed map[string]bool `json:"processed"`
+	Boundary  time.Time            `json:"boundary"`
+	Started   time.Time            `json:"started"`
+	Processed map[string]bool      `json:"processed"`
+	Threads   map[string]time.Time `json:"threads,omitempty"`
 }
 
 type RecoveryStore struct {
@@ -57,6 +58,50 @@ func (s *RecoveryStore) Started(key string) time.Time {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	return s.state.Channels[key].Started
+}
+func (s *RecoveryStore) ThreadBoundary(key, root string) time.Time {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return s.state.Channels[key].Threads[root]
+}
+func (s *RecoveryStore) SetThreadBoundary(key, root string, at time.Time) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	prior := s.state.Channels[key]
+	channel := prior
+	channel.Threads = make(map[string]time.Time, len(prior.Threads)+1)
+	for ts, boundary := range prior.Threads {
+		channel.Threads[ts] = boundary
+	}
+	channel.Threads[root] = at
+	s.state.Channels[key] = channel
+	if err := s.save(); err != nil {
+		s.state.Channels[key] = prior
+		return err
+	}
+	return nil
+}
+func (s *RecoveryStore) RetainThreads(key string, roots []string) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	prior := s.state.Channels[key]
+	keep := make(map[string]time.Time, len(roots))
+	for _, root := range roots {
+		if at, ok := prior.Threads[root]; ok {
+			keep[root] = at
+		}
+	}
+	if len(keep) == len(prior.Threads) {
+		return nil
+	}
+	channel := prior
+	channel.Threads = keep
+	s.state.Channels[key] = channel
+	if err := s.save(); err != nil {
+		s.state.Channels[key] = prior
+		return err
+	}
+	return nil
 }
 func (s *RecoveryStore) Initialize(key string, at time.Time) error {
 	s.mu.Lock()

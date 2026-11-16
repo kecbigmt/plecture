@@ -44,7 +44,7 @@ func (b *BotAdapter) Recover(ctx context.Context, now time.Time, subs *Subscript
 		start = floor
 	}
 	scannedRoots := make(map[string]bool)
-	scanThread := func(root string) error {
+	scanThread := func(root string, from time.Time) error {
 		if scannedRoots[root] {
 			return nil
 		}
@@ -59,7 +59,7 @@ func (b *BotAdapter) Recover(ctx context.Context, now time.Time, subs *Subscript
 				return fmt.Errorf("conversations.replies root %s: %w", root, err)
 			}
 			for _, msg := range messages {
-				if msg.Timestamp == root || compareSlackTS(msg.Timestamp, slackTime(start)) < 0 || compareSlackTS(msg.Timestamp, slackTime(now)) > 0 {
+				if msg.Timestamp == root || compareSlackTS(msg.Timestamp, slackTime(from)) < 0 || compareSlackTS(msg.Timestamp, slackTime(now)) > 0 {
 					continue
 				}
 				delivered, err := b.recoverMessage(msg, root)
@@ -99,7 +99,7 @@ func (b *BotAdapter) Recover(ctx context.Context, now time.Time, subs *Subscript
 			}
 			recovered += delivered
 			if msg.ReplyCount > 0 {
-				if err := scanThread(msg.Timestamp); err != nil {
+				if err := scanThread(msg.Timestamp, start); err != nil {
 					b.logRecoveryFailure(start, now, err)
 					return err
 				}
@@ -116,11 +116,33 @@ func (b *BotAdapter) Recover(ctx context.Context, now time.Time, subs *Subscript
 		cursor = page.ResponseMetaData.NextCursor
 	}
 	if subs != nil {
-		for _, root := range subs.ThreadRoots(b.bot.ChannelID) {
-			if err := scanThread(root); err != nil {
-				b.logRecoveryFailure(start, now, err)
+		roots := subs.ThreadRoots(b.bot.ChannelID)
+		for _, root := range roots {
+			threadSaved := b.recovery.ThreadBoundary(key, root)
+			if threadSaved.IsZero() {
+				threadSaved = saved
+				if err := b.recovery.SetThreadBoundary(key, root, threadSaved); err != nil {
+					return err
+				}
+			}
+			threadStart := threadSaved.Add(-recoveryOverlap)
+			if origin := b.recovery.Started(key); !origin.IsZero() && threadStart.Before(origin) {
+				threadStart = origin
+			}
+			if threadStart.Before(floor) {
+				b.logger.Warn("recovery thread range not fetched", "channel_id", b.bot.ChannelID, "thread_ts", root, "range_start", threadSaved, "range_end", floor)
+				threadStart = floor
+			}
+			if err := scanThread(root, threadStart); err != nil {
+				b.logger.Warn("recovery thread scan failed", "channel_id", b.bot.ChannelID, "thread_ts", root, "range_start", threadStart, "range_end", now, "error", err)
+				continue
+			}
+			if err := b.recovery.SetThreadBoundary(key, root, now); err != nil {
 				return err
 			}
+		}
+		if err := b.recovery.RetainThreads(key, roots); err != nil {
+			return err
 		}
 	}
 	if err := b.recovery.SetBoundary(key, now); err != nil {

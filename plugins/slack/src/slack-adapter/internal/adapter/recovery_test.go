@@ -266,3 +266,101 @@ func TestRecoveryDoesNotAdvancePastAnInFlightLiveMention(t *testing.T) {
 		t.Fatalf("calls=%v", p.calls)
 	}
 }
+
+func TestRecoveryLogsOldGapAndCompletesBoundedScan(t *testing.T) {
+	now := time.Unix(1700001000, 0).UTC()
+	saved := now.Add(-48 * time.Hour)
+	floor := now.Add(-recoveryLookback)
+	var oldest string
+	var logs strings.Builder
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		r.ParseForm()
+		oldest = r.Form.Get("oldest")
+		fmt.Fprint(w, `{"ok":true,"messages":[]}`)
+	}))
+	defer server.Close()
+	store, err := NewRecoveryStore(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	key := "T1/UBOT/C1"
+	if err := store.SetBoundary(key, saved); err != nil {
+		t.Fatal(err)
+	}
+	b := &BotAdapter{bot: Bot{ChannelID: "C1"}, api: slack.New("token", slack.OptionAPIURL(server.URL+"/")), teamID: "T1", botUserID: "UBOT", logger: slog.New(slog.NewTextHandler(&logs, nil)), recovery: store}
+	if err := b.Recover(context.Background(), now, NewSubscriptions()); err != nil {
+		t.Fatal(err)
+	}
+	if oldest != slackTime(floor) || !store.Boundary(key).Equal(now) {
+		t.Fatalf("oldest=%q boundary=%v", oldest, store.Boundary(key))
+	}
+	if !strings.Contains(logs.String(), "recovery range not fetched") || !strings.Contains(logs.String(), saved.Format("2006-01-02T15:04:05.000Z")) || !strings.Contains(logs.String(), floor.Format("2006-01-02T15:04:05.000Z")) {
+		t.Fatalf("gap log=%s", logs.String())
+	}
+}
+
+func TestInaccessibleSubscribedThreadDoesNotStallChannel(t *testing.T) {
+	now := time.Unix(1700001000, 0).UTC()
+	saved := now.Add(-time.Hour)
+	root := "1699000000.000001"
+	var logs strings.Builder
+	fail := true
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/conversations.history":
+			fmt.Fprint(w, `{"ok":true,"messages":[]}`)
+		case "/conversations.replies":
+			if fail {
+				fmt.Fprint(w, `{"ok":false,"error":"thread_not_found"}`)
+			} else {
+				fmt.Fprint(w, `{"ok":true,"messages":[]}`)
+			}
+		default:
+			t.Errorf("unexpected %s", r.URL.Path)
+		}
+	}))
+	defer server.Close()
+	dir := t.TempDir()
+	store, err := NewRecoveryStore(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	key := "T1/UBOT/C1"
+	if err := store.SetBoundary(key, saved); err != nil {
+		t.Fatal(err)
+	}
+	subs := NewSubscriptions()
+	subs.Apply([]Subscription{{Resource: SubscriptionResource{Locator: "https://example.slack.com/archives/C1/p1699000000000001"}}}, nil)
+	b := &BotAdapter{bot: Bot{ChannelID: "C1"}, api: slack.New("token", slack.OptionAPIURL(server.URL+"/")), teamID: "T1", botUserID: "UBOT", logger: slog.New(slog.NewTextHandler(&logs, nil)), recovery: store}
+	if err := b.Recover(context.Background(), now, subs); err != nil {
+		t.Fatal(err)
+	}
+	if !store.Boundary(key).Equal(now) || !store.ThreadBoundary(key, root).Equal(saved) {
+		t.Fatalf("channel=%v thread=%v", store.Boundary(key), store.ThreadBoundary(key, root))
+	}
+	if !strings.Contains(logs.String(), "thread_not_found") || !strings.Contains(logs.String(), root) || !strings.Contains(logs.String(), "range_start") {
+		t.Fatalf("thread failure log=%s", logs.String())
+	}
+	reopened, err := NewRecoveryStore(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !reopened.ThreadBoundary(key, root).Equal(saved) {
+		t.Fatalf("thread checkpoint did not persist: %v", reopened.ThreadBoundary(key, root))
+	}
+	b.recovery = reopened
+	fail = false
+	if err := b.Recover(context.Background(), now.Add(time.Minute), subs); err != nil {
+		t.Fatal(err)
+	}
+	if !reopened.ThreadBoundary(key, root).Equal(now.Add(time.Minute)) {
+		t.Fatalf("thread did not catch up: %v", reopened.ThreadBoundary(key, root))
+	}
+	subs.Apply(nil, []Subscription{{Resource: SubscriptionResource{Locator: "https://example.slack.com/archives/C1/p1699000000000001"}}})
+	if err := b.Recover(context.Background(), now.Add(2*time.Minute), subs); err != nil {
+		t.Fatal(err)
+	}
+	if !reopened.ThreadBoundary(key, root).IsZero() {
+		t.Fatalf("removed subscription retained thread checkpoint: %v", reopened.ThreadBoundary(key, root))
+	}
+}
