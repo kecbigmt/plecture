@@ -60,12 +60,17 @@ func serve(input io.Reader, output, errors io.Writer) error {
 	if err != nil {
 		return err
 	}
+	recovery, err := adapter.NewRecoveryStore(os.Getenv("PLECT_DATA_DIR"))
+	if err != nil {
+		return err
+	}
 	listeners := make([]*adapter.BotAdapter, 0, len(bots))
 	for _, bot := range bots {
 		listener, err := adapter.NewBotAdapter(bot, protocol, denials, logger)
 		if err != nil {
 			return err
 		}
+		listener.ConfigureRecovery(recovery, protocol.Subscriptions())
 		listeners = append(listeners, listener)
 	}
 	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)

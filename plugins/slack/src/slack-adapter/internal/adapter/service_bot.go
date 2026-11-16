@@ -24,22 +24,26 @@ type permalinkResolver interface {
 var slackAPIURL = "https://slack.com/api/"
 
 type BotAdapter struct {
-	bot       Bot
-	api       *slack.Client
-	socket    *socketmode.Client
-	teamID    string
-	botUserID string
-	publisher resourcePublisher
-	fetcher   threadFetcher
-	linker    permalinkResolver
-	denials   *DenialStore
-	logger    *slog.Logger
-	seenMu    sync.Mutex
-	seen      map[string]time.Time
+	bot          Bot
+	api          *slack.Client
+	socket       *socketmode.Client
+	teamID       string
+	botUserID    string
+	publisher    resourcePublisher
+	fetcher      threadFetcher
+	linker       permalinkResolver
+	denials      *DenialStore
+	logger       *slog.Logger
+	recovery     *RecoveryStore
+	recoveryPace time.Duration
+	subs         *Subscriptions
+	startup      time.Time
+	seenMu       sync.Mutex
+	seen         map[string]time.Time
 }
 
 func NewBotAdapter(bot Bot, publisher resourcePublisher, denials *DenialStore, logger *slog.Logger) (*BotAdapter, error) {
-	api := slack.New(bot.BotToken, slack.OptionAPIURL(slackAPIURL), slack.OptionAppLevelToken(bot.AppToken))
+	api := slack.New(bot.BotToken, slack.OptionAPIURL(slackAPIURL), slack.OptionAppLevelToken(bot.AppToken), slack.OptionRetry(1))
 	auth, err := api.AuthTest()
 	if err != nil {
 		return nil, fmt.Errorf("auth.test for channel %s: %w", bot.ChannelID, err)
@@ -47,21 +51,73 @@ func NewBotAdapter(bot Bot, publisher resourcePublisher, denials *DenialStore, l
 	if auth.TeamID == "" || auth.UserID == "" {
 		return nil, fmt.Errorf("auth.test for channel %s returned incomplete bot identity", bot.ChannelID)
 	}
-	b := &BotAdapter{bot: bot, api: api, socket: socketmode.New(api), teamID: auth.TeamID, botUserID: auth.UserID, publisher: publisher, denials: denials, logger: logger}
+	b := &BotAdapter{bot: bot, api: api, socket: socketmode.New(api), teamID: auth.TeamID, botUserID: auth.UserID, publisher: publisher, denials: denials, logger: logger, recoveryPace: 1200 * time.Millisecond}
 	b.fetcher = b
 	b.linker = b
 	return b, nil
 }
 
+func (b *BotAdapter) ConfigureRecovery(store *RecoveryStore, subs *Subscriptions) {
+	b.recovery = store
+	b.subs = subs
+	b.startup = time.Now()
+}
+
 func (b *BotAdapter) Run(ctx context.Context) error {
 	go func() {
+		connected := false
+		scanning := false
+		scanOK := false
+		pendingScan := false
+		scanDone := make(chan bool, 1)
+		launchScan := func() {
+			scanning = true
+			go func() {
+				err := b.Recover(ctx, time.Now(), b.subs)
+				if err != nil {
+					b.logger.Warn("recovery incomplete", "channel_id", b.bot.ChannelID, "error", err)
+				}
+				select {
+				case scanDone <- err == nil:
+				case <-ctx.Done():
+				}
+			}()
+		}
+		ticker := time.NewTicker(time.Minute)
+		defer ticker.Stop()
 		for {
 			select {
 			case <-ctx.Done():
 				return
+			case scanOK = <-scanDone:
+				scanning = false
+				if pendingScan && connected {
+					pendingScan = false
+					scanOK = false
+					launchScan()
+				}
+			case <-ticker.C:
+				if connected && scanOK && b.recovery != nil {
+					if err := b.recovery.SetBoundary(b.teamID+"/"+b.botUserID+"/"+b.bot.ChannelID, time.Now()); err != nil {
+						b.logger.Warn("online position failed", "channel_id", b.bot.ChannelID, "error", err)
+					}
+				}
 			case event, ok := <-b.socket.Events:
 				if !ok {
 					return
+				}
+				if event.Type == socketmode.EventTypeConnected {
+					connected = true
+					scanOK = false
+					if scanning {
+						pendingScan = true
+					} else {
+						launchScan()
+					}
+					continue
+				}
+				if event.Type == socketmode.EventTypeDisconnect || event.Type == socketmode.EventTypeConnectionError {
+					connected = false
 				}
 				if event.Type != socketmode.EventTypeEventsAPI {
 					continue
@@ -93,9 +149,9 @@ func (b *BotAdapter) handleEventsAPI(outer slackevents.EventsAPIEvent) {
 	}
 }
 
-func (b *BotAdapter) routeMention(ev *slackevents.AppMentionEvent) {
+func (b *BotAdapter) routeMention(ev *slackevents.AppMentionEvent) (bool, int) {
 	if ev.BotID != "" || ev.TimeStamp == "" {
-		return
+		return true, 0
 	}
 	threadTS := ev.ThreadTimeStamp
 	if threadTS == "" {
@@ -103,19 +159,22 @@ func (b *BotAdapter) routeMention(ev *slackevents.AppMentionEvent) {
 	}
 	if !isSlackTimestampShape(threadTS) || !isSlackTimestampShape(ev.TimeStamp) {
 		b.logger.Info("mention dropped", "channel_id", ev.Channel, "thread_ts", threadTS, "reason", "invalid_timestamp")
-		return
+		return true, 0
 	}
 	if ev.Channel != b.bot.ChannelID {
 		b.deny(ev, threadTS, "channel_not_allowed", b.bot.DeniedChannelMessage)
-		return
+		return true, 0
 	}
 	if !b.bot.AllowsUser(ev.User) {
 		b.deny(ev, threadTS, "user_not_allowed", b.bot.DeniedUserMessage)
-		return
+		return true, 0
 	}
 	key := ev.Channel + "/" + ev.TimeStamp
 	if !b.claimMention(key) {
-		return
+		if b.recovery != nil && !b.recovery.Seen(b.teamID+"/"+b.botUserID+"/"+ev.Channel, ev.TimeStamp) {
+			return false, 0
+		}
+		return true, 0
 	}
 	completed := false
 	defer func() {
@@ -123,6 +182,20 @@ func (b *BotAdapter) routeMention(ev *slackevents.AppMentionEvent) {
 			b.releaseMention(key)
 		}
 	}()
+	storeKey := b.teamID + "/" + b.botUserID + "/" + ev.Channel
+	if b.recovery != nil && b.recovery.Seen(storeKey, ev.TimeStamp) {
+		return true, 0
+	}
+	finish := func(delivered int) (bool, int) {
+		if b.recovery != nil {
+			if err := b.recovery.Record(storeKey, ev.TimeStamp); err != nil {
+				b.logger.Warn("mention record failed", "channel_id", ev.Channel, "message_ts", ev.TimeStamp, "error", err)
+				return false, delivered
+			}
+		}
+		completed = true
+		return true, delivered
+	}
 	linker := b.linker
 	if linker == nil {
 		linker = b
@@ -130,7 +203,7 @@ func (b *BotAdapter) routeMention(ev *slackevents.AppMentionEvent) {
 	resource, err := linker.permalink(ev.Channel, threadTS)
 	if err != nil {
 		b.logger.Warn("mention permalink failed", "channel_id", ev.Channel, "thread_ts", threadTS, "error", err)
-		return
+		return false, 0
 	}
 	fetcher := b.fetcher
 	if fetcher == nil {
@@ -140,7 +213,7 @@ func (b *BotAdapter) routeMention(ev *slackevents.AppMentionEvent) {
 	replies, err := names.fetchThreadReplies(ev.Channel, threadTS)
 	if err != nil {
 		b.logger.Warn("mention transcript failed", "channel_id", ev.Channel, "thread_ts", threadTS, "error", err)
-		return
+		return false, 0
 	}
 	user := names.userDisplayName(ev.User)
 	if user == "" {
@@ -153,22 +226,21 @@ func (b *BotAdapter) routeMention(ev *slackevents.AppMentionEvent) {
 	count, err := b.publisher.Publish(ctx, resource, "user.emit", "Slack deliberation from "+user, body, metadata)
 	if err != nil {
 		b.logger.Warn("mention publish failed", "channel_id", ev.Channel, "thread_ts", threadTS, "resource", resource, "error", err)
-		return
+		return false, 0
 	}
 	if count > 0 {
-		completed = true
-		return
+		return finish(count)
 	}
 	botResource := "slack://" + b.teamID + "/" + b.botUserID
 	count, err = b.publisher.Publish(ctx, botResource, "user.emit", "Slack deliberation from "+user, body, metadata)
 	if err != nil {
 		b.logger.Warn("mention publish failed", "channel_id", ev.Channel, "thread_ts", threadTS, "resource", botResource, "error", err)
-		return
+		return false, 0
 	}
 	if count == 0 {
 		b.logger.Info("mention dropped", "channel_id", ev.Channel, "thread_ts", threadTS, "reason", "no_subscriber")
 	}
-	completed = true
+	return finish(count)
 }
 
 func (b *BotAdapter) claimMention(key string) bool {

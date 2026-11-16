@@ -17,6 +17,8 @@ type protocolMessage struct {
 	Message   string          `json:"message"`
 	Delivered int             `json:"delivered"`
 	Config    json.RawMessage `json:"config"`
+	Add       []Subscription  `json:"add"`
+	Remove    []Subscription  `json:"remove"`
 }
 
 type ServiceProtocol struct {
@@ -28,12 +30,13 @@ type ServiceProtocol struct {
 	nextID    atomic.Uint64
 	done      chan struct{}
 	readErr   error
+	subs      *Subscriptions
 }
 
 func NewServiceProtocol(input io.Reader, output io.Writer) *ServiceProtocol {
 	scanner := bufio.NewScanner(input)
 	scanner.Buffer(make([]byte, 4096), 10*1024*1024)
-	return &ServiceProtocol{input: scanner, output: json.NewEncoder(output), pending: make(map[string]chan protocolMessage), done: make(chan struct{})}
+	return &ServiceProtocol{input: scanner, output: json.NewEncoder(output), pending: make(map[string]chan protocolMessage), done: make(chan struct{}), subs: NewSubscriptions()}
 }
 
 func (p *ServiceProtocol) read() (protocolMessage, error) {
@@ -69,8 +72,11 @@ func (p *ServiceProtocol) ReadSnapshot() error {
 	if msg.Op != "subscriptions" {
 		return fmt.Errorf("second service message must be subscriptions")
 	}
+	p.subs.Apply(msg.Add, msg.Remove)
 	return nil
 }
+
+func (p *ServiceProtocol) Subscriptions() *Subscriptions { return p.subs }
 
 func (p *ServiceProtocol) ReadReplies() error {
 	defer close(p.done)
@@ -82,6 +88,7 @@ func (p *ServiceProtocol) ReadReplies() error {
 		}
 		switch msg.Op {
 		case "subscriptions":
+			p.subs.Apply(msg.Add, msg.Remove)
 			continue
 		case "published", "error":
 			p.pendingMu.Lock()
