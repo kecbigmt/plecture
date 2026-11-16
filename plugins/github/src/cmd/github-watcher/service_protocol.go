@@ -87,7 +87,7 @@ func (p *serviceProtocol) Run() error {
 				ch <- message
 			}
 		default:
-			return fmt.Errorf("unknown service message %q", message.Op)
+			continue
 		}
 	}
 }

@@ -29,6 +29,9 @@ func TestServiceProtocolPublishesWithDeliveredCountAndErrors(t *testing.T) {
 	}
 	done := make(chan error, 1)
 	go func() { done <- p.ReadReplies() }()
+	if err := input.Encode(map[string]any{"op": "future_operation"}); err != nil {
+		t.Fatal(err)
+	}
 	for _, tc := range []struct {
 		reply     map[string]any
 		wantCount int

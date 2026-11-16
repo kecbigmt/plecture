@@ -66,6 +66,16 @@ allowed channel uses the bot-resource fallback; zero delivery there is logged
 as a drop. Removing coverage resolves pending mentions under the replacement
 routing rule with an explicit log.
 
+The adapter acknowledges a Socket Mode event after its mention is durably
+pending or its completed route has been recorded. It withholds acknowledgement
+when handling fails before that point so Slack can retry. Slack requires a
+Socket Mode acknowledgement within three seconds; a transcript fetch, core
+publish, or local write can exceed that deadline, so Slack may retry while
+the adapter is still handling the first delivery. The adapter deduplicates
+retries by channel and message timestamp after the first handling completes.
+If the process crashes after core accepts a publish but before success is
+recorded, the retry can publish it again.
+
 ## Consequences
 
 The service keeps pending mentions in its private data directory and a local

@@ -110,12 +110,12 @@ func (b *BotAdapter) Run(ctx context.Context) error {
 		defer ticker.Stop()
 		b.runEvents(ctx, b.socket.Events, ticker.C, func(ctx context.Context) error {
 			return b.Recover(ctx, time.Now(), b.subs)
-		})
+		}, func(req socketmode.Request) error { return b.socket.Ack(req) })
 	}()
 	return b.socket.RunContext(ctx)
 }
 
-func (b *BotAdapter) runEvents(ctx context.Context, events <-chan socketmode.Event, ticks <-chan time.Time, scan func(context.Context) error) {
+func (b *BotAdapter) runEvents(ctx context.Context, events <-chan socketmode.Event, ticks <-chan time.Time, scan func(context.Context) error, ack func(socketmode.Request) error) {
 	connected := false
 	scanning := false
 	scanOK := false
@@ -174,28 +174,29 @@ func (b *BotAdapter) runEvents(ctx context.Context, events <-chan socketmode.Eve
 				continue
 			}
 			outer, ok := event.Data.(slackevents.EventsAPIEvent)
-			if ok {
-				b.handleEventsAPI(outer)
-			}
-			if event.Request != nil {
-				b.socket.Ack(*event.Request)
+			handled := !ok || b.handleEventsAPI(outer)
+			if handled && event.Request != nil && ack != nil {
+				ack(*event.Request)
 			}
 		}
 	}
 }
 
-func (b *BotAdapter) handleEventsAPI(outer slackevents.EventsAPIEvent) {
+func (b *BotAdapter) handleEventsAPI(outer slackevents.EventsAPIEvent) bool {
 	if outer.Type != slackevents.CallbackEvent {
-		return
+		return true
 	}
 	switch ev := outer.InnerEvent.Data.(type) {
 	case *slackevents.AppMentionEvent:
-		b.routeMention(ev)
+		handled, _ := b.routeMention(ev)
+		return handled
 	case *slackevents.MessageEvent:
 		if ev.BotID == "" && ev.SubType == "" && strings.Contains(ev.Text, "<@"+b.botUserID+">") {
-			b.routeMention(&slackevents.AppMentionEvent{User: ev.User, Text: ev.Text, TimeStamp: ev.TimeStamp, ThreadTimeStamp: ev.ThreadTimeStamp, Channel: ev.Channel, UserTeam: ev.UserTeam})
+			handled, _ := b.routeMention(&slackevents.AppMentionEvent{User: ev.User, Text: ev.Text, TimeStamp: ev.TimeStamp, ThreadTimeStamp: ev.ThreadTimeStamp, Channel: ev.Channel, UserTeam: ev.UserTeam})
+			return handled
 		}
 	}
+	return true
 }
 
 func (b *BotAdapter) routeMention(ev *slackevents.AppMentionEvent) (bool, int) {

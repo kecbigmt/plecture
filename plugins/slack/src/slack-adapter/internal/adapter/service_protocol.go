@@ -131,8 +131,7 @@ func (p *ServiceProtocol) ReadReplies() error {
 				ch <- msg
 			}
 		default:
-			p.readErr = fmt.Errorf("unknown service message %q", msg.Op)
-			return p.readErr
+			continue
 		}
 	}
 }
