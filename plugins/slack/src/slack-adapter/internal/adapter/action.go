@@ -49,7 +49,9 @@ func (a *Action) PostReply(threadTS, text string, errorOutput io.Writer) error {
 }
 
 func (a *Action) SetStatus(threadTS, status string) error {
-	if status != "" {
+	if status == "" {
+		status = "active"
+	} else {
 		status = "processing"
 	}
 	return a.status.SetStatus(a.channel, threadTS, status)
