@@ -4,6 +4,7 @@ import (
 	"fmt"
 
 	"github.com/kecbigmt/plecture/app/internal/config"
+	"github.com/kecbigmt/plecture/app/internal/resourceidentity"
 	"github.com/kecbigmt/plecture/app/internal/state"
 	"github.com/kecbigmt/plecture/app/internal/task"
 	contract "github.com/kecbigmt/plecture/contracts/state"
@@ -28,7 +29,7 @@ func recordedResource(store *state.Store, derived contract.Resource) (resource c
 	if recorded == nil {
 		return derived, nil, nil
 	}
-	if recorded.Type != derived.Type {
+	if !resourceidentity.SameRecordedType(*recorded, derived) {
 		return derived, &Error{Code: ErrInvalidInput, Message: fmt.Sprintf("resource %q derives the name %q from %q, which %s already holds", derived.Type, derived.Name, derived.Locator, describeResource(*recorded))}, nil
 	}
 	return *recorded, nil, nil

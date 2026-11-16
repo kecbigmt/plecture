@@ -42,7 +42,7 @@ func Subscribe(cfg *config.Config, store *state.Store, params SubscribeParams) e
 		return &Error{Code: ErrSessionNotFound, Message: fmt.Sprintf("session %q does not exist", sessionName)}
 	}
 
-	def, err := resourceDefForSubscription(cfg, session.ProjectRoot, params.ResourceID)
+	address, def, err := resourceDefForSubscription(cfg, session.ProjectRoot, params.ResourceID)
 	if err != nil {
 		return err
 	}
@@ -57,7 +57,7 @@ func Subscribe(cfg *config.Config, store *state.Store, params SubscribeParams) e
 	if !matched {
 		return &Error{Code: ErrInvalidInput, Message: fmt.Sprintf("resource %q does not match its declaration", params.ResourceID)}
 	}
-	resource := &contract.Resource{Type: def.ID, Name: name, Locator: params.ResourceID}
+	resource := &contract.Resource{Type: address, Name: name, Locator: params.ResourceID}
 	if err := store.AddSubscription(sessionName, resource, "runtime", params.Inputs, def.MaxSubscribers); err != nil {
 		return &Error{Code: ErrExecutionFailed, Message: err.Error()}
 	}
@@ -84,7 +84,7 @@ func Unsubscribe(cfg *config.Config, store *state.Store, params SubscribeParams)
 			return err
 		}
 		if len(matched) == 1 {
-			name, _, err = matched[0].InstanceName(params.ResourceID)
+			name, _, err = matched[0].def.InstanceName(params.ResourceID)
 			if err != nil {
 				return err
 			}
@@ -116,7 +116,12 @@ func validateSubscriptionInputs(def config.ResourceDef, inputs map[string]any) e
 	return nil
 }
 
-func matchResourceDefs(cfg *config.Config, projectRoot, resource string) ([]config.ResourceDef, error) {
+type matchedResourceDef struct {
+	address string
+	def     config.ResourceDef
+}
+
+func matchResourceDefs(cfg *config.Config, projectRoot, resource string) ([]matchedResourceDef, error) {
 	defs, err := cfg.LoadResourceDefs(projectRoot)
 	if err != nil {
 		return nil, &Error{Code: ErrExecutionFailed, Message: fmt.Sprintf("load resources: %v", err)}
@@ -127,7 +132,7 @@ func matchResourceDefs(cfg *config.Config, projectRoot, resource string) ([]conf
 	}
 	sort.Strings(ids)
 
-	var matched []config.ResourceDef
+	var matched []matchedResourceDef
 	for _, id := range ids {
 		def := defs[id]
 		re, reErr := regexp.Compile(def.Match)
@@ -135,29 +140,29 @@ func matchResourceDefs(cfg *config.Config, projectRoot, resource string) ([]conf
 			return nil, &Error{Code: ErrExecutionFailed, Message: fmt.Sprintf("resource %q match: %v", def.ID, reErr)}
 		}
 		if re.MatchString(resource) {
-			matched = append(matched, def)
+			matched = append(matched, matchedResourceDef{address: id, def: def})
 		}
 	}
 	return matched, nil
 }
 
 // resourceDefForSubscription requires exactly one matching declaration.
-func resourceDefForSubscription(cfg *config.Config, projectRoot, resource string) (config.ResourceDef, error) {
+func resourceDefForSubscription(cfg *config.Config, projectRoot, resource string) (string, config.ResourceDef, error) {
 	matched, err := matchResourceDefs(cfg, projectRoot, resource)
 	if err != nil {
-		return config.ResourceDef{}, err
+		return "", config.ResourceDef{}, err
 	}
 	switch len(matched) {
 	case 0:
-		return config.ResourceDef{}, &Error{Code: ErrInvalidInput, Message: fmt.Sprintf("no resource declaration matches %q", resource)}
+		return "", config.ResourceDef{}, &Error{Code: ErrInvalidInput, Message: fmt.Sprintf("no resource declaration matches %q", resource)}
 	case 1:
-		return matched[0], nil
+		return matched[0].address, matched[0].def, nil
 	default:
 		names := make([]string, len(matched))
 		for i, p := range matched {
-			names[i] = p.ID
+			names[i] = p.def.ID
 		}
-		return config.ResourceDef{}, &Error{Code: ErrInvalidInput, Message: fmt.Sprintf("resource %q matches multiple resource declarations (%s)", resource, strings.Join(names, ", "))}
+		return "", config.ResourceDef{}, &Error{Code: ErrInvalidInput, Message: fmt.Sprintf("resource %q matches multiple resource declarations (%s)", resource, strings.Join(names, ", "))}
 	}
 }
 
@@ -165,7 +170,7 @@ func ResolveSubscriptionResource(cfg *config.Config, projectRoot, locator string
 	if strings.TrimSpace(locator) == "" {
 		return nil, &Error{Code: ErrInvalidInput, Message: "resource id is required"}
 	}
-	def, err := resourceDefForSubscription(cfg, projectRoot, locator)
+	_, def, err := resourceDefForSubscription(cfg, projectRoot, locator)
 	if err != nil {
 		return nil, err
 	}
