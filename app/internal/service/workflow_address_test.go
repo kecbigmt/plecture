@@ -7,6 +7,7 @@ import (
 	"testing"
 
 	"github.com/kecbigmt/plecture/app/internal/config"
+	"github.com/kecbigmt/plecture/app/internal/domain"
 	"github.com/kecbigmt/plecture/app/internal/plugins"
 	contract "github.com/kecbigmt/plecture/contracts/state"
 )
@@ -112,6 +113,106 @@ func TestCreate_PluginOwnedWorkflowFreezesItsAddress(t *testing.T) {
 	// The plan has to reload against the frozen value.
 	if _, err := Create(cfg, store, CreateParams{URL: url, Workflow: "official.acme.shared"}); err != nil {
 		t.Errorf("second Create: %v", err)
+	}
+}
+
+func TestPluginResourceDispatchAndRuntimeSubscriptionShareType(t *testing.T) {
+	const url = "https://github.com/org/repo/issues/42"
+	for _, first := range []string{"dispatch", "subscribe"} {
+		t.Run(first, func(t *testing.T) {
+			store := testStore(t)
+			dir := writePluginWorkflow(t, "shared", filepath.Join(t.TempDir(), "wd"), "issues")
+			cfg := &config.Config{BaseDir: t.TempDir(), PluginDirs: []string{dir}, Plugins: []plugins.Mounted{{ID: "official/acme", Dir: dir}}}
+			if err := store.Put(&domain.Session{Name: "listener"}); err != nil {
+				t.Fatal(err)
+			}
+			dispatch := func() error {
+				_, err := Create(cfg, store, CreateParams{URL: url, Workflow: "official.acme.shared"})
+				return err
+			}
+			subscribe := func() error {
+				return Subscribe(cfg, store, SubscribeParams{SessionName: "listener", ResourceID: url})
+			}
+			if first == "dispatch" {
+				if err := dispatch(); err != nil {
+					t.Fatal(err)
+				}
+				if err := subscribe(); err != nil {
+					t.Fatal(err)
+				}
+			} else {
+				if err := subscribe(); err != nil {
+					t.Fatal(err)
+				}
+				if err := dispatch(); err != nil {
+					t.Fatal(err)
+				}
+			}
+			resource, err := store.ResourceByName("org/repo-42")
+			if err != nil || resource == nil || resource.Type != "official.acme.issue" {
+				t.Fatalf("resource = %+v, err = %v", resource, err)
+			}
+		})
+	}
+}
+
+func TestLegacyBareResourceTypeAllowsDispatchAndSubscription(t *testing.T) {
+	const url = "https://github.com/org/repo/issues/42"
+	for _, first := range []string{"dispatch", "subscribe"} {
+		t.Run(first, func(t *testing.T) {
+			store := testStore(t)
+			dir := writePluginWorkflow(t, "shared", filepath.Join(t.TempDir(), "wd"), "issues")
+			cfg := &config.Config{BaseDir: t.TempDir(), PluginDirs: []string{dir}, Plugins: []plugins.Mounted{{ID: "official/acme", Dir: dir}}}
+			if err := store.Put(&domain.Session{Name: "listener"}); err != nil {
+				t.Fatal(err)
+			}
+			if err := store.Put(&domain.Session{Name: "legacy", Resource: &contract.Resource{Type: "issue", Name: "org/repo-42", Locator: url}}); err != nil {
+				t.Fatal(err)
+			}
+			dispatch := func() error {
+				_, err := Create(cfg, store, CreateParams{URL: url, Workflow: "official.acme.shared"})
+				return err
+			}
+			subscribe := func() error { return Subscribe(cfg, store, SubscribeParams{SessionName: "listener", ResourceID: url}) }
+			if first == "dispatch" {
+				if err := dispatch(); err != nil {
+					t.Fatal(err)
+				}
+				if err := subscribe(); err != nil {
+					t.Fatal(err)
+				}
+			} else {
+				if err := subscribe(); err != nil {
+					t.Fatal(err)
+				}
+				if err := dispatch(); err != nil {
+					t.Fatal(err)
+				}
+			}
+			resource, err := store.ResourceByName("org/repo-42")
+			if err != nil || resource == nil || resource.Type != "issue" {
+				t.Fatalf("legacy resource = %+v, err = %v", resource, err)
+			}
+		})
+	}
+}
+
+func TestLegacyBareResourceTypeDoesNotClaimAnotherLocator(t *testing.T) {
+	const url = "https://github.com/org/repo/issues/42"
+	store := testStore(t)
+	dir := writePluginWorkflow(t, "shared", filepath.Join(t.TempDir(), "wd"), "issues")
+	cfg := &config.Config{BaseDir: t.TempDir(), PluginDirs: []string{dir}, Plugins: []plugins.Mounted{{ID: "official/acme", Dir: dir}}}
+	if err := store.Put(&domain.Session{Name: "listener"}); err != nil {
+		t.Fatal(err)
+	}
+	if err := store.Put(&domain.Session{Name: "legacy", Resource: &contract.Resource{Type: "issue", Name: "org/repo-42", Locator: "https://github.com/elsewhere/repo/issues/42"}}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := Create(cfg, store, CreateParams{URL: url, Workflow: "official.acme.shared"}); err == nil {
+		t.Fatal("dispatch accepted a legacy row with another locator")
+	}
+	if err := Subscribe(cfg, store, SubscribeParams{SessionName: "listener", ResourceID: url}); err == nil {
+		t.Fatal("subscription accepted a legacy row with another locator")
 	}
 }
 

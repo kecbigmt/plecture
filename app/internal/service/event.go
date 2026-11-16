@@ -94,7 +94,7 @@ func EventPublishResource(cfg *config.Config, store *state.Store, resourceID str
 			return 0, err
 		}
 		if len(matched) == 1 {
-			name, _, err = matched[0].InstanceName(resourceID)
+			name, _, err = matched[0].def.InstanceName(resourceID)
 			if err != nil {
 				return 0, err
 			}

@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/kecbigmt/plecture/app/internal/persistence/sqlcgen"
+	"github.com/kecbigmt/plecture/app/internal/resourceidentity"
 	contract "github.com/kecbigmt/plecture/contracts/state"
 )
 
@@ -78,7 +79,7 @@ func recordResourceTx(ctx context.Context, q *sqlcgen.Queries, r *contract.Resou
 	case err != nil:
 		return fmt.Errorf("get resource %q: %w", r.Name, err)
 	}
-	if row.Type != r.Type {
+	if !resourceidentity.SameRecordedType(contract.Resource{Type: row.Type, Locator: row.Locator}, *r) {
 		return &ResourceTypeConflictError{Name: r.Name, Recorded: row.Type, Requested: r.Type}
 	}
 	*r = *resourceFromRow(row)
