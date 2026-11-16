@@ -1,17 +1,33 @@
-# Migrate Slack service channels and thread populations
+# Migrate resident service query snapshots and Slack channels
 
-The Slack service config uses `channel_ids` arrays. The old `channel_id` key is
+The resident service protocol sends a `queries` snapshot to every service,
+including services with no subscribe population. Update the installed plugin
+catalog and the `plect` binary together while the resident service is stopped.
+An older shipped GitHub watcher or Slack adapter exits on the new message,
+so the update order matters even for deployments without Slack. The Slack
+service config also uses `channel_ids` arrays. The old `channel_id` key is
 rejected. One App declaration may cover several channels and opens one Socket
-Mode connection. The thread resource again supports subscribe-only
-populations.
+Mode connection. The thread resource again supports subscribe-only populations.
 
 ## Back up
 
 Stop the resident service. Back up the active config home, including service
 declarations and the private token env file, and the data home, including the
-Slack plugin's recovery and denial records. Keep both backups outside the
-active homes until the new service has been verified. A pre-change binary
-requires the backed-up config because it does not read `channel_ids`.
+Slack plugin's recovery and denial records. Also retain the current `plect`
+binary and plugin cache so the catalog lock in the config backup still resolves
+for rollback. Keep the backups outside the active homes until the new service
+has been verified. A pre-change binary requires the backed-up config because
+it does not read `channel_ids`.
+
+## Update the binary and catalog before restarting
+
+With the resident service stopped and the backups complete, install the new
+`plect` binary, then run `plect plugin update` to replace pinned shipped
+service executables. Complete any Slack config edits below before starting
+`plect serve` again. If the new binary starts while an old catalog is still
+pinned, the old GitHub watcher and Slack adapter reject the `queries` message
+and restart repeatedly. For rollback, stop the resident service, restore the
+backed-up binary, catalog lock and config together, then restart it.
 
 ## Update the declaration
 
@@ -78,4 +94,5 @@ after the initial `subscriptions` snapshot and replacement snapshots later.
 The rows contain only subscribe populations whose query action uses that
 executable; a service without such a query receives an empty snapshot and
 may ignore it. Back up its executable and state with the config and data
-homes before upgrading it. The shipped GitHub watcher ignores this message.
+homes before upgrading it. The updated shipped GitHub watcher ignores this
+message.
