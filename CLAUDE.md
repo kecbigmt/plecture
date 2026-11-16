@@ -340,6 +340,39 @@ the breaking change — not as follow-up work.
 - Design and ADR documents are owner-gated: a design or ADR PR is never
   merged by automation, regardless of CI status.
 
+## Review diagrams
+
+Diagrams are drawn with the `review-diagrams` skill, which this repository
+enables for both Claude Code (`.claude/settings.json`) and Codex
+(`.codex/config.toml`).
+
+- **Who draws.** The session that authors an ADR or PR draws its diagram
+  itself, in the same PR. A reviewer never draws or edits a diagram on a
+  branch it is judging: it checks the diagram against the text and the diff
+  using the skill's review checklist, and reports a mismatch as a finding.
+- **When a diagram is required.**
+  - Every new or substantially revised ADR gets a decision diagram.
+  - A PR that changes behaviour, structure, or a contract across more than
+    one file gets a change diagram.
+  - A one-file fix, a pin bump, a docs-only PR, or a test-only PR gets
+    none.
+- **Format.** SVG files committed to this repository. No Mermaid, and no
+  externally hosted images or pages.
+- **Where diagrams are saved.**
+  - Decision diagrams: `docs/adr/assets/<adr-file-stem>-<slug>.svg`,
+    embedded in the ADR by relative path (`assets/<file>.svg`).
+  - Change diagrams: `docs/history/changes/<PR-number>-<slug>/overview.svg`.
+  - These paths take precedence over any default location the skill
+    suggests; `docs/adr/` itself does not move.
+- **PR body.** An `## Overview` section at the top of the PR body embeds
+  each diagram through a `raw.githubusercontent.com` URL pinned to the full
+  commit SHA
+  (`https://raw.githubusercontent.com/<owner>/<repo>/<full-sha>/<path>.svg`),
+  not a branch name. Refresh the SHA after every push so the embedded
+  diagram matches the head under review.
+- A missing or mismatched diagram is a review finding, not a build
+  failure; no CI check enforces this section.
+
 ## Self-containedness
 
 Never introduce references to any specific person's environment, machines,
