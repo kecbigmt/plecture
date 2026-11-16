@@ -1,0 +1,13 @@
+{
+  "extraKnownMarketplaces": {
+    "kecbigmt-plugins": {
+      "source": {
+        "source": "github",
+        "repo": "kecbigmt/agent-plugins"
+      }
+    }
+  },
+  "enabledPlugins": {
+    "review-diagrams@kecbigmt-plugins": true
+  }
+}
