@@ -79,6 +79,7 @@ uses = "official.claude.runtime"
 
 [example_work.nodes.inputs]
 path_prepend = { from = "nodes.gh_app_guard.outputs.dir" }
+tick_on_turn_end = true
 
 [[example_work.nodes]]
 uses = "official.claude.claude_initial_prompt"
