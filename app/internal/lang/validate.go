@@ -320,6 +320,7 @@ func (v Validation) validateWorkflow(def *Definition, pos Position) error {
 		{"tick", []string{"on", "heartbeat", "max_heartbeat", "backoff_reset"}},
 		{"healthcheck", []string{"period", "stall_threshold", "renotify_every"}},
 		{"health", []string{"auto_repair_attempts", "resume_instruction"}},
+		{"session", []string{"sleep_after_idle"}},
 	} {
 		raw, ok := def.Body[clock.field]
 		if !ok {
@@ -336,6 +337,11 @@ func (v Validation) validateWorkflow(def *Definition, pos Position) error {
 		if clock.field == "health" {
 			if _, ok := tbl["auto_repair_attempts"]; !ok {
 				return newDiag(CodeFieldRequired, LayerStructural, childPos(at, "auto_repair_attempts"), "workflow [health] declares `auto_repair_attempts`")
+			}
+		}
+		if clock.field == "session" {
+			if _, ok := tbl["sleep_after_idle"]; !ok {
+				return newDiag(CodeFieldRequired, LayerStructural, childPos(at, "sleep_after_idle"), "workflow [session] declares `sleep_after_idle`")
 			}
 		}
 	}

@@ -8,9 +8,18 @@ documents the core, provider-neutral vocabulary those globs can name.
 
 ## Session resume instructions
 
+`plect.status_message` is an outbound self-report. An empty status carries
+`cleared=true` and records a fresh turn-end confirmation each time it is
+written. A nonempty status carries `cleared=false`. A runtime can write these
+through `plect state set-message`; `turn_id`, when present, correlates the
+report with one turn. The latest report is the sole durable status authority.
+
 `plect.session.resumed` is an inbound event published when `Up` re-sets up a
-run-scoped node with `prev`. Its body is the workflow's effective
-`resume_instruction`. The `trigger` metadata records why setup ran:
+run-scoped node with `prev`, unless the last status recorded before setup is
+an explicit empty status from the previous run. Its body is the workflow's effective
+`resume_instruction`. A waking inbound event does not invalidate the
+previous run's empty status for this decision. The `trigger` metadata records
+why setup ran:
 
 | Value | Cause |
 |---|---|

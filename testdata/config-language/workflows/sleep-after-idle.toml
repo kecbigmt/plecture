@@ -1,0 +1,8 @@
+# plect-fixture: result=valid entry=definitions
+
+[review_worker]
+kind = "workflow"
+resource = "issue"
+
+[review_worker.session]
+sleep_after_idle = "10m"

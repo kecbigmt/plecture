@@ -6,9 +6,42 @@ import (
 	"slices"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/kecbigmt/plecture/app/internal/lang"
 )
+
+func TestLoadWorkflows_SleepAfterIdle(t *testing.T) {
+	for _, tt := range []struct {
+		name, value string
+		want        time.Duration
+		wantErr     bool
+	}{
+		{name: "valid", value: `"10m"`, want: 10 * time.Minute},
+		{name: "zero", value: `"0s"`, wantErr: true},
+		{name: "negative", value: `"-1m"`, wantErr: true},
+		{name: "wrong type", value: `10`, wantErr: true},
+		{name: "invalid", value: `"later"`, wantErr: true},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			root := t.TempDir()
+			writeFile(t, filepath.Join(root, ".plect", "workflows", "worker.toml"), "[worker]\nkind = \"workflow\"\nresource = \"issue\"\n[worker.session]\nsleep_after_idle = "+tt.value+"\n")
+			got, err := trustProject(t, &Config{}, root).LoadWorkflows(root)
+			if tt.wantErr {
+				if err == nil || !strings.Contains(err.Error(), "sleep_after_idle") {
+					t.Fatalf("error = %v, want sleep_after_idle diagnostic", err)
+				}
+				return
+			}
+			if err != nil {
+				t.Fatal(err)
+			}
+			if got["worker"].Session.SleepAfterIdle.Duration != tt.want {
+				t.Fatalf("sleep_after_idle = %v, want %v", got["worker"].Session.SleepAfterIdle.Duration, tt.want)
+			}
+		})
+	}
+}
 
 // trustProject marks root as a project root and trusts it, for tests that
 // exercise what a project layer declares rather than whether it is selected.

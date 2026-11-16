@@ -62,6 +62,7 @@ if [ "$resume" != true ]; then
   echo '{"type":"thread.started","thread_id":"stub-thread-1"}'
 fi
 [ -n "$out" ] && cp "$STUB_REPLY_FILE" "$out"
+[ -f "$STUB_PAUSE_TURN" ] && { touch "$STUB_IN_TURN"; while [ -f "$STUB_PAUSE_TURN" ]; do sleep 0.1; done; }
 exit 0
 EOF
 chmod +x "$bin_dir/codex"
@@ -69,6 +70,9 @@ chmod +x "$bin_dir/codex"
 cat > "$bin_dir/plect" <<'EOF'
 #!/usr/bin/env bash
 printf '%s\n' "$*" >> "$PLECT_CALLS"
+[ "$1 $2" = "state set-message" ] && [ "$4" = "working" ] && [ -f "$PLECT_FAIL_WORKING_ONCE" ] && { rm -f "$PLECT_FAIL_WORKING_ONCE"; exit 1; }
+[ "$1 $2" = "state set-message" ] && [ "$4" = "working" ] && [ -f "$PLECT_FAIL_WORKING" ] && exit 1
+true
 EOF
 chmod +x "$bin_dir/plect"
 
@@ -83,6 +87,10 @@ export XDG_STATE_HOME="$tmp/xdg-state"
 # below just overwrites the file at that path.
 export STUB_REPLY_FILE="$tmp/next-reply.txt"
 export STUB_ARGV="$tmp/argv"
+export PLECT_FAIL_WORKING="$tmp/fail-working"
+export PLECT_FAIL_WORKING_ONCE="$tmp/fail-working-once"
+export STUB_PAUSE_TURN="$tmp/pause-turn"
+export STUB_IN_TURN="$tmp/in-turn"
 : > "$STUB_ARGV"
 : > "$PLECT_CALLS"
 "$activity" reset "$PLECT_SESSION_NAME"
@@ -213,6 +221,49 @@ else
   echo "FAIL queued turn did not run once after the wait expired" >&2
   fail=1
 fi
+kill "$worker_pid" 2>/dev/null || true
+wait "$worker_pid" 2>/dev/null || true
+worker_pid=""
+
+blocked_queue="$tmp/blocked-queue"
+blocked_state="$tmp/blocked-state"
+mkdir -p "$blocked_queue"
+echo '{"type":"user.emit","text":"blocked turn"}' > "$blocked_queue/1.json"
+: > "$STUB_ARGV"
+touch "$PLECT_FAIL_WORKING"
+"$worker" "$blocked_queue" "$blocked_state" > "$tmp/blocked.out" 2>&1 &
+worker_pid=$!
+sleep 7
+if [ -s "$STUB_ARGV" ] || [ ! -e "$blocked_queue/1.json" ] || ! grep -q 'working' "$tmp/blocked.out"; then
+  echo "FAIL a failed working status write started or lost a turn without reporting failure" >&2
+  fail=1
+else
+  echo "ok   a failed working status write leaves the turn queued and reports failure"
+fi
+kill "$worker_pid" 2>/dev/null || true
+wait "$worker_pid" 2>/dev/null || true
+worker_pid=""
+rm -f "$PLECT_FAIL_WORKING"
+
+retry_queue="$tmp/retry-queue"
+retry_state="$tmp/retry-state"
+mkdir -p "$retry_queue"
+echo '{"type":"user.emit","text":"retry turn"}' > "$retry_queue/1.json"
+touch "$PLECT_FAIL_WORKING_ONCE" "$STUB_PAUSE_TURN"
+"$worker" "$retry_queue" "$retry_state" > "$tmp/retry.out" 2>&1 &
+worker_pid=$!
+for _ in $(seq 1 100); do
+  [ -e "$STUB_IN_TURN" ] && break
+  sleep 0.1
+done
+if [ ! -e "$STUB_IN_TURN" ] || ! jq -e '.last_exit_code == 0' "$retry_state/health.json" >/dev/null 2>&1; then
+  echo "FAIL health probe is not passing during a turn after a retried working write" >&2
+  fail=1
+else
+  echo "ok   health probe passes during a turn after a retried working write"
+fi
+rm -f "$STUB_PAUSE_TURN"
+wait_for_drain "$retry_queue/1.json" || { echo "FAIL retried turn was never drained" >&2; fail=1; }
 kill "$worker_pid" 2>/dev/null || true
 wait "$worker_pid" 2>/dev/null || true
 worker_pid=""

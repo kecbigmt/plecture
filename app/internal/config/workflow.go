@@ -48,6 +48,7 @@ type WorkflowFile struct {
 	// MaxUpChildren optionally caps concurrently-up children under a session
 	// this workflow produces (see service.reserveChildCapSlot); nil means no cap.
 	MaxUpChildren *int
+	Session       WorkflowSessionConfig
 	Nodes         []WorkflowNode
 	Populations   []WorkflowPopulation
 	Event         WorkflowEvent
@@ -67,6 +68,10 @@ type WorkflowFile struct {
 	// independent of where the workflow document lives.
 	BaseDir    string
 	SourcePath string
+}
+
+type WorkflowSessionConfig struct {
+	SleepAfterIdle Duration
 }
 
 // TickConfig declares when the tick reactor (internal/reactor) ticks a

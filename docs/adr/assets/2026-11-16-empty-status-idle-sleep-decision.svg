@@ -1,0 +1,132 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1000 812" width="1000" height="812" role="img" aria-label="The empty plect.status_message that a runtime writes at turn end is the single idle fact, read two ways. The idle-sleep deadline starts at an empty status written after the current run began; it elapses after sleep_after_idle with no newer inbound, and the session goes down with sleep, releasing its max_up_children slot; an inbound during the wait cancels it, and the next turn's empty status starts a new wait. The resume decision reads the previous run's last status before the new run's setup and ignores the waking inbound: an empty status suppresses plect.session.resumed for repair, wake, and up, for headless and interactive runtimes alike; a nonempty status or a runtime that never writes status gets the resume instruction as today. Only dispatched sessions, with a parent or a population admission, sleep automatically; operator-created top-level sessions, sessions with no completed turn, and workflows without sleep_after_idle never do. A headless worker whose working status write fails leaves the turn queued. The decision supersedes the PR 574 draft's idle_down_after and takes over its provenance protection, but not its session-level destroy policy or the removal of population auto_down and auto_destroy. A separate activity event or column, a headless-only idle confirmation, and the population eviction predicate for resume were not chosen.">
+  <defs>
+    <marker id="arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M0,0 L10,5 L0,10 z" fill="#1f2328"/>
+    </marker>
+    <marker id="arrow-green" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M0,0 L10,5 L0,10 z" fill="#1a7f37"/>
+    </marker>
+  </defs>
+  <rect x="0" y="0" width="1000" height="812" fill="#ffffff"/>
+  <g font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="12" fill="#1f2328">
+    <text x="24" y="32" font-size="15" font-weight="600">Idle means the run's last status is the empty status</text>
+    <text x="24" y="52" fill="#59636e">One status stream, two readers: the idle-sleep deadline and the resume decision</text>
+
+    <!-- ===== Timeline ===== -->
+    <rect x="12" y="68" width="976" height="232" rx="8" fill="none" stroke="#d0d7de"/>
+    <text x="24" y="90" font-weight="600">One session's event log across two runs</text>
+
+    <line x1="40" y1="150" x2="962" y2="150" stroke="#1f2328" stroke-width="1.5" marker-end="url(#arrow)"/>
+
+    <g text-anchor="middle">
+      <text x="70" y="120" font-weight="600">run 1 setup</text>
+      <circle cx="70" cy="150" r="5" fill="#ffffff" stroke="#1f2328" stroke-width="1.5"/>
+
+      <text x="180" y="120" font-weight="600" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" font-size="11.5">"working"</text>
+      <text x="180" y="136" fill="#59636e">turn starts</text>
+      <rect x="173" y="143" width="14" height="14" rx="2" fill="#f6f8fa" stroke="#8c959f"/>
+
+      <text x="320" y="120" font-weight="600" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" font-size="11.5" fill="#1a7f37">""</text>
+      <text x="320" y="136" fill="#1a7f37">empty status, turn ends</text>
+      <rect x="313" y="143" width="14" height="14" rx="2" fill="#dafbe1" stroke="#1a7f37" stroke-width="1.5"/>
+
+      <text x="560" y="120" font-weight="600" fill="#0969da">down --sleep</text>
+      <text x="560" y="136" fill="#0969da">capacity slot released</text>
+      <rect x="553" y="143" width="14" height="14" rx="2" fill="#ddf4ff" stroke="#0969da" stroke-width="1.5"/>
+
+      <text x="700" y="120" font-weight="600">inbound</text>
+      <text x="700" y="136" fill="#59636e">requests wake</text>
+      <circle cx="700" cy="150" r="5" fill="#1f2328"/>
+
+      <text x="820" y="120" font-weight="600">Up</text>
+      <text x="820" y="136" fill="#59636e">reads status first</text>
+      <circle cx="820" cy="150" r="5" fill="#ffffff" stroke="#1f2328" stroke-width="1.5"/>
+
+      <text x="920" y="120" font-weight="600">run 2 setup</text>
+      <text x="920" y="136" fill="#59636e">new worker</text>
+      <circle cx="920" cy="150" r="5" fill="#ffffff" stroke="#1f2328" stroke-width="1.5"/>
+    </g>
+
+    <!-- Sleep deadline bracket -->
+    <polyline points="332,170 332,178 560,178 560,170" fill="none" stroke="#0969da" stroke-width="1.5"/>
+    <text x="340" y="196" fill="#0969da" font-weight="600">sleep_after_idle elapses with no newer inbound</text>
+    <text x="340" y="212" fill="#59636e">an inbound inside this wait cancels it; the next turn's "" starts a new one</text>
+
+    <!-- Resume read path -->
+    <polyline points="820,160 820,240 320,240 320,162" fill="none" stroke="#1a7f37" stroke-width="1.5" marker-end="url(#arrow-green)"/>
+    <text x="570" y="262" text-anchor="middle" fill="#1a7f37" font-weight="600">resume decision: previous run's last status, read before run 2 setup</text>
+    <text x="570" y="280" text-anchor="middle" fill="#59636e">the waking inbound is not consulted, so an idle sleep wakes without plect.session.resumed</text>
+
+    <!-- ===== Who sleeps ===== -->
+    <rect x="12" y="316" width="482" height="260" rx="8" fill="none" stroke="#d0d7de"/>
+    <text x="24" y="342" font-weight="600">Sleeps automatically?</text>
+
+    <rect x="24" y="356" width="458" height="46" rx="6" fill="#ddf4ff" stroke="#0969da"/>
+    <text x="36" y="375" font-weight="600">✓ dispatched: has a parent or a population admission</text>
+    <text x="36" y="393" fill="#59636e">workflow sets sleep_after_idle; its "" has aged past it</text>
+
+    <rect x="24" y="410" width="458" height="46" rx="6" fill="#f6f8fa" stroke="#8c959f"/>
+    <text x="36" y="429" font-weight="600">✗ never: operator-created top-level session</text>
+    <text x="36" y="447" fill="#59636e">no parent, no population (bare plect up); idle for any length</text>
+
+    <rect x="24" y="464" width="458" height="46" rx="6" fill="#f6f8fa" stroke="#8c959f"/>
+    <text x="36" y="483" font-weight="600">✗ no completed turn in the current run</text>
+    <text x="36" y="501" fill="#59636e">no "" written after this run began, so no deadline starts</text>
+
+    <rect x="24" y="518" width="458" height="46" rx="6" fill="#f6f8fa" stroke="#8c959f"/>
+    <text x="36" y="537" font-weight="600">✗ workflow without sleep_after_idle</text>
+    <text x="36" y="555" fill="#59636e">an absent duration disables automatic sleep</text>
+
+    <!-- ===== Resume ===== -->
+    <rect x="506" y="316" width="482" height="260" rx="8" fill="none" stroke="#d0d7de"/>
+    <text x="518" y="342" font-weight="600">plect.session.resumed on repair, wake, or up?</text>
+
+    <rect x="518" y="356" width="458" height="46" rx="6" fill="#dafbe1" stroke="#1a7f37"/>
+    <text x="530" y="375" font-weight="600">not sent: previous run's last status is ""</text>
+    <text x="530" y="393" fill="#59636e">headless and interactive runtimes alike, any provenance</text>
+
+    <rect x="518" y="410" width="458" height="46" rx="6" fill="#f6f8fa" stroke="#8c959f"/>
+    <text x="530" y="429" font-weight="600">sent: previous run's last status is nonempty</text>
+    <text x="530" y="447" fill="#59636e">a turn was cut off; still delivered ahead of queued events</text>
+
+    <rect x="518" y="464" width="458" height="46" rx="6" fill="#f6f8fa" stroke="#8c959f"/>
+    <text x="530" y="483" font-weight="600">sent: the runtime never writes status</text>
+    <text x="530" y="501" fill="#59636e">no status to read; the resume instruction arrives as today</text>
+
+    <rect x="518" y="518" width="458" height="46" rx="6" fill="#fff8c5" stroke="#9a6700"/>
+    <text x="530" y="537" font-weight="600">headless worker: "working" write fails → turn stays queued</text>
+    <text x="530" y="555" fill="#59636e">so an earlier "" never stands in for an interrupted turn</text>
+
+    <!-- ===== PR 574 draft ===== -->
+    <rect x="12" y="592" width="482" height="206" rx="8" fill="none" stroke="#d0d7de"/>
+    <text x="24" y="618" font-weight="600">Relation to the PR #574 draft</text>
+
+    <rect x="24" y="632" width="458" height="46" rx="6" fill="#ffebe9" stroke="#cf222e" stroke-dasharray="6 4"/>
+    <text x="36" y="651" fill="#cf222e" font-weight="600">✗ superseded: idle_down_after (automatic full down)</text>
+    <text x="36" y="669" fill="#59636e">sleep_after_idle with down --sleep takes its place</text>
+
+    <rect x="24" y="686" width="458" height="46" rx="6" fill="#ddf4ff" stroke="#0969da"/>
+    <text x="36" y="705" font-weight="600">taken over: protection by provenance</text>
+    <text x="36" y="723" fill="#59636e">operator-created top-level sessions never sleep automatically</text>
+
+    <rect x="24" y="740" width="458" height="46" rx="6" fill="#ffffff" stroke="#59636e" stroke-dasharray="2 3"/>
+    <text x="36" y="759" fill="#59636e" font-weight="600">not taken over: session-level destroy policy; removal of</text>
+    <text x="36" y="777" fill="#59636e">population auto_down / auto_destroy (separate decisions)</text>
+
+    <!-- ===== Alternatives ===== -->
+    <rect x="506" y="592" width="482" height="206" rx="8" fill="none" stroke="#d0d7de"/>
+    <text x="518" y="618" font-weight="600">Alternatives considered, not chosen</text>
+
+    <rect x="518" y="632" width="458" height="46" rx="6" fill="#ffffff" stroke="#8c959f" stroke-dasharray="6 4"/>
+    <text x="530" y="651" font-weight="600">separate activity event or session column</text>
+    <text x="530" y="669" fill="#59636e">a second durable answer overlapping the status log</text>
+
+    <rect x="518" y="686" width="458" height="46" rx="6" fill="#ffffff" stroke="#8c959f" stroke-dasharray="6 4"/>
+    <text x="530" y="705" font-weight="600">headless-only idle confirmation</text>
+    <text x="530" y="723" fill="#59636e">would exclude interactive runtimes that already write ""</text>
+
+    <rect x="518" y="740" width="458" height="46" rx="6" fill="#ffffff" stroke="#8c959f" stroke-dasharray="6 4"/>
+    <text x="530" y="759" font-weight="600">population eviction predicate for resume</text>
+    <text x="530" y="777" fill="#59636e">the waking inbound is newer than "", so every wake resumes</text>
+  </g>
+</svg>

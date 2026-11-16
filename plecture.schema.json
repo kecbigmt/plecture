@@ -951,6 +951,18 @@
           "minimum": 1,
           "description": "Caps how many sessions parented on a session this workflow produces may hold run state \"up\" (any run-scoped task produced) at once. `plect up` rejects a child that would exceed this rather than queueing it. Unset means no cap."
         },
+        "session": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["sleep_after_idle"],
+          "$comment": "PLECTURE-CFG-FIELD-REQUIRED: a session policy declares sleep_after_idle.",
+          "properties": {
+            "sleep_after_idle": {
+              "type": "string",
+              "description": "Positive duration after a completed turn's empty status before the session sleeps until inbound."
+            }
+          }
+        },
         "inputs_schema": {
           "$ref": "#/$defs/schemaDocument"
         },

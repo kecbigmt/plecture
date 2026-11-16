@@ -855,6 +855,46 @@ func TestSetMessage_RepeatedEmptyReportAppendsFreshClearEvent(t *testing.T) {
 	}
 }
 
+func TestSetMessage_WorkingCannotStartDuringLifecycleTransition(t *testing.T) {
+	store := testStore(t)
+	now := time.Now()
+	name := "owner/repo-1"
+	if err := store.Put(&domain.Session{Name: name, Status: contract.SessionStatusUp, CreatedAt: now, UpdatedAt: now}); err != nil {
+		t.Fatal(err)
+	}
+	locked := make(chan struct{})
+	release := make(chan struct{})
+	done := make(chan error, 1)
+	go func() {
+		done <- withLifecycleLock(store, name, func() error {
+			close(locked)
+			<-release
+			return nil
+		})
+	}()
+	<-locked
+	if err := SetMessage(nil, store, name, "working", nil); err == nil {
+		t.Fatal("working status succeeded during lifecycle transition")
+	}
+	if ev, ok, err := eventlog.NewStore(store.Dir()).LatestByType(name, event.TypeStatusMessage); err != nil || ok {
+		t.Fatalf("blocked write recorded status %+v, present=%t, err=%v", ev, ok, err)
+	}
+	close(release)
+	if err := <-done; err != nil {
+		t.Fatal(err)
+	}
+	if err := store.Update(name, func(s *domain.Session) error {
+		s.Status = contract.SessionStatusDown
+		s.SleepSince = time.Now()
+		return nil
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if err := SetMessage(nil, store, name, "working", nil); err == nil {
+		t.Fatal("working status succeeded after down")
+	}
+}
+
 func assertStatusMessageEvents(t *testing.T, store *state.Store, sessionName string, want []event.Event) {
 	t.Helper()
 	got, _, _, err := eventlog.NewStore(store.Dir()).List(sessionName, 0, event.Filter{Types: []string{event.TypeStatusMessage}})

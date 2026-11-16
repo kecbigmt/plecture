@@ -139,6 +139,9 @@ func (sup *Supervisor) wakeLoop(ctx context.Context) {
 	ticker := time.NewTicker(time.Second)
 	defer ticker.Stop()
 	for {
+		if err := service.SleepIdleSessions(sup.cfg(), sup.state, time.Now()); err != nil {
+			sup.logger.Warn("reactor: idle sleep sweep failed", "error", err)
+		}
 		if err := service.WakeQueuedSessions(sup.cfg(), sup.state); err != nil {
 			sup.logger.Warn("reactor: wake queued sessions failed", "error", err)
 		}

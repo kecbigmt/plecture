@@ -89,6 +89,7 @@ if compgen -G "$queue_dir/*.json" > /dev/null; then
     done
 fi
 
+status_write_failed=false
 while true; do
     resumed_files=()
     other_files=()
@@ -108,6 +109,17 @@ while true; do
         if [ -z "$text" ]; then
             rm -f "$f"
             continue
+        fi
+
+        if [ -n "${PLECT_SESSION_NAME:-}" ] && ! plect state set-message "$PLECT_SESSION_NAME" "working" >/dev/null 2>&1; then
+            echo "working status write failed; leaving turn queued" >&2
+            write_health 1 "$event_type"
+            status_write_failed=true
+            break
+        fi
+        if [ "$status_write_failed" = true ]; then
+            write_health 0 "$event_type"
+            status_write_failed=false
         fi
 
         thread_id="$(cat "$state_dir/thread_id" 2>/dev/null || true)"

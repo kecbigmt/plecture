@@ -17,6 +17,7 @@ type DownParams struct {
 	Identifier     string
 	Observer       task.Observer
 	Sleep          bool
+	automatic      bool
 	preserveStatus bool
 }
 
@@ -55,8 +56,10 @@ func downUnlocked(cfg *config.Config, store *state.Store, params DownParams) (*D
 	if guardErr := checkSessionGuard(cfg, sessionName); guardErr != nil {
 		return nil, guardErr
 	}
-	if guardErr := checkLifecycleRelationGuard(store, sessionName, "down"); guardErr != nil {
-		return nil, guardErr
+	if !params.automatic {
+		if guardErr := checkLifecycleRelationGuard(store, sessionName, "down"); guardErr != nil {
+			return nil, guardErr
+		}
 	}
 	if refusal := retiredRevisionRefusal(session, "`down`"); refusal != nil {
 		return nil, refusal

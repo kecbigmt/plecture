@@ -1,0 +1,151 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1200 740" width="1200" height="740" role="img" aria-label="A headless worker writes the working status before each queued turn and starts the turn only if that write succeeds; a failed write leaves the turn queued and reports the failure. Existing turn-end hooks write the empty status. The core status write now takes the lifecycle lock without waiting and refuses while the session is sleeping, destroyed, or in a lifecycle transition, then appends plect.status_message with cleared false or true to the session event log. Every second the reactor wake loop runs the idle sleep sweep before waking queued sessions: under the lifecycle lock it sleeps a session that is up, whose workflow sets sleep_after_idle, whose latest status is an empty status written at or after the latest run-node setup and older than the duration, with no newer inbound; the automatic down with sleep skips the caller relation guard and frees capacity, and an inbound that arrived during cleanup requests wake. Up computes when the previous run started, snapshots the latest status before node setup, and after setup publishes plect.session.resumed only when a run-scoped node was recreated, a resume instruction is set, and that snapshot is not an empty status from the previous run.">
+  <defs>
+    <marker id="arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M0,0 L10,5 L0,10 z" fill="#1f2328"/>
+    </marker>
+  </defs>
+  <rect x="0" y="0" width="1200" height="740" fill="#ffffff"/>
+  <g font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="12" fill="#1f2328">
+    <text x="24" y="32" font-size="15" font-weight="600">#766 Idle sleep and resume suppression read the durable empty status</text>
+
+    <!-- ===== Column A: headless worker ===== -->
+    <text x="24" y="80" font-weight="600">Headless worker loop <tspan fill="#59636e" font-weight="400">· plugin scripts</tspan></text>
+
+    <rect x="24" y="96" width="296" height="40" rx="6" fill="#f6f8fa" stroke="#8c959f"/>
+    <text x="36" y="121" font-weight="600">next queued event file</text>
+    <line x1="94" y1="136" x2="94" y2="162" stroke="#1f2328" stroke-width="1.5" marker-end="url(#arrow)"/>
+
+    <rect x="24" y="164" width="296" height="46" rx="6" fill="#ddf4ff" stroke="#0969da"/>
+    <text x="36" y="183" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" font-size="11.5">plect state set-message $S working</text>
+    <text x="36" y="201" fill="#59636e">exit status checked before the turn starts</text>
+
+    <line x1="94" y1="210" x2="94" y2="250" stroke="#1f2328" stroke-width="1.5" marker-end="url(#arrow)"/>
+    <text x="102" y="235">ok</text>
+    <line x1="252" y1="210" x2="252" y2="250" stroke="#9a6700" stroke-width="1.5" marker-end="url(#arrow)"/>
+    <text x="260" y="235" fill="#9a6700">fails</text>
+
+    <rect x="24" y="252" width="150" height="46" rx="6" fill="#f6f8fa" stroke="#8c959f"/>
+    <text x="36" y="271" font-weight="600">turn runs</text>
+    <text x="36" y="289" fill="#59636e">runtime process</text>
+
+    <rect x="184" y="252" width="136" height="46" rx="6" fill="#fff8c5" stroke="#9a6700"/>
+    <text x="194" y="271" font-weight="600">turn stays queued</text>
+    <text x="194" y="289" fill="#59636e">failure reported</text>
+
+    <line x1="94" y1="298" x2="94" y2="338" stroke="#1f2328" stroke-width="1.5" marker-end="url(#arrow)"/>
+
+    <rect x="24" y="340" width="296" height="46" rx="6" fill="#dafbe1" stroke="#1a7f37"/>
+    <text x="36" y="359" font-weight="600">turn-end hook writes ""</text>
+    <text x="36" y="377" fill="#59636e">existing hooks, unchanged</text>
+
+    <polyline points="60,386 60,404 14,404 14,116 22,116" fill="none" stroke="#1f2328" stroke-width="1.5" marker-end="url(#arrow)"/>
+    <text x="68" y="418" fill="#59636e">next turn</text>
+
+    <line x1="320" y1="187" x2="378" y2="187" stroke="#1f2328" stroke-width="1.5" marker-end="url(#arrow)"/>
+    <text x="349" y="180" text-anchor="middle" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" font-size="11.5">working</text>
+    <line x1="320" y1="363" x2="378" y2="363" stroke="#1f2328" stroke-width="1.5" marker-end="url(#arrow)"/>
+    <text x="349" y="356" text-anchor="middle" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" font-size="11.5">""</text>
+
+    <!-- ===== Column B: status write ===== -->
+    <text x="380" y="80" font-weight="600">Core</text>
+    <rect x="380" y="150" width="170" height="250" rx="6" fill="#ddf4ff" stroke="#0969da"/>
+    <text x="392" y="172" font-weight="600">status write</text>
+    <text x="392" y="190" fill="#59636e" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" font-size="11.5">SetMessage</text>
+    <text x="392" y="216">takes the lifecycle lock</text>
+    <text x="392" y="234">without waiting</text>
+    <text x="392" y="260">refuses while the</text>
+    <text x="392" y="278">session is sleeping,</text>
+    <text x="392" y="296">destroyed, or in a</text>
+    <text x="392" y="314">lifecycle transition</text>
+    <text x="392" y="340" fill="#59636e">a refusal is what makes</text>
+    <text x="392" y="358" fill="#59636e">the worker's working</text>
+    <text x="392" y="376" fill="#59636e">write fail</text>
+
+    <line x1="550" y1="230" x2="604" y2="230" stroke="#1f2328" stroke-width="1.5" marker-end="url(#arrow)"/>
+    <text x="577" y="222" text-anchor="middle">appends</text>
+
+    <!-- ===== Column C: event log ===== -->
+    <rect x="606" y="96" width="180" height="600" rx="6" fill="#f6f8fa" stroke="#8c959f"/>
+    <text x="618" y="118" font-weight="600">session event log</text>
+
+    <rect x="618" y="132" width="156" height="44" rx="4" fill="#ffffff" stroke="#8c959f"/>
+    <text x="628" y="150" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" font-size="11">plect.status_message</text>
+    <text x="628" y="167" fill="#59636e">cleared=false: working</text>
+
+    <rect x="618" y="208" width="156" height="44" rx="4" fill="#dafbe1" stroke="#1a7f37"/>
+    <text x="628" y="226" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" font-size="11">plect.status_message</text>
+    <text x="628" y="243" fill="#1a7f37">cleared=true: ""</text>
+
+    <rect x="618" y="284" width="156" height="44" rx="4" fill="#ffffff" stroke="#8c959f"/>
+    <text x="628" y="302" font-weight="600">inbound events</text>
+    <text x="628" y="319" fill="#59636e">wake a sleeping session</text>
+
+    <text x="618" y="356" fill="#59636e">the latest status is the</text>
+    <text x="618" y="372" fill="#59636e">only idle fact; no new</text>
+    <text x="618" y="388" fill="#59636e">event type or column</text>
+
+    <rect x="618" y="610" width="156" height="44" rx="4" fill="#ffffff" stroke="#8c959f"/>
+    <text x="628" y="628" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" font-size="11">plect.session.resumed</text>
+    <text x="628" y="645" fill="#59636e">ahead of queued events</text>
+
+    <!-- ===== Column D top: idle sleep sweep ===== -->
+    <line x1="786" y1="200" x2="834" y2="200" stroke="#1f2328" stroke-width="1.5" marker-end="url(#arrow)"/>
+    <text x="810" y="192" text-anchor="middle">reads</text>
+
+    <rect x="836" y="96" width="340" height="350" rx="6" fill="none" stroke="#0969da"/>
+    <text x="848" y="118" font-weight="600">reactor wake loop <tspan fill="#59636e" font-weight="400">· every second</tspan></text>
+    <text x="848" y="136" fill="#59636e">idle sleep sweep runs before waking queued sessions</text>
+
+    <text x="848" y="162" font-weight="600">SleepIfIdle, under the lifecycle lock; all must hold:</text>
+    <g font-size="11.5">
+      <text x="856" y="182">1  session up, run scope up</text>
+      <text x="856" y="199">2  workflow sets sleep_after_idle</text>
+      <text x="856" y="216" fill="#1a7f37">3  latest status is cleared=true</text>
+      <text x="856" y="233" fill="#1a7f37">4  written at or after the latest run-node setup</text>
+      <text x="856" y="250">5  older than sleep_after_idle</text>
+      <text x="856" y="267">6  no inbound newer than that status</text>
+    </g>
+    <line x1="926" y1="276" x2="926" y2="296" stroke="#1f2328" stroke-width="1.5" marker-end="url(#arrow)"/>
+
+    <rect x="848" y="298" width="316" height="62" rx="6" fill="#ddf4ff" stroke="#0969da"/>
+    <text x="860" y="318" font-weight="600">down --sleep, automatic</text>
+    <text x="860" y="335" fill="#59636e">skips the caller relation guard</text>
+    <text x="860" y="352" fill="#59636e">run-scoped cleanup frees max_up_children</text>
+    <line x1="926" y1="360" x2="926" y2="380" stroke="#1f2328" stroke-width="1.5" marker-end="url(#arrow)"/>
+
+    <rect x="848" y="382" width="316" height="48" rx="6" fill="#ddf4ff" stroke="#0969da"/>
+    <text x="860" y="401" font-weight="600">inbound newer after cleanup?</text>
+    <text x="860" y="419" fill="#59636e">yes: request wake for it</text>
+
+    <!-- ===== Column D bottom: Up ===== -->
+    <line x1="786" y1="540" x2="834" y2="540" stroke="#1f2328" stroke-width="1.5" marker-end="url(#arrow)"/>
+    <text x="810" y="532" text-anchor="middle">reads</text>
+    <line x1="836" y1="632" x2="788" y2="632" stroke="#1f2328" stroke-width="1.5" marker-end="url(#arrow)"/>
+    <text x="811" y="624" text-anchor="middle">appends</text>
+
+    <rect x="836" y="462" width="340" height="234" rx="6" fill="none" stroke="#0969da"/>
+    <text x="848" y="484" font-weight="600">Up that recreates a run-scoped node</text>
+    <text x="848" y="502" fill="#59636e">repair, wake, or explicit up</text>
+    <g font-size="11.5">
+      <text x="856" y="526">1  clean up stale nodes</text>
+      <text x="856" y="545">2  previous run start = latest old run-node setup</text>
+      <text x="856" y="564" fill="#0969da" font-weight="600">3  snapshot the latest status, before setup</text>
+      <text x="856" y="583">4  run node setup; the new worker may write status</text>
+      <text x="856" y="602" fill="#1a7f37" font-weight="600">5  idle = snapshot is cleared=true, not before 2</text>
+      <text x="856" y="621">6  publish resumed only if a node was recreated,</text>
+      <text x="856" y="638">    resume_instruction is set, and not idle</text>
+      <text x="856" y="660" fill="#59636e">trigger metadata stays repair / wake / up</text>
+    </g>
+    <text x="848" y="684" fill="#59636e">the waking inbound plays no part in this decision</text>
+
+    <!-- Legend -->
+    <rect x="24" y="712" width="24" height="14" rx="3" fill="#ddf4ff" stroke="#0969da"/>
+    <text x="56" y="723">changed in this PR</text>
+    <rect x="184" y="712" width="24" height="14" rx="3" fill="#dafbe1" stroke="#1a7f37"/>
+    <text x="216" y="723">the empty status and its readers</text>
+    <rect x="420" y="712" width="24" height="14" rx="3" fill="#fff8c5" stroke="#9a6700"/>
+    <text x="452" y="723">failure path</text>
+    <rect x="556" y="712" width="24" height="14" rx="3" fill="#f6f8fa" stroke="#8c959f"/>
+    <text x="588" y="723">unchanged</text>
+  </g>
+</svg>
