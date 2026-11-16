@@ -148,7 +148,7 @@ HAS_MESSAGE_DELTA=false
 printf '%s' "$publish_events" | jq -e 'any(.[]?; . == "message_delta")' >/dev/null 2>&1 && HAS_MESSAGE_DELTA=true
 DEDUP_PREFIX=""
 [ "$HAS_MESSAGE" = true ] && [ "$HAS_MESSAGE_DELTA" = true ] && DEDUP_PREFIX="PLECT_CLAUDE_MESSAGE_DEDUP=true "
-TICK_PREFIX=""
+TICK_PREFIX="PLECT_CLAUDE_TICK_ON_STOP=false "
 [ "${tick_on_turn_end-false}" = true ] && TICK_PREFIX="PLECT_CLAUDE_TICK_ON_STOP=true "
 jq -nc --arg activity "$activity_bin" --arg dedup_prefix "$DEDUP_PREFIX" --arg tick_prefix "$TICK_PREFIX" --arg has_message "$HAS_MESSAGE" --argjson has_message_delta "$HAS_MESSAGE_DELTA" --argjson skip_bypass_warning "$SKIP_BYPASS_WARNING" '
   {
