@@ -48,14 +48,11 @@ func TestDispatcherPluginChannelReceivesCache(t *testing.T) {
 	deadline := time.Now().Add(2 * time.Second)
 	for {
 		got, err := os.ReadFile(out)
-		if err == nil {
-			if string(got) != want {
-				t.Fatalf("delivery cache = %q, want %q", got, want)
-			}
+		if err == nil && string(got) == want {
 			break
 		}
 		if time.Now().After(deadline) {
-			t.Fatalf("delivery did not create output: %v", err)
+			t.Fatalf("delivery cache = %q, want %q (read error: %v)", got, want, err)
 		}
 		time.Sleep(time.Millisecond)
 	}
