@@ -33,6 +33,7 @@ func (p *recoveryPublisher) Publish(_ context.Context, resource, _, _, body stri
 func TestRecoveryFindsRootsAndSubscribedThreadRepliesWithTranscript(t *testing.T) {
 	now := time.Unix(1700001000, 0).UTC()
 	var requests []string
+	var logs strings.Builder
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		r.ParseForm()
 		requests = append(requests, r.URL.Path+"?"+r.Form.Get("ts"))
@@ -60,7 +61,7 @@ func TestRecoveryFindsRootsAndSubscribedThreadRepliesWithTranscript(t *testing.T
 		t.Fatal(err)
 	}
 	p := &recoveryPublisher{}
-	b := &BotAdapter{bot: Bot{ChannelID: "C1"}, api: slack.New("token", slack.OptionAPIURL(server.URL+"/")), teamID: "T1", botUserID: "UBOT", publisher: p, logger: slog.New(slog.NewTextHandler(io.Discard, nil)), recovery: store}
+	b := &BotAdapter{bot: Bot{ChannelID: "C1"}, api: slack.New("token", slack.OptionAPIURL(server.URL+"/")), teamID: "T1", botUserID: "UBOT", publisher: p, logger: slog.New(slog.NewTextHandler(&logs, nil)), recovery: store}
 	b.fetcher = b
 	b.linker = b
 	if err := store.SetBoundary("T1/UBOT/C1", now.Add(-time.Hour)); err != nil {
@@ -73,6 +74,9 @@ func TestRecoveryFindsRootsAndSubscribedThreadRepliesWithTranscript(t *testing.T
 	}
 	if len(p.calls) != 3 {
 		t.Fatalf("published %d: %v; requests %v", len(p.calls), p.calls, requests)
+	}
+	if !strings.Contains(logs.String(), "recovered 3 mentions") {
+		t.Fatalf("recovery log = %s", logs.String())
 	}
 	foundContext := false
 	for _, body := range p.bodies {
@@ -139,7 +143,7 @@ func TestFailedRecoveryPreservesBoundaryAndKeepsLiveRouting(t *testing.T) {
 		t.Fatalf("boundary advanced to %v", got)
 	}
 	b.routeMention(&slackevents.AppMentionEvent{User: "U1", Channel: "C1", TimeStamp: "1700000000.000002", ThreadTimeStamp: "1700000000.000001", Text: "<@UBOT> hello"})
-	if len(p.calls) != 1 || !strings.Contains(logs.String(), "not_in_channel") || !strings.Contains(logs.String(), "range") {
+	if len(p.calls) != 1 || !strings.Contains(logs.String(), "not_in_channel") || !strings.Contains(logs.String(), "range") || !strings.Contains(logs.String(), "recovered 0 mentions") {
 		t.Fatalf("calls=%v logs=%s", p.calls, logs.String())
 	}
 }

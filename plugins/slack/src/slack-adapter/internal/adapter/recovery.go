@@ -16,6 +16,8 @@ func (b *BotAdapter) Recover(ctx context.Context, now time.Time, subs *Subscript
 	if b.recovery == nil {
 		return nil
 	}
+	recovered := 0
+	defer func() { b.logger.Info(fmt.Sprintf("recovered %d mentions", recovered), "channel_id", b.bot.ChannelID) }()
 	key := b.teamID + "/" + b.botUserID + "/" + b.bot.ChannelID
 	saved := b.recovery.Boundary(key)
 	firstStart := saved.IsZero()
@@ -41,7 +43,6 @@ func (b *BotAdapter) Recover(ctx context.Context, now time.Time, subs *Subscript
 		b.logger.Warn("recovery range not fetched", "channel_id", b.bot.ChannelID, "range_start", saved, "range_end", floor)
 		start = floor
 	}
-	recovered := 0
 	scannedRoots := make(map[string]bool)
 	scanThread := func(root string) error {
 		if scannedRoots[root] {
@@ -126,7 +127,7 @@ func (b *BotAdapter) Recover(ctx context.Context, now time.Time, subs *Subscript
 		b.logRecoveryFailure(start, now, err)
 		return err
 	}
-	b.logger.Info("recovery scan complete", "channel_id", b.bot.ChannelID, "range_start", start, "range_end", now, "mentions_recovered", recovered)
+	b.logger.Info("recovery scan complete", "channel_id", b.bot.ChannelID, "range_start", start, "range_end", now)
 	return nil
 }
 
