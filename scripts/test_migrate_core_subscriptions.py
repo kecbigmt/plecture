@@ -93,8 +93,9 @@ class MigrationTest(unittest.TestCase):
             with sqlite3.connect(db_path) as db:
                 db.execute("BEGIN IMMEDIATE")
                 migration.normalize_existing(db, resolve)
-                inserted, dropped = migration.import_rows(db, github, slack, migration.read_pending(pending), resolve)
+                inserted, already, dropped = migration.import_rows(db, github, slack, migration.read_pending(pending), resolve)
             self.assertEqual(inserted, 3)
+            self.assertEqual(already, 2)
             self.assertEqual(len(dropped), 3)
             self.assertTrue(any("no resource declaration matches" in reason for reason in dropped))
             with sqlite3.connect(db_path) as db:
@@ -107,6 +108,38 @@ class MigrationTest(unittest.TestCase):
                 ("two", "item", "item-one", "item://one", "runtime"),
                 ("two", "task-item", "task-three", "task://three", "task"),
             ])
+
+    def test_import_accepts_existing_qualified_type_and_counts_existing_pair(self):
+        with sqlite3.connect(":memory:") as db:
+            db.executescript("""
+                CREATE TABLE sessions (id TEXT PRIMARY KEY, name TEXT, status TEXT, project_root TEXT, resource_id TEXT);
+                CREATE TABLE resources (id TEXT PRIMARY KEY, type TEXT, name TEXT UNIQUE, locator TEXT, created_at TEXT, max_subscribers INTEGER);
+                CREATE TABLE task_instances (session_id TEXT, resource_id TEXT, status TEXT);
+                CREATE TABLE node_executions (session_id TEXT, subscription_id TEXT, status TEXT);
+                CREATE TABLE subscriptions (session_id TEXT, resource_id TEXT, source TEXT, inputs_json TEXT, created_at TEXT,
+                    PRIMARY KEY (session_id, resource_id, source));
+                INSERT INTO sessions VALUES ('s1', 'one', 'down', '', 'r1');
+                INSERT INTO sessions VALUES ('s2', 'two', 'down', '', NULL);
+                INSERT INTO resources VALUES ('r1', 'official.github.issue', 'issue-1', 'https://github.com/o/r/issues/1', '2026-01-01', NULL);
+                INSERT INTO resources VALUES ('r2', 'official.github.pull', 'pull-2', 'https://github.com/o/r/pull/2', '2026-01-01', NULL);
+                INSERT INTO resources VALUES ('r3', 'official.github.pull', 'issue-3', 'https://github.com/o/r/issues/3', '2026-01-01', NULL);
+                INSERT INTO subscriptions VALUES ('s1', 'r1', 'dispatch', '{}', '2026-01-01');
+            """)
+            rows = [
+                {"session_name": "one", "resource": "https://github.com/o/r/issues/1"},
+                {"session_name": "two", "resource": "https://github.com/o/r/issues/1"},
+                {"session_name": "two", "resource": "https://github.com/o/r/pull/2"},
+                {"session_name": "two", "resource": "https://github.com/o/r/issues/3"},
+            ]
+            def resolve(project_root, locator):
+                kind = "issue" if "/issues/" in locator else "pull"
+                return {"type": kind, "name": "issue-3" if locator.endswith("/3") else "issue-1" if kind == "issue" else "pull-2"}
+
+            inserted, already, dropped = migration.import_rows(db, [(Path("ledger.json"), rows)], [], [], resolve)
+            self.assertEqual((inserted, already, len(dropped)), (2, 1, 1))
+            self.assertIn("already belongs to type 'official.github.pull'", dropped[0])
+            self.assertEqual(db.execute("SELECT type FROM resources WHERE id = 'r1'").fetchone()[0], "official.github.issue")
+            self.assertEqual(db.execute("SELECT COUNT(*) FROM subscriptions").fetchone()[0], 3)
 
 
 if __name__ == "__main__":
