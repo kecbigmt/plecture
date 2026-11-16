@@ -40,13 +40,15 @@ only the channel and thread timestamp. Mention memberships resolve to the
 plugin. That declaration owns their type, name, and subscriber limit. Use
 empty arrays when no ledger exists.
 
-Run the one-time importer from a checkout of this release, with the installed
-`plect` binary available on `PATH`:
+Run the one-time importer from a checkout of this release. Pass the absolute
+path to the new `plect` binary, because `PATH` may still select the old release:
 
-```sh
+```bash
+set -o pipefail
 python3 scripts/migrate-core-subscriptions.py \
   --data-home /path/to/plect-data \
-  --manifest /path/to/subscription-manifest.json
+  --manifest /path/to/subscription-manifest.json \
+  --plect /path/to/new/plect 2>&1 | tee /path/to/import.log
 ```
 
 The importer first makes an online backup of `storage.db` and copies the
@@ -56,15 +58,17 @@ manifest, ledgers, and any `pending_delivery.json` into
 live entry, task, node, and pending `subscription_retries` rows into the new
 table. The importer then resolves resource declarations for the plugin ledgers
 and live `pending_delivery.json` subscribe intents in one database transaction.
-The installed `plect` binary must contain the resource declarations used by
+The new `plect` binary must contain the resource declarations used by
 those sessions, including trusted project resources. Unsubscribe intents and
 subscriptions for destroyed sessions are dropped. A membership that already
 has a dispatch, task, or node source does not gain an extra runtime source.
+The importer counts these and other existing session/resource pairs as
+`already present`, separately from imported and dropped rows.
 If an existing database membership cannot resolve to a declaration, the
 transaction stops so its stored binding is left intact.
 Missing sessions, unresolved resource declarations, and memberships beyond
-`max_subscribers` are reported as `Dropped:` lines; review each reason before
-restarting.
+`max_subscribers` are reported as `Dropped:` lines; review each reason in
+`import.log` before restarting.
 
 ## Verify and recover
 

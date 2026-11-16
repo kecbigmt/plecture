@@ -68,7 +68,7 @@ def resource_for(db, locator, identity):
     cap = identity["max_subscribers"] or None
     row = db.execute("SELECT id, type, name FROM resources WHERE name = ?", (name,)).fetchone()
     if row:
-        if row[1] != kind:
+        if row[1] != kind and not row[1].endswith("." + kind):
             raise ValueError(f"resource name {name!r} already belongs to type {row[1]!r}")
         duplicate = db.execute("SELECT id FROM resources WHERE locator = ? AND type = ''", (locator,)).fetchone()
         if duplicate and duplicate[0] != row[0]:
@@ -163,6 +163,7 @@ def thread_locator(db, channel, timestamp, host):
 
 def import_rows(db, github, slack, pending, resolve):
     inserted = 0
+    already_present = 0
     dropped = []
     entries = []
     for path, rows in github:
@@ -207,13 +208,14 @@ def import_rows(db, github, slack, pending, resolve):
             if count >= cap:
                 dropped.append(f"{path}: resource {locator!r} has reached max_subscribers ({cap})")
                 continue
-        if source != "runtime" and already:
+        if already:
+            already_present += 1
             continue
         now = dt.datetime.now(dt.timezone.utc).strftime("%Y-%m-%dT%H:%M:%S.%f000Z")
         cursor = db.execute("INSERT INTO subscriptions (session_id, resource_id, source, inputs_json, created_at) VALUES (?, ?, ?, '{}', ?) ON CONFLICT DO NOTHING",
                             (session[0], resource_id, source, now))
         inserted += cursor.rowcount
-    return inserted, dropped
+    return inserted, already_present, dropped
 
 
 def main(argv=None):
@@ -230,10 +232,10 @@ def main(argv=None):
         db.execute("PRAGMA foreign_keys = ON")
         db.execute("BEGIN IMMEDIATE")
         normalize_existing(db, plect_resolver(args.plect, args.data_home))
-        inserted, dropped = import_rows(db, github, slack, read_pending(args.data_home / "pending_delivery.json"), plect_resolver(args.plect, args.data_home))
+        inserted, already_present, dropped = import_rows(db, github, slack, read_pending(args.data_home / "pending_delivery.json"), plect_resolver(args.plect, args.data_home))
     for reason in dropped:
         print(f"Dropped: {reason}", file=sys.stderr)
-    print(f"Imported {inserted} subscription rows; dropped {len(dropped)}")
+    print(f"Imported {inserted} subscription rows; already present {already_present}; dropped {len(dropped)}")
 
 
 if __name__ == "__main__":
