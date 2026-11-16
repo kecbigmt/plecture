@@ -492,6 +492,4 @@ jq -nc \
   '{seq: $seq, silence_expected: $silence_expected, fingerprint: "\($activity):\($seq)", observed_at: $at}' \
   > "$file" 2>/dev/null
 
-[ "$activity" = waiting ] && [ "${PLECT_CLAUDE_TICK_ON_STOP:-}" = true ] && run_plect tick "$PLECT_SESSION_NAME"
-
 exit 0

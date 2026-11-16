@@ -41,7 +41,7 @@ func TickSession(cfg *config.Config, store *state.Store, params TickParams) (*Ch
 	}
 
 	// Reactive ticks keep the reactor's scheduling watermark even without an
-	// announcement; plain CLI ticks must not postpone a due heartbeat.
+	// announcement; other non-heartbeat ticks must not postpone a due heartbeat.
 	if params.Trigger == TickTriggerHeartbeat || params.Trigger == TickTriggerEvent {
 		if err := stampLastTick(store, resolvedName); err != nil {
 			return nil, err
