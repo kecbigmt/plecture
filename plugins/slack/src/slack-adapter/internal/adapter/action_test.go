@@ -87,7 +87,7 @@ func TestReplyClearsWorkingStatus(t *testing.T) {
 	if err := action.PostReply("T1", "complete reply", &bytes.Buffer{}); err != nil {
 		t.Fatal(err)
 	}
-	want := []string{"status:processing", "post:complete reply", "status:"}
+	want := []string{"status:processing", "post:complete reply", "status:active"}
 	if !reflect.DeepEqual(calls, want) {
 		t.Fatalf("calls = %v, want %v", calls, want)
 	}
@@ -97,7 +97,12 @@ func TestEmptyStatusClearsAtTurnEnd(t *testing.T) {
 	var statuses []string
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		r.ParseForm()
-		statuses = append(statuses, r.PostForm.Get("status"))
+		status := r.PostForm.Get("status")
+		statuses = append(statuses, status)
+		if status == "" {
+			w.Write([]byte(`{"ok":false,"error":"invalid_arguments"}`))
+			return
+		}
 		w.Write([]byte(`{"ok":true}`))
 	}))
 	defer server.Close()
@@ -111,7 +116,7 @@ func TestEmptyStatusClearsAtTurnEnd(t *testing.T) {
 	if err := action.SetStatus("T1", ""); err != nil {
 		t.Fatal(err)
 	}
-	if !reflect.DeepEqual(statuses, []string{"processing", ""}) {
+	if !reflect.DeepEqual(statuses, []string{"processing", "active"}) {
 		t.Fatalf("statuses = %v", statuses)
 	}
 }
