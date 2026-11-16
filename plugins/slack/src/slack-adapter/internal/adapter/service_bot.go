@@ -65,74 +65,80 @@ func (b *BotAdapter) ConfigureRecovery(store *RecoveryStore, subs *Subscriptions
 
 func (b *BotAdapter) Run(ctx context.Context) error {
 	go func() {
-		connected := false
-		scanning := false
-		scanOK := false
-		pendingScan := false
-		scanDone := make(chan bool, 1)
-		launchScan := func() {
-			scanning = true
-			go func() {
-				err := b.Recover(ctx, time.Now(), b.subs)
-				if err != nil {
-					b.logger.Warn("recovery incomplete", "channel_id", b.bot.ChannelID, "error", err)
-				}
-				select {
-				case scanDone <- err == nil:
-				case <-ctx.Done():
-				}
-			}()
-		}
 		ticker := time.NewTicker(time.Minute)
 		defer ticker.Stop()
-		for {
-			select {
-			case <-ctx.Done():
-				return
-			case scanOK = <-scanDone:
-				scanning = false
-				if pendingScan && connected {
-					pendingScan = false
-					scanOK = false
-					launchScan()
-				}
-			case <-ticker.C:
-				if connected && scanOK && b.recovery != nil {
-					if err := b.recovery.SetBoundary(b.teamID+"/"+b.botUserID+"/"+b.bot.ChannelID, time.Now()); err != nil {
-						b.logger.Warn("online position failed", "channel_id", b.bot.ChannelID, "error", err)
-					}
-				}
-			case event, ok := <-b.socket.Events:
-				if !ok {
-					return
-				}
-				if event.Type == socketmode.EventTypeConnected {
-					connected = true
-					scanOK = false
-					if scanning {
-						pendingScan = true
-					} else {
-						launchScan()
-					}
-					continue
-				}
-				if event.Type == socketmode.EventTypeDisconnect || event.Type == socketmode.EventTypeConnectionError {
-					connected = false
-				}
-				if event.Type != socketmode.EventTypeEventsAPI {
-					continue
-				}
-				if event.Request != nil {
-					b.socket.Ack(*event.Request)
-				}
-				outer, ok := event.Data.(slackevents.EventsAPIEvent)
-				if ok {
-					b.handleEventsAPI(outer)
-				}
-			}
-		}
+		b.runEvents(ctx, b.socket.Events, ticker.C, func(ctx context.Context) error {
+			return b.Recover(ctx, time.Now(), b.subs)
+		})
 	}()
 	return b.socket.RunContext(ctx)
+}
+
+func (b *BotAdapter) runEvents(ctx context.Context, events <-chan socketmode.Event, ticks <-chan time.Time, scan func(context.Context) error) {
+	connected := false
+	scanning := false
+	scanOK := false
+	pendingScan := false
+	scanDone := make(chan bool, 1)
+	launchScan := func() {
+		scanning = true
+		go func() {
+			err := scan(ctx)
+			if err != nil {
+				b.logger.Warn("recovery incomplete", "channel_id", b.bot.ChannelID, "error", err)
+			}
+			select {
+			case scanDone <- err == nil:
+			case <-ctx.Done():
+			}
+		}()
+	}
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case scanOK = <-scanDone:
+			scanning = false
+			if pendingScan && connected {
+				pendingScan = false
+				scanOK = false
+				launchScan()
+			}
+		case at := <-ticks:
+			if connected && scanOK && b.recovery != nil {
+				if err := b.recovery.SetBoundary(b.teamID+"/"+b.botUserID+"/"+b.bot.ChannelID, at); err != nil {
+					b.logger.Warn("online position failed", "channel_id", b.bot.ChannelID, "error", err)
+				}
+			}
+		case event, ok := <-events:
+			if !ok {
+				return
+			}
+			if event.Type == socketmode.EventTypeConnected {
+				connected = true
+				scanOK = false
+				if scanning {
+					pendingScan = true
+				} else {
+					launchScan()
+				}
+				continue
+			}
+			if event.Type == socketmode.EventTypeDisconnect || event.Type == socketmode.EventTypeConnectionError {
+				connected = false
+			}
+			if event.Type != socketmode.EventTypeEventsAPI {
+				continue
+			}
+			if event.Request != nil {
+				b.socket.Ack(*event.Request)
+			}
+			outer, ok := event.Data.(slackevents.EventsAPIEvent)
+			if ok {
+				b.handleEventsAPI(outer)
+			}
+		}
+	}
 }
 
 func (b *BotAdapter) handleEventsAPI(outer slackevents.EventsAPIEvent) {
