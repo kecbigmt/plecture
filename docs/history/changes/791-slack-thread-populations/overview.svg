@@ -1,0 +1,67 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1120 630" width="1120" height="630" role="img" aria-labelledby="title desc">
+  <title id="title">Change: Slack mention routing and App channel configuration</title>
+  <desc id="desc">Before: one channel per bot entry and one Socket Mode connection per entry. A mention without a thread subscriber falls through to the bot subscriber. After: one App entry contains several channels and uses one connection. Core sends the population query snapshot; a covered unbound mention is held in the adapter's durable pending store, streamed as an appearance, then published to the new thread session after its subscription exists. An uncovered channel still uses the bot subscriber. The old channel_id service key is removed.</desc>
+  <defs>
+    <style>
+      svg { --bg:#fff; --fg:#1f2328; --muted:#59636e; --line:#d0d7de; --neutral:#8c959f; --neutral-bg:#f6f8fa; --added:#1a7f37; --added-bg:#dafbe1; --changed:#0969da; --changed-bg:#ddf4ff; --removed:#cf222e; --removed-bg:#ffebe9; }
+      @media (prefers-color-scheme: dark) { svg { --bg:#0d1117; --fg:#e6edf3; --muted:#9198a1; --line:#3d444d; --neutral:#656c76; --neutral-bg:#151b23; --added:#3fb950; --added-bg:#0f2a1a; --changed:#4493f8; --changed-bg:#0c2441; --removed:#f85149; --removed-bg:#3a1416; } }
+      text { font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Helvetica,Arial,sans-serif; font-size:13px; fill:var(--fg); }
+      .bg { fill:var(--bg); } .title { font-size:19px; font-weight:600; } .heading { font-size:16px; font-weight:600; }
+      .note { font-size:12px; fill:var(--muted); } .label { font-size:11px; fill:var(--muted); } .tag { font-size:11px; font-weight:700; letter-spacing:.05em; }
+      .panel { fill:none; stroke:var(--line); } .neutral { fill:var(--neutral-bg); stroke:var(--neutral); stroke-width:1.5; }
+      .added { fill:var(--added-bg); stroke:var(--added); stroke-width:2.5; } .changed { fill:var(--changed-bg); stroke:var(--changed); stroke-width:1.7; }
+      .removed { fill:var(--removed-bg); stroke:var(--removed); stroke-width:1.5; stroke-dasharray:7 4; }
+      .flow { fill:none; stroke:var(--fg); stroke-width:1.5; marker-end:url(#arrow); } .head { fill:var(--fg); }
+    </style>
+    <marker id="arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path class="head" d="M0,0 L10,5 L0,10 z"/></marker>
+  </defs>
+  <rect class="bg" width="1120" height="630"/>
+  <text class="title" x="24" y="38">Slack mention delivery: base to head</text>
+  <text class="note" x="24" y="60">Changed routing contract and service config · PR 791</text>
+  <rect class="panel" x="20" y="80" width="512" height="526" rx="8"/>
+  <text class="heading" x="36" y="110">Before · base branch</text>
+  <rect class="removed" x="52" y="140" width="436" height="70" rx="6"/>
+  <text class="tag" x="68" y="162">REMOVED CONFIG SHAPE</text>
+  <text x="68" y="183">bot entry: channel_id = one channel</text>
+  <text class="note" x="68" y="199">Repeated App entries open competing connections</text>
+  <path class="flow" d="M270 210 V250"/>
+  <text class="label" x="280" y="236">mention on one connection</text>
+  <rect class="neutral" x="52" y="252" width="436" height="70" rx="6"/>
+  <text class="tag" x="68" y="274">UNCHANGED FIRST ROUTE</text>
+  <text x="68" y="296">Publish to existing thread subscriber</text>
+  <path class="flow" d="M270 322 V363"/>
+  <text class="label" x="280" y="347">zero delivery</text>
+  <rect class="removed" x="52" y="365" width="436" height="70" rx="6"/>
+  <text class="tag" x="68" y="387">CHANGED FALLBACK</text>
+  <text x="68" y="409">Every unbound mention goes to bot resource</text>
+  <path class="flow" d="M270 435 V477"/>
+  <text class="label" x="280" y="461">delivered or logged drop</text>
+  <rect class="neutral" x="52" y="479" width="436" height="70" rx="6"/>
+  <text x="68" y="506">Bot subscriber receives user.emit</text>
+  <text class="note" x="68" y="529">No per-thread population admission</text>
+
+  <rect class="panel" x="550" y="80" width="550" height="526" rx="8"/>
+  <text class="heading" x="566" y="110">After · head commit</text>
+  <rect class="changed" x="582" y="137" width="486" height="65" rx="6"/>
+  <text class="tag" x="598" y="159">CHANGED CONFIG</text>
+  <text x="598" y="180">One App: channel_ids = several channels</text>
+  <text class="note" x="598" y="196">One Socket Mode connection</text>
+  <path class="flow" d="M825 202 V229"/>
+  <text class="label" x="837" y="218">mention</text>
+  <rect class="changed" x="582" y="231" width="486" height="66" rx="6"/>
+  <text class="tag" x="598" y="253">CHANGED ROUTING</text>
+  <text x="598" y="275">Publish to existing thread subscriber first</text>
+  <path class="flow" d="M825 297 V327"/>
+  <text class="label" x="837" y="314">zero delivery in covered channel</text>
+  <path class="flow" d="M1068 265 H1085 V504 H1068"/>
+  <text class="label" transform="translate(1096 439) rotate(-90)">zero delivery in uncovered channel</text>
+  <rect class="added" x="582" y="329" width="486" height="97" rx="6"/>
+  <text class="tag" x="598" y="351">ADDED COVERED-CHANNEL PATH</text>
+  <text x="598" y="373">Core query snapshot → durable pending record</text>
+  <text x="598" y="394">Local appearance stream → thread member</text>
+  <text class="note" x="598" y="414">Subscription visible → transcript user.emit</text>
+  <rect class="neutral" x="582" y="458" width="486" height="91" rx="6"/>
+  <text class="tag" x="598" y="480">RETAINED BOT FALLBACK</text>
+  <text x="598" y="503">Uncovered channel → bot resource</text>
+  <text class="note" x="598" y="525">Zero delivery still logs a drop</text>
+</svg>
