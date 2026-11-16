@@ -155,36 +155,36 @@ func (db *DB) EnsureLiveSession(ctx context.Context, name string) (string, error
 	if id != "" {
 		return id, nil
 	}
-	existed, err := db.sessionEverExisted(ctx, name)
-	if err != nil {
-		return "", fmt.Errorf("ensure live session %q: %w", name, err)
-	}
-	if existed {
-		return "", fmt.Errorf("no live session named %q", name)
-	}
-	now := time.Now().UTC()
-	if err := db.PutSession(ctx, &domain.Session{Name: name, Status: contract.SessionStatusDown, CreatedAt: now, UpdatedAt: now}); err != nil {
-		return "", fmt.Errorf("ensure live session %q: %w", name, err)
-	}
-	id, err = db.EventStreamID(ctx, name)
+	// The two existence checks must share the writer lock: a concurrent first
+	// append can otherwise create a live row between them and look destroyed.
+	err = db.WithImmediateTx(ctx, func(tx *sql.Tx) error {
+		q := sqlcgen.New(tx)
+		var err error
+		id, err = q.SessionIDByLiveName(ctx, name)
+		if err == nil {
+			return nil
+		}
+		if !errors.Is(err, sql.ErrNoRows) {
+			return err
+		}
+		existed, err := q.SessionEverExistedByName(ctx, name)
+		if err != nil {
+			return err
+		}
+		if existed != 0 {
+			return fmt.Errorf("no live session named %q", name)
+		}
+		now := time.Now().UTC()
+		if err := db.writeSessionTx(ctx, tx, &domain.Session{Name: name, Status: contract.SessionStatusDown, CreatedAt: now, UpdatedAt: now}); err != nil {
+			return err
+		}
+		id, err = q.SessionIDByLiveName(ctx, name)
+		return err
+	})
 	if err != nil {
 		return "", fmt.Errorf("ensure live session %q: %w", name, err)
 	}
 	return id, nil
-}
-
-// sessionEverExisted reports whether name has ever had a sessions row, live or destroyed.
-func (db *DB) sessionEverExisted(ctx context.Context, name string) (bool, error) {
-	var existed bool
-	err := db.WithReadTx(ctx, func(tx *sql.Tx) error {
-		got, err := sqlcgen.New(tx).SessionEverExistedByName(ctx, name)
-		if err != nil {
-			return err
-		}
-		existed = got != 0
-		return nil
-	})
-	return existed, err
 }
 
 // PruneReleasedNode reports whether node_id's row was pruned; see

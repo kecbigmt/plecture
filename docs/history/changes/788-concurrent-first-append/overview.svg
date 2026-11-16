@@ -1,0 +1,55 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 960 560" width="960" height="560" role="img" aria-labelledby="title desc">
+  <title id="title">Concurrent first event append before and after the fix</title>
+  <desc id="desc">Before, separate live and historical checks could observe different states when another process created the session, causing an append error. After, a writer transaction rechecks the live row and creates a placeholder only if no session has ever existed, so competing first appends both proceed.</desc>
+  <defs>
+    <style>
+      svg { --bg:#ffffff; --fg:#1f2328; --muted:#59636e; --line:#d0d7de; --neutral:#8c959f; --neutral-bg:#f6f8fa; --changed:#0969da; --changed-bg:#ddf4ff; --removed:#cf222e; --removed-bg:#ffebe9; --added:#1a7f37; --added-bg:#dafbe1; }
+      @media (prefers-color-scheme: dark) { svg { --bg:#0d1117; --fg:#e6edf3; --muted:#9198a1; --line:#3d444d; --neutral:#656c76; --neutral-bg:#151b23; --changed:#4493f8; --changed-bg:#0c2441; --removed:#f85149; --removed-bg:#3a1416; --added:#3fb950; --added-bg:#0f2a1a; } }
+      text { font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Helvetica,Arial,sans-serif; font-size:13px; fill:var(--fg); }
+      .bg { fill:var(--bg); } .title { font-size:18px; font-weight:600; } .heading { font-size:15px; font-weight:600; }
+      .note { font-size:12px; fill:var(--muted); } .tag { font-size:11px; font-weight:700; letter-spacing:.06em; }
+      .panel { fill:none; stroke:var(--line); } .neutral { fill:var(--neutral-bg); stroke:var(--neutral); stroke-width:1.5; }
+      .changed { fill:var(--changed-bg); stroke:var(--changed); stroke-width:1.5; } .removed { fill:var(--removed-bg); stroke:var(--removed); stroke-width:1.5; stroke-dasharray:8 4; }
+      .added { fill:var(--added-bg); stroke:var(--added); stroke-width:3; } .t-removed { fill:var(--removed); } .t-changed { fill:var(--changed); } .t-added { fill:var(--added); }
+      .flow { fill:none; stroke:var(--fg); stroke-width:1.5; marker-end:url(#arrow); } .head { fill:var(--fg); }
+    </style>
+    <marker id="arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path class="head" d="M0,0 L10,5 L0,10 z"/></marker>
+  </defs>
+  <rect class="bg" x="0" y="0" width="960" height="560"/>
+  <text class="title" x="24" y="36">First append to a new session</text>
+  <text class="note" x="24" y="58">Two processes share one SQLite event store</text>
+  <rect class="panel" x="16" y="78" width="456" height="420" rx="8"/>
+  <text class="heading" x="32" y="106">Before · separate reads</text>
+  <rect class="neutral" x="48" y="126" width="360" height="60" rx="6"/>
+  <text class="tag" x="64" y="147">UNCHANGED</text>
+  <text x="64" y="168">Process A reads: no live session</text>
+  <line class="flow" x1="110" y1="186" x2="110" y2="237"/>
+  <text class="note" x="124" y="214">another process runs</text>
+  <rect class="removed" x="48" y="239" width="360" height="64" rx="6"/>
+  <text class="tag t-removed" x="64" y="261">RACE WINDOW</text>
+  <text x="64" y="282">Process B creates the live session</text>
+  <line class="flow" x1="110" y1="303" x2="110" y2="354"/>
+  <text class="note" x="124" y="332">new row becomes visible</text>
+  <rect class="removed" x="48" y="356" width="360" height="109" rx="6"/>
+  <text class="tag t-removed" x="64" y="379">REMOVED FAILURE PATH</text>
+  <text x="64" y="401"><tspan x="64">Process A reads: name existed</tspan><tspan x="64" dy="20">Returns “no live session named ...”</tspan><tspan x="64" dy="20">Its event is not appended</tspan></text>
+  <rect class="panel" x="488" y="78" width="456" height="420" rx="8"/>
+  <text class="heading" x="504" y="106">After · first-use write transaction</text>
+  <rect class="neutral" x="520" y="126" width="360" height="60" rx="6"/>
+  <text class="tag" x="536" y="147">UNCHANGED</text>
+  <text x="536" y="168">Process A reads: no live session</text>
+  <line class="flow" x1="582" y1="186" x2="582" y2="237"/>
+  <text class="note" x="596" y="214">enters first-use path</text>
+  <rect class="changed" x="520" y="239" width="360" height="109" rx="6"/>
+  <text class="tag t-changed" x="536" y="261">CHANGED · BEGIN IMMEDIATE</text>
+  <text x="536" y="283"><tspan x="536">Recheck live row while holding writer lock</tspan><tspan x="536" dy="20">If present, return its ID</tspan><tspan x="536" dy="20">If absent, check history and create once</tspan></text>
+  <line class="flow" x1="582" y1="348" x2="582" y2="399"/>
+  <text class="note" x="596" y="377">returns live session ID</text>
+  <rect class="added" x="520" y="401" width="360" height="64" rx="6"/>
+  <text class="tag t-added" x="536" y="424">ADDED GUARANTEE</text>
+  <text x="536" y="446">Each successful first append writes its event</text>
+  <rect class="changed" x="32" y="521" width="25" height="15" rx="2"/><text class="note" x="67" y="533">changed transaction</text>
+  <rect class="removed" x="252" y="521" width="25" height="15" rx="2"/><text class="note" x="287" y="533">removed failure path</text>
+  <rect class="added" x="489" y="521" width="25" height="15" rx="2"/><text class="note" x="524" y="533">added guarantee</text>
+  <rect class="neutral" x="703" y="521" width="25" height="15" rx="2"/><text class="note" x="738" y="533">unchanged read</text>
+</svg>

@@ -2,10 +2,12 @@ package eventlog
 
 import (
 	"context"
+	"fmt"
 	"os"
 	"os/exec"
 	"path/filepath"
 	"strconv"
+	"strings"
 	"sync"
 	"testing"
 	"time"
@@ -64,15 +66,14 @@ func destroyAndRecreateForTest(t *testing.T, s *Store, session string) string {
 	return newSessionForTest(t, s, session)
 }
 
-// TestMain lets a test re-exec itself as a child appender so we can exercise the
-// cross-process flock path (the in-process mutex hides it within one Store).
 func TestMain(m *testing.M) {
 	if dir := os.Getenv("EVENTLOG_CHILD_DIR"); dir != "" {
 		session := os.Getenv("EVENTLOG_CHILD_SESSION")
 		n, _ := strconv.Atoi(os.Getenv("EVENTLOG_CHILD_N"))
 		s := NewStore(dir)
-		for range n {
+		for i := range n {
 			if _, _, _, err := s.Append(event.Event{SessionName: session, Type: "test.tick", Source: "test", Direction: event.Internal}); err != nil {
+				fmt.Fprintf(os.Stderr, "append %d/%d: %v\n", i+1, n, err)
 				os.Exit(1)
 			}
 		}
@@ -354,8 +355,12 @@ func TestConcurrentAppendMultiProcess(t *testing.T) {
 	const procs, per = 5, 20
 
 	var cmds []*exec.Cmd
+	outputs := make([]*strings.Builder, procs)
 	for i := range procs {
 		c := exec.Command(os.Args[0])
+		outputs[i] = new(strings.Builder)
+		c.Stdout = outputs[i]
+		c.Stderr = outputs[i]
 		c.Env = append(os.Environ(),
 			"EVENTLOG_CHILD_DIR="+dir,
 			"EVENTLOG_CHILD_SESSION="+session,
@@ -366,10 +371,14 @@ func TestConcurrentAppendMultiProcess(t *testing.T) {
 		}
 		cmds = append(cmds, c)
 	}
+	var failures []string
 	for i, c := range cmds {
 		if err := c.Wait(); err != nil {
-			t.Fatalf("child %d failed: %v", i, err)
+			failures = append(failures, fmt.Sprintf("child %d failed: %v\n%s", i, err, outputs[i].String()))
 		}
+	}
+	if len(failures) > 0 {
+		t.Fatal(strings.Join(failures, "\n"))
 	}
 
 	s := NewStore(dir)
