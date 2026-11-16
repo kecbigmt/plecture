@@ -2,6 +2,7 @@ package commands
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"net"
 	"net/http"
@@ -15,6 +16,7 @@ import (
 	"github.com/spf13/cobra"
 
 	"github.com/kecbigmt/plecture/app/internal/config"
+	"github.com/kecbigmt/plecture/app/internal/datahome"
 	"github.com/kecbigmt/plecture/app/internal/dispatch"
 	"github.com/kecbigmt/plecture/app/internal/eventbus"
 	"github.com/kecbigmt/plecture/app/internal/eventlog"
@@ -47,6 +49,9 @@ POST /v1/events (append), GET /v1/events (list), GET /v1/stream (SSE replay+live
 
 The socket is created 0600, so same-user processes need no token; set
 PLECT_BUS_TOKEN to also require a bearer token (e.g. when proxied to a browser).
+With a non-default data home (--data-home or PLECT_DATA_HOME), --socket is
+required. Clients use their existing socket setting or PLECT_BUS_SOCKET to
+reach that bus; --data-home alone does not select a client socket.
 
 Config (including which plugins are mounted) is re-resolved periodically, so
 a plugin enabled after this command started becomes visible without a
@@ -55,23 +60,18 @@ restart, within one refresh interval.`,
 	// No persistence.EnsureCurrent call here: root.go's PersistentPreRunE
 	// already ran it, since this command has no PersistentPreRunE of its own.
 	RunE: func(cmd *cobra.Command, _ []string) error {
-		socket := serveEventBusSocket
-		if socket == "" {
-			socket = defaultBusSocket()
+		socket, err := selectServeSocket(serveEventBusSocket)
+		if err != nil {
+			return err
 		}
 		if err := os.MkdirAll(filepath.Dir(socket), 0o700); err != nil {
 			return fmt.Errorf("create socket dir: %w", err)
 		}
-		// A stale socket from a previous run would make Listen fail with EADDRINUSE.
-		_ = os.Remove(socket)
-		ln, err := net.Listen("unix", socket)
+		ln, err := listenBusSocket(socket)
 		if err != nil {
-			return fmt.Errorf("listen on %s: %w", socket, err)
+			return err
 		}
-		defer func() { ln.Close(); os.Remove(socket) }()
-		if err := os.Chmod(socket, 0o600); err != nil {
-			return fmt.Errorf("chmod socket: %w", err)
-		}
+		defer ln.Close()
 
 		// Resolve the log dir the same way writers do (eventlog.NewStore("") =>
 		// $XDG_DATA_HOME/plect/events, matching service.EventPublish). Log it so a
@@ -183,6 +183,77 @@ restart, within one refresh interval.`,
 	},
 }
 
+func selectServeSocket(explicit string) (string, error) {
+	if explicit != "" {
+		return explicit, nil
+	}
+	selected, err := filepath.Abs(datahome.Resolve())
+	if err != nil {
+		return "", fmt.Errorf("resolve data home: %w", err)
+	}
+	fallback, err := filepath.Abs(datahome.Default())
+	if err != nil {
+		return "", fmt.Errorf("resolve default data home: %w", err)
+	}
+	if selected != fallback {
+		return "", fmt.Errorf("non-default data home requires --socket for plect serve")
+	}
+	return defaultBusSocket(), nil
+}
+
+type busSocketListener struct {
+	*net.UnixListener
+	path string
+	file os.FileInfo
+}
+
+func listenBusSocket(path string) (*busSocketListener, error) {
+	if existing, err := os.Lstat(path); err == nil {
+		conn, dialErr := net.DialTimeout("unix", path, 200*time.Millisecond)
+		if dialErr == nil {
+			conn.Close()
+			return nil, fmt.Errorf("listen on %s: live listener already owns socket", path)
+		}
+		if existing.Mode()&os.ModeSocket == 0 || !errors.Is(dialErr, syscall.ECONNREFUSED) {
+			return nil, fmt.Errorf("listen on %s: socket path already exists: %w", path, dialErr)
+		}
+		current, err := os.Lstat(path)
+		if err != nil || !os.SameFile(existing, current) {
+			return nil, fmt.Errorf("listen on %s: socket path changed while checking it", path)
+		}
+		if err := os.Remove(path); err != nil {
+			return nil, fmt.Errorf("remove stale socket %s: %w", path, err)
+		}
+	} else if !os.IsNotExist(err) {
+		return nil, fmt.Errorf("inspect socket %s: %w", path, err)
+	}
+	ln, err := net.ListenUnix("unix", &net.UnixAddr{Name: path, Net: "unix"})
+	if err != nil {
+		return nil, fmt.Errorf("listen on %s: %w", path, err)
+	}
+	ln.SetUnlinkOnClose(false)
+	if err := os.Chmod(path, 0o600); err != nil {
+		ln.Close()
+		return nil, fmt.Errorf("chmod socket %s: %w", path, err)
+	}
+	file, err := os.Lstat(path)
+	if err != nil {
+		ln.Close()
+		return nil, fmt.Errorf("inspect bound socket %s: %w", path, err)
+	}
+	return &busSocketListener{UnixListener: ln, path: path, file: file}, nil
+}
+
+func (ln *busSocketListener) Close() error {
+	err := ln.UnixListener.Close()
+	if file, statErr := os.Lstat(ln.path); statErr == nil && os.SameFile(file, ln.file) {
+		if removeErr := os.Remove(ln.path); err == nil {
+			err = removeErr
+		}
+	}
+	return err
+}
+
 // defaultBusSocket mirrors the plect-mcp convention (%t/plect/... = $XDG_RUNTIME_DIR).
 func defaultBusSocket() string {
 	if rt := os.Getenv("XDG_RUNTIME_DIR"); rt != "" {
@@ -192,6 +263,6 @@ func defaultBusSocket() string {
 }
 
 func init() {
-	serveCmd.Flags().StringVar(&serveEventBusSocket, "socket", "", "Unix socket path (default $XDG_RUNTIME_DIR/plect/bus.sock)")
+	serveCmd.Flags().StringVar(&serveEventBusSocket, "socket", "", "Unix socket path (default $XDG_RUNTIME_DIR/plect/bus.sock with the default data home; required for a non-default data home)")
 	rootCmd.AddCommand(serveCmd)
 }

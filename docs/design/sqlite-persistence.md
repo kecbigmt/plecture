@@ -47,6 +47,13 @@ unlike `XDG_DATA_HOME`, which is a shared root and so still needs the
 `/plect` namespace segment — because the variable already names plect's own
 directory and has no sibling to be namespaced against.
 
+`plect serve` uses the default runtime socket when the resolved data home is
+the default directory. With a non-default data home selected by `--data-home`
+or `PLECT_DATA_HOME`, it requires an explicit `--socket` and binds only that
+path. Clients locate the bus through their socket setting or
+`PLECT_BUS_SOCKET`; selecting a data home alone does not select a client
+socket.
+
 `app/internal/state.NewStore`, `app/internal/eventlog.NewStore`,
 `app/internal/persistence.DefaultPath`, `plect storage import --data-home`'s
 default, and `plect-web` all resolve through this same function, so they
