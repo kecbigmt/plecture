@@ -74,3 +74,32 @@ func TestServiceProtocolPublishesWithDeliveredCountAndErrors(t *testing.T) {
 		t.Fatalf("read replies = %v", err)
 	}
 }
+
+func TestServiceProtocolTracksSubscriptionSnapshotAndDeltas(t *testing.T) {
+	inputReader, inputWriter := io.Pipe()
+	defer inputReader.Close()
+	defer inputWriter.Close()
+	p := NewServiceProtocol(inputReader, io.Discard)
+	encode := json.NewEncoder(inputWriter)
+	go func() {
+		encode.Encode(map[string]any{"op": "config", "config": map[string]any{}})
+		encode.Encode(map[string]any{"op": "subscriptions", "add": []map[string]any{{"session_id": "s1", "source": "runtime", "resource": map[string]any{"locator": "https://example.slack.com/archives/C1/p1699000000000001"}}}})
+		encode.Encode(map[string]any{"op": "subscriptions", "remove": []map[string]any{{"session_id": "s1", "source": "runtime", "resource": map[string]any{"locator": "https://example.slack.com/archives/C1/p1699000000000001"}}}})
+		inputWriter.Close()
+	}()
+	if _, err := p.ReadConfig(); err != nil {
+		t.Fatal(err)
+	}
+	if err := p.ReadSnapshot(); err != nil {
+		t.Fatal(err)
+	}
+	if roots := p.Subscriptions().ThreadRoots("C1"); len(roots) != 1 {
+		t.Fatalf("snapshot roots=%v", roots)
+	}
+	if err := p.ReadReplies(); err != io.EOF {
+		t.Fatalf("read replies=%v", err)
+	}
+	if roots := p.Subscriptions().ThreadRoots("C1"); len(roots) != 0 {
+		t.Fatalf("delta roots=%v", roots)
+	}
+}

@@ -55,6 +55,40 @@ resource. If that reaches no session, it publishes to the bot resource. If
 neither has a subscriber, it logs the drop. A publish error stops routing.
 Denied mentions are handled before publication.
 
+## Restart recovery
+
+On startup, the resident service scans each configured public channel with
+`conversations.history`, then checks replies to recent roots and every thread
+with an active subscription using `conversations.replies`. Recovered mentions
+follow the same allow list, thread transcript, and routing as live mentions.
+The service saves a versioned `recovery.json` in `PLECT_DATA_DIR`, keyed by
+workspace, bot, and channel. It records the channel scan boundary, subscribed
+thread boundaries, and processed message timestamps. Live and recovered
+mentions share this record. The service logs the number of mentions recovered
+on each restart.
+
+The scan looks back at most 24 hours, with a five minute overlap around the
+saved boundary. On first start without a state file, it begins at startup and
+logs that earlier messages were not scanned. If downtime exceeds 24 hours, it
+logs the exact omitted range. Failed channel scans retain the earlier channel
+boundary for a later retry. An inaccessible subscribed thread retains its own
+boundary while channel history continues. Both failures log the skipped range
+and leave live delivery running.
+The bot must be a member of each configured channel. Deleted or expired Slack
+messages cannot be recovered. An unsubscribed thread whose root is older than
+the lookback window is outside the scan. If the process crashes between core
+accepting a publish and saving the message timestamp, replay can deliver it a
+second time.
+
+The shipped Slack App manifest already grants `channels:history` and
+`app_mentions:read`; existing installations for configured public channels do
+not need a new OAuth scope or reinstallation. The scan uses bounded pagination
+and paces requests. Slack API rate limits can lengthen a large recovery.
+
+The scan's value is measured by its per restart recovered mention count. If
+hosts running it report no recovered mention by 2027-02-16, the owner decides
+whether to remove it and keep the documented gap.
+
 ## Effects and channels
 
 - `config/tasks/slack_thread.toml` creates a root message from `channel_id`
