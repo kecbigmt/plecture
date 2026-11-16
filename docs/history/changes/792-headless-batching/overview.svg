@@ -1,0 +1,77 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1040 650" width="1040" height="650" role="img" aria-labelledby="title desc">
+  <title id="title">Headless inbound events before and after supersession and batching</title>
+  <desc id="desc">Before: tick and GitHub publishers write events without a supersession reference. Enqueue scripts coalesce GitHub snapshots by type and URL, and workers run one turn per queued entry. After: tick and GitHub publishers name previous event IDs, the durable log keeps all events, enqueue preserves IDs and references, and either headless worker claims a pending batch, omits superseded entries, invokes one turn, then acknowledges the batch after reply publication.</desc>
+  <defs>
+    <style>
+      svg { --bg:#ffffff; --fg:#1f2328; --muted:#59636e; --line:#d0d7de; --neutral:#8c959f; --neutral-bg:#f6f8fa; --added:#1a7f37; --added-bg:#dafbe1; --changed:#0969da; --changed-bg:#ddf4ff; --removed:#cf222e; --removed-bg:#ffebe9; }
+      @media (prefers-color-scheme: dark) { svg { --bg:#0d1117; --fg:#e6edf3; --muted:#9198a1; --line:#3d444d; --neutral:#656c76; --neutral-bg:#151b23; --added:#3fb950; --added-bg:#0f2a1a; --changed:#4493f8; --changed-bg:#0c2441; --removed:#f85149; --removed-bg:#3a1416; } }
+      text { font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Helvetica,Arial,sans-serif; font-size:13px; fill:var(--fg); }
+      .bg { fill:var(--bg); } .title { font-size:19px; font-weight:600; } .heading { font-size:15px; font-weight:600; } .name { font-weight:600; } .note { font-size:12px; fill:var(--muted); } .tag { font-size:11px; font-weight:700; letter-spacing:.05em; }
+      .panel { fill:none; stroke:var(--line); } .neutral { fill:var(--neutral-bg); stroke:var(--neutral); stroke-width:1.5; } .added { fill:var(--added-bg); stroke:var(--added); stroke-width:3; } .changed { fill:var(--changed-bg); stroke:var(--changed); stroke-width:1.5; } .removed { fill:var(--removed-bg); stroke:var(--removed); stroke-width:1.5; stroke-dasharray:8 4; }
+      .t-added { fill:var(--added); } .t-changed { fill:var(--changed); } .t-removed { fill:var(--removed); } .t-neutral { fill:var(--muted); }
+      .flow { fill:none; stroke:var(--fg); stroke-width:1.5; marker-end:url(#arrow); } .flow-changed { fill:none; stroke:var(--changed); stroke-width:2; marker-end:url(#arrow-changed); }
+      .head { fill:var(--fg); } .head-changed { fill:var(--changed); }
+    </style>
+    <marker id="arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path class="head" d="M0,0 L10,5 L0,10 z"/></marker>
+    <marker id="arrow-changed" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path class="head-changed" d="M0,0 L10,5 L0,10 z"/></marker>
+  </defs>
+  <rect class="bg" x="0" y="0" width="1040" height="650"/>
+  <text class="title" x="24" y="37">Headless inbound event delivery</text>
+  <text class="note" x="24" y="58">PR 792 · event identity and pending turn boundaries</text>
+
+  <rect class="panel" x="16" y="78" width="488" height="514" rx="8"/>
+  <text class="heading" x="32" y="104">Before <tspan class="note" font-weight="400">· main</tspan></text>
+  <rect class="neutral" x="52" y="124" width="400" height="66" rx="6"/>
+  <text class="tag t-changed" x="68" y="145">CHANGED · SEE AFTER</text>
+  <text class="name" x="68" y="164">Tick kicks and GitHub snapshots</text>
+  <text class="note" x="68" y="181">write separate events</text>
+  <line class="flow" x1="156" y1="190" x2="156" y2="238"/>
+  <text x="169" y="218">events</text>
+  <rect class="neutral" x="52" y="240" width="400" height="66" rx="6"/>
+  <text class="tag t-changed" x="68" y="261">CHANGED · SEE AFTER</text>
+  <text class="name" x="68" y="280">Durable event log</text>
+  <text class="note" x="68" y="297">stores each event</text>
+  <line class="flow" x1="156" y1="306" x2="156" y2="354"/>
+  <text x="169" y="334">delivered events</text>
+  <rect class="removed" x="52" y="356" width="400" height="66" rx="6"/>
+  <text class="tag t-removed" x="68" y="377">REMOVED</text>
+  <text class="name" x="68" y="396">Enqueue coalesces GitHub type + URL</text>
+  <text class="note" x="68" y="413">other entries stay pending</text>
+  <line class="flow" x1="156" y1="422" x2="156" y2="470"/>
+  <text x="169" y="450">one queued entry</text>
+  <rect class="changed" x="52" y="472" width="400" height="66" rx="6"/>
+  <text class="tag t-changed" x="68" y="493">CHANGED · SEE AFTER</text>
+  <text class="name" x="68" y="512">Claude / Codex headless worker</text>
+  <text class="note" x="68" y="529">invokes one agent turn per entry</text>
+
+  <rect class="panel" x="520" y="78" width="504" height="514" rx="8"/>
+  <text class="heading" x="536" y="104">After <tspan class="note" font-weight="400">· this PR</tspan></text>
+  <rect class="changed" x="556" y="124" width="428" height="66" rx="6"/>
+  <text class="tag t-changed" x="572" y="145">CHANGED PUBLISHERS</text>
+  <text class="name" x="572" y="164">Tick and GitHub remember prior event IDs</text>
+  <text class="note" x="572" y="181">new events name predecessors per session</text>
+  <line class="flow-changed" x1="660" y1="190" x2="660" y2="238"/>
+  <text x="673" y="218">events + supersedes</text>
+  <rect class="changed" x="556" y="240" width="428" height="66" rx="6"/>
+  <text class="tag t-changed" x="572" y="261">CHANGED CONTRACT + STORAGE</text>
+  <text class="name" x="572" y="280">Durable log keeps every event</text>
+  <text class="note" x="572" y="297">including its optional supersedes ID</text>
+  <line class="flow-changed" x1="660" y1="306" x2="660" y2="354"/>
+  <text x="673" y="334">event ID + reference + text</text>
+  <rect class="changed" x="556" y="356" width="428" height="66" rx="6"/>
+  <text class="tag t-changed" x="572" y="377">CHANGED ENQUEUE</text>
+  <text class="name" x="572" y="396">Retains every pending event</text>
+  <text class="note" x="572" y="413">carries ID and reference without inspecting type</text>
+  <line class="flow-changed" x1="660" y1="422" x2="660" y2="470"/>
+  <text x="673" y="450">ordered pending entries</text>
+  <rect class="added" x="556" y="472" width="428" height="100" rx="6"/>
+  <text class="tag t-added" x="572" y="493">ADDED SHARED QUEUE RULE</text>
+  <text class="name" x="572" y="512">Claude / Codex claim one durable batch</text>
+  <text class="note" x="572" y="532"><tspan x="572">Omit only entries named by pending superseders;</tspan><tspan x="572" dy="17">run one ordered turn, publish reply, acknowledge.</tspan></text>
+  <text class="note" x="572" y="563">Interrupted batches retry before newer entries.</text>
+
+  <rect class="added" x="32" y="613" width="24" height="15" rx="3"/><text x="65" y="625">Added</text>
+  <rect class="changed" x="169" y="613" width="24" height="15" rx="3"/><text x="202" y="625">Changed</text>
+  <rect class="removed" x="336" y="613" width="24" height="15" rx="3"/><text x="369" y="625">Removed</text>
+  <rect class="neutral" x="503" y="613" width="24" height="15" rx="3"/><text x="536" y="625">Unchanged</text>
+</svg>
