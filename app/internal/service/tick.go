@@ -24,6 +24,7 @@ type TickTrigger string
 const (
 	TickTriggerManual    TickTrigger = "manual"
 	TickTriggerEvent     TickTrigger = "event"
+	TickTriggerQuiet     TickTrigger = "quiet"
 	TickTriggerHeartbeat TickTrigger = "heartbeat"
 )
 
@@ -40,26 +41,32 @@ func TickSession(cfg *config.Config, store *state.Store, params TickParams) (*Ch
 		return nil, err
 	}
 
-	// Stamp unconditionally (even when no instance has a computed action): a
-	// tick always resets the `heartbeat` clock the reactor tracks,
-	// whether or not anything was found unsatisfied in this tick.
-	if err := stampLastTick(store, resolvedName); err != nil {
-		return nil, err
+	if params.Trigger != TickTriggerQuiet {
+		if err := stampLastTick(store, resolvedName); err != nil {
+			return nil, err
+		}
 	}
 
 	var actions []CheckAction
+	announced := false
 	for _, c := range computed {
 		action := c.action
 		// Publish before persisting the marker: a publish failure must leave
 		// LastAction/fingerprint unadvanced so the next tick retries this same
 		// action instead of silently skipping delivery.
-		warnings, err := publishTickAction(cfg, store, resolvedName, c, params.Trigger)
+		warnings, published, err := publishTickAction(cfg, store, resolvedName, c, params.Trigger)
 		if err != nil {
 			return nil, err
 		}
+		announced = announced || published
 		action.Warnings = append(action.Warnings, warnings...)
 		actions = append(actions, action)
 		if err := persistTickAction(store, resolvedName, c.instance, action); err != nil {
+			return nil, err
+		}
+	}
+	if params.Trigger == TickTriggerQuiet && announced {
+		if err := stampLastTick(store, resolvedName); err != nil {
 			return nil, err
 		}
 	}

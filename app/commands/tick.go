@@ -12,8 +12,9 @@ import (
 )
 
 var (
-	tickJSON      bool
-	tickNoRefresh bool
+	tickJSON           bool
+	tickNoRefresh      bool
+	tickQuietUnchanged bool
 )
 
 var tickCmd = &cobra.Command{
@@ -46,6 +47,7 @@ check/judge state.`,
 			SessionName: args[0],
 			SkipRefresh: tickNoRefresh,
 			Observer:    newTaskObserver(cfg),
+			Trigger:     tickTrigger(),
 		})
 		if err != nil {
 			return err
@@ -71,6 +73,13 @@ check/judge state.`,
 	},
 }
 
+func tickTrigger() service.TickTrigger {
+	if tickQuietUnchanged {
+		return service.TickTriggerQuiet
+	}
+	return service.TickTriggerManual
+}
+
 // chainSpawnStatus renders one ChainSpawn's outcome as a single word/phrase
 // for "plect tick"'s tab-separated text output.
 func chainSpawnStatus(sp service.ChainSpawn) string {
@@ -91,6 +100,7 @@ func chainSpawnStatus(sp service.ChainSpawn) string {
 func init() {
 	tickCmd.Flags().BoolVar(&tickJSON, "json", false, "Output actions as JSON")
 	tickCmd.Flags().BoolVar(&tickNoRefresh, "no-refresh", false, "Read persisted outputs without refreshing dynamic outputs first")
+	tickCmd.Flags().BoolVar(&tickQuietUnchanged, "quiet-unchanged", false, "Suppress unchanged kick and review announcements without delaying heartbeat")
 
 	rootCmd.AddCommand(tickCmd)
 }

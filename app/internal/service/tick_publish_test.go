@@ -3,6 +3,7 @@ package service
 import (
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/kecbigmt/plecture/app/internal/domain"
 	"github.com/kecbigmt/plecture/app/internal/eventlog"
@@ -25,6 +26,64 @@ func seedPendingJudgeWork(t *testing.T, store *state.Store, name string) {
 			Observed: observedFacts(map[string]any{"checks_status": "SUCCESS", "revision": "sha1"}),
 		},
 	})
+}
+
+func TestTickSession_QuietUnchangedKickDoesNotRepeatOrAdvanceHeartbeat(t *testing.T) {
+	store := testStore(t)
+	cfg := checkScenarioConfig(t, 4)
+	seedPendingJudgeWork(t, store, "owner/repo-1")
+	setCheckStatus(t, store, "owner/repo-1", "FAILURE")
+	for i := range 2 {
+		if _, err := TickSession(cfg, store, TickParams{SessionName: "owner/repo-1", Trigger: TickTriggerQuiet}); err != nil {
+			t.Fatalf("quiet tick %d: %v", i, err)
+		}
+	}
+	if got := tickEventCount(t, store, "owner/repo-1", event.TypeUserEmit); got != 1 {
+		t.Fatalf("kick events = %d, want 1", got)
+	}
+	first := store.Get("owner/repo-1").LastTickAt
+	if first.IsZero() {
+		t.Fatal("first quiet announcement did not stamp LastTickAt")
+	}
+	if err := store.Update("owner/repo-1", func(s *domain.Session) error {
+		s.LastTickAt = first.Add(-time.Minute)
+		return nil
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := TickSession(cfg, store, TickParams{SessionName: "owner/repo-1", Trigger: TickTriggerQuiet}); err != nil {
+		t.Fatal(err)
+	}
+	if got := store.Get("owner/repo-1").LastTickAt; !got.Equal(first.Add(-time.Minute)) {
+		t.Fatalf("quiet repeat advanced LastTickAt: %v", got)
+	}
+	if _, err := TickSession(cfg, store, TickParams{SessionName: "owner/repo-1", Trigger: TickTriggerHeartbeat}); err != nil {
+		t.Fatal(err)
+	}
+	if got := tickEventCount(t, store, "owner/repo-1", event.TypeUserEmit); got != 2 {
+		t.Fatalf("heartbeat kick events = %d, want 2", got)
+	}
+}
+
+func TestTickSession_QuietReviewRequiredPublishesChangedStateOnce(t *testing.T) {
+	store := testStore(t)
+	cfg := checkScenarioConfig(t, 4)
+	seedPendingJudgeWork(t, store, "owner/repo-1")
+	for range 2 {
+		if _, err := TickSession(cfg, store, TickParams{SessionName: "owner/repo-1", Trigger: TickTriggerQuiet}); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if got := tickEventCount(t, store, "owner/repo-1", event.TypeTickReviewRequired); got != 1 {
+		t.Fatalf("review events = %d, want 1", got)
+	}
+	setCheckStatus(t, store, "owner/repo-1", "FAILURE")
+	if _, err := TickSession(cfg, store, TickParams{SessionName: "owner/repo-1", Trigger: TickTriggerQuiet}); err != nil {
+		t.Fatal(err)
+	}
+	if got := tickEventCount(t, store, "owner/repo-1", event.TypeUserEmit); got != 1 {
+		t.Fatalf("changed-state kick events = %d, want 1", got)
+	}
 }
 
 func tickEventCount(t *testing.T, store *state.Store, session, eventType string) int {
