@@ -23,12 +23,12 @@ const escalationKindDoneWhenNonConvergence = "done_when.non_convergence"
 // non-nil error means the delivery itself failed. A terminal push's target
 // wake can fail independently of the push (the event is already recorded by
 // then), so that failure is reported as a warning rather than an error.
-func publishTickAction(cfg *config.Config, store *state.Store, sessionName string, c computedAction, trigger TickTrigger) ([]string, error) {
+func publishTickAction(cfg *config.Config, store *state.Store, sessionName string, c computedAction, trigger TickTrigger) ([]string, bool, error) {
 	instance, action := c.instance, c.action
 	switch action.Action {
 	case "satisfied":
 		if c.lastAction == "satisfied" {
-			return nil, nil
+			return nil, false, nil
 		}
 		_, wakeErr, err := PublishTerminalToParent(cfg, store, sessionName, TerminalParams{
 			Type:     event.TypeTerminalDone,
@@ -37,12 +37,12 @@ func publishTickAction(cfg *config.Config, store *state.Store, sessionName strin
 			DedupKey: instance + "|done|" + action.Fingerprint,
 		})
 		if err != nil {
-			return nil, err
+			return nil, false, err
 		}
-		return wakeWarnings(wakeErr), nil
+		return wakeWarnings(wakeErr), true, nil
 	case "review_required":
 		if repeatsUnchangedState(c, trigger) {
-			return nil, nil
+			return nil, false, nil
 		}
 		if _, err := EventPublish(cfg, store, sessionName, EventPublishParams{
 			Type:      event.TypeTickReviewRequired,
@@ -52,11 +52,11 @@ func publishTickAction(cfg *config.Config, store *state.Store, sessionName strin
 			Body:      action.Body,
 			Metadata:  unmetItemsMetadata(instance, action.UnmetItems),
 		}); err != nil {
-			return nil, err
+			return nil, false, err
 		}
 	case "kick":
 		if repeatsUnchangedState(c, trigger) {
-			return nil, nil
+			return nil, false, nil
 		}
 		meta := unmetItemsMetadata(instance, action.UnmetItems)
 		if len(action.LiveChildren) > 0 {
@@ -72,7 +72,7 @@ func publishTickAction(cfg *config.Config, store *state.Store, sessionName strin
 			Body:      action.Body,
 			Metadata:  meta,
 		}); err != nil {
-			return nil, err
+			return nil, false, err
 		}
 	case "escalate":
 		meta := unmetItemsMetadata(instance, action.UnmetItems)
@@ -93,7 +93,7 @@ func publishTickAction(cfg *config.Config, store *state.Store, sessionName strin
 			Body:      action.Body,
 			Metadata:  meta,
 		}); err != nil {
-			return nil, err
+			return nil, false, err
 		}
 		// Escalate is also pushed one hop to the parent (the goal loop's
 		// actuator layer), on top of the same-session record above (kept
@@ -106,24 +106,17 @@ func publishTickAction(cfg *config.Config, store *state.Store, sessionName strin
 			DedupKey: tickEscalationDedupKey(instance, action),
 		})
 		if err != nil {
-			return nil, err
+			return nil, false, err
 		}
-		return wakeWarnings(wakeErr), nil
+		return wakeWarnings(wakeErr), true, nil
 	}
-	return nil, nil
+	return nil, action.Action == "kick" || action.Action == "review_required", nil
 }
 
-// repeatsUnchangedState reports whether an event-triggered tick would
-// re-announce a state it already announced. Only the event path is debounced:
-// it is the one with no cadence of its own — an event arriving every few
-// seconds (a failed delivery of the announcement itself feeding events back
-// into the log, say) re-evaluates the same unmet state that fast, so
-// announcing on each pass turns the bus and the session into a feedback loop.
-// The heartbeat sweep and a manual `plect tick` both re-announce, since a
-// bounded cadence and an explicit human request are exactly when repeating an
-// unchanged signal is the point.
+// Only the bounded heartbeat cadence re-announces unchanged unmet work;
+// a manual or event tick can otherwise feed its own kick back into a turn loop.
 func repeatsUnchangedState(c computedAction, trigger TickTrigger) bool {
-	return trigger == TickTriggerEvent &&
+	return trigger != TickTriggerHeartbeat &&
 		c.lastAction == c.action.Action &&
 		c.lastFingerprint == c.action.Fingerprint
 }

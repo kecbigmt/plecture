@@ -530,9 +530,7 @@ func TestTickSession_KickCarriesStructuredUnmetItemsInEventMetadata(t *testing.T
 	}
 }
 
-// TestTickSession_StampsLastTickAt covers the reactor's `heartbeat` sweep
-// precondition: every tick resets the session-level watermark, even for an
-// instance with no done_when leaves to evaluate.
+// The reactor's heartbeat sweep must stamp even when there are no actions.
 func TestTickSession_StampsLastTickAt(t *testing.T) {
 	store := testStore(t)
 	cfg := &config.Config{}
@@ -542,12 +540,23 @@ func TestTickSession_StampsLastTickAt(t *testing.T) {
 	if !before.IsZero() {
 		t.Fatalf("LastTickAt = %v before any tick, want zero", before)
 	}
-	if _, err := TickSession(cfg, store, TickParams{SessionName: "owner/repo-1"}); err != nil {
+	if _, err := TickSession(cfg, store, TickParams{SessionName: "owner/repo-1", Trigger: TickTriggerHeartbeat}); err != nil {
 		t.Fatalf("TickSession: %v", err)
 	}
 	after := store.Get("owner/repo-1").LastTickAt
 	if after.IsZero() {
 		t.Fatal("LastTickAt still zero after TickSession")
+	}
+}
+
+func TestTickSession_ManualTickWithoutAnnouncementLeavesHeartbeatDue(t *testing.T) {
+	store := testStore(t)
+	seedSession(t, store, "owner/repo-1", "owner/repo", 1, "", nil)
+	if _, err := TickSession(&config.Config{}, store, TickParams{SessionName: "owner/repo-1"}); err != nil {
+		t.Fatal(err)
+	}
+	if got := store.Get("owner/repo-1").LastTickAt; !got.IsZero() {
+		t.Fatalf("LastTickAt = %v, want zero after no announcement", got)
 	}
 }
 

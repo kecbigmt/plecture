@@ -68,6 +68,7 @@ type CheckAction struct {
 	SessionName    string `json:"session_name"`
 	Instance       string `json:"instance"`
 	Action         string `json:"action"`
+	Unchanged      bool   `json:"unchanged,omitempty"`
 	HeartbeatTicks int    `json:"heartbeat_ticks,omitempty"`
 	// Layer names the layer of a nesting chain a budget escalation is
 	// attributed to, empty for an instance-level one. LayerTicks carries

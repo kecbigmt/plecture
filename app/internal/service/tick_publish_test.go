@@ -3,6 +3,7 @@ package service
 import (
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/kecbigmt/plecture/app/internal/domain"
 	"github.com/kecbigmt/plecture/app/internal/eventlog"
@@ -25,6 +26,68 @@ func seedPendingJudgeWork(t *testing.T, store *state.Store, name string) {
 			Observed: observedFacts(map[string]any{"checks_status": "SUCCESS", "revision": "sha1"}),
 		},
 	})
+}
+
+func TestTickSession_ManualUnchangedKickDoesNotRepeatOrAdvanceHeartbeat(t *testing.T) {
+	store := testStore(t)
+	cfg := checkScenarioConfig(t, 4)
+	seedPendingJudgeWork(t, store, "owner/repo-1")
+	setCheckStatus(t, store, "owner/repo-1", "FAILURE")
+	for i := range 2 {
+		result, err := TickSession(cfg, store, TickParams{SessionName: "owner/repo-1"})
+		if err != nil {
+			t.Fatalf("manual tick %d: %v", i, err)
+		}
+		if len(result.Actions) != 1 || result.Actions[0].Unchanged != (i == 1) {
+			t.Fatalf("tick %d action = %+v, want unchanged=%t", i, result.Actions, i == 1)
+		}
+	}
+	if got := tickEventCount(t, store, "owner/repo-1", event.TypeUserEmit); got != 1 {
+		t.Fatalf("kick events = %d, want 1", got)
+	}
+	first := store.Get("owner/repo-1").LastTickAt
+	if first.IsZero() {
+		t.Fatal("first announcement did not stamp LastTickAt")
+	}
+	if err := store.Update("owner/repo-1", func(s *domain.Session) error {
+		s.LastTickAt = first.Add(-time.Minute)
+		return nil
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := TickSession(cfg, store, TickParams{SessionName: "owner/repo-1"}); err != nil {
+		t.Fatal(err)
+	}
+	if got := store.Get("owner/repo-1").LastTickAt; !got.Equal(first.Add(-time.Minute)) {
+		t.Fatalf("manual repeat advanced LastTickAt: %v", got)
+	}
+	if _, err := TickSession(cfg, store, TickParams{SessionName: "owner/repo-1", Trigger: TickTriggerHeartbeat}); err != nil {
+		t.Fatal(err)
+	}
+	if got := tickEventCount(t, store, "owner/repo-1", event.TypeUserEmit); got != 2 {
+		t.Fatalf("heartbeat kick events = %d, want 2", got)
+	}
+}
+
+func TestTickSession_ManualReviewRequiredPublishesChangedStateOnce(t *testing.T) {
+	store := testStore(t)
+	cfg := checkScenarioConfig(t, 4)
+	seedPendingJudgeWork(t, store, "owner/repo-1")
+	for range 2 {
+		if _, err := TickSession(cfg, store, TickParams{SessionName: "owner/repo-1"}); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if got := tickEventCount(t, store, "owner/repo-1", event.TypeTickReviewRequired); got != 1 {
+		t.Fatalf("review events = %d, want 1", got)
+	}
+	setCheckStatus(t, store, "owner/repo-1", "FAILURE")
+	if _, err := TickSession(cfg, store, TickParams{SessionName: "owner/repo-1"}); err != nil {
+		t.Fatal(err)
+	}
+	if got := tickEventCount(t, store, "owner/repo-1", event.TypeUserEmit); got != 1 {
+		t.Fatalf("changed-state kick events = %d, want 1", got)
+	}
 }
 
 func tickEventCount(t *testing.T, store *state.Store, session, eventType string) int {
@@ -189,9 +252,7 @@ func TestTickSession_EventTriggeredKickOmitsLiveChildren(t *testing.T) {
 	}
 }
 
-// A manual `plect tick` is a human asking for the signal now; it must not be
-// swallowed by a debounce meant for machine-driven re-evaluation.
-func TestTickSession_ManualTickRepublishesUnchangedReviewRequired(t *testing.T) {
+func TestTickSession_ManualTickSuppressesUnchangedReviewRequired(t *testing.T) {
 	store := testStore(t)
 	cfg := checkScenarioConfig(t, 4)
 	seedPendingJudgeWork(t, store, "owner/repo-1")
@@ -202,7 +263,7 @@ func TestTickSession_ManualTickRepublishesUnchangedReviewRequired(t *testing.T) 
 		}
 	}
 
-	if got := tickEventCount(t, store, "owner/repo-1", event.TypeTickReviewRequired); got != 2 {
-		t.Fatalf("review_required events = %d, want 2 (a manual tick always publishes)", got)
+	if got := tickEventCount(t, store, "owner/repo-1", event.TypeTickReviewRequired); got != 1 {
+		t.Fatalf("review_required events = %d, want 1", got)
 	}
 }
