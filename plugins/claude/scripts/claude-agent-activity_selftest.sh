@@ -136,24 +136,45 @@ run_report() {
 # Stop must publish its answer before the idle transition. A native stream
 # already in progress completes the transition only after its final delta.
 : > "$tmp/calls"
-PLECT_SESSION_NAME="owner/repo-1" PLECT_CALLS="$tmp/calls" \
+PLECT_CLAUDE_TICK_ON_STOP=true PLECT_SESSION_NAME="owner/repo-1" PLECT_CALLS="$tmp/calls" \
 XDG_STATE_HOME="$tmp/state" PATH="$bin_dir:$PATH" \
 "$subject" finish <<<'{"hook_event_name":"Stop","last_assistant_message":"finish answer","prompt_id":"turn-finish"}'
 [ "$(grep -nE 'plect.message |set-message' "$tmp/calls" | cut -d: -f2- | paste -sd '|' -)" = \
   'event publish owner/repo-1 --type plect.message --summary finish answer --body finish answer --meta message_id=owner/repo-1/turn-finish --meta message_id_origin=synthetic --meta role=assistant --meta source=claude --meta turn_id=turn-finish|state set-message owner/repo-1  --turn-id turn-finish' ] || { echo "Stop did not finish after its answer" >&2; exit 1; }
+[ "$(tail -n 1 "$tmp/calls")" = 'tick owner/repo-1' ] || { echo "Stop did not tick after completing the turn" >&2; exit 1; }
+[ "$(grep -c '^tick owner/repo-1$' "$tmp/calls")" -eq 1 ] || { echo "Stop must tick once" >&2; exit 1; }
+
+# A failed reply publication must not suppress the turn-end tick.
+reply_failure_bin="$tmp/bin-reply-failure"
+mkdir -p "$reply_failure_bin"
+cat > "$reply_failure_bin/plect" <<'EOF'
+#!/usr/bin/env bash
+printf '%s\n' "$*" >> "$PLECT_CALLS"
+case "$*" in
+  'event publish '* ) exit 1 ;;
+esac
+EOF
+chmod +x "$reply_failure_bin/plect"
+: > "$tmp/calls"
+PLECT_CLAUDE_TICK_ON_STOP=true PLECT_SESSION_NAME="owner/repo-1" PLECT_CALLS="$tmp/calls" \
+XDG_STATE_HOME="$tmp/state" PATH="$reply_failure_bin:$PATH" \
+"$subject" finish <<<'{"hook_event_name":"Stop","last_assistant_message":"answer","prompt_id":"turn-failed-reply"}'
+[ "$(tail -n 1 "$tmp/calls")" = 'tick owner/repo-1' ] || { echo "failed reply publication suppressed the tick" >&2; exit 1; }
 
 : > "$tmp/calls"
 PLECT_SESSION_NAME="owner/repo-1" PLECT_CALLS="$tmp/calls" \
 XDG_STATE_HOME="$tmp/state" PATH="$bin_dir:$PATH" \
 "$subject" message_display <<<'{"hook_event_name":"MessageDisplay","message_id":"native-finish","turn_id":"turn-stream-finish","final":false,"delta":"answer "}'
-PLECT_SESSION_NAME="owner/repo-1" PLECT_CALLS="$tmp/calls" PLECT_CLAUDE_MESSAGE_DEDUP=true \
+PLECT_CLAUDE_TICK_ON_STOP=true PLECT_SESSION_NAME="owner/repo-1" PLECT_CALLS="$tmp/calls" PLECT_CLAUDE_MESSAGE_DEDUP=true \
 XDG_STATE_HOME="$tmp/state" PATH="$bin_dir:$PATH" \
 "$subject" finish <<<'{"hook_event_name":"Stop","last_assistant_message":"answer done","prompt_id":"turn-stream-finish"}'
 ! grep -q 'state set-message owner/repo-1 ' "$tmp/calls" || { echo "Stop cleared an unfinished stream" >&2; exit 1; }
-PLECT_SESSION_NAME="owner/repo-1" PLECT_CALLS="$tmp/calls" \
+! grep -q '^tick owner/repo-1$' "$tmp/calls" || { echo "Stop ticked before the stream completed" >&2; exit 1; }
+PLECT_CLAUDE_TICK_ON_STOP=true PLECT_SESSION_NAME="owner/repo-1" PLECT_CALLS="$tmp/calls" \
 XDG_STATE_HOME="$tmp/state" PATH="$bin_dir:$PATH" \
 "$subject" message_display <<<'{"hook_event_name":"MessageDisplay","message_id":"native-finish","turn_id":"turn-stream-finish","final":true,"delta":"done"}'
-[ "$(tail -n 1 "$tmp/calls")" = 'state set-message owner/repo-1  --turn-id turn-stream-finish' ] || { echo "final delta did not complete the turn" >&2; exit 1; }
+[ "$(tail -n 2 "$tmp/calls" | paste -sd '|' -)" = 'state set-message owner/repo-1  --turn-id turn-stream-finish|tick owner/repo-1' ] || { echo "final delta did not tick after completing the turn" >&2; exit 1; }
+[ "$(grep -c '^tick owner/repo-1$' "$tmp/calls")" -eq 1 ] || { echo "streamed turn must tick once" >&2; exit 1; }
 
 # reply: a non-empty last_assistant_message publishes exactly one
 # plect.message event, summary truncated to its first line, message_id
