@@ -80,6 +80,7 @@ jq -nc --arg activity "$activity_bin" --arg has_message "$HAS_MESSAGE" '
 ' > "$HOOKS" || exit 1
 
 EXPORTS="export PLECT_SESSION_NAME=$session_name; "
+EXPORTS="${EXPORTS}export PLECT_CLAUDE_REPORT_REPLY=$HAS_MESSAGE; "
 
 # launch_env crosses one boundary the binding transport does not close: the
 # keystrokes sent to the pane. jq's @sh closes it by quoting each value, and

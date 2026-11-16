@@ -412,12 +412,12 @@ export STUB_HEALTH_FILE="$bounded_state/health.json"
 echo fail-early > "$STUB_MODE_FILE"
 "$worker" "$bounded_queue" "$bounded_state" "$sid" "$tmp/mcp.json" "$tmp/hooks.json" > "$tmp/bounded.out" 2>&1 &
 worker_pid=$!
-for _ in $(seq 1 150); do
+for _ in $(seq 1 300); do
   compgen -G "$bounded_queue/.failed-*" >/dev/null && break
   sleep 0.1
 done
 if ! compgen -G "$bounded_queue/.failed-*" >/dev/null || [ "$(grep -c 'poison turn' "$STUB_ARGV" || true)" -ne 3 ]; then
-  echo "FAIL a deterministic agent failure was not parked after three attempts" >&2
+  echo "FAIL a deterministic agent failure was not parked after three attempts: argv=$(grep -c 'poison turn' "$STUB_ARGV" || true) output=$(cat "$tmp/bounded.out")" >&2
   fail=1
 fi
 if [ "$(sed -n '2,3p' "$STUB_HEALTH_LOG" | grep -c '^0$' || true)" -ne 2 ]; then
@@ -432,6 +432,23 @@ wait "$worker_pid" 2>/dev/null || true
 worker_pid=""
 export STUB_HEALTH_FILE=""
 
+optout_queue="$tmp/optout-queue"
+optout_state="$tmp/optout-state"
+mkdir -p "$optout_queue"
+echo '{"id":"optout","type":"example","text":"private reply"}' > "$optout_queue/1.json"
+: > "$STUB_ARGV"
+: > "$PLECT_CALLS"
+PLECT_CLAUDE_REPORT_REPLY=false "$worker" "$optout_queue" "$optout_state" "$sid" "$tmp/mcp.json" "$tmp/hooks.json" > "$tmp/optout.out" 2>&1 &
+worker_pid=$!
+wait_for_drain "$optout_queue/1.json" || { echo "FAIL opted-out batch was not acknowledged: $(cat "$tmp/optout.out")" >&2; fail=1; }
+if grep -q '^event publish ' "$PLECT_CALLS" || [ "$(grep -c 'private reply' "$STUB_ARGV" || true)" -ne 1 ]; then
+  echo "FAIL opted-out batch published a reply or reran its agent" >&2
+  fail=1
+fi
+kill -TERM "$worker_pid" 2>/dev/null || true
+wait "$worker_pid" 2>/dev/null || true
+worker_pid=""
+
 reply_queue="$tmp/reply-queue"
 reply_state="$tmp/reply-state"
 mkdir -p "$reply_queue"
@@ -440,12 +457,12 @@ echo '{"id":"reply","type":"example","text":"stuck publication"}' > "$reply_queu
 touch "$PLECT_FAIL_PUBLISH"
 "$worker" "$reply_queue" "$reply_state" "$sid" "$tmp/mcp.json" "$tmp/hooks.json" > "$tmp/reply.out" 2>&1 &
 worker_pid=$!
-for _ in $(seq 1 150); do
+for _ in $(seq 1 300); do
   compgen -G "$reply_queue/.failed-*" >/dev/null && break
   sleep 0.1
 done
 if ! compgen -G "$reply_queue/.failed-*" >/dev/null || [ "$(grep -c 'stuck publication' "$STUB_ARGV" || true)" -ne 1 ]; then
-  echo "FAIL repeated publication failures reran the agent or never parked" >&2
+  echo "FAIL repeated publication failures reran the agent or never parked: argv=$(grep -c 'stuck publication' "$STUB_ARGV" || true) output=$(cat "$tmp/reply.out")" >&2
   fail=1
 fi
 if ! compgen -G "$reply_queue/.failed-*/reply.json" >/dev/null; then

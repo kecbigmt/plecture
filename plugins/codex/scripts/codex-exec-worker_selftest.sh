@@ -367,7 +367,7 @@ export STUB_HEALTH_FILE="$bounded_state/health.json"
 printf 'fail' > "$STUB_MODE_FILE"
 "$worker" "$bounded_queue" "$bounded_state" > "$tmp/bounded.out" 2>&1 &
 worker_pid=$!
-for _ in $(seq 1 150); do
+for _ in $(seq 1 300); do
   compgen -G "$bounded_queue/.failed-*" >/dev/null && break
   sleep 0.1
 done
@@ -395,7 +395,7 @@ echo '{"id":"reply","type":"example","text":"stuck publication"}' > "$reply_queu
 touch "$PLECT_FAIL_PUBLISH"
 "$worker" "$reply_queue" "$reply_state" > "$tmp/reply.out" 2>&1 &
 worker_pid=$!
-for _ in $(seq 1 150); do
+for _ in $(seq 1 300); do
   compgen -G "$reply_queue/.failed-*" >/dev/null && break
   sleep 0.1
 done

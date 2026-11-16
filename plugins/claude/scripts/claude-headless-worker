@@ -187,7 +187,7 @@ while true; do
         fi
 
         batch_id="$(cat "$queue_dir/.inflight/batch-id")"
-        if PLECT_BATCH_ID="$batch_id" PLECT_BATCH_REPLY_MARKER="$reply_marker" "$activity_bin" reply < "$reply_payload" && touch "$reply_marker"; then
+        if { [ "${PLECT_CLAUDE_REPORT_REPLY:-true}" != true ] || PLECT_BATCH_ID="$batch_id" PLECT_BATCH_REPLY_MARKER="$reply_marker" "$activity_bin" reply < "$reply_payload"; } && touch "$reply_marker"; then
             write_health 0 "$event_type"
             batch_ack "$queue_dir"
             tick_session
