@@ -125,7 +125,7 @@ func init() {
 			", else $"+confighome.XDGEnvVar+"/plect, else ~/.config/plect. "+
 			"Runtime state and the plugin cache resolve independently, unaffected by this; see --data-home and --cache-home.")
 	rootCmd.PersistentFlags().StringVar(&dataHomeFlag, "data-home", "",
-		"Override the runtime data directory (storage.db, the durable event log); else $"+datahome.EnvVar+
+		"Override the runtime data directory (storage.db, the durable event log); plect serve also requires --socket when this selects a non-default directory. Else $"+datahome.EnvVar+
 			", else $"+datahome.XDGEnvVar+"/plect, else ~/.local/share/plect. "+
 			"Unlike $"+datahome.XDGEnvVar+", this process never passes $"+datahome.EnvVar+
 			" on to a child a declaration starts, so a build that child invokes resolves the default data directory.")

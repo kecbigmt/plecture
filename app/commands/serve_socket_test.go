@@ -7,8 +7,64 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/kecbigmt/plecture/app/internal/datahome"
 	"github.com/kecbigmt/plecture/app/internal/sockettest"
 )
+
+func TestServeSocketSelection(t *testing.T) {
+	root := sockettest.Dir(t)
+	runtimeDir := filepath.Join(root, "runtime")
+	xdgDataDir := filepath.Join(root, "data")
+	t.Setenv("XDG_RUNTIME_DIR", runtimeDir)
+	t.Setenv(datahome.XDGEnvVar, xdgDataDir)
+	defaultSocket := filepath.Join(runtimeDir, "plect", "bus.sock")
+	customSocket := filepath.Join(root, "custom.sock")
+	customData := filepath.Join(root, "custom-data")
+	for _, tc := range []struct {
+		name, dataHome, socket, want, wantErr string
+	}{
+		{name: "default home", want: defaultSocket},
+		{name: "override equal to default", dataHome: filepath.Join(xdgDataDir, "plect"), want: defaultSocket},
+		{name: "custom home needs socket", dataHome: customData, wantErr: "non-default data home requires --socket"},
+		{name: "custom home with socket", dataHome: customData, socket: customSocket, want: customSocket},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Setenv(datahome.EnvVar, tc.dataHome)
+			got, err := selectServeSocket(tc.socket)
+			if tc.wantErr != "" {
+				if err == nil || !strings.Contains(err.Error(), tc.wantErr) {
+					t.Fatalf("selectServeSocket() error = %v, want %q", err, tc.wantErr)
+				}
+			} else if err != nil || got != tc.want {
+				t.Fatalf("selectServeSocket() = %q, %v; want %q", got, err, tc.want)
+			}
+		})
+	}
+}
+
+func TestServeCustomSocketDoesNotBindDefault(t *testing.T) {
+	root := sockettest.Dir(t)
+	t.Setenv("XDG_RUNTIME_DIR", filepath.Join(root, "runtime"))
+	t.Setenv(datahome.XDGEnvVar, filepath.Join(root, "data"))
+	t.Setenv(datahome.EnvVar, filepath.Join(root, "custom-data"))
+	path, err := selectServeSocket(filepath.Join(root, "custom.sock"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	ln, err := listenBusSocket(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer ln.Close()
+	if _, err := os.Lstat(defaultBusSocket()); !os.IsNotExist(err) {
+		t.Fatalf("default socket exists: %v", err)
+	}
+	conn, err := net.Dial("unix", path)
+	if err != nil {
+		t.Fatalf("custom socket is not listening: %v", err)
+	}
+	conn.Close()
+}
 
 func TestListenBusSocketRefusesLiveListener(t *testing.T) {
 	path := filepath.Join(sockettest.Dir(t), "bus.sock")
