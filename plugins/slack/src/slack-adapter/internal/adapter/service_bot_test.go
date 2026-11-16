@@ -28,15 +28,23 @@ func TestEachConfiguredBotOwnsASocketModeClient(t *testing.T) {
 	slackAPIURL = server.URL + "/"
 	t.Cleanup(func() { slackAPIURL = prior })
 	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
-	first, err := NewBotAdapter(Bot{AppToken: "app-one", BotToken: "bot-one", ChannelID: "C1"}, nil, nil, logger)
+	first, err := NewBotAdapter(Bot{AppToken: "app-one", BotToken: "bot-one", ChannelIDs: []string{"C1"}}, nil, nil, logger)
 	if err != nil {
 		t.Fatal(err)
 	}
-	second, err := NewBotAdapter(Bot{AppToken: "app-two", BotToken: "bot-two", ChannelID: "C2"}, nil, nil, logger)
+	second, err := NewBotAdapter(Bot{AppToken: "app-two", BotToken: "bot-two", ChannelIDs: []string{"C2"}}, nil, nil, logger)
 	if err != nil {
 		t.Fatal(err)
 	}
 	if first.socket == nil || second.socket == nil || first.socket == second.socket || first.botUserID == second.botUserID {
 		t.Fatalf("bot identities = %s, %s", first.botUserID, second.botUserID)
+	}
+}
+
+func TestDuplicateAuthenticatedAppIdentityIsRejected(t *testing.T) {
+	first := &BotAdapter{teamID: "T1", botUserID: "UBOT"}
+	second := &BotAdapter{teamID: "T1", botUserID: "UBOT"}
+	if err := ValidateUniqueIdentities([]*BotAdapter{first, second}); err == nil || !strings.Contains(err.Error(), "duplicate Slack App identity") {
+		t.Fatalf("identity error = %v", err)
 	}
 }

@@ -29,6 +29,8 @@ func run(args []string, input io.Reader, output, errors io.Writer) error {
 	switch args[0] {
 	case "serve":
 		return serve(input, output, errors)
+	case "subscribe":
+		return subscribe(args[1:], output)
 	case "resource":
 		if len(args) != 4 || args[1] != "observe" || args[2] != "--resource" || args[3] == "" {
 			return fmt.Errorf("usage: slack-adapter resource observe --resource <url>")
@@ -42,6 +44,25 @@ func run(args []string, input io.Reader, output, errors io.Writer) error {
 	}
 }
 
+func subscribe(args []string, output io.Writer) error {
+	if len(args) == 0 || args[0] != "unbound-mentions" {
+		return fmt.Errorf("usage: slack-adapter subscribe unbound-mentions --socket <path> --channel-ids <json-array>")
+	}
+	fs := flag.NewFlagSet("subscribe unbound-mentions", flag.ContinueOnError)
+	path := fs.String("socket", "", "private feed socket")
+	channelsJSON := fs.String("channel-ids", "", "channel IDs")
+	if err := fs.Parse(args[1:]); err != nil {
+		return err
+	}
+	var channels []string
+	if err := json.Unmarshal([]byte(*channelsJSON), &channels); err != nil || *path == "" || len(channels) == 0 || fs.NArg() != 0 {
+		return fmt.Errorf("subscribe unbound-mentions requires --socket and nonempty --channel-ids JSON array")
+	}
+	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
+	defer stop()
+	return adapter.StreamMentions(ctx, *path, channels, output)
+}
+
 func serve(input io.Reader, output, errors io.Writer) error {
 	logger := slog.New(slog.NewJSONHandler(errors, nil))
 	protocol := adapter.NewServiceProtocol(input, output)
@@ -49,11 +70,16 @@ func serve(input io.Reader, output, errors io.Writer) error {
 	if err != nil {
 		return err
 	}
-	bots, err := adapter.ParseServiceConfig(config)
+	serviceConfig, err := adapter.ParseServiceConfig(config)
 	if err != nil {
 		return err
 	}
+	bots := serviceConfig.Bots
 	if err := protocol.ReadSnapshot(); err != nil {
+		return err
+	}
+	coverage := adapter.NewCoverage(bots, serviceConfig.SocketPath)
+	if err := protocol.ReadQueries(coverage); err != nil {
 		return err
 	}
 	denials, err := adapter.NewDenialStore(os.Getenv("PLECT_DATA_DIR"))
@@ -64,6 +90,19 @@ func serve(input io.Reader, output, errors io.Writer) error {
 	if err != nil {
 		return err
 	}
+	pending, err := adapter.NewPendingStore(os.Getenv("PLECT_DATA_DIR"))
+	if err != nil {
+		return err
+	}
+	var feed *adapter.MentionFeed
+	if serviceConfig.SocketPath != "" {
+		feed, err = adapter.NewMentionFeed(serviceConfig.SocketPath, coverage)
+		if err != nil {
+			return err
+		}
+		defer feed.Close()
+		protocol.OnQueriesChanged(feed.DropClients)
+	}
 	listeners := make([]*adapter.BotAdapter, 0, len(bots))
 	for _, bot := range bots {
 		listener, err := adapter.NewBotAdapter(bot, protocol, denials, logger)
@@ -71,12 +110,19 @@ func serve(input io.Reader, output, errors io.Writer) error {
 			return err
 		}
 		listener.ConfigureRecovery(recovery, protocol.Subscriptions())
+		listener.ConfigurePopulation(coverage, pending, feed)
 		listeners = append(listeners, listener)
+	}
+	if err := adapter.ValidateUniqueIdentities(listeners); err != nil {
+		return err
 	}
 	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
 	defer stop()
-	failures := make(chan error, len(listeners)+1)
+	failures := make(chan error, len(listeners)+2)
 	go func() { failures <- protocol.ReadReplies() }()
+	if feed != nil {
+		go func() { failures <- feed.Serve(ctx) }()
+	}
 	var running sync.WaitGroup
 	for _, listener := range listeners {
 		running.Add(1)
@@ -120,10 +166,11 @@ func action(args []string, output, errors io.Writer) error {
 	if *configJSON == "" || *channel == "" {
 		return fmt.Errorf("--config and --channel-id are required")
 	}
-	bots, err := adapter.ParseServiceConfig([]byte(*configJSON))
+	serviceConfig, err := adapter.ParseServiceConfig([]byte(*configJSON))
 	if err != nil {
 		return err
 	}
+	bots := serviceConfig.Bots
 	client, err := adapter.NewAction(bots, *channel, "https://slack.com/api/")
 	if err != nil {
 		return err

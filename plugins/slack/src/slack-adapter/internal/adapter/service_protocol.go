@@ -6,19 +6,21 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"log/slog"
 	"sync"
 	"sync/atomic"
 )
 
 type protocolMessage struct {
-	Op        string          `json:"op"`
-	ID        string          `json:"id"`
-	Code      string          `json:"code"`
-	Message   string          `json:"message"`
-	Delivered int             `json:"delivered"`
-	Config    json.RawMessage `json:"config"`
-	Add       []Subscription  `json:"add"`
-	Remove    []Subscription  `json:"remove"`
+	Op        string              `json:"op"`
+	ID        string              `json:"id"`
+	Code      string              `json:"code"`
+	Message   string              `json:"message"`
+	Delivered int                 `json:"delivered"`
+	Config    json.RawMessage     `json:"config"`
+	Add       []Subscription      `json:"add"`
+	Remove    []Subscription      `json:"remove"`
+	Items     []QueryRegistration `json:"items"`
 }
 
 type ServiceProtocol struct {
@@ -31,6 +33,8 @@ type ServiceProtocol struct {
 	done      chan struct{}
 	readErr   error
 	subs      *Subscriptions
+	coverage  *Coverage
+	onQueries func()
 }
 
 func NewServiceProtocol(input io.Reader, output io.Writer) *ServiceProtocol {
@@ -76,6 +80,23 @@ func (p *ServiceProtocol) ReadSnapshot() error {
 	return nil
 }
 
+func (p *ServiceProtocol) ReadQueries(coverage *Coverage) error {
+	msg, err := p.read()
+	if err != nil {
+		return fmt.Errorf("read queries snapshot: %w", err)
+	}
+	if msg.Op != "queries" {
+		return fmt.Errorf("third service message must be queries")
+	}
+	if err := coverage.Replace(msg.Items); err != nil {
+		return err
+	}
+	p.coverage = coverage
+	return nil
+}
+
+func (p *ServiceProtocol) OnQueriesChanged(hook func()) { p.onQueries = hook }
+
 func (p *ServiceProtocol) Subscriptions() *Subscriptions { return p.subs }
 
 func (p *ServiceProtocol) ReadReplies() error {
@@ -89,6 +110,17 @@ func (p *ServiceProtocol) ReadReplies() error {
 		switch msg.Op {
 		case "subscriptions":
 			p.subs.Apply(msg.Add, msg.Remove)
+			continue
+		case "queries":
+			if p.coverage == nil {
+				p.readErr = fmt.Errorf("queries snapshot before initialization")
+				return p.readErr
+			}
+			if err := p.coverage.Replace(msg.Items); err != nil {
+				slog.Error("invalid population query snapshot; keeping prior coverage", "error", err)
+			} else if p.onQueries != nil {
+				p.onQueries()
+			}
 			continue
 		case "published", "error":
 			p.pendingMu.Lock()

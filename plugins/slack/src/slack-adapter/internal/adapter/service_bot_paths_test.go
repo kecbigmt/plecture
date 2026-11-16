@@ -14,7 +14,7 @@ import (
 )
 
 func testRoutingBot(p *routePublisher) *BotAdapter {
-	return &BotAdapter{bot: Bot{ChannelID: "C1", AllowedUserIDs: []string{"U1"}}, teamID: "T1", botUserID: "UBOT", publisher: p, fetcher: routeFetcher{}, linker: routePermalink{}, logger: slog.New(slog.NewTextHandler(io.Discard, nil))}
+	return &BotAdapter{bot: Bot{ChannelIDs: []string{"C1"}, AllowedUserIDs: []string{"U1"}}, teamID: "T1", botUserID: "UBOT", publisher: p, fetcher: routeFetcher{}, linker: routePermalink{}, logger: slog.New(slog.NewTextHandler(io.Discard, nil))}
 }
 
 func testMention() *slackevents.AppMentionEvent {

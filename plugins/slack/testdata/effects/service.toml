@@ -8,5 +8,5 @@ args = ["serve"]
 [[services.config.bots]]
 app_token_env = "APP_TEST"
 bot_token_env = "BOT_TEST"
-channel_id = "C0123"
+channel_ids = ["C0123"]
 allowed_user_ids = []

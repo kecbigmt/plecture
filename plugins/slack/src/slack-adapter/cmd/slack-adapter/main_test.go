@@ -6,15 +6,16 @@ import (
 	"testing"
 )
 
-func TestResourceObserveAndRemovedCommands(t *testing.T) {
+func TestResourceObserveAndSubscribeCommand(t *testing.T) {
 	var output, errors bytes.Buffer
 	if err := run([]string{"resource", "observe", "--resource", "slack://T/U"}, strings.NewReader(""), &output, &errors); err != nil || output.String() != "{}\n" {
 		t.Fatalf("output = %q, err = %v", output.String(), err)
 	}
-	for _, args := range [][]string{{"subscribe", "unbound-mentions"}, {"resource", "subscribe", "--resource", "slack://T/U"}} {
-		if err := run(args, strings.NewReader(""), &output, &errors); err == nil {
-			t.Fatalf("removed command %v accepted", args)
-		}
+	if err := run([]string{"subscribe", "unbound-mentions", "--socket", "/missing/feed.sock", "--channel-ids", `["C1"]`}, strings.NewReader(""), &output, &errors); err == nil || strings.Contains(err.Error(), "unknown command") {
+		t.Fatalf("subscribe command error = %v", err)
+	}
+	if err := run([]string{"resource", "subscribe", "--resource", "slack://T/U"}, strings.NewReader(""), &output, &errors); err == nil {
+		t.Fatal("removed resource subscribe command accepted")
 	}
 }
 

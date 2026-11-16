@@ -20,7 +20,7 @@ func TestConnectionLoopScansReconnectAndGatesOnlineBoundary(t *testing.T) {
 	if err := store.SetBoundary(key, base); err != nil {
 		t.Fatal(err)
 	}
-	b := &BotAdapter{bot: Bot{ChannelID: "C1"}, teamID: "T1", botUserID: "UBOT", recovery: store, logger: slog.New(slog.NewTextHandler(io.Discard, nil))}
+	b := &BotAdapter{bot: Bot{ChannelIDs: []string{"C1"}}, teamID: "T1", botUserID: "UBOT", recovery: store, logger: slog.New(slog.NewTextHandler(io.Discard, nil))}
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 	events := make(chan socketmode.Event)

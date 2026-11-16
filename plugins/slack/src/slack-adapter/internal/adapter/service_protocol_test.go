@@ -103,3 +103,24 @@ func TestServiceProtocolTracksSubscriptionSnapshotAndDeltas(t *testing.T) {
 		t.Fatalf("delta roots=%v", roots)
 	}
 }
+
+func TestServiceProtocolAppliesCompleteQuerySnapshots(t *testing.T) {
+	input := strings.NewReader("{\"op\":\"config\",\"config\":{}}\n" +
+		"{\"op\":\"subscriptions\",\"add\":[]}\n" +
+		"{\"op\":\"queries\",\"items\":[{\"id\":\"ops/mentions\",\"inputs\":{\"socket_path\":\"/run/feed.sock\",\"channel_ids\":[\"C1\"]}}]}\n" +
+		"{\"op\":\"queries\",\"items\":[]}\n")
+	p := NewServiceProtocol(input, io.Discard)
+	if _, err := p.ReadConfig(); err != nil {
+		t.Fatal(err)
+	}
+	if err := p.ReadSnapshot(); err != nil {
+		t.Fatal(err)
+	}
+	coverage := NewCoverage([]Bot{{ChannelIDs: []string{"C1", "C2"}}}, "/run/feed.sock")
+	if err := p.ReadQueries(coverage); err != nil || coverage.Owner("C1") != "ops/mentions" {
+		t.Fatalf("initial coverage = %q, err = %v", coverage.Owner("C1"), err)
+	}
+	if err := p.ReadReplies(); err != io.EOF || coverage.Owner("C1") != "" {
+		t.Fatalf("replacement coverage = %q, err = %v", coverage.Owner("C1"), err)
+	}
+}

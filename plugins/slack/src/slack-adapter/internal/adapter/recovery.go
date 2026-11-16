@@ -16,9 +16,18 @@ func (b *BotAdapter) Recover(ctx context.Context, now time.Time, subs *Subscript
 	if b.recovery == nil {
 		return nil
 	}
+	for _, channelID := range b.bot.ChannelIDs {
+		if err := b.recoverChannel(ctx, now, subs, channelID); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func (b *BotAdapter) recoverChannel(ctx context.Context, now time.Time, subs *Subscriptions, channelID string) error {
 	recovered := 0
-	defer func() { b.logger.Info(fmt.Sprintf("recovered %d mentions", recovered), "channel_id", b.bot.ChannelID) }()
-	key := b.teamID + "/" + b.botUserID + "/" + b.bot.ChannelID
+	defer func() { b.logger.Info(fmt.Sprintf("recovered %d mentions", recovered), "channel_id", channelID) }()
+	key := b.teamID + "/" + b.botUserID + "/" + channelID
 	saved := b.recovery.Boundary(key)
 	firstStart := saved.IsZero()
 	if saved.IsZero() {
@@ -29,7 +38,7 @@ func (b *BotAdapter) Recover(ctx context.Context, now time.Time, subs *Subscript
 		if err := b.recovery.Initialize(key, saved); err != nil {
 			return err
 		}
-		b.logger.Info("first start recovery skipped", "channel_id", b.bot.ChannelID, "before", saved)
+		b.logger.Info("first start recovery skipped", "channel_id", channelID, "before", saved)
 	}
 	start := saved.Add(-recoveryOverlap)
 	if firstStart {
@@ -40,7 +49,7 @@ func (b *BotAdapter) Recover(ctx context.Context, now time.Time, subs *Subscript
 	}
 	floor := now.Add(-recoveryLookback)
 	if start.Before(floor) {
-		b.logger.Warn("recovery range not fetched", "channel_id", b.bot.ChannelID, "range_start", saved, "range_end", floor)
+		b.logger.Warn("recovery range not fetched", "channel_id", channelID, "range_start", saved, "range_end", floor)
 		start = floor
 	}
 	scannedRoots := make(map[string]bool)
@@ -54,7 +63,7 @@ func (b *BotAdapter) Recover(ctx context.Context, now time.Time, subs *Subscript
 			if err := b.waitRecoveryPace(ctx); err != nil {
 				return err
 			}
-			messages, more, next, err := b.api.GetConversationRepliesContext(ctx, &slack.GetConversationRepliesParameters{ChannelID: b.bot.ChannelID, Timestamp: root, Cursor: cursor, Inclusive: true, Oldest: root, Latest: slackTime(now), Limit: 200})
+			messages, more, next, err := b.api.GetConversationRepliesContext(ctx, &slack.GetConversationRepliesParameters{ChannelID: channelID, Timestamp: root, Cursor: cursor, Inclusive: true, Oldest: root, Latest: slackTime(now), Limit: 200})
 			if err != nil {
 				return fmt.Errorf("conversations.replies root %s: %w", root, err)
 			}
@@ -62,7 +71,7 @@ func (b *BotAdapter) Recover(ctx context.Context, now time.Time, subs *Subscript
 				if msg.Timestamp == root || compareSlackTS(msg.Timestamp, slackTime(from)) < 0 || compareSlackTS(msg.Timestamp, slackTime(now)) > 0 {
 					continue
 				}
-				delivered, err := b.recoverMessage(msg, root)
+				delivered, err := b.recoverMessage(channelID, msg, root)
 				if err != nil {
 					return err
 				}
@@ -83,24 +92,24 @@ func (b *BotAdapter) Recover(ctx context.Context, now time.Time, subs *Subscript
 		if err := b.waitRecoveryPace(ctx); err != nil {
 			return err
 		}
-		page, err := b.api.GetConversationHistoryContext(ctx, &slack.GetConversationHistoryParameters{ChannelID: b.bot.ChannelID, Cursor: cursor, Oldest: slackTime(start), Latest: slackTime(now), Inclusive: true, Limit: 200})
+		page, err := b.api.GetConversationHistoryContext(ctx, &slack.GetConversationHistoryParameters{ChannelID: channelID, Cursor: cursor, Oldest: slackTime(start), Latest: slackTime(now), Inclusive: true, Limit: 200})
 		if err != nil {
-			b.logRecoveryFailure(start, now, err)
+			b.logRecoveryFailure(channelID, start, now, err)
 			return err
 		}
 		for _, msg := range page.Messages {
 			if compareSlackTS(msg.Timestamp, slackTime(start)) < 0 || compareSlackTS(msg.Timestamp, slackTime(now)) > 0 {
 				continue
 			}
-			delivered, err := b.recoverMessage(msg, "")
+			delivered, err := b.recoverMessage(channelID, msg, "")
 			if err != nil {
-				b.logRecoveryFailure(start, now, err)
+				b.logRecoveryFailure(channelID, start, now, err)
 				return err
 			}
 			recovered += delivered
 			if msg.ReplyCount > 0 {
 				if err := scanThread(msg.Timestamp, start); err != nil {
-					b.logRecoveryFailure(start, now, err)
+					b.logRecoveryFailure(channelID, start, now, err)
 					return err
 				}
 			}
@@ -110,13 +119,13 @@ func (b *BotAdapter) Recover(ctx context.Context, now time.Time, subs *Subscript
 		}
 		if page.ResponseMetaData.NextCursor == "" {
 			err := fmt.Errorf("conversations.history: missing next cursor")
-			b.logRecoveryFailure(start, now, err)
+			b.logRecoveryFailure(channelID, start, now, err)
 			return err
 		}
 		cursor = page.ResponseMetaData.NextCursor
 	}
 	if subs != nil {
-		roots := subs.ThreadRoots(b.bot.ChannelID)
+		roots := subs.ThreadRoots(channelID)
 		for _, root := range roots {
 			threadSaved := b.recovery.ThreadBoundary(key, root)
 			if threadSaved.IsZero() {
@@ -130,11 +139,11 @@ func (b *BotAdapter) Recover(ctx context.Context, now time.Time, subs *Subscript
 				threadStart = origin
 			}
 			if threadStart.Before(floor) {
-				b.logger.Warn("recovery thread range not fetched", "channel_id", b.bot.ChannelID, "thread_ts", root, "range_start", threadSaved, "range_end", floor)
+				b.logger.Warn("recovery thread range not fetched", "channel_id", channelID, "thread_ts", root, "range_start", threadSaved, "range_end", floor)
 				threadStart = floor
 			}
 			if err := scanThread(root, threadStart); err != nil {
-				b.logger.Warn("recovery thread scan failed", "channel_id", b.bot.ChannelID, "thread_ts", root, "range_start", threadStart, "range_end", now, "error", err)
+				b.logger.Warn("recovery thread scan failed", "channel_id", channelID, "thread_ts", root, "range_start", threadStart, "range_end", now, "error", err)
 				continue
 			}
 			if err := b.recovery.SetThreadBoundary(key, root, now); err != nil {
@@ -146,24 +155,24 @@ func (b *BotAdapter) Recover(ctx context.Context, now time.Time, subs *Subscript
 		}
 	}
 	if err := b.recovery.SetBoundary(key, now); err != nil {
-		b.logRecoveryFailure(start, now, err)
+		b.logRecoveryFailure(channelID, start, now, err)
 		return err
 	}
-	b.logger.Info("recovery scan complete", "channel_id", b.bot.ChannelID, "range_start", start, "range_end", now)
+	b.logger.Info("recovery scan complete", "channel_id", channelID, "range_start", start, "range_end", now)
 	return nil
 }
 
-func (b *BotAdapter) logRecoveryFailure(start, end time.Time, err error) {
-	b.logger.Warn("recovery scan failed", "channel_id", b.bot.ChannelID, "range_start", start, "range_end", end, "error", err)
+func (b *BotAdapter) logRecoveryFailure(channelID string, start, end time.Time, err error) {
+	b.logger.Warn("recovery scan failed", "channel_id", channelID, "range_start", start, "range_end", end, "error", err)
 }
-func (b *BotAdapter) recoverMessage(msg slack.Message, root string) (int, error) {
+func (b *BotAdapter) recoverMessage(channelID string, msg slack.Message, root string) (int, error) {
 	if !renderableMessage(msg) || msg.BotID != "" || msg.User == "" || !strings.Contains(msg.Text, "<@"+b.botUserID+">") {
 		return 0, nil
 	}
 	if root == "" {
 		root = msg.Timestamp
 	}
-	ok, delivered := b.routeMention(&slackevents.AppMentionEvent{User: msg.User, Channel: b.bot.ChannelID, TimeStamp: msg.Timestamp, ThreadTimeStamp: root, Text: msg.Text})
+	ok, delivered := b.routeMention(&slackevents.AppMentionEvent{User: msg.User, Channel: channelID, TimeStamp: msg.Timestamp, ThreadTimeStamp: root, Text: msg.Text})
 	if !ok {
 		return 0, fmt.Errorf("route recovered mention %s failed", msg.Timestamp)
 	}
