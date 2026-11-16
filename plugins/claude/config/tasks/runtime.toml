@@ -151,10 +151,10 @@ jq -nc --arg activity "$activity_bin" --arg dedup_prefix "$DEDUP_PREFIX" --arg h
       {
         UserPromptSubmit: [{hooks: [{type: "command", command: ($activity + " working")}]}],
         PreToolUse:       [{hooks: [{type: "command", command: ($activity + " working")}]}],
-        Stop: [{hooks: [{type: "command", command: ($dedup_prefix + "PLECT_CLAUDE_REPORT_REPLY=" + $has_message + " " + $activity + " finish")}]}]
+        Stop: [{hooks: [{type: "command", command: ($dedup_prefix + "PLECT_CLAUDE_REPORT_REPLY=" + $has_message + " " + $activity + " finish interactive")}]}]
       }
       + (if $has_message_delta then
-           {MessageDisplay: [{hooks: [{type: "command", command: ($dedup_prefix + $activity + " message_display")}]}]}
+           {MessageDisplay: [{hooks: [{type: "command", command: ($dedup_prefix + $activity + " message_display interactive")}]}]}
          else {} end)
     )
   } + (if $skip_bypass_warning then {skipDangerousModePermissionPrompt: true} else {} end)

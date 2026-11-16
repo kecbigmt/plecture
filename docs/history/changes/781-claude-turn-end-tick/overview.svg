@@ -1,0 +1,46 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1080 620" width="1080" height="620" role="img" aria-labelledby="title desc">
+  <title id="title">Claude interactive turn-end tick</title>
+  <desc id="desc">Before, the interactive Claude Stop hook published a reply and idle status but did not tick the session; the review chain waited for another trigger. After, the interactive Stop hook or a streamed reply's final MessageDisplay calls plect tick after completing the turn. The headless Claude worker and Codex exec worker each already tick after their turns. Main suppresses an unchanged announcement from a non-heartbeat tick.</desc>
+  <defs>
+    <marker id="arrow" markerWidth="9" markerHeight="9" refX="8" refY="4.5" orient="auto">
+      <path d="M0 0 L9 4.5 L0 9 Z" fill="#344054"/>
+    </marker>
+  </defs>
+  <rect width="1080" height="620" fill="#f8fafc"/>
+  <text x="40" y="48" font-family="Arial, sans-serif" font-size="27" font-weight="700" fill="#101828">Claude interactive turn-end tick</text>
+  <text x="40" y="78" font-family="Arial, sans-serif" font-size="15" fill="#344054">Every interactive turn re-evaluates its session after completion.</text>
+
+  <rect x="40" y="108" width="480" height="364" rx="12" fill="#fff" stroke="#98a2b3" stroke-width="2"/>
+  <text x="64" y="143" font-family="Arial, sans-serif" font-size="20" font-weight="700" fill="#344054">Before</text>
+  <rect x="64" y="165" width="432" height="56" rx="8" fill="#e4e7ec" stroke="#667085"/>
+  <text x="82" y="199" font-family="Arial, sans-serif" font-size="16" fill="#101828">Claude interactive Stop hook</text>
+  <line x1="280" y1="221" x2="280" y2="254" stroke="#344054" stroke-width="2" marker-end="url(#arrow)"/>
+  <text x="294" y="244" font-family="Arial, sans-serif" font-size="13" fill="#344054">reply and idle status</text>
+  <rect x="64" y="257" width="432" height="56" rx="8" fill="#e4e7ec" stroke="#667085"/>
+  <text x="82" y="291" font-family="Arial, sans-serif" font-size="16" fill="#101828">Session event log</text>
+  <line x1="280" y1="313" x2="280" y2="346" stroke="#b42318" stroke-width="2" stroke-dasharray="6 5" marker-end="url(#arrow)"/>
+  <text x="294" y="338" font-family="Arial, sans-serif" font-size="13" fill="#b42318">no turn-end tick</text>
+  <rect x="64" y="349" width="432" height="82" rx="8" fill="#fee4e2" stroke="#b42318"/>
+  <text x="82" y="381" font-family="Arial, sans-serif" font-size="16" fill="#7a271a">Review chain waits</text>
+  <text x="82" y="404" font-family="Arial, sans-serif" font-size="13" fill="#7a271a">until a heartbeat or another tick</text>
+
+  <rect x="560" y="108" width="480" height="364" rx="12" fill="#fff" stroke="#039855" stroke-width="2"/>
+  <text x="584" y="143" font-family="Arial, sans-serif" font-size="20" font-weight="700" fill="#027a48">After · interactive turn-end trigger</text>
+  <rect x="584" y="165" width="432" height="56" rx="8" fill="#d1fadf" stroke="#039855"/>
+  <text x="602" y="199" font-family="Arial, sans-serif" font-size="16" fill="#101828">Stop or final MessageDisplay hook</text>
+  <line x1="800" y1="221" x2="800" y2="254" stroke="#344054" stroke-width="2" marker-end="url(#arrow)"/>
+  <text x="814" y="244" font-family="Arial, sans-serif" font-size="13" fill="#344054">reply and idle status</text>
+  <rect x="584" y="257" width="432" height="56" rx="8" fill="#d1fadf" stroke="#039855"/>
+  <text x="602" y="291" font-family="Arial, sans-serif" font-size="16" fill="#101828">plect tick after completed turn</text>
+  <line x1="800" y1="313" x2="800" y2="346" stroke="#344054" stroke-width="2" marker-end="url(#arrow)"/>
+  <text x="814" y="338" font-family="Arial, sans-serif" font-size="13" fill="#344054">re-evaluate</text>
+  <rect x="584" y="349" width="432" height="82" rx="8" fill="#d1fadf" stroke="#039855"/>
+  <text x="602" y="381" font-family="Arial, sans-serif" font-size="16" fill="#054f31">Review chain fires</text>
+  <text x="602" y="404" font-family="Arial, sans-serif" font-size="13" fill="#054f31">when PR conditions hold</text>
+
+  <rect x="40" y="485" width="1000" height="115" rx="10" fill="#eff8ff" stroke="#1570ef"/>
+  <text x="62" y="516" font-family="Arial, sans-serif" font-size="16" font-weight="700" fill="#175cd3">Existing paths and base behavior</text>
+  <text x="62" y="540" font-family="Arial, sans-serif" font-size="14" fill="#1d2939">Codex exec and Claude headless workers already tick once after each turn.</text>
+  <text x="62" y="561" font-family="Arial, sans-serif" font-size="14" fill="#1d2939">The interactive hook registration passes an internal marker; headless Stop does not tick.</text>
+  <text x="62" y="582" font-family="Arial, sans-serif" font-size="14" fill="#1d2939">Main suppresses unchanged non-heartbeat announcements; no workflow input is needed.</text>
+</svg>

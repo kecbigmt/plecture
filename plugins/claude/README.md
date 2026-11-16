@@ -110,6 +110,9 @@ Code hooks that installs is this plugin's own concern:
   hooks fire under `claude -p` too; its schema accepts only `"message"`,
   because `MessageDisplay` rides the TUI's own rendering, which a print-mode
   turn never does.
+- The interactive runtime ticks its session after the completed turn's status
+  is recorded, including after a streamed reply's final display. The headless
+  worker ticks after its own turn, so its Stop hook does not tick.
 - A consumer that wants only finished messages includes `plect.message`;
   one that wants a live view includes `plect.message_delta` too and
   replaces its running preview with the `plect.message` for the same

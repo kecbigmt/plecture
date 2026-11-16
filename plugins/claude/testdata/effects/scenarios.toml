@@ -20,6 +20,18 @@ path   = ""
 output = "mcp_config"
 path   = ""
 
+[[runtime]]
+name   = "message-delta-reporting"
+inputs = { publish_events = ["message", "message_delta"] }
+
+[[runtime.files]]
+path    = ".claude/sessions/aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee.json"
+content = '{"sessionId":"aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee","pid":PID}'
+
+[[runtime.artifacts]]
+output = "hooks_settings"
+path   = ""
+
 # A stale stored PID is a failed liveness check, even when a session file
 # advertises another live process in the same pane. Recovery owns cleanup and
 # setup; a probe must not repair state as an observation side effect.
