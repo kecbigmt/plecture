@@ -81,6 +81,7 @@ tick_session() {
 publish_reply() {
     [ -n "${PLECT_SESSION_NAME:-}" ] && [ "${CODEX_PUBLISH_MESSAGE:-false}" = "true" ] || return 0
     local file="$1"
+    [ -f "$file" ] || return 1
     [ -s "$file" ] || return 0
     jq -n --rawfile text "$file" --arg turn_id "$(cat "$queue_dir/.inflight/batch-id")" \
         '{last_assistant_message: $text, turn_id: $turn_id}' \
@@ -113,6 +114,7 @@ while true; do
 
         if [ ! -f "$completed_marker" ]; then
             rm -f "$last_message_file"
+            : > "$last_message_file" || { write_health 1 "$event_type"; batch_failed "$queue_dir" agent || sleep 2; continue; }
             thread_id="$(cat "$state_dir/thread_id" 2>/dev/null || true)"
             log_file="$state_dir/log/$(date +%s%N).jsonl"
             agent_activity "UserPromptSubmit" "working"

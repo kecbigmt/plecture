@@ -412,6 +412,28 @@ kill -TERM "$worker_pid" 2>/dev/null || true
 wait "$worker_pid" 2>/dev/null || true
 worker_pid=""
 
+missing_queue="$tmp/missing-reply-queue"
+missing_state="$tmp/missing-reply-state"
+mkdir -p "$missing_queue/.inflight"
+echo '{"id":"missing","type":"example","text":"missing reply"}' > "$missing_queue/.inflight/1.json"
+printf '1.json\n' > "$missing_queue/.inflight/manifest"
+printf 'missing-batch' > "$missing_queue/.inflight/batch-id"
+touch "$missing_queue/.inflight/agent-completed"
+: > "$STUB_ARGV"
+"$worker" "$missing_queue" "$missing_state" > "$tmp/missing.out" 2>&1 &
+worker_pid=$!
+for _ in $(seq 1 50); do
+  jq -e '.last_exit_code == 1' "$missing_state/health.json" >/dev/null 2>&1 && break
+  sleep 0.1
+done
+if [ ! -f "$missing_queue/.inflight/1.json" ] || [ -s "$STUB_ARGV" ]; then
+  echo "FAIL a completed batch with a missing saved reply was acknowledged or rerun" >&2
+  fail=1
+fi
+kill -TERM "$worker_pid" 2>/dev/null || true
+wait "$worker_pid" 2>/dev/null || true
+worker_pid=""
+
 ack_queue="$tmp/ack-queue"
 ack_state="$tmp/ack-state"
 mkdir -p "$ack_queue/.inflight"
