@@ -154,21 +154,7 @@ restart, within one refresh interval.`,
 				if err != nil {
 					return nil, err
 				}
-				var out []pluginservice.QueryRegistration
-				for _, def := range defs {
-					if !def.Population.UsesSubscribe() || def.Entry.Query.Subscribe == nil || def.Entry.Query.Subscribe.Bin == "" {
-						continue
-					}
-					bins := config.MountedBins{Mounted: cfg.Plugins, SourcePath: def.Entry.SourcePath}
-					path, err := bins.ResolveBin(def.Entry.Query.Subscribe.Bin, def.Entry.Ownership())
-					if err != nil {
-						return nil, err
-					}
-					if path == decl.ExecPath {
-						out = append(out, pluginservice.QueryRegistration{ID: def.Workflow.Address + "/" + def.Population.Name, Inputs: def.Population.Query})
-					}
-				}
-				return out, nil
+				return serviceQueryRegistrations(cfg, defs, decl)
 			},
 			Publish: func(_ context.Context, req pluginservice.PublishRequest) (int, error) {
 				return service.EventPublishResource(live.Get(), stateStore, req.Resource, service.EventPublishParams{
@@ -203,6 +189,24 @@ restart, within one refresh interval.`,
 		}
 		return nil
 	},
+}
+
+func serviceQueryRegistrations(cfg *config.Config, defs []population.Definition, decl pluginservice.Declaration) ([]pluginservice.QueryRegistration, error) {
+	var out []pluginservice.QueryRegistration
+	for _, def := range defs {
+		if !def.Population.UsesSubscribe() || def.Entry.Query.Subscribe == nil || def.Entry.Query.Subscribe.Bin == "" {
+			continue
+		}
+		bins := config.MountedBins{Mounted: cfg.Plugins, SourcePath: def.Entry.SourcePath}
+		path, err := bins.ResolveBin(def.Entry.Query.Subscribe.Bin, def.Entry.Ownership())
+		if err != nil {
+			return nil, err
+		}
+		if path == decl.ExecPath {
+			out = append(out, pluginservice.QueryRegistration{ID: def.Workflow.Address + "/" + def.Population.Name, Inputs: def.Population.Query})
+		}
+	}
+	return out, nil
 }
 
 func selectServeSocket(explicit string) (string, error) {
