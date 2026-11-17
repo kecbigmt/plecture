@@ -5,6 +5,7 @@ import (
 	"io"
 	"log/slog"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"sync/atomic"
 	"syscall"
@@ -59,7 +60,7 @@ func TestSupervisorStartsValidServiceBesideInvalidDeclaration(t *testing.T) {
 	dir := t.TempDir()
 	t.Setenv("PLECT_CONFIG_HOME", dir)
 	marker := filepath.Join(dir, "started")
-	script := writeScript(t, dir, "valid-worker", ": > \""+marker+"\"\ntrap 'exit 0' TERM\nwhile true; do :; done\n")
+	script := writeScript(t, dir, "valid-worker", ": > \""+marker+"\"\n"+longLivedBody)
 	mounted := mountWithService(t, "local/work", "valid-worker", script, plugins.ServiceRestartOnFailure)
 	bad := filepath.Join(dir, "services", "invalid.toml")
 	if err := os.WriteFile(bad, []byte("[[services]]\nname = \"invalid\"\nexecutable = \"local/work/valid-worker\"\nenv_file = \"relative.env\"\n"), 0o600); err != nil {
@@ -98,6 +99,78 @@ func newTestSupervisor(source PluginSource) *Supervisor {
 	sup.maxBackoff = 40 * time.Millisecond
 	sup.waitDelay = 2 * time.Second
 	return sup
+}
+
+// longLivedBody blocks on stdin instead of spinning so that a fixture whose
+// test binary died without stopping it still exits once the pipe closes:
+// services run in their own process group, so no terminal or parent-death
+// signal reaches them. It uses only builtins because services get no PATH.
+const longLivedBody = "trap 'exit 0' TERM\nwhile read -r _; do :; done\n"
+
+// runSupervisor runs sup until the test ends. Cancelling alone is not
+// enough: the services are only signalled asynchronously, so a test that
+// returns without waiting for Run can let the binary exit first and orphan
+// them.
+func runSupervisor(t *testing.T, sup *Supervisor) {
+	t.Helper()
+	ctx, cancel := context.WithCancel(context.Background())
+	done := make(chan struct{})
+	go func() {
+		defer close(done)
+		sup.Run(ctx)
+	}()
+	t.Cleanup(func() {
+		cancel()
+		select {
+		case <-done:
+		case <-time.After(5 * time.Second):
+			t.Error("Run did not return after cancellation")
+		}
+	})
+}
+
+func TestRunSupervisorStopsServicesBeforeTestEnds(t *testing.T) {
+	var pid int
+	t.Run("service", func(t *testing.T) {
+		dir := t.TempDir()
+		t.Setenv("PLECT_CONFIG_HOME", dir)
+		// A slow shutdown keeps the service alive past a cleanup that only
+		// cancels, so only a cleanup that waits for Run passes.
+		slowStop := "trap 'read -r -t 0.5 _; exit 0' TERM\nwhile read -r _; do :; done\n"
+		script := writeScript(t, dir, "svc", slowStop)
+		sup := newTestSupervisor(staticSource(mountWithService(t, "p", "svc", script, plugins.ServiceRestartOnFailure)))
+		runSupervisor(t, sup)
+		waitFor(t, time.Second, func() bool {
+			st, ok := sup.Status.Get("svc")
+			pid = st.PID
+			return ok && st.Running && pid > 0
+		})
+	})
+	if alive(pid) {
+		t.Fatalf("service %d outlived its test", pid)
+	}
+}
+
+func TestLongLivedFixtureExitsWhenStdinCloses(t *testing.T) {
+	script := writeScript(t, t.TempDir(), "svc", longLivedBody)
+	cmd := exec.Command(script)
+	cmd.Env = []string{}
+	stdin, err := cmd.StdinPipe()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := cmd.Start(); err != nil {
+		t.Fatal(err)
+	}
+	stdin.Close()
+	exited := make(chan error, 1)
+	go func() { exited <- cmd.Wait() }()
+	select {
+	case <-exited:
+	case <-time.After(5 * time.Second):
+		_ = cmd.Process.Kill()
+		t.Fatal("fixture kept running after its stdin closed")
+	}
 }
 
 // mountWithService builds a Mounted declaring exactly one service backed by
@@ -160,7 +233,7 @@ func alive(pid int) bool {
 func TestSupervisor_StartsDeclaredServiceAndStopsOnShutdown(t *testing.T) {
 	dir := t.TempDir()
 	t.Setenv("PLECT_CONFIG_HOME", dir)
-	script := writeScript(t, dir, "long-lived", "trap 'exit 0' TERM\nwhile true; do sleep 0.01; done\n")
+	script := writeScript(t, dir, "long-lived", longLivedBody)
 	mounted := mountWithService(t, "p", "svc", script, plugins.ServiceRestartOnFailure)
 
 	sup := newTestSupervisor(staticSource(mounted))
@@ -206,9 +279,7 @@ func TestSupervisor_RestartsCrashedServiceWithBackoff(t *testing.T) {
 	mounted := mountWithService(t, "p", "crasher", script, plugins.ServiceRestartOnFailure)
 
 	sup := newTestSupervisor(staticSource(mounted))
-	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
-	go sup.Run(ctx)
+	runSupervisor(t, sup)
 
 	waitFor(t, 2*time.Second, func() bool {
 		st, ok := sup.Status.Get("crasher")
@@ -230,9 +301,7 @@ func TestSupervisor_RestartNeverDoesNotRestart(t *testing.T) {
 	mounted := mountWithService(t, "p", "once", script, plugins.ServiceRestartNever)
 
 	sup := newTestSupervisor(staticSource(mounted))
-	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
-	go sup.Run(ctx)
+	runSupervisor(t, sup)
 
 	waitFor(t, time.Second, func() bool {
 		st, ok := sup.Status.Get("once")
@@ -250,7 +319,7 @@ func TestSupervisor_RestartNeverDoesNotRestart(t *testing.T) {
 func TestSupervisor_CrashingServiceDoesNotStopHealthyService(t *testing.T) {
 	dir := t.TempDir()
 	t.Setenv("PLECT_CONFIG_HOME", dir)
-	healthy := writeScript(t, dir, "healthy", "trap 'exit 0' TERM\nwhile true; do sleep 0.01; done\n")
+	healthy := writeScript(t, dir, "healthy", longLivedBody)
 	crasher := writeScript(t, dir, "crasher", "exit 1\n")
 	mounted := []plugins.Mounted{
 		mountWithService(t, "p", "healthy", healthy, plugins.ServiceRestartOnFailure),
@@ -258,9 +327,7 @@ func TestSupervisor_CrashingServiceDoesNotStopHealthyService(t *testing.T) {
 	}
 
 	sup := newTestSupervisor(staticSource(mounted...))
-	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
-	go sup.Run(ctx)
+	runSupervisor(t, sup)
 
 	// Let the crasher restart a few times while asserting the healthy
 	// service never drops out of "running" — proving the crash loop is
@@ -278,7 +345,7 @@ func TestSupervisor_CrashingServiceDoesNotStopHealthyService(t *testing.T) {
 func TestSupervisor_RestartsServiceWhenPluginContentChanges(t *testing.T) {
 	dir := t.TempDir()
 	t.Setenv("PLECT_CONFIG_HOME", dir)
-	script := writeScript(t, dir, "svc", "trap 'exit 0' TERM\nwhile true; do sleep 0.01; done\n")
+	script := writeScript(t, dir, "svc", longLivedBody)
 
 	var hash atomic.Value
 	hash.Store("sha256:v1")
@@ -289,9 +356,7 @@ func TestSupervisor_RestartsServiceWhenPluginContentChanges(t *testing.T) {
 	}
 
 	sup := newTestSupervisor(source)
-	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
-	go sup.Run(ctx)
+	runSupervisor(t, sup)
 
 	waitFor(t, time.Second, func() bool {
 		st, ok := sup.Status.Get("svc")
@@ -311,7 +376,7 @@ func TestSupervisorKeepsServiceOnCatalogOnlyRevisionAndUsesNewPathAfterCrash(t *
 	dir := t.TempDir()
 	t.Setenv("PLECT_CONFIG_HOME", dir)
 	started := filepath.Join(dir, "started")
-	body := "printf '%s\\n' \"$0\" >> \"" + started + "\"\ntrap 'exit 0' TERM\nwhile true; do :; done\n"
+	body := "printf '%s\\n' \"$0\" >> \"" + started + "\"\n" + longLivedBody
 	rev1, rev2 := filepath.Join(dir, "rev1"), filepath.Join(dir, "rev2")
 	for _, rev := range []string{rev1, rev2} {
 		if err := os.MkdirAll(rev, 0o755); err != nil {
@@ -333,9 +398,7 @@ func TestSupervisorKeepsServiceOnCatalogOnlyRevisionAndUsesNewPathAfterCrash(t *
 		return []plugins.Mounted{current}, lock, nil
 	}
 	sup := newTestSupervisor(source)
-	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
-	go sup.Run(ctx)
+	runSupervisor(t, sup)
 	waitFor(t, time.Second, func() bool {
 		st, ok := sup.Status.Get("svc")
 		return ok && st.Running
