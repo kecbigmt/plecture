@@ -41,11 +41,6 @@
   <path class="flow" d="M577 149 H516"/>
   <text class="label" x="519" y="122">query channel list before events</text>
 
-  <rect class="neutral" x="894" y="130" width="242" height="85" rx="6"/>
-  <text x="908" y="155" font-weight="600">Sessions</text>
-  <text class="note" x="908" y="176">Thread member or bot subscriber</text>
-  <text class="note" x="908" y="195">Receive user.emit</text>
-
   <rect class="neutral" x="280" y="250" width="234" height="68" rx="6"/>
   <text x="294" y="274" font-weight="600">Existing thread subscriber?</text>
   <text class="note" x="294" y="297">Publish to thread resource first</text>
@@ -53,6 +48,9 @@
   <text class="label" x="405" y="237">allowed</text>
   <path class="flow" d="M514 283 H894"/>
   <text class="label" x="635" y="273">delivered &gt; 0: transcript event</text>
+  <rect class="neutral" x="894" y="250" width="242" height="68" rx="6"/>
+  <text x="908" y="274" font-weight="600">Existing thread session</text>
+  <text class="note" x="908" y="297">Receives user.emit</text>
 
   <rect class="chosen" x="280" y="352" width="234" height="93" rx="6"/>
   <text x="294" y="377" font-weight="600">Covered channel</text>
@@ -61,7 +59,7 @@
   <path class="flow" d="M349 318 V352"/>
   <text class="label" x="356" y="341">zero delivery</text>
   <path class="flow" d="M514 386 H577"/>
-  <text class="label" x="523" y="376">appearance</text>
+  <text class="label" x="520" y="342">appearance</text>
 
   <rect class="chosen" x="577" y="352" width="250" height="93" rx="6"/>
   <text x="591" y="377" font-weight="600">Population admits thread member</text>
@@ -69,16 +67,23 @@
   <text class="note" x="591" y="420">Subscription becomes visible</text>
   <path class="flow" d="M827 399 H894"/>
   <text class="label" x="835" y="387">member</text>
-  <path class="flow" d="M577 434 H516"/>
+  <rect class="neutral" x="894" y="352" width="242" height="93" rx="6"/>
+  <text x="908" y="377" font-weight="600">Thread member session</text>
+  <text class="note" x="908" y="399">Receives pending mention</text>
+  <text class="note" x="908" y="420">after subscription appears</text>
+  <path class="flow" d="M577 434 H514"/>
   <text class="label" x="524" y="458">subscription then pending publish</text>
 
   <rect class="neutral" x="280" y="480" width="234" height="50" rx="6"/>
   <text x="294" y="501" font-weight="600">Uncovered channel</text>
   <text class="note" x="294" y="519">Bot-resource fallback</text>
-  <path class="flow" d="M450 318 V480"/>
-  <text class="label" x="458" y="466">zero delivery, no coverage</text>
+  <path class="flow" d="M280 305 H248 V505 H280"/>
+  <text class="label" x="36" y="466">zero delivery, no coverage</text>
   <path class="flow" d="M514 505 H894"/>
   <text class="label" x="638" y="495">user.emit to bot subscriber</text>
+  <rect class="neutral" x="894" y="480" width="242" height="50" rx="6"/>
+  <text x="908" y="501" font-weight="600">Bot subscriber session</text>
+  <text class="note" x="908" y="519">Receives user.emit</text>
 
   <rect class="panel" x="20" y="566" width="1140" height="112" rx="8"/>
   <text class="heading" x="36" y="592">Options set aside</text>
