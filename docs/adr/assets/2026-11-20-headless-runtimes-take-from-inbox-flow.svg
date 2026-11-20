@@ -1,0 +1,140 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1000 746" width="1000" height="746" role="img" aria-labelledby="title desc">
+  <title id="title">Decision: headless runtimes take their turns from the session inbox</title>
+  <desc id="desc">Chosen option: a headless worker in the claude or codex plugin takes a batch (batch id, deliveries, events) from the session inbox in core, sends one prompt to one agent process (claude -p or codex exec) and receives its reply, keeps the reply in its state directory under the batch id, publishes plect.message to the event log, and acknowledges the batch id. Superseded: the queue directory with its .inflight, .failed, .completed and quarantine directories; both enqueue executables, both headless-batch.sh copies and the conformance script; and the channel-server queue bridge with the socket_path output of headless_runtime. Rejected: keeping message_envelope on the channel, a bridge that publishes events, and draining a leftover queue in the new worker.</desc>
+  <defs>
+    <style>
+      svg {
+        --bg: #ffffff; --fg: #1f2328; --muted: #59636e; --line: #d0d7de;
+        --neutral: #8c959f; --neutral-bg: #f6f8fa;
+        --chosen: #1a7f37; --chosen-bg: #dafbe1;
+        --rejected: #cf222e; --rejected-bg: #ffebe9;
+        --deferred: #9a6700; --deferred-bg: #fff8c5;
+        --superseded: #59636e; --superseded-bg: #eaeef2;
+      }
+      @media (prefers-color-scheme: dark) {
+        svg {
+          --bg: #0d1117; --fg: #e6edf3; --muted: #9198a1; --line: #3d444d;
+          --neutral: #656c76; --neutral-bg: #151b23;
+          --chosen: #3fb950; --chosen-bg: #0f2a1a;
+          --rejected: #f85149; --rejected-bg: #3a1416;
+          --deferred: #d29922; --deferred-bg: #2e2208;
+          --superseded: #9198a1; --superseded-bg: #212830;
+        }
+      }
+      text { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Helvetica, Arial, sans-serif; font-size: 13px; fill: var(--fg); }
+      .bg { fill: var(--bg); }
+      .title { font-size: 18px; font-weight: 600; }
+      .heading { font-size: 14px; font-weight: 600; }
+      .name { font-weight: 600; }
+      .note { font-size: 12px; fill: var(--muted); }
+      .label { font-size: 12px; }
+      .tag { font-size: 11px; font-weight: 700; letter-spacing: 0.06em; }
+      .panel { fill: none; stroke: var(--line); }
+      .boundary { fill: none; stroke: var(--muted); stroke-width: 1.5; stroke-dasharray: 4 4; }
+      .neutral { fill: var(--neutral-bg); stroke: var(--neutral); stroke-width: 1.5; }
+      .chosen { fill: var(--chosen-bg); stroke: var(--chosen); stroke-width: 3; }
+      .rejected { fill: var(--rejected-bg); stroke: var(--rejected); stroke-width: 1.5; stroke-dasharray: 8 4; }
+      .deferred { fill: var(--deferred-bg); stroke: var(--deferred); stroke-width: 1.5; stroke-dasharray: 2 3; }
+      .superseded { fill: var(--superseded-bg); stroke: var(--superseded); stroke-width: 1.5; stroke-dasharray: 12 3 2 3; }
+      .t-chosen { fill: var(--chosen); }
+      .t-rejected { fill: var(--rejected); }
+      .t-deferred { fill: var(--deferred); }
+      .t-superseded { fill: var(--superseded); }
+      .flow { fill: none; stroke: var(--fg); stroke-width: 1.5; marker-end: url(#arrow); }
+      .head { fill: var(--fg); }
+    </style>
+    <marker id="arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path class="head" d="M0,0 L10,5 L0,10 z"/>
+    </marker>
+  </defs>
+
+  <rect class="bg" x="0" y="0" width="1000" height="746"/>
+
+  <text class="title" x="24" y="38">Decision: headless runtimes take their turns from the session inbox</text>
+  <text class="note" x="24" y="60">2026-11-20-headless-runtimes-take-from-inbox · claude headless_runtime and codex exec_runtime</text>
+
+  <rect class="panel" x="16" y="80" width="968" height="330" rx="8"/>
+  <text class="heading" x="32" y="106">Chosen option · boundary and data flow</text>
+
+  <rect class="boundary" x="32" y="122" width="230" height="270" rx="8"/>
+  <text class="note" x="48" y="144">boundary · core</text>
+
+  <rect class="neutral" x="52" y="158" width="190" height="76" rx="6"/>
+  <text class="name" x="68" y="188">session inbox</text>
+  <text class="note" x="68" y="208">pending events, batch, parking</text>
+
+  <rect class="neutral" x="52" y="296" width="190" height="76" rx="6"/>
+  <text class="name" x="68" y="326">event log</text>
+  <text class="note" x="68" y="346">the session's events</text>
+
+  <rect class="boundary" x="380" y="122" width="588" height="270" rx="8"/>
+  <text class="note" x="396" y="144">boundary · runtime plugin</text>
+
+  <rect class="chosen" x="400" y="180" width="240" height="160" rx="6"/>
+  <text class="tag t-chosen" x="416" y="204">CHOSEN</text>
+  <text class="name" x="416" y="224">headless worker</text>
+  <text class="note" x="416" y="246"><tspan x="416">waits by the delivery count,</tspan><tspan x="416" dy="16">renders one prompt with</tspan><tspan x="416" dy="16">message_envelope, runs one</tspan><tspan x="416" dy="16">agent process per batch</tspan></text>
+
+  <rect class="neutral" x="778" y="158" width="174" height="76" rx="6"/>
+  <text class="name" x="794" y="188">agent process</text>
+  <text class="note" x="794" y="208">claude -p or codex exec</text>
+
+  <rect class="neutral" x="778" y="296" width="174" height="76" rx="6"/>
+  <text class="name" x="794" y="326">state directory</text>
+  <text class="note" x="794" y="346">a cache, not a queue</text>
+
+  <line class="flow" x1="242" y1="198" x2="398" y2="198"/>
+  <text class="label" x="321" y="176" text-anchor="middle"><tspan x="321">take: batch id,</tspan><tspan x="321" dy="15">deliveries, events</tspan></text>
+  <line class="flow" x1="400" y1="220" x2="244" y2="220"/>
+  <text class="label" x="321" y="238" text-anchor="middle">ack: batch id</text>
+
+  <line class="flow" x1="400" y1="324" x2="244" y2="324"/>
+  <text class="label" x="321" y="314" text-anchor="middle">plect.message</text>
+
+  <line class="flow" x1="640" y1="198" x2="776" y2="198"/>
+  <text class="label" x="709" y="190" text-anchor="middle">one prompt</text>
+  <line class="flow" x1="778" y1="220" x2="642" y2="220"/>
+  <text class="label" x="709" y="238" text-anchor="middle">reply</text>
+
+  <line class="flow" x1="640" y1="324" x2="776" y2="324"/>
+  <text class="label" x="709" y="300" text-anchor="middle"><tspan x="709">reply, kept by</tspan><tspan x="709" dy="15">batch id</tspan></text>
+
+  <rect class="panel" x="16" y="426" width="968" height="242" rx="8"/>
+  <text class="heading" x="32" y="452">Not chosen · only what the ADR states</text>
+  <rect class="superseded" x="32" y="468" width="300" height="86" rx="6"/>
+  <text class="tag t-superseded" x="48" y="488">SUPERSEDED</text>
+  <text class="name" x="48" y="507">queue directory</text>
+  <text class="note" x="48" y="525"><tspan x="48">.inflight, .failed, .completed</tspan><tspan x="48" dy="16">and quarantine directories</tspan></text>
+  <rect class="superseded" x="348" y="468" width="300" height="86" rx="6"/>
+  <text class="tag t-superseded" x="364" y="488">SUPERSEDED</text>
+  <text class="name" x="364" y="507">enqueue and batch scripts</text>
+  <text class="note" x="364" y="525"><tspan x="364">both enqueue executables, both</tspan><tspan x="364" dy="16">headless-batch.sh, conformance script</tspan></text>
+  <rect class="superseded" x="664" y="468" width="300" height="86" rx="6"/>
+  <text class="tag t-superseded" x="680" y="488">SUPERSEDED</text>
+  <text class="name" x="680" y="507">channel-server queue bridge</text>
+  <text class="note" x="680" y="525"><tspan x="680">with the socket_path output</tspan><tspan x="680" dy="16">of headless_runtime</tspan></text>
+  <rect class="rejected" x="32" y="566" width="300" height="86" rx="6"/>
+  <text class="tag t-rejected" x="48" y="586">REJECTED</text>
+  <text class="name" x="48" y="605">message_envelope on the channel</text>
+  <text class="note" x="48" y="623"><tspan x="48">core would carry binding inputs</tspan><tspan x="48" dy="16">to the consumer with each batch</tspan></text>
+  <rect class="rejected" x="348" y="566" width="300" height="86" rx="6"/>
+  <text class="tag t-rejected" x="364" y="586">REJECTED</text>
+  <text class="name" x="364" y="605">bridge that publishes events</text>
+  <text class="note" x="364" y="623"><tspan x="364">cannot know an event type the</tspan><tspan x="364" dy="16">binding's include selects</tspan></text>
+  <rect class="rejected" x="664" y="566" width="300" height="86" rx="6"/>
+  <text class="tag t-rejected" x="680" y="586">REJECTED</text>
+  <text class="name" x="680" y="605">drain a leftover queue in the worker</text>
+  <text class="note" x="680" y="623"><tspan x="680">keeps the old file format; a one-time</tspan><tspan x="680" dy="16">migration moves the entries</tspan></text>
+  <rect class="chosen" x="32" y="686" width="28" height="16" rx="3"/>
+  <text class="label" x="70" y="698">CHOSEN · thick solid</text>
+  <rect class="rejected" x="264" y="686" width="28" height="16" rx="3"/>
+  <text class="label" x="302" y="698">REJECTED · dashed</text>
+  <rect class="superseded" x="496" y="686" width="28" height="16" rx="3"/>
+  <text class="label" x="534" y="698">SUPERSEDED · dash-dot</text>
+
+  <rect class="boundary" x="32" y="716" width="28" height="16" rx="3"/>
+  <text class="label" x="70" y="728">responsibility boundary</text>
+  <line class="flow" x1="264" y1="724" x2="290" y2="724"/>
+  <text class="label" x="302" y="728">data flow, labelled with what crosses it</text>
+  <text class="note" x="616" y="728">each state is named in text; colour only repeats it</text>
+</svg>
