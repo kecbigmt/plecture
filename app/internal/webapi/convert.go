@@ -88,6 +88,7 @@ func EventFromDomain(ev event.Event) webapiv1.Event {
 		Direction:    webapiv1.EventDirection(ev.Direction),
 		Summary:      ev.Summary,
 		Body:         optionalString(ev.Body),
+		Supersedes:   optionalString(ev.Supersedes),
 		Metadata:     optionalStringMap(ev.Metadata),
 		DeliveryMode: deliveryMode(ev),
 	}

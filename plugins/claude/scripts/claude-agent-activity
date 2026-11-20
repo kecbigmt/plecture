@@ -114,8 +114,8 @@ error_log_path() {
 # stderr verbatim: a caller's own arguments can carry an arbitrary,
 # multi-line agent message (--body), and embedded newlines in an appended
 # line would let that content forge additional log records. Always returns
-# 0, so every caller keeps the fire-and-forget contract these hooks operate
-# under regardless of whether the call underneath actually succeeded.
+# 0 for hooks; a headless batch reply exposes its publish status to its
+# completion marker so the worker can retain a failed batch.
 run_plect() {
   local log out status verb
   verb="$1 $2"
@@ -127,18 +127,20 @@ run_plect() {
     out="$(printf '%s' "$out" | tr '\n\r\t' '   ')"
     printf '%s exit=%s plect %s: %s\n' "$(date -u +%Y-%m-%dT%H:%M:%SZ)" "$status" "$verb" "$out" >> "$log" 2>/dev/null
   fi
+  if [ -n "${PLECT_BATCH_REPLY_MARKER:-}" ] && [ "$verb" = "event publish" ]; then
+    return "$status"
+  fi
   return 0
 }
 
-# publish_event always publishes, regardless of whether text is empty. Never
-# fails the caller — a publish failure is silently swallowed, per the
-# fire-and-forget contract these hooks operate under.
+# publish_event always publishes, regardless of whether text is empty.
+# A headless batch needs a failure result to withhold its completion marker.
 publish_event() {
   local event_type="$1" text="$2" firstline
   shift 2
   firstline="$(printf '%s' "$text" | head -n 1)"
   run_plect event publish "$PLECT_SESSION_NAME" --type "$event_type" --summary "${firstline:0:120}" --body "$text" "$@"
-  return 0
+  return $?
 }
 
 # publish_report is publish_event's usual gate: empty text publishes nothing.
@@ -179,8 +181,12 @@ case "${1:-}" in
   finish)
     [ -n "${PLECT_SESSION_NAME:-}" ] || exit 0
     payload="$(cat)"
-    if [ "${PLECT_CLAUDE_REPORT_REPLY:-true}" = true ]; then
-      "$0" reply <<<"$payload"
+    reply_status=0
+    if [ -n "${PLECT_BATCH_REPLY_PAYLOAD:-}" ]; then
+      reply_tmp="$PLECT_BATCH_REPLY_PAYLOAD.tmp.$$"
+      printf '%s' "$payload" > "$reply_tmp" && mv "$reply_tmp" "$PLECT_BATCH_REPLY_PAYLOAD" || reply_status=1
+    elif [ "${PLECT_CLAUDE_REPORT_REPLY:-true}" = true ]; then
+      "$0" reply <<<"$payload" || reply_status=$?
     fi
     turn_id="$(printf '%s' "$payload" | jq -r '.prompt_id // .turn_id // empty' 2>/dev/null)" || turn_id=""
     pending=false
@@ -196,7 +202,7 @@ case "${1:-}" in
       release_turn_lock "$turn_lock"
     fi
     [ "$pending" = true ] || "$0" waiting "${2:-}" <<<"$payload"
-    exit 0
+    exit "$reply_status"
     ;;
   probe)
     session="${2:-}"
@@ -291,12 +297,10 @@ case "${1:-}" in
     fi
 
     # message_id is a deterministic synthetic id, per the core contract, not
-    # a random one: turn_id already identifies this turn uniquely within the
-    # session, so it doubles as the id. The counter fallback only matters for
-    # the (practically unreachable) case of Stop firing before any prompt_id
-    # was ever assigned in this process's lifetime.
-    if [ -n "$turn_id" ]; then
-      message_id="$PLECT_SESSION_NAME/$turn_id"
+    # a random one: the headless worker's durable batch id keeps a retried
+    # reply under one id, while an interactive turn uses its prompt id.
+    if [ -n "$turn_id" ] || [ -n "${PLECT_BATCH_ID:-}" ]; then
+      message_id="$PLECT_SESSION_NAME/${PLECT_BATCH_ID:-$turn_id}"
     else
       seq_file="$(reply_seq_path "$PLECT_SESSION_NAME")"
       n="$(cat "$seq_file" 2>/dev/null)"
@@ -309,7 +313,7 @@ case "${1:-}" in
     meta=(--meta "message_id=$message_id" --meta "message_id_origin=synthetic" --meta "role=assistant" --meta "source=claude")
     [ -n "$turn_id" ] && meta+=(--meta "turn_id=$turn_id")
     publish_report plect.message "$message" "${meta[@]}"
-    exit 0
+    exit $?
     ;;
   message_display)
     [ -n "${PLECT_SESSION_NAME:-}" ] || exit 0

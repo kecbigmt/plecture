@@ -43,11 +43,17 @@ mkdir -p "$bin_dir"
 # writes its own pid and sleeps until killed.
 cat > "$bin_dir/claude" <<'EOF'
 #!/usr/bin/env bash
-printf '%s\n' "$*" >> "$STUB_ARGV"
+printf '%q ' "$@" >> "$STUB_ARGV"
+printf '\n' >> "$STUB_ARGV"
+printf '%s' "${@: -1}" > "$STUB_PROMPT_FILE"
 printf '%s\n' "${ANTHROPIC_API_KEY-<unset>}" >> "$STUB_KEYS"
+[ -n "${STUB_HEALTH_FILE:-}" ] && jq -r '.last_exit_code // "missing"' "$STUB_HEALTH_FILE" >> "$STUB_HEALTH_LOG" 2>/dev/null
 mode="$(cat "$STUB_MODE_FILE")"
 case "$mode" in
-  ok) printf '{"type":"result","is_error":false,"session_id":"stub","result":"done"}\n' ;;
+  ok)
+    printf '{"prompt_id":"%s","last_assistant_message":"done"}' "$PLECT_BATCH_ID" | "$STUB_ACTIVITY" finish
+    printf '{"type":"result","is_error":false,"session_id":"stub","result":"done"}\n'
+    ;;
   fail-early) echo "boom" >&2; exit 1 ;;
   hang) printf '%s' "$$" > "$STUB_HANG_PID"; sleep 30 ;;
 esac
@@ -56,8 +62,10 @@ chmod +x "$bin_dir/claude"
 
 cat > "$bin_dir/plect" <<'EOF'
 #!/usr/bin/env bash
+printf '%s\n' "$*" >> "$PLECT_CALLS"
 [ "$1 $2" = "state set-message" ] && [ "$4" = "working" ] && [ -f "$PLECT_FAIL_WORKING_ONCE" ] && { rm -f "$PLECT_FAIL_WORKING_ONCE"; exit 1; }
 [ "$1 $2" = "state set-message" ] && [ "$4" = "working" ] && [ -f "$PLECT_FAIL_WORKING" ] && exit 1
+[ "$1 $2" = "event publish" ] && [ -f "$PLECT_FAIL_PUBLISH" ] && exit 1
 true
 EOF
 chmod +x "$bin_dir/plect"
@@ -67,13 +75,20 @@ export STUB_ARGV="$tmp/argv"
 export STUB_KEYS="$tmp/keys"
 export STUB_MODE_FILE="$tmp/mode"
 export STUB_HANG_PID="$tmp/hang.pid"
+export STUB_PROMPT_FILE="$tmp/prompt"
+export STUB_ACTIVITY="$here/claude-agent-activity"
+export STUB_HEALTH_FILE=""
+export STUB_HEALTH_LOG="$tmp/health-observed"
+export PLECT_CALLS="$tmp/plect-calls"
 export PLECT_FAIL_WORKING="$tmp/fail-working"
 export PLECT_FAIL_WORKING_ONCE="$tmp/fail-working-once"
+export PLECT_FAIL_PUBLISH="$tmp/fail-publish"
 export PLECT_SESSION_NAME="selftest/worker-1"
 export PLECT_CLAUDE_API_KEY_FILE="$tmp/api-key"
 printf 'sk-selftest-key\n' > "$PLECT_CLAUDE_API_KEY_FILE"
 : > "$STUB_ARGV"
 : > "$STUB_KEYS"
+: > "$PLECT_CALLS"
 
 queue_dir="$tmp/queue"
 state_dir="$tmp/state"
@@ -89,7 +104,7 @@ worker_pid=$!
 wait_for_drain() {
   local file="$1"
   for _ in $(seq 1 100); do
-    [ -e "$file" ] || return 0
+    [ ! -e "$file" ] && [ ! -d "$(dirname "$file")/.inflight" ] && return 0
     sleep 0.1
   done
   return 1
@@ -110,16 +125,29 @@ expect_last_argv() {
 }
 
 echo fail-early > "$STUB_MODE_FILE"
-enqueue t1 "turn one"
+echo '{"type":"user.emit","text":"turn one"}' > "$queue_dir/t1.json"
+for _ in $(seq 1 100); do
+  jq -e '.last_exit_code == 1' "$state_dir/health.json" >/dev/null 2>&1 && break
+  sleep 0.1
+done
 expect_last_argv "a first turn starts under the handed session id despite another id's marker" "--session-id $sid"
 
 echo ok > "$STUB_MODE_FILE"
+wait_for_drain "$queue_dir/t1.json" || { echo "FAIL failed turn was not retried" >&2; fail=1; }
 enqueue t2 "turn two"
-expect_last_argv "a turn after an early failure still starts fresh" "--session-id $sid"
+expect_last_argv "a turn after an early failure resumes the completed conversation" "--resume $sid"
 
 enqueue t3 "turn three"
 expect_last_argv "a turn after a reported session resumes it" "--resume $sid"
-expect_last_argv "the prompt follows an option terminator" "-- turn three"
+expect_last_argv "the batch prompt follows an option terminator" "Consider and answer every numbered entry"
+jq -n --arg text $'end\n\n' '{type:"user.emit", text:$text}' > "$queue_dir/t-nl.json"
+wait_for_drain "$queue_dir/t-nl.json" || { echo "FAIL trailing-newline input was not delivered" >&2; fail=1; }
+if tail -c 7 "$STUB_PROMPT_FILE" | cmp -s - <(printf 'end\n\n\n\n'); then
+  echo "ok   the last message's trailing newlines reach the agent"
+else
+  echo "FAIL the last message's trailing newlines were stripped" >&2
+  fail=1
+fi
 
 if grep -q 'sk-selftest-key' "$STUB_ARGV"; then
   echo "FAIL the api key must never appear on claude's command line" >&2
@@ -163,11 +191,26 @@ else
 fi
 
 echo ok > "$STUB_MODE_FILE"
+"$worker" "$queue_dir" "$state_dir" "$sid" "$tmp/mcp.json" "$tmp/hooks.json" &
+worker_pid=$!
+wait_for_drain "$queue_dir/t4.json" || { echo "FAIL interrupted turn was not retried" >&2; fail=1; }
+if [ "$(grep -c 'turn four' "$STUB_ARGV" || true)" -eq 2 ]; then
+  echo "ok   an interrupted batch is retried and then acknowledged once"
+else
+  echo "FAIL interrupted batch invocation count: $(grep -c 'turn four' "$STUB_ARGV" || true)" >&2
+  fail=1
+fi
+kill -TERM "$worker_pid" 2>/dev/null || true
+wait "$worker_pid" 2>/dev/null || true
+worker_pid=""
+
 : > "$STUB_ARGV"
 priority_queue="$tmp/priority-queue"
 priority_state="$tmp/priority-state"
 mkdir -p "$priority_queue"
 echo '{"type":"user.emit","text":"leftover turn"}' > "$priority_queue/1-leftover.json"
+echo '{"type":"plect.session.resumed","text":"resume instruction"}' > "$priority_queue/2-resumed.json"
+echo '{"type":"user.emit","text":"later turn"}' > "$priority_queue/3-later.json"
 "$worker" "$priority_queue" "$priority_state" "$sid" "$tmp/mcp.json" "$tmp/hooks.json" &
 worker_pid=$!
 for _ in $(seq 1 100); do
@@ -175,17 +218,13 @@ for _ in $(seq 1 100); do
   sleep 0.01
 done
 [ -e "$priority_state/ready" ] || { echo "FAIL resumed worker was never ready" >&2; fail=1; }
-echo '{"type":"plect.session.resumed","text":"resume instruction"}' > "$priority_queue/2-resumed.json"
-echo '{"type":"user.emit","text":"later turn"}' > "$priority_queue/3-later.json"
 wait_for_drain "$priority_queue/3-later.json" || { echo "FAIL queued turns were never drained" >&2; fail=1; }
-mapfile -t ordered_turns < "$STUB_ARGV"
-if [ "${#ordered_turns[@]}" -eq 3 ] &&
-   [[ "${ordered_turns[0]}" == *"-- resume instruction"* ]] &&
-   [[ "${ordered_turns[1]}" == *"-- leftover turn"* ]] &&
-   [[ "${ordered_turns[2]}" == *"-- later turn"* ]]; then
-  echo "ok   a resume instruction precedes an interrupted turn; other turns keep queue order"
+batch_args="$(cat "$STUB_ARGV")"
+if [ "$(grep -c -- 'Consider and answer every numbered entry' "$STUB_ARGV" || true)" -eq 1 ] &&
+   [[ "$batch_args" == *"leftover turn"*"resume instruction"*"later turn"* ]]; then
+  echo "ok   pending entries form one turn in queue order"
 else
-  printf 'FAIL queued turn order: %s\n' "${ordered_turns[*]}" >&2
+  printf 'FAIL queued batch: %s\n' "$(cat "$STUB_ARGV")" >&2
   fail=1
 fi
 kill -TERM "$worker_pid" 2>/dev/null || true
@@ -204,16 +243,11 @@ for _ in $(seq 1 100); do
   sleep 0.01
 done
 [ -e "$timeout_state/ready" ] || { echo "FAIL fallback worker was never ready" >&2; fail=1; }
-sleep 0.5
-if [ -s "$STUB_ARGV" ]; then
-  echo "FAIL leftover turn ran before the resume-instruction wait expired" >&2
-  fail=1
-fi
 wait_for_drain "$timeout_queue/1-leftover.json" || { echo "FAIL leftover turn was never drained without a notice" >&2; fail=1; }
-if [ "$(wc -l < "$STUB_ARGV")" -eq 1 ] && grep -q -- '-- leftover without notice' "$STUB_ARGV"; then
-  echo "ok   a queued turn runs once after the resume-instruction wait expires"
+if [ "$(grep -c -- 'Consider and answer every numbered entry' "$STUB_ARGV" || true)" -eq 1 ] && grep -q 'leftover without notice' "$STUB_ARGV"; then
+  echo "ok   a queued turn runs once without a resume instruction"
 else
-  echo "FAIL queued turn did not run once after the wait expired" >&2
+  echo "FAIL queued turn did not run once" >&2
   fail=1
 fi
 kill -TERM "$worker_pid" 2>/dev/null || true
@@ -301,7 +335,7 @@ touch "$PLECT_FAIL_WORKING"
 "$worker" "$blocked_queue" "$blocked_state" "$sid" "$tmp/mcp.json" "$tmp/hooks.json" > "$tmp/blocked.out" 2>&1 &
 worker_pid=$!
 sleep 7
-if [ -s "$STUB_ARGV" ] || [ ! -e "$blocked_queue/1.json" ] || ! grep -q 'working' "$tmp/blocked.out"; then
+if [ -s "$STUB_ARGV" ] || [ ! -e "$blocked_queue/.inflight/1.json" ] || ! grep -q 'working' "$tmp/blocked.out"; then
   echo "FAIL a failed working status write started or lost a turn without reporting failure" >&2
   fail=1
 else
@@ -335,5 +369,146 @@ kill -TERM "$worker_pid" 2>/dev/null || true
 wait "$worker_pid" 2>/dev/null || true
 worker_pid=""
 
+publish_queue="$tmp/publish-queue"
+publish_state="$tmp/publish-state"
+mkdir -p "$publish_queue"
+echo '{"id":"publish","type":"example","text":"publish failure"}' > "$publish_queue/1.json"
+echo ok > "$STUB_MODE_FILE"
+: > "$STUB_ARGV"
+: > "$PLECT_CALLS"
+touch "$PLECT_FAIL_PUBLISH"
+"$worker" "$publish_queue" "$publish_state" "$sid" "$tmp/mcp.json" "$tmp/hooks.json" &
+worker_pid=$!
+for _ in $(seq 1 100); do
+  grep -q '^event publish' "$PLECT_CALLS" && jq -e '.last_exit_code == 1' "$publish_state/health.json" >/dev/null 2>&1 && break
+  sleep 0.1
+done
+if ! jq -e '.last_exit_code == 1' "$publish_state/health.json" >/dev/null 2>&1 || [ ! -f "$publish_queue/.inflight/1.json" ]; then
+  echo "FAIL a reply publication failure acknowledged the batch: health=$(cat "$publish_state/health.json" 2>/dev/null) calls=$(cat "$PLECT_CALLS")" >&2
+  fail=1
+fi
+kill -TERM "$worker_pid" 2>/dev/null || true
+wait "$worker_pid" 2>/dev/null || true
+worker_pid=""
+rm -f "$PLECT_FAIL_PUBLISH"
+"$worker" "$publish_queue" "$publish_state" "$sid" "$tmp/mcp.json" "$tmp/hooks.json" &
+worker_pid=$!
+wait_for_drain "$publish_queue/1.json" || { echo "FAIL reply publication was not retried" >&2; fail=1; }
+if [ "$(grep -c 'publish failure' "$STUB_ARGV" || true)" -ne 1 ]; then
+  echo "FAIL a publish retry invoked the agent again" >&2
+  fail=1
+fi
+kill -TERM "$worker_pid" 2>/dev/null || true
+wait "$worker_pid" 2>/dev/null || true
+worker_pid=""
+
+bounded_queue="$tmp/bounded-queue"
+bounded_state="$tmp/bounded-state"
+mkdir -p "$bounded_queue"
+echo '{"id":"poison","type":"example","text":"poison turn"}' > "$bounded_queue/1.json"
+: > "$STUB_ARGV"
+: > "$STUB_HEALTH_LOG"
+export STUB_HEALTH_FILE="$bounded_state/health.json"
+echo fail-early > "$STUB_MODE_FILE"
+"$worker" "$bounded_queue" "$bounded_state" "$sid" "$tmp/mcp.json" "$tmp/hooks.json" > "$tmp/bounded.out" 2>&1 &
+worker_pid=$!
+for _ in $(seq 1 300); do
+  compgen -G "$bounded_queue/.failed-*" >/dev/null && break
+  sleep 0.1
+done
+if ! compgen -G "$bounded_queue/.failed-*" >/dev/null || [ "$(grep -c 'poison turn' "$STUB_ARGV" || true)" -ne 3 ]; then
+  echo "FAIL a deterministic agent failure was not parked after three attempts: argv=$(grep -c 'poison turn' "$STUB_ARGV" || true) output=$(cat "$tmp/bounded.out")" >&2
+  fail=1
+fi
+if [ "$(sed -n '2,3p' "$STUB_HEALTH_LOG" | grep -c '^0$' || true)" -ne 2 ]; then
+  echo "FAIL health did not recover before each agent retry: $(cat "$STUB_HEALTH_LOG")" >&2
+  fail=1
+fi
+echo ok > "$STUB_MODE_FILE"
+echo '{"id":"later","type":"example","text":"later turn"}' > "$bounded_queue/2.json"
+wait_for_drain "$bounded_queue/2.json" || { echo "FAIL a parked batch blocked newer work" >&2; fail=1; }
+kill -TERM "$worker_pid" 2>/dev/null || true
+wait "$worker_pid" 2>/dev/null || true
+worker_pid=""
+export STUB_HEALTH_FILE=""
+
+optout_queue="$tmp/optout-queue"
+optout_state="$tmp/optout-state"
+mkdir -p "$optout_queue"
+echo '{"id":"optout","type":"example","text":"private reply"}' > "$optout_queue/1.json"
+: > "$STUB_ARGV"
+: > "$PLECT_CALLS"
+PLECT_CLAUDE_REPORT_REPLY=false "$worker" "$optout_queue" "$optout_state" "$sid" "$tmp/mcp.json" "$tmp/hooks.json" > "$tmp/optout.out" 2>&1 &
+worker_pid=$!
+wait_for_drain "$optout_queue/1.json" || { echo "FAIL opted-out batch was not acknowledged: $(cat "$tmp/optout.out")" >&2; fail=1; }
+if grep -q '^event publish ' "$PLECT_CALLS" || [ "$(grep -c 'private reply' "$STUB_ARGV" || true)" -ne 1 ]; then
+  echo "FAIL opted-out batch published a reply or reran its agent" >&2
+  fail=1
+fi
+kill -TERM "$worker_pid" 2>/dev/null || true
+wait "$worker_pid" 2>/dev/null || true
+worker_pid=""
+
+reply_queue="$tmp/reply-queue"
+reply_state="$tmp/reply-state"
+mkdir -p "$reply_queue"
+echo '{"id":"reply","type":"example","text":"stuck publication"}' > "$reply_queue/1.json"
+: > "$STUB_ARGV"
+touch "$PLECT_FAIL_PUBLISH"
+"$worker" "$reply_queue" "$reply_state" "$sid" "$tmp/mcp.json" "$tmp/hooks.json" > "$tmp/reply.out" 2>&1 &
+worker_pid=$!
+for _ in $(seq 1 300); do
+  compgen -G "$reply_queue/.failed-*" >/dev/null && break
+  sleep 0.1
+done
+if ! compgen -G "$reply_queue/.failed-*" >/dev/null || [ "$(grep -c 'stuck publication' "$STUB_ARGV" || true)" -ne 1 ]; then
+  echo "FAIL repeated publication failures reran the agent or never parked: argv=$(grep -c 'stuck publication' "$STUB_ARGV" || true) output=$(cat "$tmp/reply.out")" >&2
+  fail=1
+fi
+if ! compgen -G "$reply_queue/.failed-*/reply.json" >/dev/null; then
+  echo "FAIL the parked batch lost its captured reply" >&2
+  fail=1
+fi
+rm -f "$PLECT_FAIL_PUBLISH"
+kill -TERM "$worker_pid" 2>/dev/null || true
+wait "$worker_pid" 2>/dev/null || true
+worker_pid=""
+
+ack_queue="$tmp/ack-queue"
+ack_state="$tmp/ack-state"
+mkdir -p "$ack_queue/.inflight"
+echo '{"id":"done","type":"example","text":"already published"}' > "$ack_queue/.inflight/1.json"
+printf '1.json\n' > "$ack_queue/.inflight/manifest"
+printf 'completed-batch' > "$ack_queue/.inflight/batch-id"
+touch "$ack_queue/.inflight/reply-published"
+: > "$STUB_ARGV"
+"$worker" "$ack_queue" "$ack_state" "$sid" "$tmp/mcp.json" "$tmp/hooks.json" > "$tmp/ack.out" 2>&1 &
+worker_pid=$!
+wait_for_drain "$ack_queue/1.json" || { echo "FAIL completed batch was not acknowledged: $(cat "$tmp/ack.out")" >&2; find "$ack_queue" -maxdepth 2 -type f >&2; fail=1; }
+if [ -s "$STUB_ARGV" ]; then
+  echo "FAIL already published batch invoked the agent again" >&2
+  fail=1
+fi
+kill -TERM "$worker_pid" 2>/dev/null || true
+wait "$worker_pid" 2>/dev/null || true
+worker_pid=""
+
+corrupt_queue="$tmp/corrupt-queue"
+corrupt_state="$tmp/corrupt-state"
+mkdir -p "$corrupt_queue"
+printf '{not json\n' > "$corrupt_queue/1.json"
+: > "$STUB_ARGV"
+"$worker" "$corrupt_queue" "$corrupt_state" "$sid" "$tmp/mcp.json" "$tmp/hooks.json" > "$tmp/corrupt.out" 2>&1 &
+worker_pid=$!
+wait_for_drain "$corrupt_queue/1.json" || { echo "FAIL malformed-only batch was not acknowledged" >&2; fail=1; }
+if [ -s "$STUB_ARGV" ] || ! compgen -G "$corrupt_queue.quarantine/*/1.json" >/dev/null; then
+  echo "FAIL malformed-only batch invoked the agent or lost its entry" >&2
+  fail=1
+fi
+kill -TERM "$worker_pid" 2>/dev/null || true
+wait "$worker_pid" 2>/dev/null || true
+worker_pid=""
+
+bash "$here/../../headless-queue-conformance.sh" "$here/headless-batch.sh" || fail=1
 [ "$fail" -eq 0 ] || { echo "claude-headless-worker selftest failed" >&2; exit 1; }
 echo "claude-headless-worker selftest passed"

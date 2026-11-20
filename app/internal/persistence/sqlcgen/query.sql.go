@@ -482,8 +482,8 @@ func (q *Queries) HasEventCursor(ctx context.Context, arg HasEventCursorParams) 
 }
 
 const insertEvent = `-- name: InsertEvent :exec
-INSERT INTO events (id, session_id, sequence, time, type, source, direction, summary, body, metadata_json)
-VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+INSERT INTO events (id, session_id, sequence, time, type, source, direction, summary, body, supersedes, metadata_json)
+VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 `
 
 type InsertEventParams struct {
@@ -496,6 +496,7 @@ type InsertEventParams struct {
 	Direction    string
 	Summary      string
 	Body         string
+	Supersedes   string
 	MetadataJson string
 }
 
@@ -510,6 +511,7 @@ func (q *Queries) InsertEvent(ctx context.Context, arg InsertEventParams) error 
 		arg.Direction,
 		arg.Summary,
 		arg.Body,
+		arg.Supersedes,
 		arg.MetadataJson,
 	)
 	return err
@@ -817,8 +819,8 @@ const insertTaskDoneWhenState = `-- name: InsertTaskDoneWhenState :exec
 INSERT INTO task_done_when_states (
     task_instance_id, heartbeat_ticks, heartbeat_escalations,
     last_action, last_fingerprint, last_reason,
-    last_body, escalated_at, escalate_reason
-) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+    last_body, escalated_at, escalate_reason, last_kick_event_id
+) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 `
 
 type InsertTaskDoneWhenStateParams struct {
@@ -831,6 +833,7 @@ type InsertTaskDoneWhenStateParams struct {
 	LastBody             sql.NullString
 	EscalatedAt          sql.NullString
 	EscalateReason       sql.NullString
+	LastKickEventID      sql.NullString
 }
 
 // Task done_when states
@@ -845,6 +848,7 @@ func (q *Queries) InsertTaskDoneWhenState(ctx context.Context, arg InsertTaskDon
 		arg.LastBody,
 		arg.EscalatedAt,
 		arg.EscalateReason,
+		arg.LastKickEventID,
 	)
 	return err
 }
@@ -911,7 +915,7 @@ func (q *Queries) InsertTaskInstanceLayer(ctx context.Context, arg InsertTaskIns
 }
 
 const latestEventByType = `-- name: LatestEventByType :one
-SELECT id, sequence, time, type, source, direction, summary, body, metadata_json
+SELECT id, sequence, time, type, source, direction, summary, body, supersedes, metadata_json
 FROM events WHERE session_id = ? AND type = ? ORDER BY sequence DESC LIMIT 1
 `
 
@@ -929,6 +933,7 @@ type LatestEventByTypeRow struct {
 	Direction    string
 	Summary      string
 	Body         string
+	Supersedes   string
 	MetadataJson string
 }
 
@@ -945,13 +950,14 @@ func (q *Queries) LatestEventByType(ctx context.Context, arg LatestEventByTypePa
 		&i.Direction,
 		&i.Summary,
 		&i.Body,
+		&i.Supersedes,
 		&i.MetadataJson,
 	)
 	return i, err
 }
 
 const latestRepairStateChange = `-- name: LatestRepairStateChange :one
-SELECT id, sequence, time, type, source, direction, summary, body, metadata_json
+SELECT id, sequence, time, type, source, direction, summary, body, supersedes, metadata_json
 FROM events INDEXED BY events_repair_state_change_idx
 WHERE session_id = ? AND type = ?
   AND (
@@ -975,6 +981,7 @@ type LatestRepairStateChangeRow struct {
 	Direction    string
 	Summary      string
 	Body         string
+	Supersedes   string
 	MetadataJson string
 }
 
@@ -991,6 +998,7 @@ func (q *Queries) LatestRepairStateChange(ctx context.Context, arg LatestRepairS
 		&i.Direction,
 		&i.Summary,
 		&i.Body,
+		&i.Supersedes,
 		&i.MetadataJson,
 	)
 	return i, err
@@ -1135,7 +1143,7 @@ func (q *Queries) ListCurrentNodeExecutionsForSessions(ctx context.Context, sess
 }
 
 const listEventsFromBySession = `-- name: ListEventsFromBySession :many
-SELECT id, sequence, time, type, source, direction, summary, body, metadata_json
+SELECT id, sequence, time, type, source, direction, summary, body, supersedes, metadata_json
 FROM events WHERE session_id = ? AND sequence >= ? ORDER BY sequence
 `
 
@@ -1153,6 +1161,7 @@ type ListEventsFromBySessionRow struct {
 	Direction    string
 	Summary      string
 	Body         string
+	Supersedes   string
 	MetadataJson string
 }
 
@@ -1174,6 +1183,7 @@ func (q *Queries) ListEventsFromBySession(ctx context.Context, arg ListEventsFro
 			&i.Direction,
 			&i.Summary,
 			&i.Body,
+			&i.Supersedes,
 			&i.MetadataJson,
 		); err != nil {
 			return nil, err
@@ -1974,7 +1984,7 @@ func (q *Queries) ListTaskDoneWhenJudgesForSessions(ctx context.Context, session
 const listTaskDoneWhenStatesForSession = `-- name: ListTaskDoneWhenStatesForSession :many
 SELECT s.task_instance_id, s.heartbeat_ticks, s.heartbeat_escalations,
        s.last_action, s.last_fingerprint, s.last_reason,
-       s.last_body, s.escalated_at, s.escalate_reason
+       s.last_body, s.escalated_at, s.escalate_reason, s.last_kick_event_id
 FROM task_done_when_states s
 JOIN task_instances t ON t.id = s.task_instance_id
 WHERE t.session_id = ?
@@ -1999,6 +2009,7 @@ func (q *Queries) ListTaskDoneWhenStatesForSession(ctx context.Context, sessionI
 			&i.LastBody,
 			&i.EscalatedAt,
 			&i.EscalateReason,
+			&i.LastKickEventID,
 		); err != nil {
 			return nil, err
 		}
@@ -2016,7 +2027,7 @@ func (q *Queries) ListTaskDoneWhenStatesForSession(ctx context.Context, sessionI
 const listTaskDoneWhenStatesForSessions = `-- name: ListTaskDoneWhenStatesForSessions :many
 SELECT s.task_instance_id, s.heartbeat_ticks, s.heartbeat_escalations,
        s.last_action, s.last_fingerprint, s.last_reason,
-       s.last_body, s.escalated_at, s.escalate_reason
+       s.last_body, s.escalated_at, s.escalate_reason, s.last_kick_event_id
 FROM task_done_when_states s
 JOIN task_instances t ON t.id = s.task_instance_id
 WHERE t.session_id IN (/*SLICE:session_ids*/?)
@@ -2051,6 +2062,7 @@ func (q *Queries) ListTaskDoneWhenStatesForSessions(ctx context.Context, session
 			&i.LastBody,
 			&i.EscalatedAt,
 			&i.EscalateReason,
+			&i.LastKickEventID,
 		); err != nil {
 			return nil, err
 		}

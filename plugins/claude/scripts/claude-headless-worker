@@ -26,6 +26,7 @@ mcp_config="${4:?mcp_config required}"
 hooks_settings="${5:?hooks_settings required}"
 socket_path="${6-}"
 bridge_bin="${PLECT_CLAUDE_CHANNEL_SERVER_BIN-}"
+activity_bin="$(dirname "$0")/claude-agent-activity"
 
 mkdir -p "$queue_dir" "$state_dir/log"
 
@@ -103,17 +104,6 @@ tick_session() {
     plect tick "$PLECT_SESSION_NAME" >/dev/null 2>&1 || true
 }
 
-if compgen -G "$queue_dir/*.json" > /dev/null; then
-    for _ in $(seq 1 50); do
-        for f in "$queue_dir"/*.json; do
-            [ -e "$f" ] || continue
-            [ "$(jq -r '.type' "$f" 2>/dev/null || true)" = "plect.session.resumed" ] && break 2
-        done
-        ensure_bridge
-        sleep 0.1
-    done
-fi
-
 # run_claude scopes ANTHROPIC_API_KEY to the claude process alone and reads
 # it from the file on every turn, so the key never crosses the pane's
 # keystrokes or scrollback, and a rotated key takes effect on the next turn
@@ -143,63 +133,73 @@ run_claude() {
     return "$status"
 }
 
-status_write_failed=false
+source "$(dirname "$0")/headless-batch.sh"
 while true; do
-    resumed_files=()
-    other_files=()
-    for f in "$queue_dir"/*.json; do
-        [ -e "$f" ] || continue
-        if [ "$(jq -r '.type' "$f" 2>/dev/null || true)" = "plect.session.resumed" ]; then
-            resumed_files+=("$f")
-        else
-            other_files+=("$f")
-        fi
-    done
-    for f in "${resumed_files[@]}" "${other_files[@]}"; do
-        [ -e "$f" ] || continue
-
-        event_type="$(jq -r '.type' "$f" 2>/dev/null || true)"
-        text="$(jq -r '.text' "$f" 2>/dev/null || true)"
-        if [ -z "$text" ]; then
-            rm -f "$f"
+    if batch_claim "$queue_dir" && batch_render "$queue_dir"; then
+        if [ ! -s "$queue_dir/.inflight/input" ]; then
+            batch_ack "$queue_dir"
             continue
         fi
+        event_type="batch"
+        text="$(cat "$queue_dir/.inflight/input"; printf '\001')"
+        text="${text%$'\001'}"
+        reply_marker="$queue_dir/.inflight/reply-published"
+        completed_marker="$queue_dir/.inflight/agent-completed"
+        reply_payload="$queue_dir/.inflight/reply.json"
+        if [ -f "$reply_marker" ]; then
+            batch_ack "$queue_dir"
+            tick_session
+            continue
+        fi
+        batch_wait_retry "$queue_dir"
 
         if [ -n "${PLECT_SESSION_NAME:-}" ] && ! plect state set-message "$PLECT_SESSION_NAME" "working" >/dev/null 2>&1; then
             echo "working status write failed; leaving turn queued" >&2
             write_health 1 "$event_type"
-            status_write_failed=true
-            break
+            sleep 1
+            continue
         fi
-        if [ "$status_write_failed" = true ]; then
+        write_health 0 "$event_type"
+
+        if [ ! -f "$completed_marker" ]; then
+            rm -f "$reply_payload"
+            # A failed turn may still report a conversation id, so its next
+            # invocation must resume that id rather than start a new one.
+            session_arg=(--session-id "$session_id")
+            [ "$(cat "$state_dir/started" 2>/dev/null)" = "$session_id" ] && session_arg=(--resume "$session_id")
+
+            log_base="$state_dir/log/$(date +%s%N)"
+            export PLECT_BATCH_ID="$(cat "$queue_dir/.inflight/batch-id")"
+            export PLECT_BATCH_REPLY_PAYLOAD="$reply_payload"
+            run_claude -p --output-format json \
+                "${session_arg[@]}" \
+                --mcp-config "$mcp_config" \
+                --settings "$hooks_settings" \
+                --disallowedTools AskUserQuestion \
+                ${extra_args[@]+"${extra_args[@]}"} \
+                -- "$text" > "$log_base.json" 2> "$log_base.err" < /dev/null
+            exit_code=$?
+            unset PLECT_BATCH_ID PLECT_BATCH_REPLY_PAYLOAD
+
+            jq -e '.session_id // empty' "$log_base.json" >/dev/null 2>&1 && printf '%s' "$session_id" > "$state_dir/started"
+            if [ "$exit_code" -ne 0 ] || [ ! -f "$reply_payload" ]; then
+                write_health 1 "$event_type"
+                batch_failed "$queue_dir" agent || sleep 2
+                continue
+            fi
+            touch "$completed_marker" || { write_health 1 "$event_type"; sleep 2; continue; }
+        fi
+
+        batch_id="$(cat "$queue_dir/.inflight/batch-id")"
+        if { [ "${PLECT_CLAUDE_REPORT_REPLY:-true}" != true ] || PLECT_BATCH_ID="$batch_id" PLECT_BATCH_REPLY_MARKER="$reply_marker" "$activity_bin" reply < "$reply_payload"; } && touch "$reply_marker"; then
             write_health 0 "$event_type"
-            status_write_failed=false
+            batch_ack "$queue_dir"
+            tick_session
+        else
+            write_health 1 "$event_type"
+            batch_failed "$queue_dir" reply || sleep 2
         fi
-
-        # A conversation exists once claude has reported its session id for
-        # it, even from a turn that later failed; a turn that never got that
-        # far persisted nothing, so --resume would find no conversation. The
-        # marker names the id it was written for, so one left by another
-        # session sharing this directory never counts.
-        session_arg=(--session-id "$session_id")
-        [ "$(cat "$state_dir/started" 2>/dev/null)" = "$session_id" ] && session_arg=(--resume "$session_id")
-
-        log_base="$state_dir/log/$(date +%s%N)"
-        run_claude -p --output-format json \
-            "${session_arg[@]}" \
-            --mcp-config "$mcp_config" \
-            --settings "$hooks_settings" \
-            --disallowedTools AskUserQuestion \
-            ${extra_args[@]+"${extra_args[@]}"} \
-            -- "$text" > "$log_base.json" 2> "$log_base.err" < /dev/null
-        exit_code=$?
-
-        jq -e '.session_id // empty' "$log_base.json" >/dev/null 2>&1 && printf '%s' "$session_id" > "$state_dir/started"
-
-        write_health "$exit_code" "$event_type"
-        rm -f "$f"
-        tick_session
-    done
+    fi
     ensure_bridge
     sleep 1
 done

@@ -167,6 +167,27 @@ XDG_STATE_HOME="$tmp/state" PATH="$reply_failure_bin:$PATH" \
 "$subject" finish interactive <<<'{"hook_event_name":"Stop","last_assistant_message":"answer","prompt_id":"turn-failed-reply"}'
 [ "$(tail -n 1 "$tmp/calls")" = 'tick owner/repo-1' ] || { echo "failed reply publication suppressed the tick" >&2; exit 1; }
 
+marker="$tmp/reply-published"
+reply_payload="$tmp/reply.json"
+: > "$tmp/calls"
+PLECT_SESSION_NAME="owner/repo-1" PLECT_CALLS="$tmp/calls" \
+PLECT_BATCH_REPLY_PAYLOAD="$reply_payload" XDG_STATE_HOME="$tmp/state" PATH="$reply_failure_bin:$PATH" \
+"$subject" finish <<<'{"hook_event_name":"Stop","last_assistant_message":"answer","prompt_id":"turn-batch-retry"}'
+[ -f "$reply_payload" ] || { echo "headless Stop did not save its reply" >&2; exit 1; }
+! grep -q '^event publish' "$tmp/calls" || { echo "headless Stop published before its worker could acknowledge the turn" >&2; exit 1; }
+if PLECT_SESSION_NAME="owner/repo-1" PLECT_CALLS="$tmp/calls" \
+  PLECT_BATCH_ID="batch-42" PLECT_BATCH_REPLY_MARKER="$marker" XDG_STATE_HOME="$tmp/state" PATH="$reply_failure_bin:$PATH" \
+  "$subject" reply < "$reply_payload"; then
+  echo "failed batch reply was reported as success" >&2
+  exit 1
+fi
+[ ! -e "$marker" ] || { echo "failed batch reply wrote its acknowledgment marker" >&2; exit 1; }
+PLECT_SESSION_NAME="owner/repo-1" PLECT_CALLS="$tmp/calls" \
+PLECT_BATCH_ID="batch-42" PLECT_BATCH_REPLY_MARKER="$marker" XDG_STATE_HOME="$tmp/state" PATH="$bin_dir:$PATH" \
+"$subject" reply < "$reply_payload"
+[ ! -e "$marker" ] || { echo "the worker must write the acknowledgment marker" >&2; exit 1; }
+grep -q 'message_id=owner/repo-1/batch-42' "$tmp/calls" || { echo "batch reply did not use the durable batch id" >&2; exit 1; }
+
 : > "$tmp/calls"
 PLECT_SESSION_NAME="owner/repo-1" PLECT_CALLS="$tmp/calls" \
 XDG_STATE_HOME="$tmp/state" PATH="$bin_dir:$PATH" \

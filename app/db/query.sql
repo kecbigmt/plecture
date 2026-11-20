@@ -366,8 +366,8 @@ ORDER BY l.task_instance_id, l.position;
 INSERT INTO task_done_when_states (
     task_instance_id, heartbeat_ticks, heartbeat_escalations,
     last_action, last_fingerprint, last_reason,
-    last_body, escalated_at, escalate_reason
-) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?);
+    last_body, escalated_at, escalate_reason, last_kick_event_id
+) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?);
 
 -- name: DeleteTaskDoneWhenStateByInstanceID :exec
 DELETE FROM task_done_when_states WHERE task_instance_id = ?;
@@ -375,7 +375,7 @@ DELETE FROM task_done_when_states WHERE task_instance_id = ?;
 -- name: ListTaskDoneWhenStatesForSession :many
 SELECT s.task_instance_id, s.heartbeat_ticks, s.heartbeat_escalations,
        s.last_action, s.last_fingerprint, s.last_reason,
-       s.last_body, s.escalated_at, s.escalate_reason
+       s.last_body, s.escalated_at, s.escalate_reason, s.last_kick_event_id
 FROM task_done_when_states s
 JOIN task_instances t ON t.id = s.task_instance_id
 WHERE t.session_id = ?;
@@ -383,7 +383,7 @@ WHERE t.session_id = ?;
 -- name: ListTaskDoneWhenStatesForSessions :many
 SELECT s.task_instance_id, s.heartbeat_ticks, s.heartbeat_escalations,
        s.last_action, s.last_fingerprint, s.last_reason,
-       s.last_body, s.escalated_at, s.escalate_reason
+       s.last_body, s.escalated_at, s.escalate_reason, s.last_kick_event_id
 FROM task_done_when_states s
 JOIN task_instances t ON t.id = s.task_instance_id
 WHERE t.session_id IN (sqlc.slice(session_ids));
@@ -548,24 +548,24 @@ DELETE FROM up_reservations WHERE child_session_name = ?;
 SELECT COALESCE(MAX(sequence), 0) + 1 FROM events WHERE session_id = ?;
 
 -- name: InsertEvent :exec
-INSERT INTO events (id, session_id, sequence, time, type, source, direction, summary, body, metadata_json)
-VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?);
+INSERT INTO events (id, session_id, sequence, time, type, source, direction, summary, body, supersedes, metadata_json)
+VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);
 
 -- name: DeleteEventsForSession :exec
 DELETE FROM events WHERE session_id = ?;
 
 -- name: ListEventsFromBySession :many
-SELECT id, sequence, time, type, source, direction, summary, body, metadata_json
+SELECT id, sequence, time, type, source, direction, summary, body, supersedes, metadata_json
 FROM events WHERE session_id = ? AND sequence >= ? ORDER BY sequence;
 
 -- LatestEventByType backs the status-message reader.
 -- name: LatestEventByType :one
-SELECT id, sequence, time, type, source, direction, summary, body, metadata_json
+SELECT id, sequence, time, type, source, direction, summary, body, supersedes, metadata_json
 FROM events WHERE session_id = ? AND type = ? ORDER BY sequence DESC LIMIT 1;
 
 -- name: LatestRepairStateChange :one
 -- The broader type index would scan every skipped probe after the last repair state change.
-SELECT id, sequence, time, type, source, direction, summary, body, metadata_json
+SELECT id, sequence, time, type, source, direction, summary, body, supersedes, metadata_json
 FROM events INDEXED BY events_repair_state_change_idx
 WHERE session_id = ? AND type = ?
   AND (

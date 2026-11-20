@@ -45,6 +45,9 @@ model Event {
   @doc("Absent and empty are equivalent, as with every optional field on this contract.")
   body?: string;
 
+  @doc("ID of an earlier event in this session that this event supersedes.")
+  supersedes?: string;
+
   @doc("""
     Arbitrary event metadata, passed through verbatim including keys this API
     does not itself interpret — e.g. `origin_session`

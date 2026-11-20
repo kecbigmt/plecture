@@ -73,27 +73,29 @@ q="$tmp/coalesce"
 "$enqueue" "$q" "$envelope" "github.ci_status" "pending" "" "https://example.test/pr/1"
 "$enqueue" "$q" "$envelope" "github.ci_status" "running" "" "https://example.test/pr/1"
 "$enqueue" "$q" "$envelope" "github.ci_status" "success" "" "https://example.test/pr/1"
-check "repeated github.* for one (type, url) leaves one file" "1" "$(queued_count "$q")"
-check "the surviving file carries the newest text" \
-  "[github.ci_status] success (https://example.test/pr/1)" "$(queued_field "$q" text)"
-check "the url is stored in the queue file" \
-  "https://example.test/pr/1" "$(queued_field "$q" url)"
+check "repeated snapshots remain pending until the worker takes them" "3" "$(queued_count "$q")"
 
 q="$tmp/other-url"
 "$enqueue" "$q" "$envelope" "github.ci_status" "a" "" "https://example.test/pr/1"
 "$enqueue" "$q" "$envelope" "github.ci_status" "b" "" "https://example.test/issues/1"
-check "different urls are never coalesced" "2" "$(queued_count "$q")"
+check "different urls remain pending" "2" "$(queued_count "$q")"
 
 q="$tmp/other-type"
 "$enqueue" "$q" "$envelope" "github.ci_status" "a" "" "https://example.test/pr/1"
 "$enqueue" "$q" "$envelope" "github.mergeable" "b" "" "https://example.test/pr/1"
-check "different types are never coalesced" "2" "$(queued_count "$q")"
+check "different types remain pending" "2" "$(queued_count "$q")"
 
 q="$tmp/user-emit"
 for _ in 1 2 3; do
   "$enqueue" "$q" "$envelope" "user.emit" "same text" "" "https://example.test/pr/1"
 done
-check "user.emit is never coalesced" "3" "$(queued_count "$q")"
+check "three identical kicks remain pending until supersession selection" "3" "$(queued_count "$q")"
+
+q="$tmp/linked-kicks"
+mkdir -p "$q"
+"$enqueue" "$q" "$envelope" "user.emit" "new kick" "" "" "kick-2" "plect.tick" "kick-1"
+check "event id is carried" "kick-2" "$(queued_field "$q" id)"
+check "supersedes is carried" "kick-1" "$(queued_field "$q" supersedes)"
 
 q="$tmp/legacy"
 mkdir -p "$q"

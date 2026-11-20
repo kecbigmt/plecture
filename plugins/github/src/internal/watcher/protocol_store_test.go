@@ -24,6 +24,9 @@ func TestProtocolStoreMembershipOverlapAndStateSurviveRestart(t *testing.T) {
 	if err := store.SetLast("s1", row.Resource.Locator, map[string]string{"issue_state": "open"}); err != nil {
 		t.Fatal(err)
 	}
+	if err := store.SetLastPublished(row.Resource.Locator, "github.state", map[string]string{"s1": "event-1"}); err != nil {
+		t.Fatal(err)
+	}
 	store.Apply(nil, []MembershipRow{row})
 	all, err = store.All()
 	if err != nil || len(all) != 1 {
@@ -36,6 +39,10 @@ func TestProtocolStoreMembershipOverlapAndStateSurviveRestart(t *testing.T) {
 	all, err = restarted.All()
 	if err != nil || all[subKey("s1", row.Resource.Locator)].Last["issue_state"] != "open" {
 		t.Fatalf("persisted state = %v, %v", all, err)
+	}
+	ids, err := restarted.LastPublished(row.Resource.Locator, "github.state")
+	if err != nil || ids["s1"] != "event-1" {
+		t.Fatalf("persisted event IDs = %v, %v", ids, err)
 	}
 	restarted.Apply(nil, []MembershipRow{task})
 	all, err = restarted.All()

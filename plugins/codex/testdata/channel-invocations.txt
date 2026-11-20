@@ -7,6 +7,9 @@ argv[3]: "user.emit"
 argv[4]: "a <tag> & an \"amp\"\nover two lines"
 argv[5]: "a summary"
 argv[6]: "https://example.test/x"
+argv[7]: "01ABC"
+argv[8]: "plect"
+argv[9]: "01OLD"
 timeout: 5s
 
 == exec_delivery / summary-only
@@ -18,6 +21,9 @@ argv[3]: "example.status"
 argv[4]: ""
 argv[5]: "only a summary"
 argv[6]: ""
+argv[7]: "01DEF"
+argv[8]: "plect"
+argv[9]: ""
 timeout: 5s
 
 == terminal_submit / with-body

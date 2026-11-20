@@ -156,10 +156,10 @@ restart, within one refresh interval.`,
 				}
 				return serviceQueryRegistrations(cfg, defs, decl)
 			},
-			Publish: func(_ context.Context, req pluginservice.PublishRequest) (int, error) {
+			Publish: func(_ context.Context, req pluginservice.PublishRequest) (map[string]string, error) {
 				return service.EventPublishResource(live.Get(), stateStore, req.Resource, service.EventPublishParams{
 					Type: req.Type, Source: "service", Direction: event.Inbound,
-					Summary: req.Summary, Body: req.Body, Metadata: req.Metadata,
+					Summary: req.Summary, Body: req.Body, SupersedesBySession: req.Supersedes, Metadata: req.Metadata,
 				})
 			},
 		}

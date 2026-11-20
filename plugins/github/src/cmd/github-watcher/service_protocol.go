@@ -17,6 +17,7 @@ type serviceMessage struct {
 	ID      string                  `json:"id"`
 	Code    string                  `json:"code"`
 	Message string                  `json:"message"`
+	Events  map[string]string       `json:"events"`
 	Config  map[string]any          `json:"config"`
 	Add     []watcher.MembershipRow `json:"add"`
 	Remove  []watcher.MembershipRow `json:"remove"`
@@ -92,6 +93,10 @@ func (p *serviceProtocol) Run() error {
 	}
 }
 func (p *serviceProtocol) Publish(ctx context.Context, resource, eventType, summary string, metadata map[string]string) error {
+	previous, err := p.store.LastPublished(resource, eventType)
+	if err != nil {
+		return err
+	}
 	id := fmt.Sprintf("github-%d", p.nextID.Add(1))
 	ch := make(chan serviceMessage, 1)
 	p.pendingMu.Lock()
@@ -99,7 +104,7 @@ func (p *serviceProtocol) Publish(ctx context.Context, resource, eventType, summ
 	p.pendingMu.Unlock()
 	defer func() { p.pendingMu.Lock(); delete(p.pending, id); p.pendingMu.Unlock() }()
 	p.outputMu.Lock()
-	err := p.output.Encode(map[string]any{"op": "publish", "id": id, "resource": resource, "type": eventType, "summary": summary, "metadata": metadata})
+	err = p.output.Encode(map[string]any{"op": "publish", "id": id, "resource": resource, "type": eventType, "summary": summary, "metadata": metadata, "supersedes": previous})
 	p.outputMu.Unlock()
 	if err != nil {
 		return err
@@ -109,8 +114,13 @@ func (p *serviceProtocol) Publish(ctx context.Context, resource, eventType, summ
 		return ctx.Err()
 	case reply := <-ch:
 		if reply.Op == "error" {
+			if len(reply.Events) > 0 {
+				if err := p.store.SetLastPublished(resource, eventType, reply.Events); err != nil {
+					return err
+				}
+			}
 			return fmt.Errorf("%s: %s", reply.Code, reply.Message)
 		}
-		return nil
+		return p.store.SetLastPublished(resource, eventType, reply.Events)
 	}
 }

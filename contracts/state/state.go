@@ -56,6 +56,7 @@ type DoneWhenState struct {
 	LastReason           string                    `json:"last_reason,omitempty"`
 	LastUnsatisfied      []string                  `json:"last_unsatisfied,omitempty"`
 	LastBody             string                    `json:"last_body,omitempty"`
+	LastKickEventID      string                    `json:"last_kick_event_id,omitempty"`
 	EscalatedAt          time.Time                 `json:"escalated_at,omitzero"`
 	EscalateReason       string                    `json:"escalate_reason,omitempty"`
 }

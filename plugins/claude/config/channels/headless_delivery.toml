@@ -11,6 +11,9 @@ args = [
   { from = "event.body" },
   { from = "event.summary" },
   { from = "event.metadata.url", default = "" },
+  { from = "event.id" },
+  { from = "event.source" },
+  { from = "event.supersedes", default = "" },
 ]
 timeout = { from = "inputs.enqueue_timeout" }
 

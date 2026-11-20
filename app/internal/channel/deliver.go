@@ -60,6 +60,7 @@ func eventMap(ev event.Event) map[string]any {
 		"direction":    string(ev.Direction),
 		"summary":      ev.Summary,
 		"body":         ev.Body,
+		"supersedes":   ev.Supersedes,
 		"metadata":     md,
 	}
 }

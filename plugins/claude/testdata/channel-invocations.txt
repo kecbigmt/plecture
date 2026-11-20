@@ -1,13 +1,13 @@
 == delivery / with-body
 type: unix_socket
 path: "stand-in-path"
-body: "{\"body\":\"a <tag> & an \\\"amp\\\"\\nover two lines\",\"direction\":\"inbound\",\"id\":\"01ABC\",\"metadata\":{\"url\":\"https://example.test/x\"},\"session_name\":\"acme-widget-1\",\"source\":\"plect\",\"summary\":\"a summary\",\"time\":\"2026-08-22T09:00:00Z\",\"type\":\"user.emit\"}"
+body: "{\"body\":\"a <tag> & an \\\"amp\\\"\\nover two lines\",\"direction\":\"inbound\",\"id\":\"01ABC\",\"metadata\":{\"url\":\"https://example.test/x\"},\"session_name\":\"acme-widget-1\",\"source\":\"plect\",\"summary\":\"a summary\",\"supersedes\":\"01OLD\",\"time\":\"2026-08-22T09:00:00Z\",\"type\":\"user.emit\"}"
 timeout: 0s
 
 == delivery / summary-only
 type: unix_socket
 path: "stand-in-path"
-body: "{\"body\":\"\",\"direction\":\"internal\",\"id\":\"01DEF\",\"metadata\":{},\"session_name\":\"acme-widget-1\",\"source\":\"plect\",\"summary\":\"only a summary\",\"time\":\"2026-08-22T09:00:00Z\",\"type\":\"example.status\"}"
+body: "{\"body\":\"\",\"direction\":\"internal\",\"id\":\"01DEF\",\"metadata\":{},\"session_name\":\"acme-widget-1\",\"source\":\"plect\",\"summary\":\"only a summary\",\"supersedes\":\"\",\"time\":\"2026-08-22T09:00:00Z\",\"type\":\"example.status\"}"
 timeout: 0s
 
 == headless_delivery / with-body
@@ -19,6 +19,9 @@ argv[3]: "user.emit"
 argv[4]: "a <tag> & an \"amp\"\nover two lines"
 argv[5]: "a summary"
 argv[6]: "https://example.test/x"
+argv[7]: "01ABC"
+argv[8]: "plect"
+argv[9]: "01OLD"
 timeout: 5s
 
 == headless_delivery / summary-only
@@ -30,4 +33,7 @@ argv[3]: "example.status"
 argv[4]: ""
 argv[5]: "only a summary"
 argv[6]: ""
+argv[7]: "01DEF"
+argv[8]: "plect"
+argv[9]: ""
 timeout: 5s

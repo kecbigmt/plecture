@@ -40,6 +40,7 @@ func (db *DB) AppendEvent(ctx context.Context, ev event.Event) (sequence int64, 
 			Direction:    string(ev.Direction),
 			Summary:      ev.Summary,
 			Body:         ev.Body,
+			Supersedes:   ev.Supersedes,
 			MetadataJson: metadataJSON,
 		}); err != nil {
 			return fmt.Errorf("insert event %q: %w", ev.ID, err)
@@ -405,6 +406,7 @@ func eventFromRow(row sqlcgen.ListEventsFromBySessionRow, session string) (event
 		Direction:   event.Direction(row.Direction),
 		Summary:     row.Summary,
 		Body:        row.Body,
+		Supersedes:  row.Supersedes,
 		Metadata:    metadata,
 	}, nil
 }

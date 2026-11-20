@@ -6,6 +6,24 @@ and a workflow's `[tick].on` (`workflows.md#clocks`) select events by
 type glob, with the resume-instruction alias described below. This chapter
 documents the core, provider-neutral vocabulary those globs can name.
 
+## Supersession
+
+An event may set the top-level `supersedes` field to the ID of an earlier
+event in the same session. Both events remain in the durable log. An inbound
+queue omits an event from a pending turn only when another entry pending for
+that turn names its ID in `supersedes`. The newest pending event in a chain
+is retained. If the naming event is absent, the older entry is delivered.
+Consumers decide this from event IDs and references alone; type, source,
+metadata, and message text do not change the rule.
+
+Headless runtimes take all entries pending at the turn boundary, preserve queue
+order, and present the retained entries together in one agent turn. Events
+arriving during that turn wait for the next one. A failed invocation retries
+the same batch twice with increasing delay, then parks it and processes newer
+entries. If the agent completes but reply publication fails, the runtime keeps
+the reply and retries publication without invoking the agent again. Repeated
+publication failures also park the batch after two retries.
+
 ## Session resume instructions
 
 `plect.status_message` is an outbound self-report. An empty status carries

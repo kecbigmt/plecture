@@ -1,0 +1,98 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1600 820" width="1600" height="820" role="img" aria-labelledby="title desc">
+  <title id="title">Headless event supersession and batched delivery</title>
+  <desc id="desc">One head-structure diagram. Changed tick and GitHub publishers send events with supersedes references to the changed core event store. Changed delivery and enqueue scripts carry the events into a changed headless queue. Added headless-batch.sh reads pending queue files, moves malformed files to an added quarantine directory, and gives one batch input with superseded entries omitted to a changed worker. The worker invokes one agent turn and receives its reply. Removed type-and-URL coalescing and resume-first ordering appear as faded dashed ghosts beside their former components.</desc>
+  <defs>
+    <style>
+      svg { --bg:#ffffff; --fg:#1f2328; --muted:#59636e; --neutral:#8c959f; --neutral-bg:#f6f8fa; --added:#1a7f37; --added-bg:#dafbe1; --changed:#0969da; --changed-bg:#ddf4ff; --removed:#cf222e; --removed-bg:#ffebe9; }
+      @media (prefers-color-scheme: dark) { svg { --bg:#0d1117; --fg:#e6edf3; --muted:#9198a1; --neutral:#656c76; --neutral-bg:#151b23; --added:#3fb950; --added-bg:#0f2a1a; --changed:#4493f8; --changed-bg:#0c2441; --removed:#f85149; --removed-bg:#3a1416; } }
+      text { font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Helvetica,Arial,sans-serif; font-size:16px; fill:var(--fg); }
+      .bg { fill:var(--bg); } .title { font-size:26px; font-weight:700; } .name { font-size:18px; font-weight:600; } .tag { font-size:12px; font-weight:700; letter-spacing:.07em; } .label { font-size:14px; font-weight:600; } .note { font-size:13px; fill:var(--muted); }
+      .neutral { fill:var(--neutral-bg); stroke:var(--neutral); stroke-width:2; } .added { fill:var(--added-bg); stroke:var(--added); stroke-width:3; } .changed { fill:var(--changed-bg); stroke:var(--changed); stroke-width:2.5; } .removed { fill:var(--removed-bg); stroke:var(--removed); stroke-width:2; stroke-dasharray:8 5; }
+      .t-added { fill:var(--added); } .t-changed { fill:var(--changed); } .t-removed { fill:var(--removed); } .ghost { opacity:.58; }
+      .flow { fill:none; stroke:var(--fg); stroke-width:2.5; marker-end:url(#arrow); } .flow-added { fill:none; stroke:var(--added); stroke-width:3; marker-end:url(#arrow-added); } .flow-removed { fill:none; stroke:var(--removed); stroke-width:2; stroke-dasharray:7 5; }
+      .head { fill:var(--fg); } .head-added { fill:var(--added); }
+    </style>
+    <marker id="arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="8" markerHeight="8" orient="auto-start-reverse"><path class="head" d="M0,0 L10,5 L0,10 z"/></marker>
+    <marker id="arrow-added" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="8" markerHeight="8" orient="auto-start-reverse"><path class="head-added" d="M0,0 L10,5 L0,10 z"/></marker>
+  </defs>
+  <rect class="bg" x="0" y="0" width="1600" height="820"/>
+  <text class="title" x="48" y="52">Headless event supersession and batching</text>
+  <text class="note" x="49" y="78">PR 792 · head structure · arrows name the data crossing each boundary</text>
+
+  <text class="tag t-changed" x="52" y="149">CHANGED</text>
+  <rect class="changed" x="50" y="164" width="215" height="74" rx="9"/>
+  <text class="name" x="72" y="209">Tick publisher</text>
+
+  <text class="tag t-changed" x="52" y="303">CHANGED</text>
+  <rect class="changed" x="50" y="318" width="215" height="74" rx="9"/>
+  <text class="name" x="72" y="363">GitHub watcher</text>
+
+  <text class="tag t-changed" x="405" y="226">CHANGED</text>
+  <rect class="changed" x="403" y="241" width="198" height="100" rx="9"/>
+  <text class="name" x="425" y="283">Core event store</text>
+
+  <text class="tag t-changed" x="722" y="226">CHANGED</text>
+  <rect class="changed" x="720" y="241" width="183" height="100" rx="9"/>
+  <text class="name" x="742" y="299">Delivery</text>
+
+  <text class="tag t-changed" x="1021" y="226">CHANGED</text>
+  <rect class="changed" x="1019" y="241" width="188" height="100" rx="9"/>
+  <text class="name" x="1041" y="283"><tspan x="1041">Headless enqueue</tspan><tspan x="1041" dy="25">scripts</tspan></text>
+
+  <text class="tag t-changed" x="1332" y="226">CHANGED</text>
+  <rect class="changed" x="1330" y="241" width="220" height="100" rx="9"/>
+  <text class="name" x="1352" y="283"><tspan x="1352">Headless queue</tspan><tspan x="1352" dy="25">directory</tspan></text>
+
+  <path class="flow" d="M265,201 H332 V268 H403"/>
+  <text class="label" x="280" y="145"><tspan x="280">kick event</tspan><tspan x="280" dy="18">supersedes=&lt;id&gt;</tspan></text>
+  <path class="flow" d="M265,355 H332 V315 H403"/>
+  <text class="label" x="280" y="378"><tspan x="280">snapshot event</tspan><tspan x="280" dy="18">supersedes=&lt;id&gt;</tspan></text>
+  <line class="flow" x1="601" y1="291" x2="720" y2="291"/>
+  <text class="label" text-anchor="middle" x="660" y="225"><tspan x="660">event +</tspan><tspan x="660" dy="18">reference</tspan></text>
+  <line class="flow" x1="903" y1="291" x2="1019" y2="291"/>
+  <text class="label" text-anchor="middle" x="961" y="225"><tspan x="961">delivery</tspan><tspan x="961" dy="18">envelope</tspan></text>
+  <line class="flow" x1="1207" y1="291" x2="1330" y2="291"/>
+  <text class="label" text-anchor="middle" x="1268" y="225"><tspan x="1268">queue file</tspan><tspan x="1268" dy="18">ID + reference</tspan></text>
+
+  <g class="ghost">
+    <text class="tag t-removed" x="1021" y="117">REMOVED</text>
+    <rect class="removed" x="1019" y="131" width="248" height="58" rx="9"/>
+    <text class="name" x="1039" y="166">Type + URL coalescing</text>
+    <path class="flow-removed" d="M1113,189 V227"/>
+  </g>
+
+  <text class="tag t-added" x="1342" y="531">ADDED</text>
+  <rect class="added" x="1340" y="546" width="210" height="84" rx="9"/>
+  <text class="name" x="1362" y="595">Quarantine directory</text>
+
+  <text class="tag t-added" x="1021" y="531">ADDED</text>
+  <rect class="added" x="1019" y="546" width="219" height="84" rx="9"/>
+  <text class="name" x="1041" y="595">headless-batch.sh</text>
+
+  <text class="tag t-changed" x="722" y="531">CHANGED</text>
+  <rect class="changed" x="720" y="546" width="183" height="84" rx="9"/>
+  <text class="name" x="742" y="584"><tspan x="742">Claude / Codex</tspan><tspan x="742" dy="25">worker</tspan></text>
+
+  <text class="tag" x="405" y="531">UNCHANGED</text>
+  <rect class="neutral" x="403" y="546" width="198" height="84" rx="9"/>
+  <text class="name" x="425" y="595">Agent turn</text>
+
+  <path class="flow-added" d="M1440,341 V444 H1128 V546"/>
+  <text class="label t-added" text-anchor="middle" x="1294" y="430">pending queue files</text>
+  <line class="flow-added" x1="1238" y1="588" x2="1340" y2="588"/>
+  <text class="label t-added" text-anchor="middle" x="1289" y="490"><tspan x="1289">unparsable</tspan><tspan x="1289" dy="18">file</tspan></text>
+  <line class="flow-added" x1="1019" y1="588" x2="903" y2="588"/>
+  <text class="label t-added" text-anchor="middle" x="961" y="490"><tspan x="961">batch input</tspan><tspan x="961" dy="18">superseded omitted</tspan></text>
+  <line class="flow" x1="720" y1="588" x2="601" y2="588"/>
+  <text class="label" text-anchor="middle" x="660" y="568">one turn input</text>
+  <path class="flow" d="M502,630 V672 H811 V630"/>
+  <text class="label" text-anchor="middle" x="657" y="663">reply</text>
+
+  <g class="ghost">
+    <text class="tag t-removed" x="722" y="385">REMOVED</text>
+    <rect class="removed" x="720" y="400" width="220" height="56" rx="9"/>
+    <text class="name" x="742" y="435">Resume-first rule</text>
+    <path class="flow-removed" d="M811,456 V533"/>
+  </g>
+  <text class="note" x="49" y="776">Blue: changed · Green: added · Grey: unchanged · Faded dashed: removed</text>
+</svg>

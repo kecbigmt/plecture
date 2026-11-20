@@ -69,6 +69,63 @@ func TestTickSession_ManualUnchangedKickDoesNotRepeatOrAdvanceHeartbeat(t *testi
 	}
 }
 
+func TestTickSession_KicksSupersedePreviousKickForSameInstance(t *testing.T) {
+	store := testStore(t)
+	cfg := checkScenarioConfig(t, 6)
+	seedPendingJudgeWork(t, store, "owner/repo-1")
+	setCheckStatus(t, store, "owner/repo-1", "FAILURE")
+	for i := range 3 {
+		if i == 1 {
+			setCheckStatus(t, store, "owner/repo-1", "PENDING")
+		}
+		if _, err := TickSession(cfg, store, TickParams{SessionName: "owner/repo-1", Trigger: TickTriggerHeartbeat}); err != nil {
+			t.Fatal(err)
+		}
+	}
+	evs, _, _, err := eventlog.NewStore(store.Dir()).List("owner/repo-1", 0, event.Filter{Types: []string{event.TypeUserEmit}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(evs) != 3 {
+		t.Fatalf("kick events = %d, want 3", len(evs))
+	}
+	if evs[0].Body == evs[1].Body {
+		t.Error("changed check state did not change the kick body")
+	}
+	for i, ev := range evs {
+		want := ""
+		if i > 0 {
+			want = evs[i-1].ID
+		}
+		if got := ev.Supersedes; got != want {
+			t.Errorf("kick %d supersedes = %q, want %q", i, got, want)
+		}
+	}
+	if got := store.Get("owner/repo-1").Tasks["initial"].DoneWhen.LastKickEventID; got != evs[2].ID {
+		t.Errorf("persisted last kick = %q, want %q", got, evs[2].ID)
+	}
+}
+
+func TestPersistTickAction_TracksKickSeparatelyPerTaskInstance(t *testing.T) {
+	store := testStore(t)
+	seedSession(t, store, "owner/repo-1", "owner/repo", 1, "default", map[string]*contract.TaskState{
+		"first":  {TaskID: "work", Scope: contract.TaskScopeSession, Status: contract.TaskStatusProduced},
+		"second": {TaskID: "work", Scope: contract.TaskScopeSession, Status: contract.TaskStatusProduced},
+	})
+	for _, tc := range []struct{ instance, id string }{{"first", "kick-first"}, {"second", "kick-second"}} {
+		if err := persistTickAction(store, "owner/repo-1", tc.instance, CheckAction{Action: "kick"}, tc.id); err != nil {
+			t.Fatal(err)
+		}
+	}
+	session := store.Get("owner/repo-1")
+	if got := session.Tasks["first"].DoneWhen.LastKickEventID; got != "kick-first" {
+		t.Errorf("first instance kick = %q", got)
+	}
+	if got := session.Tasks["second"].DoneWhen.LastKickEventID; got != "kick-second" {
+		t.Errorf("second instance kick = %q", got)
+	}
+}
+
 func TestTickSession_ManualReviewRequiredPublishesChangedStateOnce(t *testing.T) {
 	store := testStore(t)
 	cfg := checkScenarioConfig(t, 4)

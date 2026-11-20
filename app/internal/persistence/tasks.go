@@ -886,6 +886,7 @@ func insertDoneWhenTx(ctx context.Context, q *sqlcgen.Queries, taskInstanceID st
 		LastBody:             nullString(dw.LastBody),
 		EscalatedAt:          formatTimeNull(dw.EscalatedAt),
 		EscalateReason:       nullString(dw.EscalateReason),
+		LastKickEventID:      nullString(dw.LastKickEventID),
 	}); err != nil {
 		return err
 	}
@@ -947,6 +948,7 @@ func doneWhenFromRow(dw sqlcgen.TaskDoneWhenState, unsatisfied []string, judges 
 		LastBody:             dw.LastBody.String,
 		EscalatedAt:          escalatedAt,
 		EscalateReason:       dw.EscalateReason.String,
+		LastKickEventID:      dw.LastKickEventID.String,
 		Judges:               judges,
 	}, nil
 }
