@@ -3,6 +3,7 @@ package dispatch
 import (
 	"context"
 	"encoding/json"
+	"net"
 	"path/filepath"
 	"testing"
 	"time"
@@ -11,6 +12,7 @@ import (
 	"github.com/kecbigmt/plecture/app/internal/eventlog"
 	"github.com/kecbigmt/plecture/app/internal/inbox"
 	"github.com/kecbigmt/plecture/app/internal/lang"
+	"github.com/kecbigmt/plecture/app/internal/sockettest"
 	protocol "github.com/kecbigmt/plecture/contracts/channel-protocol"
 	"github.com/kecbigmt/plecture/contracts/event"
 )
@@ -27,13 +29,60 @@ func appendKick(t *testing.T, log *eventlog.Store, id, supersedes string) {
 	}
 }
 
-// deliveredIDs drains what the fake pane received, in arrival order.
-func deliveredIDs(t *testing.T, recv <-chan protocol.MessagePayload) []string {
+// orderedPane is a fake pane that reads one connection at a time. A reader per
+// connection would let two deliveries overtake each other on their way to the
+// test, and the order of deliveries is what these tests specify.
+type orderedPane struct {
+	path string
+	recv chan *protocol.MessagePayload
+}
+
+func startOrderedPane(t *testing.T) *orderedPane {
 	t.Helper()
+	path := filepath.Join(sockettest.Dir(t), "c.sock")
+	ln, err := net.Listen("unix", path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { ln.Close() })
+	p := &orderedPane{path: path, recv: make(chan *protocol.MessagePayload, 16)}
+	go func() {
+		for {
+			conn, err := ln.Accept()
+			if err != nil {
+				return
+			}
+			pl, ok := readFakeMessage(conn)
+			conn.Close()
+			if ok {
+				p.recv <- &pl
+			} else {
+				p.recv <- nil
+			}
+		}
+	}()
+	return p
+}
+
+// deliveredIDs returns every delivery made before the call, in order. It
+// marks the end with a connection of its own that carries no message: the
+// pane reads connections in the order they were made, so nothing delivered
+// earlier can arrive after that mark, and no wait has to guess when the pane
+// has caught up.
+func (p *orderedPane) deliveredIDs(t *testing.T) []string {
+	t.Helper()
+	mark, err := net.Dial("unix", p.path)
+	if err != nil {
+		t.Fatalf("dial the fake pane: %v", err)
+	}
+	mark.Close()
 	var ids []string
 	for {
 		select {
-		case pl := <-recv:
+		case pl := <-p.recv:
+			if pl == nil {
+				return ids
+			}
 			var ev struct {
 				ID string `json:"id"`
 			}
@@ -41,8 +90,8 @@ func deliveredIDs(t *testing.T, recv <-chan protocol.MessagePayload) []string {
 				t.Fatalf("payload is not event json: %v", err)
 			}
 			ids = append(ids, ev.ID)
-		case <-time.After(200 * time.Millisecond):
-			return ids
+		case <-time.After(10 * time.Second):
+			t.Fatalf("the fake pane never reached the end mark; got %v", ids)
 		}
 	}
 }
@@ -61,8 +110,8 @@ func sameIDs(a, b []string) bool {
 
 func TestDispatcher_PaneReceivesOnlyTheLatestOfKicksThatPiledUpWhileDown(t *testing.T) {
 	log := eventlog.NewStore(t.TempDir())
-	sock, recv := startFakeSocket(t)
-	d, s := runtimeDispatcher(t, inboxSession, log, sock, "user.emit")
+	pane := startOrderedPane(t)
+	d, s := runtimeDispatcher(t, inboxSession, log, pane.path, "user.emit")
 	SeedCursor(d.log, d.session)
 
 	// The session is down: nothing drains while these arrive.
@@ -72,7 +121,7 @@ func TestDispatcher_PaneReceivesOnlyTheLatestOfKicksThatPiledUpWhileDown(t *test
 
 	drainOnce(d, s)
 
-	if got, want := deliveredIDs(t, recv), []string{"kick-3"}; !sameIDs(got, want) {
+	if got, want := pane.deliveredIDs(t), []string{"kick-3"}; !sameIDs(got, want) {
 		t.Fatalf("pane deliveries = %v, want %v", got, want)
 	}
 	cur, _ := log.ReadCursor(inboxSession, dispatcherConsumer)
@@ -84,8 +133,8 @@ func TestDispatcher_PaneReceivesOnlyTheLatestOfKicksThatPiledUpWhileDown(t *test
 
 func TestDispatcher_PaneStillReceivesEveryEventNothingSupersedes(t *testing.T) {
 	log := eventlog.NewStore(t.TempDir())
-	sock, recv := startFakeSocket(t)
-	d, s := runtimeDispatcher(t, inboxSession, log, sock, "user.emit")
+	pane := startOrderedPane(t)
+	d, s := runtimeDispatcher(t, inboxSession, log, pane.path, "user.emit")
 	SeedCursor(d.log, d.session)
 
 	appendKick(t, log, "kick-1", "")
@@ -94,17 +143,17 @@ func TestDispatcher_PaneStillReceivesEveryEventNothingSupersedes(t *testing.T) {
 
 	drainOnce(d, s)
 
-	if got, want := deliveredIDs(t, recv), []string{"message", "kick-2"}; !sameIDs(got, want) {
+	if got, want := pane.deliveredIDs(t), []string{"message", "kick-2"}; !sameIDs(got, want) {
 		t.Fatalf("pane deliveries = %v, want %v", got, want)
 	}
 }
 
 func TestDispatcher_SupersessionIsJudgedPerBinding(t *testing.T) {
 	log := eventlog.NewStore(t.TempDir())
-	sock, recv := startFakeSocket(t)
+	pane := startOrderedPane(t)
 	// This binding selects the older event's type only, so the event that
 	// supersedes it is not pending for it.
-	d, s := runtimeDispatcher(t, inboxSession, log, sock, "plect.instruction")
+	d, s := runtimeDispatcher(t, inboxSession, log, pane.path, "plect.instruction")
 	SeedCursor(d.log, d.session)
 
 	if _, _, _, err := log.Append(event.Event{ID: "old", SessionName: inboxSession, Type: event.TypeInstruction, Direction: event.Internal}); err != nil {
@@ -114,7 +163,7 @@ func TestDispatcher_SupersessionIsJudgedPerBinding(t *testing.T) {
 
 	drainOnce(d, s)
 
-	if got, want := deliveredIDs(t, recv), []string{"old"}; !sameIDs(got, want) {
+	if got, want := pane.deliveredIDs(t), []string{"old"}; !sameIDs(got, want) {
 		t.Fatalf("deliveries = %v, want %v", got, want)
 	}
 }
