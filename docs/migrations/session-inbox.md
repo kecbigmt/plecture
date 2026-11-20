@@ -83,8 +83,10 @@ line in `import.log` before restarting:
 ## Rebase sessions
 
 A session executes the declarations stored in its revision, and those still
-name the removed enqueue executable. Start the resident process, then move
-every headless session onto the new declarations:
+name the removed enqueue executable. Rebase before starting the resident
+process: a dispatcher that ran on the old revision would fail each delivery to
+the runtime and record it as a `plect.channel.error`. The command does not
+need the resident process.
 
 ```bash
 plect workflow rebase --all --dry-run
@@ -92,8 +94,9 @@ plect workflow rebase --all --with-restart
 ```
 
 The runtime effect changed, so the class is `restart`: an up session is
-brought down on the old revision and up on the new one. Its worker then takes
-the migrated entries as its first batch.
+brought down on the old revision and up on the new one. Start the resident
+process afterwards. A worker then takes the migrated entries as its first
+batch.
 
 ## Verify and clean up
 
