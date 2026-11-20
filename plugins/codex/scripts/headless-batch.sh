@@ -99,6 +99,9 @@ batch_render() {
             printf '\n\n'
         done
     } > "$dir/.input.tmp" || return 1
+    if [ "$n" -eq 0 ]; then
+        : > "$dir/.input.tmp" || return 1
+    fi
     mv "$dir/.input.tmp" "$dir/input" || return 1
 }
 

@@ -75,6 +75,15 @@ batch_render "$queue" 2>> "$tmp/quarantine.log"
 batch_ack "$queue"
 [[ -f "$quarantine_file" && ! -d "$queue/.inflight" ]]
 
+printf '{not json\n' > "$queue/17.json"
+batch_claim "$queue"
+batch_render "$queue" 2> "$tmp/all-malformed.log"
+[[ ! -s "$queue/.inflight/input" ]]
+[[ -f "$queue.quarantine/$(cat "$queue/.inflight/batch-id")/17.json" ]]
+[[ "$(wc -l < "$tmp/all-malformed.log")" -eq 1 ]]
+batch_ack "$queue"
+[[ ! -d "$queue/.inflight" ]]
+
 non_c_locale="$(locale -a | grep -Ei '^en_US\.(utf8|utf-8)$' | head -1 || true)"
 if [ -z "${PLECT_CONFORMANCE_NON_C:-}" ] && [ -n "$non_c_locale" ]; then
     PLECT_CONFORMANCE_NON_C=1 LC_ALL="$non_c_locale" bash "$0" "$helper"

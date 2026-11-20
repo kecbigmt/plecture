@@ -453,6 +453,22 @@ kill -TERM "$worker_pid" 2>/dev/null || true
 wait "$worker_pid" 2>/dev/null || true
 worker_pid=""
 
+corrupt_queue="$tmp/corrupt-queue"
+corrupt_state="$tmp/corrupt-state"
+mkdir -p "$corrupt_queue"
+printf '{not json\n' > "$corrupt_queue/1.json"
+: > "$STUB_ARGV"
+"$worker" "$corrupt_queue" "$corrupt_state" > "$tmp/corrupt.out" 2>&1 &
+worker_pid=$!
+wait_for_drain "$corrupt_queue/1.json" || { echo "FAIL malformed-only batch was not acknowledged" >&2; fail=1; }
+if [ -s "$STUB_ARGV" ] || ! compgen -G "$corrupt_queue.quarantine/*/1.json" >/dev/null; then
+  echo "FAIL malformed-only batch invoked the agent or lost its entry" >&2
+  fail=1
+fi
+kill -TERM "$worker_pid" 2>/dev/null || true
+wait "$worker_pid" 2>/dev/null || true
+worker_pid=""
+
 bash "$here/../../headless-queue-conformance.sh" "$here/headless-batch.sh" || fail=1
 [ "$fail" -eq 0 ] || { echo "codex-exec-worker selftest failed" >&2; exit 1; }
 echo "codex-exec-worker selftest passed"

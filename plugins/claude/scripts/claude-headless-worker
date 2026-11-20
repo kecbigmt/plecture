@@ -136,6 +136,10 @@ run_claude() {
 source "$(dirname "$0")/headless-batch.sh"
 while true; do
     if batch_claim "$queue_dir" && batch_render "$queue_dir"; then
+        if [ ! -s "$queue_dir/.inflight/input" ]; then
+            batch_ack "$queue_dir"
+            continue
+        fi
         event_type="batch"
         text="$(cat "$queue_dir/.inflight/input"; printf '\001')"
         text="${text%$'\001'}"
