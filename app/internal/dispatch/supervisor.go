@@ -10,6 +10,7 @@ import (
 	"github.com/kecbigmt/plecture/app/internal/config"
 	"github.com/kecbigmt/plecture/app/internal/domain"
 	"github.com/kecbigmt/plecture/app/internal/eventlog"
+	"github.com/kecbigmt/plecture/app/internal/inbox"
 	"github.com/kecbigmt/plecture/app/internal/sessionhub"
 	"github.com/kecbigmt/plecture/app/internal/state"
 )
@@ -168,6 +169,7 @@ func (sup *Supervisor) buildDispatcher(name string, s *domain.Session) (*session
 		state:    sup.state,
 		hub:      sup.hub,
 		policy:   channel.DefaultRetryPolicy(),
+		inbox:    inbox.NewStore(sup.log.Dir()),
 		plugins:  cfg.Plugins,
 		terminal: terminal,
 

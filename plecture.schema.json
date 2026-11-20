@@ -1231,7 +1231,8 @@
           "enum": [
             "unix_socket",
             "exec",
-            "shell"
+            "shell",
+            "inbox"
           ]
         },
         "input_schema": {
@@ -1461,6 +1462,75 @@
                 {
                   "required": [
                     "stdin"
+                  ]
+                }
+              ]
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "type": {
+                "const": "inbox"
+              }
+            },
+            "required": [
+              "type"
+            ]
+          },
+          "then": {
+            "$comment": "PLECTURE-CFG-ACTION-VARIANT.",
+            "not": {
+              "anyOf": [
+                {
+                  "required": [
+                    "path"
+                  ]
+                },
+                {
+                  "required": [
+                    "body"
+                  ]
+                },
+                {
+                  "required": [
+                    "timeout"
+                  ]
+                },
+                {
+                  "required": [
+                    "input_schema"
+                  ]
+                },
+                {
+                  "required": [
+                    "bin"
+                  ]
+                },
+                {
+                  "required": [
+                    "command"
+                  ]
+                },
+                {
+                  "required": [
+                    "args"
+                  ]
+                },
+                {
+                  "required": [
+                    "stdin"
+                  ]
+                },
+                {
+                  "required": [
+                    "script"
+                  ]
+                },
+                {
+                  "required": [
+                    "bind"
                   ]
                 }
               ]

@@ -8,6 +8,7 @@ import (
 
 	"github.com/kecbigmt/plecture/app/internal/config"
 	"github.com/kecbigmt/plecture/app/internal/eventlog"
+	"github.com/kecbigmt/plecture/app/internal/inbox"
 	"github.com/kecbigmt/plecture/app/internal/state"
 	"github.com/kecbigmt/plecture/app/internal/task"
 	contract "github.com/kecbigmt/plecture/contracts/state"
@@ -185,6 +186,10 @@ func destroyUnlocked(cfg *config.Config, store *state.Store, params DestroyParam
 
 	if err := eventlog.NewStore(store.Dir()).ClearChainAttempts(session.ID); err != nil {
 		result.CleanupWarnings = append(result.CleanupWarnings, fmt.Sprintf("chain-attempt bookkeeping cleanup: %v", err))
+	}
+
+	if err := inbox.NewStore(store.Dir()).Clear(session.ID); err != nil {
+		result.CleanupWarnings = append(result.CleanupWarnings, fmt.Sprintf("inbox cleanup: %v", err))
 	}
 
 	return result, nil
