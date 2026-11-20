@@ -33,10 +33,11 @@ trap cleanup EXIT
 
 variant="${PLECT_FAULT_VARIANT:-plain}"
 case "$variant" in
-  plain) workflow_file=workflow.toml; workflow_name=fault_recovery ;;
-  nested) workflow_file=workflow_nested.toml; workflow_name=fault_recovery_nested ;;
+  plain) workflow_file=workflow.toml; workflow_name=fault_recovery; workflow_config=fault.toml ;;
+  nested) workflow_file=workflow_nested.toml; workflow_name=fault_recovery_nested; workflow_config=fault_nested.toml ;;
   *) echo "PLECT_FAULT_VARIANT must be 'plain' or 'nested', got '$variant'" >&2; exit 1 ;;
 esac
+workflow_path="/var/lib/plect/fault-config/workflows/$workflow_config"
 
 health_period="$(sed -n 's/^period *= *"\([0-9]*\)s"$/\1/p' "$fixture/$workflow_file")"
 [ -n "$health_period" ] || { echo "No health period in seconds found in $fixture/$workflow_file" >&2; exit 1; }
@@ -192,8 +193,8 @@ else
 fi
 
 original_revision="$(plect status "$session" --json --full | jq -r .identity.revision)"
-inside sed -i 's/auto_repair_attempts = 3/auto_repair_attempts = 0/' /var/lib/plect/fault-config/workflows/fault.toml
-inside grep -q 'auto_repair_attempts = 0' /var/lib/plect/fault-config/workflows/fault.toml
+inside sed -i 's/auto_repair_attempts = 3/auto_repair_attempts = 0/' "$workflow_path"
+inside grep -q 'auto_repair_attempts = 0' "$workflow_path"
 recovered_pid="$(inside jq -r .pid "/var/lib/plect/home/.claude/sessions/$sid.json")"
 inside kill -9 "$recovered_pid"
 if wait_for 'S3 repair after workflow edit' "$recovery_wait" inside sh -c 'wc -l < "$HOME/fault/launches"' 3 \
@@ -207,10 +208,10 @@ else
   plect status "$session" --json --full | jq '{revision: .identity.revision, health: .runtime.health, run: .runtime.run}' >&2 || true
   failed=1
 fi
-inside sed -i 's/auto_repair_attempts = 0/auto_repair_attempts = 3/' /var/lib/plect/fault-config/workflows/fault.toml
+inside sed -i 's/auto_repair_attempts = 0/auto_repair_attempts = 3/' "$workflow_path"
 
 inside rm -f /var/lib/plect/home/fault/mute
-inside sed -i 's/auto_repair_attempts = 3/auto_repair_attempts = 4/' /var/lib/plect/fault-config/workflows/fault.toml
+inside sed -i 's/auto_repair_attempts = 3/auto_repair_attempts = 4/' "$workflow_path"
 if plect workflow rebase "$session" --dry-run | grep -q 'compatible' \
   && [ "$(plect status "$session" --json --full | jq -r .identity.revision)" = "$original_revision" ] \
   && plect workflow rebase "$session" >/dev/null \
@@ -220,7 +221,11 @@ else
   echo 'FAIL: compatible workflow rebase did not preserve dry-run state or apply the revision' >&2
   failed=1
 fi
-inside sed -i '/uses = "official.claude.runtime"/a\[fault_recovery.nodes.inputs]\nmodel = "fault-model"' /var/lib/plect/fault-config/workflows/fault.toml
+if [ "$variant" = plain ]; then
+  inside sed -i '/uses = "official.claude.runtime"/a\[fault_recovery.nodes.inputs]\nmodel = "fault-model"' "$workflow_path"
+else
+  inside sed -i '/\[fault_guarded_runtime.inner.env\]/i\[fault_guarded_runtime.inner.inputs]\nmodel = "fault-model"\n' /var/lib/plect/fault-config/tasks/fault_guarded_runtime.toml
+fi
 if plect workflow rebase "$session" --dry-run | grep -q 'restart' \
   && plect workflow rebase "$session" --with-restart >/dev/null \
   && inside git -C "/var/lib/plect/workspace_dirs/$session" status --short | grep -q 'uncommitted-change' \
