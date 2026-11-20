@@ -39,6 +39,12 @@ func TestServiceProtocolConfigSnapshotDeltaAndPublishReply(t *testing.T) {
 	if err != nil || len(all) != 1 {
 		t.Fatalf("snapshot = %v, %v", all, err)
 	}
+	if err := encode.Encode(map[string]any{"op": "queries", "items": []any{}}); err != nil {
+		t.Fatal(err)
+	}
+	if err := encode.Encode(map[string]any{"op": "future_operation"}); err != nil {
+		t.Fatal(err)
+	}
 	result := make(chan error, 1)
 	go func() {
 		ctx, cancel := context.WithTimeout(context.Background(), time.Second)

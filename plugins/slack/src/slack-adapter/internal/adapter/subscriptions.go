@@ -65,3 +65,12 @@ func (s *Subscriptions) ThreadRoots(channel string) []string {
 	}
 	return out
 }
+
+func (s *Subscriptions) HasThread(channel, root string) bool {
+	for _, candidate := range s.ThreadRoots(channel) {
+		if candidate == root {
+			return true
+		}
+	}
+	return false
+}

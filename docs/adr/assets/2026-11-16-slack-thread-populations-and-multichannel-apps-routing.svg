@@ -1,0 +1,99 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1180 700" width="1180" height="700" role="img" aria-labelledby="title desc">
+  <title id="title">Slack thread population routing decision</title>
+  <desc id="desc">Core sends authoritative population query coverage before the Slack adapter opens one Socket Mode connection for a multichannel App. An allowed mention first goes to a thread subscriber. If none receives it, a covered channel stores the mention, streams an appearance to the core population, waits for a thread subscription, and publishes the pending mention. An uncovered channel uses the bot-resource subscriber. Bot-wide routing modes, connection-based coverage, repeated App declarations, and a resident dispatcher are rejected; generic publication idempotency is deferred.</desc>
+  <defs>
+    <style>
+      svg { --bg:#fff; --fg:#1f2328; --muted:#59636e; --line:#d0d7de; --neutral:#8c959f; --neutral-bg:#f6f8fa; --chosen:#1a7f37; --chosen-bg:#dafbe1; --rejected:#cf222e; --rejected-bg:#ffebe9; --deferred:#9a6700; --deferred-bg:#fff8c5; }
+      @media (prefers-color-scheme: dark) { svg { --bg:#0d1117; --fg:#e6edf3; --muted:#9198a1; --line:#3d444d; --neutral:#656c76; --neutral-bg:#151b23; --chosen:#3fb950; --chosen-bg:#0f2a1a; --rejected:#f85149; --rejected-bg:#3a1416; --deferred:#d29922; --deferred-bg:#2e2208; } }
+      text { font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Helvetica,Arial,sans-serif; font-size:13px; fill:var(--fg); }
+      .bg { fill:var(--bg); } .title { font-size:19px; font-weight:600; } .heading { font-size:15px; font-weight:600; }
+      .note { font-size:12px; fill:var(--muted); } .label { font-size:11px; fill:var(--muted); } .tag { font-size:11px; font-weight:700; letter-spacing:.05em; }
+      .panel { fill:none; stroke:var(--line); } .neutral { fill:var(--neutral-bg); stroke:var(--neutral); stroke-width:1.5; }
+      .chosen { fill:var(--chosen-bg); stroke:var(--chosen); stroke-width:2; } .rejected { fill:var(--rejected-bg); stroke:var(--rejected); stroke-width:1.3; stroke-dasharray:7 4; }
+      .deferred { fill:var(--deferred-bg); stroke:var(--deferred); stroke-width:1.3; stroke-dasharray:3 3; }
+      .flow { fill:none; stroke:var(--fg); stroke-width:1.5; marker-end:url(#arrow); }
+      .head { fill:var(--fg); }
+    </style>
+    <marker id="arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path class="head" d="M0,0 L10,5 L0,10 z"/></marker>
+  </defs>
+  <rect class="bg" width="1180" height="700"/>
+  <text class="title" x="24" y="38">Slack thread populations and multichannel Apps</text>
+  <text class="note" x="24" y="61">One App connection · channel coverage from the population query · pending first mention</text>
+
+  <rect class="panel" x="20" y="82" width="1140" height="468" rx="8"/>
+  <text class="heading" x="36" y="109">Chosen routing and responsibility boundaries</text>
+  <rect class="neutral" x="38" y="130" width="180" height="85" rx="6"/>
+  <text x="52" y="155" font-weight="600">Slack App</text>
+  <text class="note" x="52" y="176">Several allowed channels</text>
+  <text class="note" x="52" y="195">One Socket Mode connection</text>
+
+  <rect class="chosen" x="278" y="130" width="238" height="85" rx="6"/>
+  <text x="292" y="155" font-weight="600">Slack adapter service</text>
+  <text class="note" x="292" y="176">Channel allow check</text>
+  <text class="note" x="292" y="195">Durable pending store</text>
+  <path class="flow" d="M218 172 H278"/>
+  <text class="label" x="227" y="162">mention</text>
+
+  <rect class="chosen" x="577" y="130" width="250" height="85" rx="6"/>
+  <text x="591" y="155" font-weight="600">plect core</text>
+  <text class="note" x="591" y="176">Population query snapshot</text>
+  <text class="note" x="591" y="195">Resource subscriptions</text>
+  <path class="flow" d="M577 149 H516"/>
+  <text class="label" x="519" y="122">query channel list before events</text>
+
+  <rect class="neutral" x="280" y="250" width="234" height="68" rx="6"/>
+  <text x="294" y="274" font-weight="600">Existing thread subscriber?</text>
+  <text class="note" x="294" y="297">Publish to thread resource first</text>
+  <path class="flow" d="M397 215 V250"/>
+  <text class="label" x="405" y="237">allowed</text>
+  <path class="flow" d="M514 283 H894"/>
+  <text class="label" x="635" y="273">delivered &gt; 0: transcript event</text>
+  <rect class="neutral" x="894" y="250" width="242" height="68" rx="6"/>
+  <text x="908" y="274" font-weight="600">Existing thread session</text>
+  <text class="note" x="908" y="297">Receives user.emit</text>
+
+  <rect class="chosen" x="280" y="352" width="234" height="93" rx="6"/>
+  <text x="294" y="377" font-weight="600">Covered channel</text>
+  <text class="note" x="294" y="399">Persist mention; stream appearance</text>
+  <text class="note" x="294" y="420">Keep pending on disconnect</text>
+  <path class="flow" d="M349 318 V352"/>
+  <text class="label" x="356" y="341">zero delivery</text>
+  <path class="flow" d="M514 386 H577"/>
+  <text class="label" x="520" y="342">appearance</text>
+
+  <rect class="chosen" x="577" y="352" width="250" height="93" rx="6"/>
+  <text x="591" y="377" font-weight="600">Population admits thread member</text>
+  <text class="note" x="591" y="399">Expiry and capacity stay in core</text>
+  <text class="note" x="591" y="420">Subscription becomes visible</text>
+  <path class="flow" d="M827 399 H894"/>
+  <text class="label" x="835" y="387">member</text>
+  <rect class="neutral" x="894" y="352" width="242" height="93" rx="6"/>
+  <text x="908" y="377" font-weight="600">Thread member session</text>
+  <text class="note" x="908" y="399">Receives pending mention</text>
+  <text class="note" x="908" y="420">after subscription appears</text>
+  <path class="flow" d="M577 434 H514"/>
+  <text class="label" x="524" y="458">subscription then pending publish</text>
+
+  <rect class="neutral" x="280" y="480" width="234" height="50" rx="6"/>
+  <text x="294" y="501" font-weight="600">Uncovered channel</text>
+  <text class="note" x="294" y="519">Bot-resource fallback</text>
+  <path class="flow" d="M280 305 H248 V505 H280"/>
+  <text class="label" x="36" y="466">zero delivery, no coverage</text>
+  <path class="flow" d="M514 505 H894"/>
+  <text class="label" x="638" y="495">user.emit to bot subscriber</text>
+  <rect class="neutral" x="894" y="480" width="242" height="50" rx="6"/>
+  <text x="908" y="501" font-weight="600">Bot subscriber session</text>
+  <text class="note" x="908" y="519">Receives user.emit</text>
+
+  <rect class="panel" x="20" y="566" width="1140" height="112" rx="8"/>
+  <text class="heading" x="36" y="592">Options set aside</text>
+  <rect class="rejected" x="38" y="607" width="335" height="52" rx="5"/>
+  <text class="tag" x="50" y="626">REJECTED</text>
+  <text x="50" y="646">Bot mode or stream-connection routing</text>
+  <rect class="rejected" x="395" y="607" width="335" height="52" rx="5"/>
+  <text class="tag" x="407" y="626">REJECTED</text>
+  <text x="407" y="646">Repeated App entries or resident dispatcher</text>
+  <rect class="deferred" x="752" y="607" width="380" height="52" rx="5"/>
+  <text class="tag" x="764" y="626">DEFERRED</text>
+  <text x="764" y="646">Generic publication idempotency key</text>
+</svg>

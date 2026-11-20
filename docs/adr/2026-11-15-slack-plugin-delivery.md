@@ -1,5 +1,7 @@
 ---
-superseded_by: 2026-11-15-slack-working-status-delivery
+superseded_by:
+  - 2026-11-15-slack-working-status-delivery
+  - 2026-11-16-slack-thread-populations-and-multichannel-apps
 ---
 
 # Slack plugin delivery through core subscriptions

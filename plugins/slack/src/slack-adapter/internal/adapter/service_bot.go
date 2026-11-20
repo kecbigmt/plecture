@@ -24,37 +24,56 @@ type permalinkResolver interface {
 var slackAPIURL = "https://slack.com/api/"
 
 type BotAdapter struct {
-	bot          Bot
-	api          *slack.Client
-	socket       *socketmode.Client
-	teamID       string
-	botUserID    string
-	publisher    resourcePublisher
-	fetcher      threadFetcher
-	linker       permalinkResolver
-	denials      *DenialStore
-	logger       *slog.Logger
-	recovery     *RecoveryStore
-	recoveryPace time.Duration
-	subs         *Subscriptions
-	startup      time.Time
-	seenMu       sync.Mutex
-	seen         map[string]time.Time
+	bot           Bot
+	api           *slack.Client
+	socket        *socketmode.Client
+	teamID        string
+	botUserID     string
+	publisher     resourcePublisher
+	fetcher       threadFetcher
+	linker        permalinkResolver
+	denials       *DenialStore
+	logger        *slog.Logger
+	recovery      *RecoveryStore
+	recoveryPace  time.Duration
+	subs          *Subscriptions
+	coverage      *Coverage
+	pending       *PendingStore
+	feed          *MentionFeed
+	startup       time.Time
+	seenMu        sync.Mutex
+	seen          map[string]time.Time
+	pendingWarnMu sync.Mutex
+	pendingWarn   map[string]time.Time
 }
 
 func NewBotAdapter(bot Bot, publisher resourcePublisher, denials *DenialStore, logger *slog.Logger) (*BotAdapter, error) {
 	api := slack.New(bot.BotToken, slack.OptionAPIURL(slackAPIURL), slack.OptionAppLevelToken(bot.AppToken), slack.OptionRetry(1))
 	auth, err := api.AuthTest()
 	if err != nil {
-		return nil, fmt.Errorf("auth.test for channel %s: %w", bot.ChannelID, err)
+		return nil, fmt.Errorf("auth.test for channels %v: %w", bot.ChannelIDs, err)
 	}
 	if auth.TeamID == "" || auth.UserID == "" {
-		return nil, fmt.Errorf("auth.test for channel %s returned incomplete bot identity", bot.ChannelID)
+		return nil, fmt.Errorf("auth.test for channels %v returned incomplete bot identity", bot.ChannelIDs)
 	}
 	b := &BotAdapter{bot: bot, api: api, socket: socketmode.New(api), teamID: auth.TeamID, botUserID: auth.UserID, publisher: publisher, denials: denials, logger: logger, recoveryPace: 1200 * time.Millisecond}
 	b.fetcher = b
 	b.linker = b
 	return b, nil
+}
+
+func (b *BotAdapter) Identity() string { return b.teamID + "/" + b.botUserID }
+
+func ValidateUniqueIdentities(bots []*BotAdapter) error {
+	seen := make(map[string]bool)
+	for _, bot := range bots {
+		identity := bot.Identity()
+		if seen[identity] {
+			return fmt.Errorf("duplicate Slack App identity %s", identity)
+		}
+		seen[identity] = true
+	}
+	return nil
 }
 
 func (b *BotAdapter) ConfigureRecovery(store *RecoveryStore, subs *Subscriptions) {
@@ -63,18 +82,40 @@ func (b *BotAdapter) ConfigureRecovery(store *RecoveryStore, subs *Subscriptions
 	b.startup = time.Now()
 }
 
+func (b *BotAdapter) ConfigurePopulation(coverage *Coverage, pending *PendingStore, feed *MentionFeed) {
+	b.coverage = coverage
+	b.pending = pending
+	b.feed = feed
+}
+
 func (b *BotAdapter) Run(ctx context.Context) error {
+	go func() {
+		ticker := time.NewTicker(time.Second)
+		defer ticker.Stop()
+		for {
+			select {
+			case <-ctx.Done():
+				return
+			case <-ticker.C:
+				replayCtx, cancel := context.WithTimeout(ctx, 15*time.Second)
+				if err := b.ReplayPending(replayCtx); err != nil {
+					b.logger.Warn("pending mention replay failed", "error", err)
+				}
+				cancel()
+			}
+		}
+	}()
 	go func() {
 		ticker := time.NewTicker(time.Minute)
 		defer ticker.Stop()
 		b.runEvents(ctx, b.socket.Events, ticker.C, func(ctx context.Context) error {
 			return b.Recover(ctx, time.Now(), b.subs)
-		})
+		}, func(req socketmode.Request) error { return b.socket.Ack(req) })
 	}()
 	return b.socket.RunContext(ctx)
 }
 
-func (b *BotAdapter) runEvents(ctx context.Context, events <-chan socketmode.Event, ticks <-chan time.Time, scan func(context.Context) error) {
+func (b *BotAdapter) runEvents(ctx context.Context, events <-chan socketmode.Event, ticks <-chan time.Time, scan func(context.Context) error, ack func(socketmode.Request) error) {
 	connected := false
 	scanning := false
 	scanOK := false
@@ -85,7 +126,7 @@ func (b *BotAdapter) runEvents(ctx context.Context, events <-chan socketmode.Eve
 		go func() {
 			err := scan(ctx)
 			if err != nil {
-				b.logger.Warn("recovery incomplete", "channel_id", b.bot.ChannelID, "error", err)
+				b.logger.Warn("recovery incomplete", "channel_ids", b.bot.ChannelIDs, "error", err)
 			}
 			select {
 			case scanDone <- err == nil:
@@ -106,8 +147,10 @@ func (b *BotAdapter) runEvents(ctx context.Context, events <-chan socketmode.Eve
 			}
 		case at := <-ticks:
 			if connected && scanOK && b.recovery != nil {
-				if err := b.recovery.SetBoundary(b.teamID+"/"+b.botUserID+"/"+b.bot.ChannelID, at); err != nil {
-					b.logger.Warn("online position failed", "channel_id", b.bot.ChannelID, "error", err)
+				for _, channelID := range b.bot.ChannelIDs {
+					if err := b.recovery.SetBoundary(b.teamID+"/"+b.botUserID+"/"+channelID, at); err != nil {
+						b.logger.Warn("online position failed", "channel_id", channelID, "error", err)
+					}
 				}
 			}
 		case event, ok := <-events:
@@ -130,29 +173,30 @@ func (b *BotAdapter) runEvents(ctx context.Context, events <-chan socketmode.Eve
 			if event.Type != socketmode.EventTypeEventsAPI {
 				continue
 			}
-			if event.Request != nil {
-				b.socket.Ack(*event.Request)
-			}
 			outer, ok := event.Data.(slackevents.EventsAPIEvent)
-			if ok {
-				b.handleEventsAPI(outer)
+			handled := !ok || b.handleEventsAPI(outer)
+			if handled && event.Request != nil && ack != nil {
+				ack(*event.Request)
 			}
 		}
 	}
 }
 
-func (b *BotAdapter) handleEventsAPI(outer slackevents.EventsAPIEvent) {
+func (b *BotAdapter) handleEventsAPI(outer slackevents.EventsAPIEvent) bool {
 	if outer.Type != slackevents.CallbackEvent {
-		return
+		return true
 	}
 	switch ev := outer.InnerEvent.Data.(type) {
 	case *slackevents.AppMentionEvent:
-		b.routeMention(ev)
+		handled, _ := b.routeMention(ev)
+		return handled
 	case *slackevents.MessageEvent:
 		if ev.BotID == "" && ev.SubType == "" && strings.Contains(ev.Text, "<@"+b.botUserID+">") {
-			b.routeMention(&slackevents.AppMentionEvent{User: ev.User, Text: ev.Text, TimeStamp: ev.TimeStamp, ThreadTimeStamp: ev.ThreadTimeStamp, Channel: ev.Channel, UserTeam: ev.UserTeam})
+			handled, _ := b.routeMention(&slackevents.AppMentionEvent{User: ev.User, Text: ev.Text, TimeStamp: ev.TimeStamp, ThreadTimeStamp: ev.ThreadTimeStamp, Channel: ev.Channel, UserTeam: ev.UserTeam})
+			return handled
 		}
 	}
+	return true
 }
 
 func (b *BotAdapter) routeMention(ev *slackevents.AppMentionEvent) (bool, int) {
@@ -167,7 +211,7 @@ func (b *BotAdapter) routeMention(ev *slackevents.AppMentionEvent) (bool, int) {
 		b.logger.Info("mention dropped", "channel_id", ev.Channel, "thread_ts", threadTS, "reason", "invalid_timestamp")
 		return true, 0
 	}
-	if ev.Channel != b.bot.ChannelID {
+	if !b.bot.AllowsChannel(ev.Channel) {
 		b.deny(ev, threadTS, "channel_not_allowed", b.bot.DeniedChannelMessage)
 		return true, 0
 	}
@@ -190,6 +234,9 @@ func (b *BotAdapter) routeMention(ev *slackevents.AppMentionEvent) (bool, int) {
 	}()
 	storeKey := b.teamID + "/" + b.botUserID + "/" + ev.Channel
 	if b.recovery != nil && b.recovery.Seen(storeKey, ev.TimeStamp) {
+		return true, 0
+	}
+	if b.pending != nil && b.pending.Has(storeKey+"/"+ev.TimeStamp) {
 		return true, 0
 	}
 	finish := func(delivered int) (bool, int) {
@@ -237,6 +284,25 @@ func (b *BotAdapter) routeMention(ev *slackevents.AppMentionEvent) (bool, int) {
 	if count > 0 {
 		return finish(count)
 	}
+	if b.coverage != nil && b.coverage.Owner(ev.Channel) != "" {
+		if b.pending == nil {
+			return false, 0
+		}
+		mention := PendingMention{
+			Key:      b.teamID + "/" + b.botUserID + "/" + ev.Channel + "/" + ev.TimeStamp,
+			Resource: resource, ChannelID: ev.Channel, ThreadTS: threadTS, MentionTS: ev.TimeStamp,
+			UserID: ev.User, Summary: "Slack deliberation from " + user, Body: body, Metadata: metadata,
+		}
+		if err := b.pending.Put(mention); err != nil {
+			b.logger.Warn("mention pending record failed", "channel_id", ev.Channel, "thread_ts", threadTS, "error", err)
+			return false, 0
+		}
+		if b.feed != nil {
+			b.feed.Emit(mention)
+		}
+		completed = true
+		return true, 0
+	}
 	botResource := "slack://" + b.teamID + "/" + b.botUserID
 	count, err = b.publisher.Publish(ctx, botResource, "user.emit", "Slack deliberation from "+user, body, metadata)
 	if err != nil {
@@ -247,6 +313,76 @@ func (b *BotAdapter) routeMention(ev *slackevents.AppMentionEvent) (bool, int) {
 		b.logger.Info("mention dropped", "channel_id", ev.Channel, "thread_ts", threadTS, "reason", "no_subscriber")
 	}
 	return finish(count)
+}
+
+func (b *BotAdapter) ReplayPending(ctx context.Context) error {
+	if b.pending == nil || b.subs == nil {
+		return nil
+	}
+	prefix := b.teamID + "/" + b.botUserID + "/"
+	for _, mention := range b.pending.List() {
+		if !strings.HasPrefix(mention.Key, prefix) || !b.bot.AllowsChannel(mention.ChannelID) {
+			continue
+		}
+		storeKey := prefix + mention.ChannelID
+		if b.recovery != nil && b.recovery.Seen(storeKey, mention.MentionTS) {
+			if err := b.pending.Remove(mention.Key); err != nil {
+				return err
+			}
+			b.pendingWarnMu.Lock()
+			delete(b.pendingWarn, mention.Key)
+			b.pendingWarnMu.Unlock()
+			continue
+		}
+		resource := mention.Resource
+		if !b.subs.HasThread(mention.ChannelID, mention.ThreadTS) {
+			if b.coverage != nil && b.coverage.Owner(mention.ChannelID) != "" {
+				if b.feed != nil {
+					b.feed.Emit(mention)
+				}
+				b.warnPending(mention)
+				continue
+			}
+			resource = "slack://" + b.teamID + "/" + b.botUserID
+			b.logger.Info("pending mention coverage removed", "channel_id", mention.ChannelID, "thread_ts", mention.ThreadTS)
+		}
+		count, err := b.publisher.Publish(ctx, resource, "user.emit", mention.Summary, mention.Body, mention.Metadata)
+		if err != nil {
+			return err
+		}
+		if count == 0 {
+			if resource == mention.Resource {
+				continue
+			}
+			b.logger.Info("mention dropped", "channel_id", mention.ChannelID, "thread_ts", mention.ThreadTS, "reason", "no_subscriber")
+		}
+		if b.recovery != nil {
+			if err := b.recovery.Record(storeKey, mention.MentionTS); err != nil {
+				return err
+			}
+		}
+		if err := b.pending.Remove(mention.Key); err != nil {
+			return err
+		}
+		b.pendingWarnMu.Lock()
+		delete(b.pendingWarn, mention.Key)
+		b.pendingWarnMu.Unlock()
+	}
+	return nil
+}
+
+func (b *BotAdapter) warnPending(mention PendingMention) {
+	b.pendingWarnMu.Lock()
+	defer b.pendingWarnMu.Unlock()
+	if b.pendingWarn == nil {
+		b.pendingWarn = make(map[string]time.Time)
+	}
+	now := time.Now()
+	if now.Sub(b.pendingWarn[mention.Key]) < 5*time.Minute {
+		return
+	}
+	b.pendingWarn[mention.Key] = now
+	b.logger.Warn("pending mention awaiting thread subscription", "channel_id", mention.ChannelID, "thread_ts", mention.ThreadTS, "mention_ts", mention.MentionTS)
 }
 
 func (b *BotAdapter) claimMention(key string) bool {

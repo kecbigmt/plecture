@@ -5,6 +5,8 @@ configuration and executable adapters. The goal is to reduce bootstrap cost
 without moving tool, or domain knowledge into core.
 The service lifecycle decision is recorded in
 [`../adr/2026-11-09-operator-declared-plugin-services.md`](../adr/2026-11-09-operator-declared-plugin-services.md).
+The subscribe-population query snapshot is recorded in
+[`../adr/2026-11-16-slack-thread-populations-and-multichannel-apps.md`](../adr/2026-11-16-slack-thread-populations-and-multichannel-apps.md).
 
 The design keeps two concepts: catalog and plugin. A catalog is a trusted
 distribution unit: a subtree of a source repository marked by `catalog.toml`.
@@ -184,15 +186,20 @@ additionalProperties = false
 type = "array"
 minItems = 1
 
+[executables.config_schema.properties.socket_path]
+type = "string"
+minLength = 1
+pattern = "^/"
+
 [executables.config_schema.properties.bots.items]
 type = "object"
-required = ["app_token_env", "bot_token_env", "channel_id", "allowed_user_ids"]
+required = ["app_token_env", "bot_token_env", "channel_ids", "allowed_user_ids"]
 additionalProperties = false
 
 [executables.config_schema.properties.bots.items.properties]
 app_token_env = { type = "string" }
 bot_token_env = { type = "string" }
-channel_id = { type = "string" }
+channel_ids = { type = "array", minItems = 1, uniqueItems = true, items = { type = "string", pattern = "^[A-Z0-9]+$" } }
 allowed_user_ids = { type = "array", items = { type = "string" } }
 ```
 
@@ -200,10 +207,13 @@ The schema requires at least one bot. Each bot requires the four fields shown;
 unknown fields fail validation. The two token fields name variables in the
 service's `env_file`, not token values. Plugin authors keep secret values out
 of service config because plect cannot infer whether an arbitrary field is
-secret. See the [Slack plugin](../../plugins/slack/README.md) for adapter rules.
+secret. `socket_path` is an optional absolute path used when a thread
+population consumes appearances. See the
+[Slack plugin](../../plugins/slack/README.md) for adapter rules.
 
 Only user-owned service declarations start a process. In this example,
-`<config-home>` is `/srv/plect/config`. One Slack service serves two bots:
+`<config-home>` is `/srv/plect/config`. One Slack service serves two Apps,
+with one App used in several channels:
 
 ```toml
 [[services]]
@@ -212,16 +222,17 @@ executable = "official/slack/slack-adapter"
 env_file = "/srv/plect/config/service-env/slack.env"
 
 [services.config]
+socket_path = "/srv/plect/run/slack-mentions.sock"
 [[services.config.bots]]
 app_token_env = "SLACK_APP_TOKEN_PRIMARY"
 bot_token_env = "SLACK_BOT_TOKEN_PRIMARY"
-channel_id = "C0123"
+channel_ids = ["C0123", "C0345"]
 allowed_user_ids = ["U0123"]
 
 [[services.config.bots]]
 app_token_env = "SLACK_APP_TOKEN_SECONDARY"
 bot_token_env = "SLACK_BOT_TOKEN_SECONDARY"
-channel_id = "C0456"
+channel_ids = ["C0456"]
 allowed_user_ids = ["U0456"]
 ```
 
@@ -260,10 +271,10 @@ only to the service process, never to actions; the service inherits neither
 `XDG_*` nor `HOME` from the supervisor. Plect does not rewrite any `XDG_*`
 values the service's env file supplies. It receives neither the global data
 home nor config home. Plugins never receive `PLECT_CONFIG_HOME`,
-`PLECT_DATA_HOME`, or `PLECT_CACHE_HOME`. No service listens for local control
-requests.
-Browser content on the same host and other OS users cannot reach a local
-listener; same-user code is outside this boundary. The env file is
+`PLECT_DATA_HOME`, or `PLECT_CACHE_HOME`. A plugin may expose a private local
+query stream to one of its actions; it does not accept control requests.
+Browser content on the same host and other OS users cannot reach the private
+stream; same-user code is outside this boundary. The env file is
 owner-readable, and validated service config contains no secrets.
 
 A service first reads `{"op":"config","config":{...}}` from its supervisor
@@ -275,6 +286,12 @@ Its supervising plect writes a result such as
 `{"op":"error","id":"request-1","code":...,"message":...}` on stdin,
 echoing the request `id`. It also sends a full `subscriptions` snapshot at
 service start, then add/remove deltas; these notifications have no `id`.
+It sends a complete `queries` snapshot after the initial subscriptions and
+replacement snapshots on configuration reload. Each query row contains a
+stable population id and the validated inputs for a subscribe action using
+the service executable. A service that does not use population queries
+ignores an empty snapshot. The query snapshot is independent of a query
+action's connection state; its plugin interprets the opaque inputs.
 Service logs go to stderr. The service never invokes the plect CLI. Core holds
 subscription membership and event delivery.
 

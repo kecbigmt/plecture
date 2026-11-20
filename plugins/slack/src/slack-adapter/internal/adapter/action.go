@@ -15,7 +15,7 @@ type Action struct {
 
 func NewAction(bots []Bot, channelID, apiURL string) (*Action, error) {
 	for _, bot := range bots {
-		if bot.ChannelID != channelID {
+		if !bot.AllowsChannel(channelID) {
 			continue
 		}
 		return &Action{channel: channelID, api: slack.New(bot.BotToken, slack.OptionAPIURL(apiURL)), status: newSlackSessionClient(bot.BotToken, apiURL, nil)}, nil

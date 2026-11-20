@@ -50,7 +50,7 @@ configuration, and each instance supplies its own environment.
 
 Each `<config-home>/services/*.toml` file contains one or more service tables.
 One executable may appear in only one declaration. In this example,
-`<config-home>` is `/srv/plect/config`; one Slack service serves two bots:
+`<config-home>` is `/srv/plect/config`; one Slack service serves two Apps:
 
 ```toml
 [[services]]
@@ -59,16 +59,17 @@ executable = "official/slack/slack-adapter"
 env_file = "/srv/plect/config/service-env/slack.env"
 
 [services.config]
+socket_path = "/srv/plect/run/slack-mentions.sock"
 [[services.config.bots]]
 app_token_env = "SLACK_APP_TOKEN_PRIMARY"
 bot_token_env = "SLACK_BOT_TOKEN_PRIMARY"
-channel_id = "C0123"
+channel_ids = ["C0123", "C0345"]
 allowed_user_ids = ["U0123"]
 
 [[services.config.bots]]
 app_token_env = "SLACK_APP_TOKEN_SECONDARY"
 bot_token_env = "SLACK_BOT_TOKEN_SECONDARY"
-channel_id = "C0456"
+channel_ids = ["C0456"]
 allowed_user_ids = ["U0456"]
 ```
 
@@ -91,8 +92,9 @@ JSON Schema-shaped TOML table. A config table without a schema or one that
 fails validation is a load error. Core does not interpret its fields.
 
 In the Slack example above, the schema requires a nonempty `bots` array.
-Each bot requires string `app_token_env`, `bot_token_env`, and `channel_id`
-fields and an `allowed_user_ids` string array, with no extra fields. Token
+Each bot requires string `app_token_env` and `bot_token_env` fields, a
+nonempty unique `channel_ids` string array, and an `allowed_user_ids` string
+array, with no extra fields. Optional `socket_path` is an absolute path. Token
 fields name keys in `env_file`; their values remain there. See the
 [Slack plugin](../../plugins/slack/README.md) for adapter behavior.
 
@@ -121,9 +123,14 @@ each request's required `id` in a result such as
 `{"op":"published","id":"request-1","delivered":1}` or an error such as
 `{"op":"error","id":"request-1","code":...,"message":...}`. It sends a full
 `subscriptions` snapshot to stdin at start, followed by add/remove deltas;
-these notifications carry no `id`. Logs go to stderr. It never calls the
-plect CLI. No local control listener exists. Browser content on the same host
-and other OS users cannot reach one; same-user code is outside this boundary.
+these notifications carry no `id`. A complete `queries` snapshot follows the
+initial subscriptions and is replaced on valid configuration reloads. Each
+row carries a subscribe population id and its validated query inputs for the
+service executable; a service that does not consume query appearances ignores
+the snapshot. Logs go to stderr. It never calls the plect CLI. A plugin may
+expose a private local query stream to one of its actions, but no local
+control listener exists. Browser content on the same host and other OS users
+cannot reach the private stream; same-user code is outside this boundary.
 The env file is owner-readable; validated service config contains no secrets.
 
 Every plugin executable invocation receives `PLECT_CACHE_DIR` set to

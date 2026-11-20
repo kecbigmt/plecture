@@ -28,7 +28,7 @@ func TestDeniedMentionRepliesOnceAcrossServiceRestart(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		bot := &BotAdapter{bot: Bot{ChannelID: "C1", AllowedUserIDs: []string{"U1"}, DeniedUserMessage: "Only U1 may use this bot."}, botUserID: "UBOT", api: slack.New("test", slack.OptionAPIURL(server.URL+"/")), denials: store, logger: slog.New(slog.NewTextHandler(io.Discard, nil))}
+		bot := &BotAdapter{bot: Bot{ChannelIDs: []string{"C1"}, AllowedUserIDs: []string{"U1"}, DeniedUserMessage: "Only U1 may use this bot."}, botUserID: "UBOT", api: slack.New("test", slack.OptionAPIURL(server.URL+"/")), denials: store, logger: slog.New(slog.NewTextHandler(io.Discard, nil))}
 		bot.routeMention(event)
 	}
 	if posts != 1 {
