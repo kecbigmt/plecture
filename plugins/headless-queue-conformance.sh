@@ -57,6 +57,24 @@ batch_failed "$queue" agent 2>/dev/null
 [[ ! -d "$queue/.inflight" && -f "$queue/.failed-$(cat "$queue"/.failed-*/batch-id)/13.json" ]]
 [[ "$(cat "$queue"/.failed-*/parked-reason)" = agent ]]
 
+jq -n '{id:"before", type:"example", text:"before corrupt entry"}' > "$queue/14.json"
+printf '{not json\n' > "$queue/15.json"
+jq -n '{id:"after", type:"example", text:"after corrupt entry"}' > "$queue/16.json"
+batch_claim "$queue"
+batch_render "$queue" 2> "$tmp/quarantine.log"
+input="$(cat "$queue/.inflight/input")"
+[[ "$input" == *"[1] id=before"* && "$input" == *"[2] id=after"* ]]
+[[ "$input" != *"15.json"* ]]
+quarantine_file="$queue.quarantine/$(cat "$queue/.inflight/batch-id")/15.json"
+[[ ! -e "$queue/.inflight/15.json" && -f "$quarantine_file" ]]
+[[ "$(wc -l < "$tmp/quarantine.log")" -eq 1 ]]
+grep -q '15.json.*parse error' "$tmp/quarantine.log"
+batch_claim "$queue"
+batch_render "$queue" 2>> "$tmp/quarantine.log"
+[[ "$(cat "$queue/.inflight/input")" == "$input" && "$(wc -l < "$tmp/quarantine.log")" -eq 1 ]]
+batch_ack "$queue"
+[[ -f "$quarantine_file" && ! -d "$queue/.inflight" ]]
+
 non_c_locale="$(locale -a | grep -Ei '^en_US\.(utf8|utf-8)$' | head -1 || true)"
 if [ -z "${PLECT_CONFORMANCE_NON_C:-}" ] && [ -n "$non_c_locale" ]; then
     PLECT_CONFORMANCE_NON_C=1 LC_ALL="$non_c_locale" bash "$0" "$helper"

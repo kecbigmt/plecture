@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 
 batch_claim() {
-    local LC_ALL=C queue="$1" name f
+    local LC_ALL=C queue="$1" name f quarantine
     local dir="$queue/.inflight"
     local -a files=()
     if [ -f "$dir/manifest" ]; then
@@ -18,8 +18,10 @@ batch_claim() {
         printf '%s\n' "${files[@]}" > "$dir/.manifest.tmp" || return 1
         mv "$dir/.manifest.tmp" "$dir/manifest" || return 1
     fi
+    quarantine="$queue.quarantine/$(cat "$dir/batch-id")" || return 1
     for name in "${files[@]}"; do
         if [ ! -e "$dir/$name" ]; then
+            [ -f "$quarantine/$name" ] && continue
             [ -e "$queue/$name" ] || return 1
             mv "$queue/$name" "$dir/$name" || return 1
         fi
@@ -58,19 +60,33 @@ batch_failed() {
 }
 
 batch_render() {
-    local queue="$1" dir="$1/.inflight" name f id supersedes source type
+    local queue="$1" dir="$1/.inflight" name f id supersedes source type error quarantine
     local n=0
-    local -a files=()
+    local -a files=() valid_files=()
     local -A omitted=()
     mapfile -t files < "$dir/manifest"
+    quarantine="$queue.quarantine/$(cat "$dir/batch-id")" || return 1
     for name in "${files[@]}"; do
         f="$dir/$name"
+        if [ ! -e "$f" ]; then
+            [ -f "$quarantine/$name" ] || return 1
+            continue
+        fi
+        if ! error="$(jq -s -e 'length == 1 and (.[0] | type == "object")' "$f" 2>&1 >/dev/null)"; then
+            [ -n "$error" ] || error="expected one JSON object"
+            error="${error%%$'\n'*}"
+            mkdir -p "$quarantine" || return 1
+            mv "$f" "$quarantine/$name" || return 1
+            printf 'quarantined %s: %s\n' "$f" "$error" >&2
+            continue
+        fi
+        valid_files+=("$name")
         supersedes="$(jq -r '.supersedes // empty' "$f")" || return 1
         [ -n "$supersedes" ] && omitted["$supersedes"]=1
     done
     {
         printf 'Consider and answer every numbered entry in this batch in one turn. Reply once after considering all entries.\n\n'
-        for name in "${files[@]}"; do
+        for name in "${valid_files[@]}"; do
             f="$dir/$name"
             id="$(jq -r '.id // empty' "$f")" || return 1
             [ -n "$id" ] && [ -n "${omitted[$id]:-}" ] && continue
