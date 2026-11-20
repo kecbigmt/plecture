@@ -37,6 +37,14 @@ printf '%s' "$$" > "$state_dir/worker.pid"
 extra_args=()
 [ -n "${CODEX_MODEL:-}" ] && extra_args+=(-m "$CODEX_MODEL")
 [ -n "${CODEX_MODEL_REASONING_EFFORT:-}" ] && extra_args+=(-c "model_reasoning_effort=$CODEX_MODEL_REASONING_EFFORT")
+# Each override is one argv element, so a value with spaces or quotes
+# reaches codex without passing through a shell. codex-mcp-servers emits
+# one-line values, which is what makes line-wise reading safe here.
+if [ -s "$state_dir/mcp_overrides.json" ]; then
+    while IFS= read -r override; do
+        extra_args+=(-c "$override")
+    done < <(jq -r '.[]' "$state_dir/mcp_overrides.json")
+fi
 
 # Marks the worker loop as reachable before the first turn ever runs; the
 # owning task's setup polls this file instead of a TUI-readiness heuristic.

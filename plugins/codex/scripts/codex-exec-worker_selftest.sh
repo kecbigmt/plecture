@@ -53,6 +53,7 @@ printf '%s' "${@: -1}" > "$STUB_PROMPT_FILE"
 [ -n "${STUB_HEALTH_FILE:-}" ] && jq -r '.last_exit_code // "missing"' "$STUB_HEALTH_FILE" >> "$STUB_HEALTH_LOG" 2>/dev/null
 mode="$(cat "$STUB_MODE_FILE" 2>/dev/null || true)"
 [ "$mode" = fail ] && exit 1
+printf '%s\0' "$@" > "$STUB_ARGV_NUL"
 out=""
 resume=false
 for i in "$@"; do
@@ -86,12 +87,18 @@ export PLECT_CALLS="$tmp/calls"
 export PLECT_SESSION_NAME="selftest/worker-1"
 export PLECT_AGENT_ACTIVITY_BIN="$activity"
 export CODEX_PUBLISH_MESSAGE=true
+# A Codex session running this test may export these; the argv assertions
+# below expect the worker's flag-free baseline.
+unset CODEX_MODEL CODEX_MODEL_REASONING_EFFORT
 export XDG_STATE_HOME="$tmp/xdg-state"
 # The path itself, not its content, is what the worker's environment needs
 # to carry — fixed and exported before the worker forks, then each turn
 # below just overwrites the file at that path.
 export STUB_REPLY_FILE="$tmp/next-reply.txt"
 export STUB_ARGV="$tmp/argv"
+# The last invocation's argv, one NUL-terminated element each, so an
+# assertion can see argument boundaries that "$*" above flattens.
+export STUB_ARGV_NUL="$tmp/argv-nul"
 export PLECT_FAIL_WORKING="$tmp/fail-working"
 export PLECT_FAIL_WORKING_ONCE="$tmp/fail-working-once"
 export PLECT_FAIL_PUBLISH="$tmp/fail-publish"
@@ -470,5 +477,69 @@ wait "$worker_pid" 2>/dev/null || true
 worker_pid=""
 
 bash "$here/../../headless-queue-conformance.sh" "$here/headless-batch.sh" || fail=1
+# Given mcp_servers overrides in the state directory, both a first turn and a
+# resumed turn carry each one as a single `-c` argument, quotes and spaces
+# intact; given none, a turn's argv carries no `-c` at all.
+last_argv() {
+  local -n out="$1"
+  mapfile -d '' out < "$STUB_ARGV_NUL"
+}
+has_pair() {
+  local flag="$1" value="$2"; shift 2
+  local args=("$@") i
+  for ((i = 0; i + 1 < ${#args[@]}; i++)); do
+    [ "${args[i]}" = "$flag" ] && [ "${args[i+1]}" = "$value" ] && return 0
+  done
+  return 1
+}
+
+mcp_queue="$tmp/mcp-queue"
+mcp_state="$tmp/mcp-state"
+mkdir -p "$mcp_queue" "$mcp_state"
+override='mcp_servers.x={command = "stub mcp", args = ["a b","c\"d","it'"'"'s"], env = {"K 1" = "v \"q\""}}'
+jq -n --arg o "$override" --arg p 'mcp_servers.y={command = "two"}' '[$o, $p]' > "$mcp_state/mcp_overrides.json"
+"$worker" "$mcp_queue" "$mcp_state" &
+worker_pid=$!
+for turn in first resumed; do
+  : > "$STUB_ARGV_NUL"
+  echo "{\"type\":\"user.emit\",\"text\":\"$turn turn\"}" > "$mcp_queue/$turn.json"
+  wait_for_drain "$mcp_queue/$turn.json" || { echo "FAIL $turn mcp turn was never drained" >&2; fail=1; }
+  last_argv argv
+  if [ "$turn" = resumed ] && [ "${argv[1]-}" != resume ]; then
+    printf 'FAIL the second mcp turn was not a resume: %s\n' "${argv[*]}" >&2
+    fail=1
+  elif has_pair -c "$override" "${argv[@]}" && has_pair -c 'mcp_servers.y={command = "two"}' "${argv[@]}"; then
+    echo "ok   a $turn turn carries each mcp_servers override as one intact argument"
+  else
+    printf 'FAIL a %s turn lacks an intact mcp_servers override: %s\n' "$turn" "$(printf '%q ' "${argv[@]}")" >&2
+    fail=1
+  fi
+done
+kill "$worker_pid" 2>/dev/null || true
+wait "$worker_pid" 2>/dev/null || true
+worker_pid=""
+
+plain_queue="$tmp/plain-queue"
+plain_state="$tmp/plain-state"
+mkdir -p "$plain_queue"
+: > "$STUB_ARGV_NUL"
+"$worker" "$plain_queue" "$plain_state" &
+worker_pid=$!
+echo '{"type":"user.emit","text":"plain turn"}' > "$plain_queue/1.json"
+wait_for_drain "$plain_queue/1.json" || { echo "FAIL plain turn was never drained" >&2; fail=1; }
+last_argv argv
+if [ "${#argv[@]}" -eq 7 ] &&
+   [ "${argv[*]:0:4}" = "exec --json --dangerously-bypass-approvals-and-sandbox --output-last-message" ] &&
+   [ "${argv[5]}" = "--" ] &&
+   [[ "${argv[6]}" == "Consider and answer every numbered entry"*"plain turn"* ]]; then
+  echo "ok   without mcp_servers a batch turn carries no overrides"
+else
+  printf 'FAIL without mcp_servers the argv changed: %s\n' "$(printf '%q ' "${argv[@]}")" >&2
+  fail=1
+fi
+kill "$worker_pid" 2>/dev/null || true
+wait "$worker_pid" 2>/dev/null || true
+worker_pid=""
+
 [ "$fail" -eq 0 ] || { echo "codex-exec-worker selftest failed" >&2; exit 1; }
 echo "codex-exec-worker selftest passed"
