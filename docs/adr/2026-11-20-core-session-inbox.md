@@ -160,6 +160,10 @@ and carries events still held in a plugin's file queue into the table.
 - A turn interrupted by `down` or repair uses one of its batch's three
   deliveries, because core counts deliveries and cannot tell an interruption
   from a failure.
+- Hand-over is at least once. The dispatcher remembers in memory how far it
+  has handed over, so after it restarts with a delivery position that lags,
+  an event the runtime already acknowledged can enter the inbox once more.
+  Push deliveries have the same bound.
 - The resume notice is not moved ahead of pending events. Events left pending
   when a session went down and the notice published when it comes back are
   one batch when the notice is in the log at the first take, and consecutive
