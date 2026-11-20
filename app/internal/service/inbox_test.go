@@ -38,9 +38,9 @@ func wantServiceError(t *testing.T, err error, code string) {
 }
 
 func TestInboxTake_ReturnsTheBatchOfASessionInsideTheGuard(t *testing.T) {
-	store, _ := inboxSessionWithPendingEvent(t, "acme/repo-1")
+	store, _ := inboxSessionWithPendingEvent(t, "acme/inbox")
 
-	batch, err := InboxTake(&config.Config{SessionGuard: "^acme/"}, store, "acme/repo-1", 0)
+	batch, err := InboxTake(&config.Config{SessionGuard: "^acme/"}, store, "acme/inbox", 0)
 
 	if err != nil {
 		t.Fatalf("take: %v", err)
@@ -51,12 +51,12 @@ func TestInboxTake_ReturnsTheBatchOfASessionInsideTheGuard(t *testing.T) {
 }
 
 func TestInboxTake_OutsideTheGuardIsRejectedAndCountsNoDelivery(t *testing.T) {
-	store, box := inboxSessionWithPendingEvent(t, "other/repo-1")
+	store, box := inboxSessionWithPendingEvent(t, "other/inbox")
 
-	_, err := InboxTake(&config.Config{SessionGuard: "^acme/"}, store, "other/repo-1", 0)
+	_, err := InboxTake(&config.Config{SessionGuard: "^acme/"}, store, "other/inbox", 0)
 
 	wantServiceError(t, err, ErrRepoNotAllowed)
-	batch, err := box.Take("other/repo-1")
+	batch, err := box.Take("other/inbox")
 	if err != nil || batch == nil || batch.Deliveries != 1 {
 		t.Fatalf("the session's own take = %+v (err %v), want a first delivery", batch, err)
 	}
@@ -71,34 +71,34 @@ func TestInboxTake_UnknownSessionErrors(t *testing.T) {
 }
 
 func TestInboxAck_OutsideTheGuardIsRejectedAndKeepsTheBatch(t *testing.T) {
-	store, box := inboxSessionWithPendingEvent(t, "other/repo-1")
-	taken, err := box.Take("other/repo-1")
+	store, box := inboxSessionWithPendingEvent(t, "other/inbox")
+	taken, err := box.Take("other/inbox")
 	if err != nil || taken == nil {
 		t.Fatalf("take = %+v, %v", taken, err)
 	}
 
-	err = InboxAck(&config.Config{SessionGuard: "^acme/"}, store, "other/repo-1", taken.ID)
+	err = InboxAck(&config.Config{SessionGuard: "^acme/"}, store, "other/inbox", taken.ID)
 
 	wantServiceError(t, err, ErrRepoNotAllowed)
-	again, err := box.Take("other/repo-1")
+	again, err := box.Take("other/inbox")
 	if err != nil || again == nil || again.ID != taken.ID {
 		t.Fatalf("take after a rejected ack = %+v (err %v), want batch %s again", again, err, taken.ID)
 	}
 }
 
 func TestInboxAck_RemovesTheBatchOfASessionInsideTheGuard(t *testing.T) {
-	store, box := inboxSessionWithPendingEvent(t, "acme/repo-1")
+	store, box := inboxSessionWithPendingEvent(t, "acme/inbox")
 	cfg := &config.Config{SessionGuard: "^acme/"}
-	taken, err := InboxTake(cfg, store, "acme/repo-1", 0)
+	taken, err := InboxTake(cfg, store, "acme/inbox", 0)
 	if err != nil || taken == nil {
 		t.Fatalf("take = %+v, %v", taken, err)
 	}
 
-	if err := InboxAck(cfg, store, "acme/repo-1", taken.ID); err != nil {
+	if err := InboxAck(cfg, store, "acme/inbox", taken.ID); err != nil {
 		t.Fatalf("ack: %v", err)
 	}
 
-	if pending, err := box.Pending("acme/repo-1"); err != nil || pending {
+	if pending, err := box.Pending("acme/inbox"); err != nil || pending {
 		t.Fatalf("pending = %v (err %v), want an empty inbox", pending, err)
 	}
 }
