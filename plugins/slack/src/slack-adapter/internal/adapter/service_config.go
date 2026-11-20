@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"path/filepath"
 	"regexp"
 )
 
@@ -17,10 +18,15 @@ type Bot struct {
 	BotToken             string   `json:"-"`
 	AppTokenEnv          string   `json:"app_token_env"`
 	BotTokenEnv          string   `json:"bot_token_env"`
-	ChannelID            string   `json:"channel_id"`
+	ChannelIDs           []string `json:"channel_ids"`
 	AllowedUserIDs       []string `json:"allowed_user_ids"`
 	DeniedUserMessage    string   `json:"denied_user_message,omitempty"`
 	DeniedChannelMessage string   `json:"denied_channel_message,omitempty"`
+}
+
+type ServiceConfig struct {
+	Bots       []Bot  `json:"bots"`
+	SocketPath string `json:"socket_path,omitempty"`
 }
 
 func (b Bot) AllowsUser(userID string) bool {
@@ -35,38 +41,52 @@ func (b Bot) AllowsUser(userID string) bool {
 	return false
 }
 
-func ParseServiceConfig(input []byte) ([]Bot, error) {
-	var config struct {
-		Bots []Bot `json:"bots"`
+func (b Bot) AllowsChannel(channelID string) bool {
+	for _, allowed := range b.ChannelIDs {
+		if allowed == channelID {
+			return true
+		}
 	}
+	return false
+}
+
+func ParseServiceConfig(input []byte) (ServiceConfig, error) {
+	var config ServiceConfig
 	decoder := json.NewDecoder(bytes.NewReader(input))
 	decoder.DisallowUnknownFields()
 	if err := decoder.Decode(&config); err != nil {
-		return nil, fmt.Errorf("service config: %w", err)
+		return ServiceConfig{}, fmt.Errorf("service config: %w", err)
 	}
 	var extra any
 	if err := decoder.Decode(&extra); err != io.EOF {
-		return nil, fmt.Errorf("service config: trailing value")
+		return ServiceConfig{}, fmt.Errorf("service config: trailing value")
 	}
 	if len(config.Bots) == 0 {
-		return nil, fmt.Errorf("service config: bots must be nonempty")
+		return ServiceConfig{}, fmt.Errorf("service config: bots must be nonempty")
+	}
+	if config.SocketPath != "" && !filepath.IsAbs(config.SocketPath) {
+		return ServiceConfig{}, fmt.Errorf("service config: socket_path must be absolute")
 	}
 	seen := make(map[string]bool)
+	apps := make(map[string]bool)
+	botTokens := make(map[string]bool)
 	for i := range config.Bots {
 		bot := &config.Bots[i]
-		if bot.ChannelID == "" || bot.AppTokenEnv == "" || bot.BotTokenEnv == "" || bot.AllowedUserIDs == nil {
-			return nil, fmt.Errorf("service config: bot %d requires app_token_env, bot_token_env, channel_id, and allowed_user_ids", i)
+		if len(bot.ChannelIDs) == 0 || bot.AppTokenEnv == "" || bot.BotTokenEnv == "" || bot.AllowedUserIDs == nil {
+			return ServiceConfig{}, fmt.Errorf("service config: bot %d requires app_token_env, bot_token_env, nonempty channel_ids, and allowed_user_ids", i)
 		}
-		if !slackChannelID.MatchString(bot.ChannelID) {
-			return nil, fmt.Errorf("service config: invalid channel_id %q", bot.ChannelID)
+		for _, channelID := range bot.ChannelIDs {
+			if !slackChannelID.MatchString(channelID) {
+				return ServiceConfig{}, fmt.Errorf("service config: invalid channel_id %q", channelID)
+			}
+			if seen[channelID] {
+				return ServiceConfig{}, fmt.Errorf("service config: duplicate channel_id %q", channelID)
+			}
+			seen[channelID] = true
 		}
-		if seen[bot.ChannelID] {
-			return nil, fmt.Errorf("service config: duplicate channel_id %q", bot.ChannelID)
-		}
-		seen[bot.ChannelID] = true
 		for _, userID := range bot.AllowedUserIDs {
 			if !slackChannelID.MatchString(userID) {
-				return nil, fmt.Errorf("service config: invalid allowed_user_ids entry %q", userID)
+				return ServiceConfig{}, fmt.Errorf("service config: invalid allowed_user_ids entry %q", userID)
 			}
 		}
 		for _, binding := range []struct {
@@ -74,13 +94,18 @@ func ParseServiceConfig(input []byte) ([]Bot, error) {
 			value *string
 		}{{bot.AppTokenEnv, &bot.AppToken}, {bot.BotTokenEnv, &bot.BotToken}} {
 			if !tokenEnvName.MatchString(binding.name) {
-				return nil, fmt.Errorf("service config: invalid token environment name %q", binding.name)
+				return ServiceConfig{}, fmt.Errorf("service config: invalid token environment name %q", binding.name)
 			}
 			*binding.value = os.Getenv(binding.name)
 			if *binding.value == "" {
-				return nil, fmt.Errorf("service config: environment variable %s is empty or absent", binding.name)
+				return ServiceConfig{}, fmt.Errorf("service config: environment variable %s is empty or absent", binding.name)
 			}
 		}
+		if apps[bot.AppToken] || botTokens[bot.BotToken] {
+			return ServiceConfig{}, fmt.Errorf("service config: duplicate App credentials in bot %d", i)
+		}
+		apps[bot.AppToken] = true
+		botTokens[bot.BotToken] = true
 	}
-	return config.Bots, nil
+	return config, nil
 }

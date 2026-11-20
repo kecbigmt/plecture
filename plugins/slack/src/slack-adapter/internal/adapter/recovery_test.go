@@ -21,6 +21,36 @@ type recoveryPublisher struct {
 	fail   bool
 }
 
+func TestRecoveryScansEveryConfiguredChannel(t *testing.T) {
+	now := time.Unix(1700001000, 0).UTC()
+	seen := map[string]bool{}
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		r.ParseForm()
+		if r.URL.Path != "/conversations.history" {
+			t.Errorf("unexpected API %s", r.URL.Path)
+		}
+		seen[r.Form.Get("channel")] = true
+		fmt.Fprint(w, `{"ok":true,"messages":[]}`)
+	}))
+	defer server.Close()
+	store, err := NewRecoveryStore(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, channel := range []string{"C1", "C2"} {
+		if err := store.SetBoundary("T1/UBOT/"+channel, now.Add(-time.Minute)); err != nil {
+			t.Fatal(err)
+		}
+	}
+	bot := &BotAdapter{bot: Bot{ChannelIDs: []string{"C1", "C2"}}, api: slack.New("token", slack.OptionAPIURL(server.URL+"/")), teamID: "T1", botUserID: "UBOT", logger: slog.New(slog.NewTextHandler(io.Discard, nil)), recovery: store}
+	if err := bot.Recover(context.Background(), now, nil); err != nil {
+		t.Fatal(err)
+	}
+	if !seen["C1"] || !seen["C2"] {
+		t.Fatalf("scanned channels = %v", seen)
+	}
+}
+
 func (p *recoveryPublisher) Publish(_ context.Context, resource, _, _, body string, _ map[string]string) (int, error) {
 	p.calls = append(p.calls, resource)
 	p.bodies = append(p.bodies, body)
@@ -61,7 +91,7 @@ func TestRecoveryFindsRootsAndSubscribedThreadRepliesWithTranscript(t *testing.T
 		t.Fatal(err)
 	}
 	p := &recoveryPublisher{}
-	b := &BotAdapter{bot: Bot{ChannelID: "C1"}, api: slack.New("token", slack.OptionAPIURL(server.URL+"/")), teamID: "T1", botUserID: "UBOT", publisher: p, logger: slog.New(slog.NewTextHandler(&logs, nil)), recovery: store}
+	b := &BotAdapter{bot: Bot{ChannelIDs: []string{"C1"}}, api: slack.New("token", slack.OptionAPIURL(server.URL+"/")), teamID: "T1", botUserID: "UBOT", publisher: p, logger: slog.New(slog.NewTextHandler(&logs, nil)), recovery: store}
 	b.fetcher = b
 	b.linker = b
 	if err := store.SetBoundary("T1/UBOT/C1", now.Add(-time.Hour)); err != nil {
@@ -102,7 +132,7 @@ func TestLiveMentionIsNotReplayedAfterRestart(t *testing.T) {
 		t.Fatal(err)
 	}
 	p := &recoveryPublisher{}
-	b := &BotAdapter{bot: Bot{ChannelID: "C1"}, teamID: "T1", botUserID: "UBOT", publisher: p, fetcher: routeFetcher{}, linker: routePermalink{}, logger: slog.New(slog.NewTextHandler(io.Discard, nil)), recovery: store}
+	b := &BotAdapter{bot: Bot{ChannelIDs: []string{"C1"}}, teamID: "T1", botUserID: "UBOT", publisher: p, fetcher: routeFetcher{}, linker: routePermalink{}, logger: slog.New(slog.NewTextHandler(io.Discard, nil)), recovery: store}
 	ev := &slackevents.AppMentionEvent{User: "U1", Channel: "C1", TimeStamp: "1700000000.000002", ThreadTimeStamp: "1700000000.000001", Text: "<@UBOT> hello"}
 	b.routeMention(ev)
 	reopened, err := NewRecoveryStore(dir)
@@ -135,7 +165,7 @@ func TestLiveMentionBeforeFirstScanIsNotReplayed(t *testing.T) {
 		t.Fatal(err)
 	}
 	p := &recoveryPublisher{}
-	b := &BotAdapter{bot: Bot{ChannelID: "C1"}, api: slack.New("token", slack.OptionAPIURL(server.URL+"/")), teamID: "T1", botUserID: "UBOT", publisher: p, fetcher: routeFetcher{}, linker: routePermalink{}, logger: slog.New(slog.NewTextHandler(io.Discard, nil)), recovery: store, startup: now.Add(-time.Hour)}
+	b := &BotAdapter{bot: Bot{ChannelIDs: []string{"C1"}}, api: slack.New("token", slack.OptionAPIURL(server.URL+"/")), teamID: "T1", botUserID: "UBOT", publisher: p, fetcher: routeFetcher{}, linker: routePermalink{}, logger: slog.New(slog.NewTextHandler(io.Discard, nil)), recovery: store, startup: now.Add(-time.Hour)}
 	if ok, delivered := b.routeMention(&slackevents.AppMentionEvent{User: "U1", Channel: "C1", TimeStamp: messageTS, Text: "<@UBOT> hello"}); !ok || delivered != 1 {
 		t.Fatalf("live route: ok=%t delivered=%d", ok, delivered)
 	}
@@ -162,7 +192,7 @@ func TestFailedRecoveryPreservesBoundaryAndKeepsLiveRouting(t *testing.T) {
 		t.Fatal(err)
 	}
 	p := &recoveryPublisher{}
-	b := &BotAdapter{bot: Bot{ChannelID: "C1"}, api: slack.New("token", slack.OptionAPIURL(server.URL+"/")), teamID: "T1", botUserID: "UBOT", publisher: p, fetcher: routeFetcher{}, linker: routePermalink{}, logger: slog.New(slog.NewTextHandler(&logs, nil)), recovery: store}
+	b := &BotAdapter{bot: Bot{ChannelIDs: []string{"C1"}}, api: slack.New("token", slack.OptionAPIURL(server.URL+"/")), teamID: "T1", botUserID: "UBOT", publisher: p, fetcher: routeFetcher{}, linker: routePermalink{}, logger: slog.New(slog.NewTextHandler(&logs, nil)), recovery: store}
 	if err := b.Recover(context.Background(), now, NewSubscriptions()); err == nil {
 		t.Fatal("expected scan error")
 	}
@@ -191,7 +221,7 @@ func TestFirstStartDoesNotFetchEarlierMessages(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	b := &BotAdapter{bot: Bot{ChannelID: "C1"}, api: slack.New("token", slack.OptionAPIURL(server.URL+"/")), teamID: "T1", botUserID: "UBOT", logger: slog.New(slog.NewTextHandler(&logs, nil)), recovery: store, startup: now.Add(-time.Minute)}
+	b := &BotAdapter{bot: Bot{ChannelIDs: []string{"C1"}}, api: slack.New("token", slack.OptionAPIURL(server.URL+"/")), teamID: "T1", botUserID: "UBOT", logger: slog.New(slog.NewTextHandler(&logs, nil)), recovery: store, startup: now.Add(-time.Minute)}
 	if err := b.Recover(context.Background(), now, NewSubscriptions()); err != nil {
 		t.Fatal(err)
 	}
@@ -243,7 +273,7 @@ func TestRecoveryRetriesUnpublishedMentionWithoutAdvancingBoundary(t *testing.T)
 		t.Fatal(err)
 	}
 	p := &recoveryPublisher{fail: true}
-	b := &BotAdapter{bot: Bot{ChannelID: "C1"}, api: slack.New("token", slack.OptionAPIURL(server.URL+"/")), teamID: "T1", botUserID: "UBOT", publisher: p, fetcher: routeFetcher{}, linker: routePermalink{}, logger: slog.New(slog.NewTextHandler(io.Discard, nil)), recovery: store}
+	b := &BotAdapter{bot: Bot{ChannelIDs: []string{"C1"}}, api: slack.New("token", slack.OptionAPIURL(server.URL+"/")), teamID: "T1", botUserID: "UBOT", publisher: p, fetcher: routeFetcher{}, linker: routePermalink{}, logger: slog.New(slog.NewTextHandler(io.Discard, nil)), recovery: store}
 	if err := b.Recover(context.Background(), now, NewSubscriptions()); err == nil {
 		t.Fatal("expected publish failure")
 	}
@@ -275,7 +305,7 @@ func TestRecoveryDoesNotAdvancePastAnInFlightLiveMention(t *testing.T) {
 		t.Fatal(err)
 	}
 	p := &recoveryPublisher{}
-	b := &BotAdapter{bot: Bot{ChannelID: "C1"}, api: slack.New("token", slack.OptionAPIURL(server.URL+"/")), teamID: "T1", botUserID: "UBOT", publisher: p, fetcher: routeFetcher{}, linker: routePermalink{}, logger: slog.New(slog.NewTextHandler(io.Discard, nil)), recovery: store}
+	b := &BotAdapter{bot: Bot{ChannelIDs: []string{"C1"}}, api: slack.New("token", slack.OptionAPIURL(server.URL+"/")), teamID: "T1", botUserID: "UBOT", publisher: p, fetcher: routeFetcher{}, linker: routePermalink{}, logger: slog.New(slog.NewTextHandler(io.Discard, nil)), recovery: store}
 	if !b.claimMention("C1/1700000500.000001") {
 		t.Fatal("claim failed")
 	}
@@ -314,7 +344,7 @@ func TestRecoveryLogsOldGapAndCompletesBoundedScan(t *testing.T) {
 	if err := store.SetBoundary(key, saved); err != nil {
 		t.Fatal(err)
 	}
-	b := &BotAdapter{bot: Bot{ChannelID: "C1"}, api: slack.New("token", slack.OptionAPIURL(server.URL+"/")), teamID: "T1", botUserID: "UBOT", logger: slog.New(slog.NewTextHandler(&logs, nil)), recovery: store}
+	b := &BotAdapter{bot: Bot{ChannelIDs: []string{"C1"}}, api: slack.New("token", slack.OptionAPIURL(server.URL+"/")), teamID: "T1", botUserID: "UBOT", logger: slog.New(slog.NewTextHandler(&logs, nil)), recovery: store}
 	if err := b.Recover(context.Background(), now, NewSubscriptions()); err != nil {
 		t.Fatal(err)
 	}
@@ -358,7 +388,7 @@ func TestInaccessibleSubscribedThreadDoesNotStallChannel(t *testing.T) {
 	}
 	subs := NewSubscriptions()
 	subs.Apply([]Subscription{{Resource: SubscriptionResource{Locator: "https://example.slack.com/archives/C1/p1699000000000001"}}}, nil)
-	b := &BotAdapter{bot: Bot{ChannelID: "C1"}, api: slack.New("token", slack.OptionAPIURL(server.URL+"/")), teamID: "T1", botUserID: "UBOT", logger: slog.New(slog.NewTextHandler(&logs, nil)), recovery: store}
+	b := &BotAdapter{bot: Bot{ChannelIDs: []string{"C1"}}, api: slack.New("token", slack.OptionAPIURL(server.URL+"/")), teamID: "T1", botUserID: "UBOT", logger: slog.New(slog.NewTextHandler(&logs, nil)), recovery: store}
 	if err := b.Recover(context.Background(), now, subs); err != nil {
 		t.Fatal(err)
 	}

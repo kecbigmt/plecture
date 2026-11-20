@@ -33,9 +33,15 @@ type PublishRequest struct {
 	Metadata   map[string]string `json:"metadata"`
 }
 
+type QueryRegistration struct {
+	ID     string         `json:"id"`
+	Inputs map[string]any `json:"inputs"`
+}
+
 type Protocol struct {
 	Publish       func(context.Context, PublishRequest) (map[string]string, error)
 	Subscriptions func(context.Context) ([]persistence.Subscription, error)
+	Queries       func(context.Context, Declaration) ([]QueryRegistration, error)
 }
 
 // runProcess starts decl's executable and blocks until it exits or ctx is
@@ -124,9 +130,29 @@ func runProcess(ctx context.Context, decl Declaration, logger *slog.Logger, wait
 			return err
 		}
 	}
+	var queries []QueryRegistration
+	if protocol != nil && protocol.Queries != nil {
+		queries, err = protocol.Queries(ctx, decl)
+		if err != nil {
+			_ = cmd.Process.Kill()
+			_ = cmd.Wait()
+			return err
+		}
+		if queries == nil {
+			queries = []QueryRegistration{}
+		}
+		if err := write(map[string]any{"op": "queries", "items": queries}); err != nil {
+			_ = cmd.Process.Kill()
+			_ = cmd.Wait()
+			return err
+		}
+	}
 	stopPoll := make(chan struct{})
 	if protocol != nil && protocol.Subscriptions != nil {
 		go pollSubscriptions(ctx, stopPoll, initial, protocol.Subscriptions, write, logger, decl.ID)
+	}
+	if protocol != nil && protocol.Queries != nil {
+		go pollQueries(ctx, stopPoll, queries, decl, protocol.Queries, write, logger)
 	}
 	scanner := bufio.NewScanner(stdout)
 	scanner.Buffer(make([]byte, 4096), 1024*1024)
@@ -161,6 +187,33 @@ func runProcess(ctx context.Context, decl Declaration, logger *slog.Logger, wait
 		return scanErr
 	}
 	return err
+}
+
+func pollQueries(ctx context.Context, stop <-chan struct{}, previous []QueryRegistration, decl Declaration, list func(context.Context, Declaration) ([]QueryRegistration, error), write func(any) error, logger *slog.Logger) {
+	ticker := time.NewTicker(time.Second)
+	defer ticker.Stop()
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case <-stop:
+			return
+		case <-ticker.C:
+		}
+		current, err := list(ctx, decl)
+		if err != nil {
+			logger.Error("load service queries", "service", decl.ID, "error", err)
+			continue
+		}
+		if reflect.DeepEqual(previous, current) || (len(previous) == 0 && len(current) == 0) {
+			continue
+		}
+		if err := write(map[string]any{"op": "queries", "items": current}); err != nil {
+			logger.Error("write service queries", "service", decl.ID, "error", err)
+			return
+		}
+		previous = current
+	}
 }
 
 func pollSubscriptions(ctx context.Context, stop <-chan struct{}, previous []persistence.Subscription, list func(context.Context) ([]persistence.Subscription, error), write func(any) error, logger *slog.Logger, id string) {

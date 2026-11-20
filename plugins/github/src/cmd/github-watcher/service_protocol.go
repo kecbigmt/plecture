@@ -78,6 +78,7 @@ func (p *serviceProtocol) Run() error {
 		switch message.Op {
 		case "subscriptions":
 			p.store.Apply(message.Add, message.Remove)
+		case "queries":
 		case "published", "error":
 			p.pendingMu.Lock()
 			ch := p.pending[message.ID]
@@ -87,7 +88,7 @@ func (p *serviceProtocol) Run() error {
 				ch <- message
 			}
 		default:
-			return fmt.Errorf("unknown service message %q", message.Op)
+			continue
 		}
 	}
 }

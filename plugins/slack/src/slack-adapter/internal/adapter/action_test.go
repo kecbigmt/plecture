@@ -29,7 +29,7 @@ func TestActionUsesTheBotForTheSelectedChannel(t *testing.T) {
 		}
 	}))
 	defer server.Close()
-	bots := []Bot{{ChannelID: "C1", BotToken: "one"}, {ChannelID: "C2", BotToken: "two"}}
+	bots := []Bot{{ChannelIDs: []string{"C1"}, BotToken: "one"}, {ChannelIDs: []string{"C2"}, BotToken: "two"}}
 	action, err := NewAction(bots, "C2", server.URL+"/")
 	if err != nil {
 		t.Fatal(err)
@@ -77,7 +77,7 @@ func TestReplyClearsWorkingStatus(t *testing.T) {
 		w.Write([]byte(`{"ok":true,"channel":"C1","ts":"T2"}`))
 	}))
 	defer server.Close()
-	action, err := NewAction([]Bot{{ChannelID: "C1", BotToken: "token"}}, "C1", server.URL+"/")
+	action, err := NewAction([]Bot{{ChannelIDs: []string{"C1"}, BotToken: "token"}}, "C1", server.URL+"/")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -106,7 +106,7 @@ func TestEmptyStatusClearsAtTurnEnd(t *testing.T) {
 		w.Write([]byte(`{"ok":true}`))
 	}))
 	defer server.Close()
-	action, err := NewAction([]Bot{{ChannelID: "C1", BotToken: "token"}}, "C1", server.URL+"/")
+	action, err := NewAction([]Bot{{ChannelIDs: []string{"C1"}, BotToken: "token"}}, "C1", server.URL+"/")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -132,7 +132,7 @@ func TestFailedReplyDoesNotClearWorkingStatus(t *testing.T) {
 		w.Write([]byte(`{"ok":true}`))
 	}))
 	defer server.Close()
-	action, err := NewAction([]Bot{{ChannelID: "C1", BotToken: "token"}}, "C1", server.URL+"/")
+	action, err := NewAction([]Bot{{ChannelIDs: []string{"C1"}, BotToken: "token"}}, "C1", server.URL+"/")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -155,7 +155,7 @@ func TestSuccessfulReplyDoesNotRetryWhenStatusClearFails(t *testing.T) {
 		w.Write([]byte(`{"ok":true,"channel":"C1","ts":"T2"}`))
 	}))
 	defer server.Close()
-	action, err := NewAction([]Bot{{ChannelID: "C1", BotToken: "token"}}, "C1", server.URL+"/")
+	action, err := NewAction([]Bot{{ChannelIDs: []string{"C1"}, BotToken: "token"}}, "C1", server.URL+"/")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -178,7 +178,7 @@ func TestOrdinaryMessageDoesNotClearWorkingStatus(t *testing.T) {
 		w.Write([]byte(`{"ok":true,"channel":"C1","ts":"T2"}`))
 	}))
 	defer server.Close()
-	action, err := NewAction([]Bot{{ChannelID: "C1", BotToken: "token"}}, "C1", server.URL+"/")
+	action, err := NewAction([]Bot{{ChannelIDs: []string{"C1"}, BotToken: "token"}}, "C1", server.URL+"/")
 	if err != nil {
 		t.Fatal(err)
 	}

@@ -294,15 +294,15 @@ func TestShippedCatalog_GitHubPullQueryItemSchemaBoundary(t *testing.T) {
 	}
 }
 
-func TestShippedCatalog_SlackThreadHasNoQuerySubscription(t *testing.T) {
+func TestShippedCatalog_SlackThreadDeclaresSubscribeQuery(t *testing.T) {
 	cfg := loadShippedCatalog(t, "official")
 	defs, err := cfg.LoadResourceDefs("")
 	if err != nil {
 		t.Fatal(err)
 	}
 	thread := defs["official.slack.thread"]
-	if thread.Query != nil {
-		t.Fatalf("Slack thread still declares a query: %+v", thread.Query)
+	if thread.Query == nil || thread.Query.Subscribe == nil || thread.Query.Poll != nil {
+		t.Fatalf("Slack thread query = %+v, want subscribe only", thread.Query)
 	}
 }
 
@@ -340,7 +340,7 @@ draft        = false
 	}
 }
 
-func TestShippedCatalog_SlackThreadRejectsSubscribePopulation(t *testing.T) {
+func TestShippedCatalog_SlackThreadAcceptsSubscribePopulation(t *testing.T) {
 	cfg := loadShippedCatalog(t, "official")
 	cfg.BaseDir = t.TempDir()
 	writeFile(t, filepath.Join(cfg.BaseDir, "ops.toml"), `
@@ -350,11 +350,13 @@ resource = "official.slack.thread"
 [[ops.populations]]
 name = "mentions"
 uses = ["subscribe"]
+expire_after = "1h"
 [ops.populations.query]
+socket_path = "/tmp/slack-feed.sock"
 channel_ids = ["C01234567"]
 `)
-	if _, err := cfg.LoadWorkflows(""); err == nil || !strings.Contains(err.Error(), "declares no query face") {
-		t.Fatalf("LoadWorkflows error = %v", err)
+	if _, err := cfg.LoadWorkflows(""); err != nil {
+		t.Fatalf("LoadWorkflows: %v", err)
 	}
 }
 

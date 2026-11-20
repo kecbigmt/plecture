@@ -1,7 +1,7 @@
 # Slack plugin
 
 The `slack-adapter` service holds one Socket Mode connection per configured
-bot. Plecture owns resource subscriptions and delivers events through the
+App. Plecture owns resource subscriptions and delivers events through the
 service's private stdio protocol. The adapter uses the Slack Web API for
 outbound actions.
 
@@ -23,22 +23,20 @@ env_file = "/absolute/path/to/private/slack.env"
 args = ["serve"]
 
 [services.config]
+socket_path = "/run/plect/slack-mentions.sock"
 [[services.config.bots]]
 app_token_env = "SLACK_APP_TOKEN_PRIMARY"
 bot_token_env = "SLACK_BOT_TOKEN_PRIMARY"
-channel_id = "C0123"
+channel_ids = ["C0123", "C0456"]
 allowed_user_ids = ["U0123"]
-
-[[services.config.bots]]
-app_token_env = "SLACK_APP_TOKEN_SECONDARY"
-bot_token_env = "SLACK_BOT_TOKEN_SECONDARY"
-channel_id = "C0456"
-allowed_user_ids = []
 ```
 
 The owner-readable env file supplies the named tokens as `KEY=VALUE` lines.
-The service requires at least one bot, rejects duplicate channel IDs and
-missing token bindings, and selects the outbound bot by channel ID. An empty
+The service requires at least one bot, rejects duplicate channel IDs across
+Apps, duplicate App identities, and missing token bindings. It selects the
+outbound App by channel ID. `socket_path` is required when a thread population
+uses this service; the operator supplies the same path in that population's
+query. An empty
 `allowed_user_ids` allows everyone. Optional `denied_user_message` and
 `denied_channel_message` send one reply per bot, channel, thread, and user;
 empty values silently drop denied mentions.
@@ -51,9 +49,57 @@ distinct subscriber. A session can use either resource as its entry resource
 or subscribe with `plect subscribe`.
 
 For an allowed mention, the adapter publishes `user.emit` to the thread
-resource. If that reaches no session, it publishes to the bot resource. If
-neither has a subscriber, it logs the drop. A publish error stops routing.
-Denied mentions are handled before publication.
+resource. If the thread has no subscriber and a thread population covers that
+channel, it persists the mention and emits an appearance to the population's
+private local stream. Once the thread subscription appears, it publishes the
+pending mention with the thread transcript. A disconnected stream does not
+change coverage or send the mention to the bot subscriber. For an uncovered
+allowed channel, the adapter publishes to the bot resource; zero delivery is
+logged as a drop. Denied mentions are handled before publication.
+Pending mentions are retained across restarts until delivery or a coverage
+change routes them elsewhere; the service logs an unresolved mention and
+repeats the warning at most once every five minutes per mention.
+
+The population's `channel_ids` query is the routing authority. Two populations
+may not cover the same channel for one App. Core sends the validated population
+query snapshot before the adapter opens Socket Mode connections and refreshes
+it on configuration reload. A subscribe-only workflow can declare:
+
+```toml
+[thread_worker]
+kind = "workflow"
+resource = "official.slack.thread"
+
+[thread_worker.inputs_schema]
+type = "object"
+required = ["channel_id", "thread_ts"]
+additionalProperties = false
+
+[thread_worker.inputs_schema.properties]
+channel_id = { type = "string" }
+thread_ts = { type = "string" }
+
+[[thread_worker.populations]]
+name = "mentions"
+uses = ["subscribe"]
+expire_after = "1h"
+auto_down = true
+auto_destroy = true
+
+[thread_worker.populations.query]
+socket_path = "/run/plect/slack-mentions.sock"
+channel_ids = ["C0123"]
+
+[thread_worker.populations.session.inputs]
+channel_id = { from = "item.channel_id" }
+thread_ts = { from = "item.thread_ts" }
+```
+
+`expire_after`, `auto_down`, and `auto_destroy` use the ordinary population
+rules. The workflow's `max_up_children` or the virtual-root cap bounds running
+members. A crash after core accepts a publish but before the adapter records
+success can replay the same mention once more; there is no cross-process
+exactly-once guarantee.
 
 ## Restart recovery
 
