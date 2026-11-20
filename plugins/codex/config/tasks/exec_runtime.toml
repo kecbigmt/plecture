@@ -17,6 +17,11 @@ scope = "run"
 #                  Data only: keys must be valid environment variable names
 #                  and values are shell-quoted, so nothing here can add a
 #                  command to what gets launched.
+#   mcp_servers  — when set, a JSON array of MCP server registration records
+#                  ({name, command, args?, env?}, the claude plugin's record
+#                  shape) applied to every `codex exec`/`codex exec resume`
+#                  call as `-c mcp_servers.<name>=...` overrides. Empty = no
+#                  overrides.
 #   state_root   — when set, the directory the worker's per-session queue and
 #                  state live under. Empty = a temporary directory, which a
 #                  reboot or a tmp sweep may reclaim; a workflow that wants
@@ -85,6 +90,18 @@ mkdir -p "$QUEUE_DIR"
 # worker just needs restarting, not reseeding.
 PREV_STATE_DIR="${prev_state_dir-}"
 [ -n "$PREV_STATE_DIR" ] && [ "$PREV_STATE_DIR" != "$STATE_DIR" ] && STATE_DIR="$PREV_STATE_DIR" && QUEUE_DIR="$STATE_DIR/queue"
+
+# Removed unconditionally: a resumed session reuses STATE_DIR, and a file a
+# previous launch wrote would otherwise outlive an mcp_servers input this
+# launch no longer sets.
+MCP_OVERRIDES="$STATE_DIR/mcp_overrides.json"
+rm -f "$MCP_OVERRIDES"
+if [ -n "${mcp_servers-}" ]; then
+  (umask 077; CODEX_MCP_SERVERS="$mcp_servers" "$mcp_servers_bin" > "$MCP_OVERRIDES") || {
+    rm -f "$MCP_OVERRIDES"
+    exit 1
+  }
+fi
 
 EXPORTS="export PLECT_SESSION_NAME=$session_name; "
 # The worker script runs standalone, outside plect's own resolution, so it
@@ -185,6 +202,7 @@ session_name   = { from = "session.name" }
 model          = { from = "inputs.model", optional = true }
 effort         = { from = "inputs.effort", optional = true }
 launch_env     = { from = "inputs.launch_env", optional = true }
+mcp_servers    = { from = "inputs.mcp_servers", optional = true }
 state_root     = { from = "inputs.state_root", optional = true }
 path_prepend   = { from = "inputs.path_prepend", optional = true }
 launch_timeout = { from = "inputs.launch_timeout", default = "120s" }
@@ -192,6 +210,7 @@ publish_events = { json = { from = "inputs.publish_events", default = ["message"
 prev_state_dir = { from = "prev.state_dir", optional = true }
 activity_bin   = { bin = "codex-agent-activity" }
 worker_bin     = { bin = "codex-exec-worker" }
+mcp_servers_bin = { bin = "codex-mcp-servers" }
 send_text      = { terminal = "send_text" }
 send_keys      = { terminal = "send_keys" }
 terminal_pid   = { terminal = "pid" }
@@ -254,6 +273,10 @@ effort       = { type = "string", pattern = "^[A-Za-z0-9_.:-]*$" }
 # keystrokes; the quote-free charset is the defense in depth behind that,
 # since the keystrokes are a boundary the binding transport does not own.
 launch_env   = { type = "string", pattern = "^[^']*$" }
+# mcp_servers: a JSON array. codex-mcp-servers rejects anything that is not
+# an array of well-formed records; the quote-free charset is the same
+# defense in depth launch_env carries.
+mcp_servers  = { type = "string", pattern = "^[^']*$" }
 # state_root: a plain path charset, same keystroke boundary and same
 # reasoning as path_prepend below.
 state_root   = { type = "string", pattern = "^[A-Za-z0-9_./:-]*$" }

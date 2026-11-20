@@ -15,5 +15,9 @@ name = "codex-exec-worker"
 path = "scripts/codex-exec-worker"
 
 [[executables]]
+name = "codex-mcp-servers"
+path = "scripts/codex-mcp-servers"
+
+[[executables]]
 name = "codex-exec-enqueue"
 path = "scripts/codex-exec-enqueue"

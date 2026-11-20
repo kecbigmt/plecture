@@ -1,0 +1,6 @@
+# A stand-in that echoes the records it received through CODEX_MCP_SERVERS,
+# so the recorded artifact shows what setup handed over, and fails on a
+# record named "rejected", so a scenario can show a rejection declining the
+# launch. The real validation is covered by codex-mcp-servers_selftest.sh.
+jq -nc '$ENV.CODEX_MCP_SERVERS | fromjson
+  | if any(.[]; .name == "rejected") then error("mcp_servers record \"rejected\" is invalid") else {received: .} end'

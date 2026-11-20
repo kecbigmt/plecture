@@ -1,0 +1,145 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 960 872" width="960" height="872" role="img" aria-labelledby="title desc">
+  <title id="title">Change: codex exec_runtime accepts mcp_servers</title>
+  <desc id="desc">Before: exec_runtime setup launches codex-exec-worker by keystrokes, and the worker passes only model and effort flags to codex exec and codex exec resume, so no MCP server can be registered. After: setup takes an mcp_servers input with the claude plugin's record shape and schema, hands the records through the CODEX_MCP_SERVERS environment variable to the added codex-mcp-servers executable, and writes its JSON array of overrides to the added state_dir/mcp_overrides.json file; a malformed record fails setup before launch. The worker reads that file at start and appends one -c mcp_servers.name override per record to every codex exec and codex exec resume. The launch keystrokes are unchanged and carry no records.</desc>
+  <defs>
+    <style>
+      svg {
+        --bg: #ffffff; --fg: #1f2328; --muted: #59636e; --line: #d0d7de;
+        --neutral: #8c959f; --neutral-bg: #f6f8fa;
+        --added: #1a7f37; --added-bg: #dafbe1;
+        --changed: #0969da; --changed-bg: #ddf4ff;
+        --removed: #cf222e; --removed-bg: #ffebe9;
+      }
+      @media (prefers-color-scheme: dark) {
+        svg {
+          --bg: #0d1117; --fg: #e6edf3; --muted: #9198a1; --line: #3d444d;
+          --neutral: #656c76; --neutral-bg: #151b23;
+          --added: #3fb950; --added-bg: #0f2a1a;
+          --changed: #4493f8; --changed-bg: #0c2441;
+          --removed: #f85149; --removed-bg: #3a1416;
+        }
+      }
+      text { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Helvetica, Arial, sans-serif; font-size: 13px; fill: var(--fg); }
+      .bg { fill: var(--bg); }
+      .title { font-size: 18px; font-weight: 600; }
+      .heading { font-size: 14px; font-weight: 600; }
+      .name { font-weight: 600; }
+      .note { font-size: 12px; fill: var(--muted); }
+      .label { font-size: 12px; }
+      .tag { font-size: 11px; font-weight: 700; letter-spacing: 0.06em; }
+      .panel { fill: none; stroke: var(--line); }
+      .neutral { fill: var(--neutral-bg); stroke: var(--neutral); stroke-width: 1.5; }
+      .added { fill: var(--added-bg); stroke: var(--added); stroke-width: 3; }
+      .changed { fill: var(--changed-bg); stroke: var(--changed); stroke-width: 1.5; }
+      .removed { fill: var(--removed-bg); stroke: var(--removed); stroke-width: 1.5; stroke-dasharray: 8 4; }
+      .t-neutral { fill: var(--muted); }
+      .t-added { fill: var(--added); }
+      .t-changed { fill: var(--changed); }
+      .t-removed { fill: var(--removed); }
+      .flow { fill: none; stroke: var(--fg); stroke-width: 1.5; marker-end: url(#arrow); }
+      .flow-changed { fill: none; stroke: var(--changed); stroke-width: 2; marker-end: url(#arrow-changed); }
+      .flow-added { fill: none; stroke: var(--added); stroke-width: 2; marker-end: url(#arrow-added); }
+      .head { fill: var(--fg); }
+      .head-changed { fill: var(--changed); }
+      .head-added { fill: var(--added); }
+    </style>
+    <marker id="arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path class="head" d="M0,0 L10,5 L0,10 z"/>
+    </marker>
+    <marker id="arrow-changed" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="5.25" markerHeight="5.25" orient="auto-start-reverse">
+      <path class="head-changed" d="M0,0 L10,5 L0,10 z"/>
+    </marker>
+    <marker id="arrow-added" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="5.25" markerHeight="5.25" orient="auto-start-reverse">
+      <path class="head-added" d="M0,0 L10,5 L0,10 z"/>
+    </marker>
+  </defs>
+
+  <rect class="bg" x="0" y="0" width="960" height="872"/>
+
+  <text class="title" x="24" y="38">Change: codex exec_runtime accepts mcp_servers</text>
+  <text class="note" x="24" y="60">PR #798 · main → issue/796 · plugins/codex only; no core change</text>
+
+  <!-- Before -->
+  <rect class="panel" x="16" y="80" width="456" height="696" rx="8"/>
+  <text class="heading" x="32" y="106">Before <tspan class="note" font-weight="400">· main</tspan></text>
+
+  <rect class="neutral" x="48" y="126" width="300" height="72" rx="6"/>
+  <text class="tag t-changed" x="64" y="148">CHANGED · SEE AFTER</text>
+  <text class="name" x="64" y="167">exec_runtime setup</text>
+  <text class="note" x="64" y="185">inputs: model, effort, launch_env, …</text>
+
+  <line class="flow" x1="120" y1="198" x2="120" y2="260"/>
+  <text class="label" x="132" y="234">launch keystrokes (exports)</text>
+
+  <rect class="neutral" x="48" y="262" width="300" height="72" rx="6"/>
+  <text class="tag t-changed" x="64" y="284">CHANGED · SEE AFTER</text>
+  <text class="name" x="64" y="303">codex-exec-worker</text>
+  <text class="note" x="64" y="321">drains the queue one turn at a time</text>
+
+  <line class="flow" x1="120" y1="334" x2="120" y2="396"/>
+  <text class="label" x="132" y="364"><tspan x="132">argv: -m &lt;model&gt;,</tspan><tspan x="132" dy="16">-c model_reasoning_effort=…</tspan></text>
+
+  <rect class="neutral" x="48" y="398" width="300" height="72" rx="6"/>
+  <text class="tag t-changed" x="64" y="420">CHANGED · SEE AFTER</text>
+  <text class="name" x="64" y="439">codex exec / codex exec resume</text>
+  <text class="note" x="64" y="457">no way to register an MCP server</text>
+
+  <!-- After -->
+  <rect class="panel" x="488" y="80" width="456" height="696" rx="8"/>
+  <text class="heading" x="504" y="106">After <tspan class="note" font-weight="400">· this PR</tspan></text>
+
+  <rect class="changed" x="520" y="126" width="340" height="72" rx="6"/>
+  <text class="tag t-changed" x="536" y="148">CHANGED</text>
+  <text class="name" x="536" y="167">exec_runtime setup</text>
+  <text class="note" x="536" y="185">+ mcp_servers (claude record shape/schema)</text>
+
+  <line class="flow-added" x1="592" y1="198" x2="592" y2="260"/>
+  <text class="label t-added" x="604" y="228"><tspan x="604" font-weight="600">ADDED</tspan><tspan x="604" dy="16">records via env CODEX_MCP_SERVERS</tspan></text>
+
+  <rect class="added" x="520" y="262" width="340" height="72" rx="6"/>
+  <text class="tag t-added" x="536" y="284">ADDED</text>
+  <text class="name" x="536" y="303">codex-mcp-servers</text>
+  <text class="note" x="536" y="321">validates; malformed → setup exits 1</text>
+
+  <line class="flow-added" x1="592" y1="334" x2="592" y2="396"/>
+  <text class="label t-added" x="604" y="364"><tspan x="604" font-weight="600">ADDED</tspan><tspan x="604" dy="16">JSON array of -c values (umask 077)</tspan></text>
+
+  <rect class="added" x="520" y="398" width="340" height="72" rx="6"/>
+  <text class="tag t-added" x="536" y="420">ADDED</text>
+  <text class="name" x="536" y="439">state_dir/mcp_overrides.json</text>
+  <text class="note" x="536" y="457">deleted on every launch, rewritten if set</text>
+
+  <line class="flow-added" x1="592" y1="470" x2="592" y2="532"/>
+  <text class="label t-added" x="604" y="500"><tspan x="604" font-weight="600">ADDED</tspan><tspan x="604" dy="16">read once at worker start</tspan></text>
+
+  <rect class="changed" x="520" y="534" width="340" height="72" rx="6"/>
+  <text class="tag t-changed" x="536" y="556">CHANGED</text>
+  <text class="name" x="536" y="575">codex-exec-worker</text>
+  <text class="note" x="536" y="593">appends each override as one argv element</text>
+
+  <line class="flow-changed" x1="592" y1="606" x2="592" y2="668"/>
+  <text class="label t-changed" x="604" y="628"><tspan x="604" font-weight="600">CHANGED</tspan><tspan x="604" dy="16">+ -c mcp_servers.&lt;name&gt;=</tspan><tspan x="604" dy="16">{command, args, env} per record</tspan></text>
+
+  <rect class="changed" x="520" y="670" width="340" height="72" rx="6"/>
+  <text class="tag t-changed" x="536" y="692">CHANGED</text>
+  <text class="name" x="536" y="711">codex exec / codex exec resume</text>
+  <text class="note" x="536" y="729">every turn starts the declared servers</text>
+
+  <!-- Keystroke launch, unchanged -->
+  <path class="flow" d="M860,162 H900 V570 H862"/>
+  <text class="label" x="912" y="366" text-anchor="middle" transform="rotate(90 912 366)">launch keystrokes (unchanged; carry no records)</text>
+
+  <!-- Legend -->
+  <rect class="added" x="32" y="799" width="28" height="16" rx="3"/>
+  <text class="label" x="70" y="811">ADDED · thick solid</text>
+  <rect class="changed" x="264" y="799" width="28" height="16" rx="3"/>
+  <text class="label" x="302" y="811">CHANGED · solid</text>
+  <rect class="removed" x="496" y="799" width="28" height="16" rx="3"/>
+  <text class="label" x="534" y="811">REMOVED · dashed (none)</text>
+  <rect class="neutral" x="728" y="799" width="28" height="16" rx="3"/>
+  <text class="label" x="766" y="811">UNCHANGED · grey</text>
+
+  <line class="flow" x1="32" y1="843" x2="58" y2="843"/>
+  <text class="label" x="70" y="847">flow, labelled with what crosses it</text>
+  <text class="note" x="496" y="847">each part is named in text; colour only repeats it</text>
+</svg>

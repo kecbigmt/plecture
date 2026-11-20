@@ -135,3 +135,19 @@ call[5]: "jq" "-nc" "--argjson" "pid" "<pid>" "--arg" "queue_dir" "<state>/plect
 call[6]: "ps" "-o" "ppid=" "-p" "<pid>"
 call[7]: "ps" "-o" "ppid=" "-p" "<pid>"
 declined: task "exec_runtime" setup: exit status 1
+
+== exec_runtime:mcp-servers-reach-the-state-dir / setup
+call[0]: "codex-agent-activity" "reset" "acme/widget-1"
+call[1]: "codex-mcp-servers"
+call[2]: "terminal-pid"
+call[3]: "terminal-send_text" "export PLECT_SESSION_NAME=acme/widget-1; export PLECT_AGENT_ACTIVITY_BIN='<plugin>/scripts/codex-agent-activity'; export CODEX_PUBLISH_MESSAGE=true; <plugin>/scripts/codex-exec-worker '<state>/plect-codex-exec/acme/widget-1/queue' '<state>/plect-codex-exec/acme/widget-1'"
+call[4]: "terminal-send_keys" "Enter"
+call[5]: "ps" "-o" "ppid=" "-p" "<pid>"
+outputs: {"pid":<pid>,"queue_dir":"<state>/plect-codex-exec/acme/widget-1/queue","state_dir":"<state>/plect-codex-exec/acme/widget-1"}
+artifact state_dir/mcp_overrides.json:
+{"received":[{"name":"kbn","command":"kbn-mcp","args":["--scoped"]}]}
+
+== exec_runtime:malformed-mcp-servers-declines-before-launch / setup
+call[0]: "codex-agent-activity" "reset" "acme/widget-1"
+call[1]: "codex-mcp-servers"
+declined: task "exec_runtime" setup: exit status 1
