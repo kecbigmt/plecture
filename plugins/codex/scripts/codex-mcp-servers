@@ -49,7 +49,7 @@ jq -nc '
           fail($i; $rec; "is missing required field \"name\"")
         elif ($rec.name | type) != "string" or $rec.name == "" then
           fail($i; $rec; "field \"name\" must be a non-empty string")
-        elif ($rec.name | test("^[A-Za-z0-9_-]+$") | not) then
+        elif ($rec.name | test("\\A[A-Za-z0-9_-]+\\z") | not) then
           fail($i; $rec; "field \"name\" must contain only letters, digits, \"_\", and \"-\"")
         elif ($rec | has("command") | not) then
           fail($i; $rec; "is missing required field \"command\"")

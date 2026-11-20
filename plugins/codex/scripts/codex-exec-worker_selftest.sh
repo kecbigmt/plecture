@@ -82,6 +82,9 @@ export PLECT_CALLS="$tmp/calls"
 export PLECT_SESSION_NAME="selftest/worker-1"
 export PLECT_AGENT_ACTIVITY_BIN="$activity"
 export CODEX_PUBLISH_MESSAGE=true
+# A Codex session running this test may export these; the argv assertions
+# below expect the worker's flag-free baseline.
+unset CODEX_MODEL CODEX_MODEL_REASONING_EFFORT
 export XDG_STATE_HOME="$tmp/xdg-state"
 # The path itself, not its content, is what the worker's environment needs
 # to carry — fixed and exported before the worker forks, then each turn

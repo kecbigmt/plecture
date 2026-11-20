@@ -56,6 +56,10 @@ expect_err "a non-object record fails" '["x"]' 'record at index 0 is not an obje
 expect_err "a missing name fails" '[{"command":"y"}]' 'at index 0 is missing required field "name"'
 expect_err "an empty name fails" '[{"name":"","command":"y"}]' 'field "name" must be a non-empty string'
 expect_err "a dotted name fails" '[{"name":"a.b","command":"y"}]' 'record "a.b" field "name" must contain only'
+# jq's ^ and $ also match at an embedded line break, which would let a
+# newline split one override into two argv lines in the worker.
+expect_err "a name with a trailing newline fails" '[{"name":"x\n","command":"y"}]' 'field "name" must contain only'
+expect_err "a name with an embedded newline fails" '[{"name":"a\nb","command":"y"}]' 'field "name" must contain only'
 expect_err "a missing command fails" '[{"name":"x"}]' 'record "x" is missing required field "command"'
 expect_err "an empty command fails" '[{"name":"x","command":""}]' 'field "command" must be a non-empty string'
 expect_err "an unknown field fails" '[{"name":"x","command":"y","cwd":"/"}]' 'declares unsupported field "cwd"'
