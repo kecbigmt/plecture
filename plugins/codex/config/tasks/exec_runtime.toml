@@ -274,9 +274,9 @@ effort       = { type = "string", pattern = "^[A-Za-z0-9_.:-]*$" }
 # since the keystrokes are a boundary the binding transport does not own.
 launch_env   = { type = "string", pattern = "^[^']*$" }
 # mcp_servers: a JSON array. codex-mcp-servers rejects anything that is not
-# an array of well-formed records; no charset restriction, since the value
-# reaches the worker through a file rather than the launch keystrokes.
-mcp_servers  = { type = "string" }
+# an array of well-formed records; the quote-free charset is the same
+# defense in depth launch_env carries.
+mcp_servers  = { type = "string", pattern = "^[^']*$" }
 # state_root: a plain path charset, same keystroke boundary and same
 # reasoning as path_prepend below.
 state_root   = { type = "string", pattern = "^[A-Za-z0-9_./:-]*$" }
