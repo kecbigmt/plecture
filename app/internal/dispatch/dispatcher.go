@@ -65,14 +65,11 @@ type sessionDispatcher struct {
 	// held is memory only: a restart redelivers once, which at-least-once
 	// delivery allows, and it keeps a retry from re-sending to channels that
 	// already delivered.
-	held heldEvent
-	// inbox receives what the workflow's inbox binding selects; nil when the
-	// workflow binds none.
+	held  heldEvent
 	inbox *inbox.Store
-	// handedOver is the highest sequence already handed to the inbox. It is
-	// memory only for the reason held is: a held push delivery makes every
-	// drain list the same events again, and an entry the runtime has since
-	// acknowledged must not come back.
+	// handedOver is memory only for the reason held is: a held push delivery
+	// makes every drain list the same events again, and an entry the runtime
+	// has since acknowledged must not come back.
 	handedOver int64
 }
 
@@ -226,7 +223,7 @@ func (d *sessionDispatcher) processEvent(ctx context.Context, s *domain.Session,
 		}
 		def, ok := d.defs[ch.Uses]
 		if !ok || def.Type == config.ChannelTypeInbox {
-			continue // an unresolved definition is validated at load; an inbox binding was served by handOver
+			continue // resolution is validated at load; handOver served an inbox binding
 		}
 		matched = true // set on the main goroutine, before any worker starts — no lock needed
 		if delivered[ch.Name] {
@@ -338,9 +335,8 @@ func (d *sessionDispatcher) shouldHold(ev event.Event, failures map[int]delivery
 	return awaiting
 }
 
-// selects is the one answer to whether a binding receives an event, shared by
-// push delivery, inbox hand-over and the supersession judgment, so the three
-// cannot disagree about what is pending for a binding.
+// selects is shared by push delivery, inbox hand-over and the supersession
+// judgment, so the three cannot disagree about what is pending for a binding.
 func selects(ch config.EventChannel, ev event.Event) bool {
 	if ev.Type == event.TypeChannelError {
 		if ev.Metadata["event_type"] == event.TypeChannelError || ev.Metadata["channel"] == ch.Name {
@@ -350,10 +346,8 @@ func selects(ch config.EventChannel, ev event.Event) bool {
 	return channelMatches(ch, ev)
 }
 
-// superseded returns, per push binding, the pending events that another
-// pending event the same binding selects supersedes. It is recomputed at
-// every drain, so events that piled up while the session was down or held
-// are judged together.
+// superseded is recomputed at every drain, so events that piled up while the
+// session was down or held are judged together.
 func (d *sessionDispatcher) superseded(evs []event.Event) map[string]map[string]bool {
 	out := map[string]map[string]bool{}
 	for _, ch := range d.channels {
@@ -373,11 +367,9 @@ func (d *sessionDispatcher) superseded(evs []event.Event) map[string]map[string]
 	return out
 }
 
-// handOver gives the inbox binding every pending event it selects in one
-// transaction, before any push delivery runs: a runtime that takes while the
-// dispatcher is still working through a backlog would otherwise receive the
-// backlog split across batches and miss a supersession. It reports false when
-// the hand-over failed and the drain must be retried.
+// handOver adds a whole drain in one transaction, before any push delivery:
+// a runtime taking mid-backlog would otherwise get the backlog split across
+// batches and miss a supersession. False means the drain must be retried.
 func (d *sessionDispatcher) handOver(evs []event.Event, seqs []int64) bool {
 	for _, ch := range d.channels {
 		if def, ok := d.defs[ch.Uses]; !ok || def.Type != config.ChannelTypeInbox {
