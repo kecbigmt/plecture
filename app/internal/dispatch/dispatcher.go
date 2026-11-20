@@ -155,6 +155,7 @@ func (d *sessionDispatcher) drain(ctx context.Context, s *domain.Session, startG
 			slog.Default().Warn("dispatcher: reset cursor after log rotation failed", "session", d.session, "error", err)
 		}
 		*startGen = g
+		d.handedOver = 0
 	}
 	cur, err := d.log.ReadCursor(d.session, dispatcherConsumer)
 	if err != nil {

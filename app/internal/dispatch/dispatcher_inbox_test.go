@@ -1,6 +1,7 @@
 package dispatch
 
 import (
+	"context"
 	"encoding/json"
 	"path/filepath"
 	"testing"
@@ -228,5 +229,22 @@ func TestDispatcher_NeverHandsAChannelErrorBackToTheBindingItRecords(t *testing.
 
 	if _, ids := takeIDs(t, store); ids != nil {
 		t.Fatalf("batch = %v, want nothing: a parked batch's error would otherwise park again forever", ids)
+	}
+}
+
+func TestDispatcher_HandsOverARecreatedSessionsEventsFromItsOwnStart(t *testing.T) {
+	log := eventlog.NewStore(t.TempDir())
+	d, store := inboxDispatcher(t, log)
+	s, _ := d.state.GetE(inboxSession)
+	// The dispatcher outlived a destroy and recreate: it remembers a mark from
+	// the earlier incarnation, whose sequences ran higher than the new log's.
+	d.handedOver = 1000
+	staleGen := "an-earlier-incarnation"
+
+	appendKick(t, log, "kick", "")
+	d.drain(context.Background(), s, &staleGen)
+
+	if _, ids := takeIDs(t, store); !sameIDs(ids, []string{"kick"}) {
+		t.Fatalf("batch = %v, want [kick]", ids)
 	}
 }
