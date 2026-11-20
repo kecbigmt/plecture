@@ -117,6 +117,9 @@ the omitted ones included. It fails for a batch that is not outstanding.
 - A batch delivered three times without an acknowledgement is parked by the
   next take: one `plect.channel.error` per returned event names the binding,
   the events leave the inbox, and the take returns the following batch.
+- Take and acknowledge write to one session. Both fail for a session that does
+  not exist and for one outside the calling process's session guard
+  (`PLECT_SESSION_GUARD`).
 
 ## Parameters
 

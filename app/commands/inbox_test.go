@@ -150,3 +150,23 @@ func TestInboxTakeCommand_RedeliversAfterAConsumerCrash(t *testing.T) {
 		t.Fatalf("redelivered events = %+v, want [first]", again.Events)
 	}
 }
+
+func TestInboxCommands_HonorTheSessionGuardOfTheirProcess(t *testing.T) {
+	log, store := inboxTestStores(t)
+	handOverForTest(t, log, store, "first", "")
+	taken, _ := runInboxTake(t)
+	t.Setenv("PLECT_SESSION_GUARD", "^acme/")
+
+	if err := inboxTakeCmd.RunE(inboxTakeCmd, []string{inboxTestSession}); err == nil {
+		t.Fatal("take of a session outside the guard succeeded")
+	}
+	if err := inboxAckCmd.RunE(inboxAckCmd, []string{inboxTestSession, taken.Batch}); err == nil {
+		t.Fatal("ack of a session outside the guard succeeded")
+	}
+
+	t.Setenv("PLECT_SESSION_GUARD", "")
+	again, _ := runInboxTake(t)
+	if again.Batch != taken.Batch || again.Deliveries != 2 {
+		t.Fatalf("take after the rejected calls = %+v, want batch %s on its second delivery", again, taken.Batch)
+	}
+}

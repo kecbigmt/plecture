@@ -50,16 +50,20 @@ Each worker repeats one sequence:
 4. Render the batch's events into one prompt: the instruction to answer every
    entry once, then each event numbered in log order with its id, type and
    source, formatted by `message_envelope`.
-5. Run one agent process, unless a reply for this batch id is already kept.
+5. Run one agent process, unless one already exited successfully for this
+   batch id.
 6. Publish the reply as `plect.message`, with the batch id in its
    `message_id`.
 7. `plect inbox ack`.
 
 A failed agent process or a failed publication ends the pass without an
-acknowledgement, and the next take returns the same batch. The reply file and
-a published marker are kept in the runtime's state directory under the batch
-id and removed after the acknowledgement; they exist so a redelivery does not
-pay for a second agent run or post the reply twice.
+acknowledgement, and the next take returns the same batch. The reply file, a
+completed marker and a published marker are kept in the runtime's state
+directory under the batch id and removed after the acknowledgement; they
+exist so a redelivery does not pay for a second agent run or post the reply
+twice. The completed marker is written only after the agent process exits
+successfully: an agent can report its reply before it exits, so the reply
+file alone does not show that the turn finished.
 
 ### Inputs and outputs
 

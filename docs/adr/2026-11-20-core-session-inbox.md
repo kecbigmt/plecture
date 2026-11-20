@@ -121,6 +121,10 @@ it addresses. A consumer may cache its completed work for the outstanding
 batch, keyed by the batch id; such a cache saves a repeated invocation and
 is never the record of what is pending.
 
+Take and acknowledge are writes to one session. The session guard of the
+calling process applies to both, as it does to publishing an event, so a
+guarded process cannot claim or remove another session's entries.
+
 Pane runtimes keep their push channels and receive the retained events
 through the dispatcher as described above.
 

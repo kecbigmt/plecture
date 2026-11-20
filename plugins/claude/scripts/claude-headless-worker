@@ -12,7 +12,8 @@
 # --resume.
 #
 # Core owns what is pending, which events a batch holds, and when a batch is
-# given up; this worker keeps only the reply of the batch it is working on.
+# given up; this worker keeps only the reply of the batch it is working on
+# and whether that batch's turn finished.
 #
 # Usage: claude-headless-worker <state_dir> <session_id> <mcp_config> <hooks_settings>
 
@@ -140,10 +141,11 @@ while true; do
     fi
     event_type="batch"
     reply_payload="$state_dir/reply-$batch_id.json"
+    completed_marker="$state_dir/reply-$batch_id.completed"
     reply_marker="$state_dir/reply-$batch_id.published"
     # A reply kept for any other batch belongs to one core has since parked.
     for stale in "$state_dir"/reply-*; do
-        case "$stale" in "$reply_payload"|"$reply_marker") ;; *) rm -f "$stale" ;; esac
+        case "$stale" in "$reply_payload"|"$completed_marker"|"$reply_marker") ;; *) rm -f "$stale" ;; esac
     done
 
     case "$deliveries" in ''|*[!0-9]*) deliveries=1 ;; esac
@@ -158,7 +160,10 @@ while true; do
     done
     write_health 0 "$event_type"
 
-    if [ ! -f "$reply_payload" ]; then
+    # The Stop hook writes the payload while claude is still running, so
+    # the payload alone does not say the turn finished.
+    if [ ! -f "$completed_marker" ]; then
+        rm -f "$reply_payload"
         text="$(render_batch; printf '\001')" || { write_health 1 "$event_type"; continue; }
         text="${text%$'\001'}"
         # A failed turn may still report a conversation id, so its next
@@ -185,6 +190,7 @@ while true; do
             write_health 1 "$event_type"
             continue
         fi
+        touch "$completed_marker" || { write_health 1 "$event_type"; sleep 2; continue; }
     fi
 
     if [ ! -f "$reply_marker" ]; then
@@ -198,7 +204,7 @@ while true; do
 
     if plect inbox ack "$PLECT_SESSION_NAME" "$batch_id" >/dev/null 2>> "$state_dir/log/inbox.err"; then
         write_health 0 "$event_type"
-        rm -f "$reply_payload" "$reply_marker"
+        rm -f "$reply_payload" "$completed_marker" "$reply_marker"
         tick_session
     else
         write_health 1 "$event_type"

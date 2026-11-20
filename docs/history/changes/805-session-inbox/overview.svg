@@ -1,6 +1,6 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 980 676" width="980" height="676" role="img" aria-labelledby="title desc">
   <title id="title">Change: the session inbox replaces the plugin file queues</title>
-  <desc id="desc">Head structure with the diff marked. The session dispatcher, changed, reads events from the unchanged event log, delivers one event per delivery to the unchanged pane runtime with superseded pending events omitted, and writes entry rows into the added session inbox, the inbox_entries table. The headless worker, changed, takes a batch from the session inbox with plect inbox take and acknowledges it with plect inbox ack. Removed, shown as ghosts in their old place: the dispatcher ran an enqueue executable once per event, which wrote a queue file into a queue directory handled by headless-batch.sh, from which the worker took one batch per turn; a queue bridge wrote message files into the same directory.</desc>
+  <desc id="desc">Head structure with the diff marked. The session dispatcher, changed, reads events from the unchanged event log, delivers one event per delivery to the unchanged pane runtime, omitting superseded pending events on that path only, and writes an entry row for every selected event into the added session inbox, the inbox_entries table. The headless worker, changed, takes a batch from the session inbox with plect inbox take, which omits the superseded events of the batch, and acknowledges it with plect inbox ack. Removed, shown as ghosts in their old place: the dispatcher ran an enqueue executable once per event, which wrote a queue file into a queue directory handled by headless-batch.sh, from which the worker took one batch per turn; a queue bridge wrote message files into the same directory.</desc>
   <defs>
     <style>
       svg {
@@ -65,7 +65,7 @@
   <rect class="changed" x="330" y="100" width="230" height="70" rx="6"/>
   <text class="tag t-changed" x="346" y="122">CHANGED</text>
   <text class="name" x="346" y="141">session dispatcher</text>
-  <text class="note" x="346" y="158">omits superseded pending events</text>
+  <text class="note" x="346" y="158">selects events per channel binding</text>
   <rect class="neutral" x="760" y="100" width="190" height="70" rx="6"/>
   <text class="tag t-neutral" x="776" y="122">UNCHANGED</text>
   <text class="name" x="776" y="141">pane runtime</text>
@@ -82,13 +82,13 @@
   <text class="label" text-anchor="middle" x="276" y="116">events</text>
 
   <line class="flow" x1="560" y1="135" x2="758" y2="135"/>
-  <text class="label" text-anchor="middle" x="660" y="111"><tspan x="660">one delivery per</tspan><tspan x="660" dy="15">retained event</tspan></text>
+  <text class="label" text-anchor="middle" x="660" y="111"><tspan x="660">one delivery per event,</tspan><tspan x="660" dy="15">superseded ones omitted</tspan></text>
 
   <line class="flow-added" x1="425" y1="170" x2="425" y2="238"/>
-  <text class="label t-added" x="437" y="199"><tspan x="437" font-weight="600">ADDED</tspan><tspan x="437" dy="15">entry rows</tspan></text>
+  <text class="label t-added" x="437" y="192"><tspan x="437" font-weight="600">ADDED</tspan><tspan x="437" dy="15">entry row for every</tspan><tspan x="437" dy="15">selected event</tspan></text>
 
   <line class="flow-added" x1="520" y1="262" x2="757" y2="262"/>
-  <text class="label t-added" text-anchor="middle" x="640" y="238"><tspan x="640" font-weight="600">ADDED</tspan><tspan x="640" dy="15">plect inbox take: batch</tspan></text>
+  <text class="label t-added" text-anchor="middle" x="650" y="223"><tspan x="650" font-weight="600">ADDED</tspan><tspan x="650" dy="15">plect inbox take: batch,</tspan><tspan x="650" dy="15">superseded events omitted</tspan></text>
   <line class="flow-added" x1="760" y1="292" x2="523" y2="292"/>
   <text class="label t-added" text-anchor="middle" x="640" y="310"><tspan x="640">plect inbox ack: batch id</tspan></text>
 

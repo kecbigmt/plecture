@@ -14,7 +14,8 @@
 #      published; a failure at either step leaves it for redelivery, and a
 #      finished turn is never run twice for one batch.
 #   5. A failed working-status write holds the batch without taking again.
-#   6. Terminating the worker, mid-turn or idle, stops it and its claude.
+#   6. Terminating the worker, mid-turn or idle, stops it and its claude. A
+#      turn interrupted after its Stop hook reported is still run again.
 #
 # Which events a batch holds, redelivery and parking are core's and are
 # specified by its own tests; the stub only replays that contract.
@@ -46,8 +47,9 @@ mkdir -p "$bin_dir"
 # $STUB_MODE_FILE (read fresh per invocation, since the worker forks it long
 # after this script's own exports) says: "ok" reports a finished turn through
 # the real Stop hook and prints a result object carrying session_id,
-# "fail-early" exits non-zero without one, and "hang" writes its own pid and
-# sleeps until killed.
+# "fail-early" exits non-zero without one, "hang" writes its own pid and
+# sleeps until killed, and "hang-after-stop" does the same after the Stop hook
+# reported.
 cat > "$bin_dir/claude" <<'EOF'
 #!/usr/bin/env bash
 printf '%q ' "$@" >> "$STUB_ARGV"
@@ -63,6 +65,11 @@ case "$mode" in
     ;;
   fail-early) echo "boom" >&2; exit 1 ;;
   hang) printf '%s' "$$" > "$STUB_HANG_PID"; sleep 30 ;;
+  hang-after-stop)
+    printf '{"prompt_id":"%s","last_assistant_message":"unfinished"}' "$PLECT_BATCH_ID" | "$STUB_ACTIVITY" finish
+    printf '%s' "$$" > "$STUB_HANG_PID"
+    sleep 30
+    ;;
 esac
 EOF
 chmod +x "$bin_dir/claude"
@@ -264,6 +271,22 @@ echo ok > "$STUB_MODE_FILE"
 start_worker
 wait_until 'acked 1' || { echo "FAIL an interrupted batch was not delivered again" >&2; fail=1; }
 check "a restarted worker runs the interrupted batch again and acknowledges it once" '[ "$(grep -c "turn four" "$STUB_ARGV")" -eq 2 ] && [ "$(cat "$box/acked")" = "batch-1" ]'
+
+scenario crash-after-stop
+echo hang-after-stop > "$STUB_MODE_FILE"
+rm -f "$STUB_HANG_PID"
+start_worker
+hand_over t5 user.emit "turn five"
+wait_until '[ -s "$STUB_HANG_PID" ]' || { echo "FAIL the turn that hangs after its Stop hook never started" >&2; fail=1; }
+check "the Stop hook kept a reply before claude exited" '[ -f "$state_dir/reply-batch-1.json" ]'
+kill -TERM "$worker_pid"
+wait "$worker_pid" 2>/dev/null || true
+worker_pid=""
+echo ok > "$STUB_MODE_FILE"
+start_worker
+wait_until 'acked 1' || { echo "FAIL a batch interrupted after its Stop hook was never acknowledged" >&2; fail=1; }
+check "a turn interrupted after its Stop hook reported is run again" '[ "$(grep -c "turn five" "$STUB_ARGV")" -eq 2 ]'
+check "only the finished turn's reply is published" '[ "$(calls "^event publish")" -eq 1 ] && ! grep -q "unfinished" "$PLECT_CALLS"'
 
 scenario idle
 start_worker
