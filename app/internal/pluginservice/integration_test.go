@@ -32,7 +32,7 @@ func TestSupervisor_OverConfigLoadPlugins_RunsADeclaredService(t *testing.T) {
 	if err := os.MkdirAll(filepath.Dir(scriptPath), 0o755); err != nil {
 		t.Fatal(err)
 	}
-	if err := os.WriteFile(scriptPath, []byte("#!/usr/bin/env bash\ntrap 'exit 0' TERM\nwhile true; do sleep 0.01; done\n"), 0o755); err != nil {
+	if err := os.WriteFile(scriptPath, []byte("#!/usr/bin/env bash\ntrap 'exit 0' TERM\nwhile read -r _; do :; done\n"), 0o755); err != nil {
 		t.Fatal(err)
 	}
 	writeIntegrationFile(t, filepath.Join(catalogDir, "catalog.toml"), `
