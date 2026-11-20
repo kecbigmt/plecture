@@ -89,3 +89,21 @@ hooks                      = ["setup"]
 [[codex_initial_prompt]]
 inputs  = { terminal_ready = "acme-widget-1", agent_session = "1234", prompt = "rendered instruction", repeat = "" }
 capture = "› "
+
+# This proves mcp_servers reaches the worker through the state directory,
+# not the launch keystrokes.
+[[exec_runtime]]
+name   = "mcp-servers-reach-the-state-dir"
+inputs = { mcp_servers = '[{"name":"kbn","command":"kbn-mcp","args":["--scoped"]}]' }
+hooks  = ["setup"]
+
+[[exec_runtime.artifacts]]
+output = "state_dir"
+path   = "mcp_overrides.json"
+
+# This proves a malformed record declines the launch before anything is
+# typed into the pane.
+[[exec_runtime]]
+name   = "malformed-mcp-servers-declines-before-launch"
+inputs = { mcp_servers = '[{"name":"rejected","command":"kbn-mcp"}]' }
+hooks  = ["setup"]

@@ -49,6 +49,7 @@ mkdir -p "$bin_dir"
 cat > "$bin_dir/codex" <<'EOF'
 #!/usr/bin/env bash
 printf '%s\n' "$*" >> "$STUB_ARGV"
+printf '%s\0' "$@" > "$STUB_ARGV_NUL"
 out=""
 resume=false
 for i in "$@"; do
@@ -87,6 +88,9 @@ export XDG_STATE_HOME="$tmp/xdg-state"
 # below just overwrites the file at that path.
 export STUB_REPLY_FILE="$tmp/next-reply.txt"
 export STUB_ARGV="$tmp/argv"
+# The last invocation's argv, one NUL-terminated element each, so an
+# assertion can see argument boundaries that "$*" above flattens.
+export STUB_ARGV_NUL="$tmp/argv-nul"
 export PLECT_FAIL_WORKING="$tmp/fail-working"
 export PLECT_FAIL_WORKING_ONCE="$tmp/fail-working-once"
 export STUB_PAUSE_TURN="$tmp/pause-turn"
@@ -264,6 +268,69 @@ else
 fi
 rm -f "$STUB_PAUSE_TURN"
 wait_for_drain "$retry_queue/1.json" || { echo "FAIL retried turn was never drained" >&2; fail=1; }
+kill "$worker_pid" 2>/dev/null || true
+wait "$worker_pid" 2>/dev/null || true
+worker_pid=""
+
+# Given mcp_servers overrides in the state directory, both a first turn and a
+# resumed turn carry each one as a single `-c` argument, quotes and spaces
+# intact; given none, a turn's argv carries no `-c` at all.
+last_argv() {
+  local -n out="$1"
+  mapfile -d '' out < "$STUB_ARGV_NUL"
+}
+has_pair() {
+  local flag="$1" value="$2"; shift 2
+  local args=("$@") i
+  for ((i = 0; i + 1 < ${#args[@]}; i++)); do
+    [ "${args[i]}" = "$flag" ] && [ "${args[i+1]}" = "$value" ] && return 0
+  done
+  return 1
+}
+
+mcp_queue="$tmp/mcp-queue"
+mcp_state="$tmp/mcp-state"
+mkdir -p "$mcp_queue" "$mcp_state"
+override='mcp_servers.x={command = "stub mcp", args = ["a b","c\"d","it'"'"'s"], env = {"K 1" = "v \"q\""}}'
+jq -n --arg o "$override" --arg p 'mcp_servers.y={command = "two"}' '[$o, $p]' > "$mcp_state/mcp_overrides.json"
+"$worker" "$mcp_queue" "$mcp_state" &
+worker_pid=$!
+for turn in first resumed; do
+  : > "$STUB_ARGV_NUL"
+  echo "{\"type\":\"user.emit\",\"text\":\"$turn turn\"}" > "$mcp_queue/$turn.json"
+  wait_for_drain "$mcp_queue/$turn.json" || { echo "FAIL $turn mcp turn was never drained" >&2; fail=1; }
+  last_argv argv
+  if [ "$turn" = resumed ] && [ "${argv[1]-}" != resume ]; then
+    printf 'FAIL the second mcp turn was not a resume: %s\n' "${argv[*]}" >&2
+    fail=1
+  elif has_pair -c "$override" "${argv[@]}" && has_pair -c 'mcp_servers.y={command = "two"}' "${argv[@]}"; then
+    echo "ok   a $turn turn carries each mcp_servers override as one intact argument"
+  else
+    printf 'FAIL a %s turn lacks an intact mcp_servers override: %s\n' "$turn" "$(printf '%q ' "${argv[@]}")" >&2
+    fail=1
+  fi
+done
+kill "$worker_pid" 2>/dev/null || true
+wait "$worker_pid" 2>/dev/null || true
+worker_pid=""
+
+plain_queue="$tmp/plain-queue"
+plain_state="$tmp/plain-state"
+mkdir -p "$plain_queue"
+: > "$STUB_ARGV_NUL"
+"$worker" "$plain_queue" "$plain_state" &
+worker_pid=$!
+echo '{"type":"user.emit","text":"plain turn"}' > "$plain_queue/1.json"
+wait_for_drain "$plain_queue/1.json" || { echo "FAIL plain turn was never drained" >&2; fail=1; }
+last_argv argv
+if [ "${#argv[@]}" -eq 7 ] &&
+   [ "${argv[*]:0:4}" = "exec --json --dangerously-bypass-approvals-and-sandbox --output-last-message" ] &&
+   [ "${argv[*]:5}" = "-- plain turn" ]; then
+  echo "ok   without mcp_servers a turn's argv is unchanged"
+else
+  printf 'FAIL without mcp_servers the argv changed: %s\n' "$(printf '%q ' "${argv[@]}")" >&2
+  fail=1
+fi
 kill "$worker_pid" 2>/dev/null || true
 wait "$worker_pid" 2>/dev/null || true
 worker_pid=""
