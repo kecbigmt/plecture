@@ -15,6 +15,7 @@ repository checkout may not declare one.
 | `unix_socket` | Dial `path`, write `body` as one framed message. |
 | `exec` | Run an exec action. |
 | `shell` | Run a shell action. |
+| `inbox` | Hand the event to the session inbox. Core runs nothing. |
 
 <!-- fixture: channels/unix-socket.toml -->
 ```toml
@@ -56,6 +57,16 @@ capture   = { terminal = "capture" }
 message   = { expr = "'[' + event.type + '] ' + (event.body != '' ? event.body : event.summary)" }
 ```
 
+An `inbox` channel declares no delivery of its own: the runtime the workflow
+launches takes the events from the [session inbox](#session-inbox).
+
+<!-- fixture: channels/inbox.toml -->
+```toml
+[runtime_inbox]
+kind = "channel"
+type = "inbox"
+```
+
 ## Selecting events
 
 A channel definition only fixes delivery; a workflow's own
@@ -82,6 +93,31 @@ recording the failure of relaying another `plect.channel.error` is never
 delivered to any channel, so two channels erroring at each other cannot
 ping-pong.
 
+## Session inbox
+
+A session has one inbox. It holds, in core storage, a reference to every event
+its `inbox` binding selected and its runtime has not acknowledged. All events
+one delivery pass selects enter together.
+
+`plect inbox take <session>` returns the pending events as one batch: a JSON
+object with `batch` (the id to acknowledge), `deliveries` (how often the batch
+has been handed out), and `events` in log order, with superseded events left
+out ([`events.md`](events.md#supersession)). `--wait <duration>` blocks until
+an event is pending or the duration passes. With nothing pending the command
+prints nothing and succeeds.
+
+`plect inbox ack <session> <batch>` removes the batch's events from the inbox,
+the omitted ones included. It fails for a batch that is not outstanding.
+
+- A take claims every event pending at that moment. Events that arrive later
+  form the next batch.
+- Until a batch is acknowledged, a take returns the same batch again, with the
+  same id and events, and counts one more delivery. A runtime that stops
+  between take and acknowledge receives the batch again when it restarts.
+- A batch delivered three times without an acknowledgement is parked by the
+  next take: one `plect.channel.error` per returned event names the binding,
+  the events leave the inbox, and the take returns the following batch.
+
 ## Parameters
 
 `[<id>.input_schema]` declares the channel's parameters per key: a `type`, a
@@ -99,7 +135,9 @@ policy.
 
 ## Validation rules
 
-- `type` is `unix_socket`, `exec`, or `shell`.
+- `type` is `unix_socket`, `exec`, `shell`, or `inbox`.
+- An `inbox` channel declares `kind` and `type` only.
+- A workflow binds at most one `inbox` channel.
 - A `unix_socket` channel declares `path` and `body`, and no process fields.
 - An `exec` channel declares exactly one of `bin` and `command`.
 - A `shell` channel declares `script`, containing no interpolation.

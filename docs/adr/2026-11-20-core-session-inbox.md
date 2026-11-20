@@ -45,7 +45,7 @@ that log, kept where core cannot see it.
 
 ## Decision
 
-![The session dispatcher reads the event log past its delivery position and omits events that another pending event supersedes. Push bindings receive one delivery per retained event; the inbox binding receives a row in the core inbox_entries table. A headless worker takes the pending rows as one batch and acknowledges it after the turn; a batch taken again after a crash is the same batch, and a batch delivered three times without acknowledgement is parked with plect.channel.error. Plugin file queues and their batch script copies are superseded, as is the resume notice's priority. A byte-identity check over consumer copies, a position per consumer, take and acknowledge for push bindings, and an explicit failure report are rejected; a batch value for push channels is deferred.](assets/2026-11-20-core-session-inbox-decision.svg)
+![The session dispatcher reads the event log past its delivery position and gives each binding the events its include selects. Push bindings receive one delivery per retained event, with superseded pending events omitted; the inbox binding receives one row per selected event in the core inbox_entries table. A headless worker takes the pending rows as one batch, in which superseded events are omitted, and acknowledges it after the turn; a batch taken again after a crash is the same batch, and a batch delivered three times without acknowledgement is parked with plect.channel.error. Plugin file queues and their batch script copies are superseded, as is the resume notice's priority. A byte-identity check over consumer copies, a position per consumer, take and acknowledge for push bindings, and an explicit failure report are rejected; a batch value for push channels is deferred.](assets/2026-11-20-core-session-inbox-decision.svg)
 
 ### The inbox
 
@@ -59,7 +59,9 @@ Events enter the inbox through a channel primitive, `type = "inbox"`. A
 workflow binds it like any other channel, and the binding's `include` selects
 what the runtime receives. The primitive has no action: for a matching event
 the dispatcher inserts the entry instead of running a process or dialing a
-socket. A workflow binds at most one channel of this type.
+socket. Every event one delivery pass selects enters in one transaction, so a
+take sees the events that accumulated while a session was down together or
+not at all. A workflow binds at most one channel of this type.
 
 ```toml
 [runtime_inbox]
@@ -101,7 +103,7 @@ For a `unix_socket`, `exec` or `shell` binding the dispatcher is the
 consumer. Its pending events are the log past the session's delivery
 position, and its acknowledgement is the outcome of the delivery attempt,
 which advances that position as it does today. Before delivering, the
-dispatcher omits, per binding, every pending event that another pending event
+dispatcher omits, per push binding, every pending event that another pending event
 selected by the same binding supersedes. It evaluates this at every drain, so
 events that accumulated while the session was down, asleep, or held for
 repair are judged together.

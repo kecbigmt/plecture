@@ -1,34 +1,31 @@
 #!/usr/bin/env bash
-# Headless Claude Code runtime worker: the sole consumer of a session's
-# queue directory. Runs as an ordinary child of the pane's shell (not
-# exec'd), so a stuck worker can be terminated by its own pid without ending
-# the pane's root process — `claude -p` has no input box to wedge, so this
-# needs no TUI-boot detection.
+# Headless Claude Code runtime worker: the consumer of its session's inbox.
+# Runs as an ordinary child of the pane's shell (not exec'd), so a stuck
+# worker can be terminated by its own pid without ending the pane's root
+# process — `claude -p` has no input box to wedge, so this needs no TUI-boot
+# detection.
 #
-# Turns are drained strictly serially (one `claude -p` at a time) so a kick
-# arriving mid-turn queues instead of racing the running one. Every turn
-# runs under the one session id setup handed this worker: the first with
-# --session-id, every later one with --resume.
+# Each pass takes one batch from the session inbox and runs one `claude -p`
+# for it, so an event arriving mid-turn waits for the next batch instead of
+# racing the running one. Every turn runs under the one session id setup
+# handed this worker: the first with --session-id, every later one with
+# --resume.
 #
-# With a socket path and PLECT_CLAUDE_CHANNEL_SERVER_BIN, the worker also
-# keeps a channel-server queue bridge listening there, so an adapter that
-# speaks the channel-server protocol reaches this queue the same way it would
-# reach an interactive session.
+# Core owns what is pending, which events a batch holds, and when a batch is
+# given up; this worker keeps only the reply of the batch it is working on.
 #
-# Usage: claude-headless-worker <queue_dir> <state_dir> <session_id> <mcp_config> <hooks_settings> [socket_path]
+# Usage: claude-headless-worker <state_dir> <session_id> <mcp_config> <hooks_settings>
 
 set -u
 
-queue_dir="${1:?queue_dir required}"
-state_dir="${2:?state_dir required}"
-session_id="${3:?session_id required}"
-mcp_config="${4:?mcp_config required}"
-hooks_settings="${5:?hooks_settings required}"
-socket_path="${6-}"
-bridge_bin="${PLECT_CLAUDE_CHANNEL_SERVER_BIN-}"
+state_dir="${1:?state_dir required}"
+session_id="${2:?session_id required}"
+mcp_config="${3:?mcp_config required}"
+hooks_settings="${4:?hooks_settings required}"
+: "${PLECT_SESSION_NAME:?PLECT_SESSION_NAME required}"
 activity_bin="$(dirname "$0")/claude-agent-activity"
 
-mkdir -p "$queue_dir" "$state_dir/log"
+mkdir -p "$state_dir/log"
 
 # comm is always "bash" for a script run this way, so this is the only way
 # the owning effect's setup can identify (and later terminate) this worker.
@@ -39,10 +36,8 @@ printf '%s' "$$" > "$state_dir/worker.pid"
 # from cleanup would otherwise kill only this worker and leave the turn
 # running — and spending — with nothing left to stop it.
 child=""
-bridge=""
 terminate() {
     [ -n "$child" ] && kill -TERM "$child" 2>/dev/null
-    [ -n "$bridge" ] && kill -TERM "$bridge" 2>/dev/null
     exit 143
 }
 trap terminate TERM INT HUP
@@ -51,40 +46,6 @@ extra_args=()
 [ -n "${PLECT_CLAUDE_MODEL:-}" ] && extra_args+=(--model "$PLECT_CLAUDE_MODEL")
 [ -n "${PLECT_CLAUDE_EFFORT:-}" ] && extra_args+=(--effort "$PLECT_CLAUDE_EFFORT")
 [ -n "${PLECT_CLAUDE_PERMISSION_MODE:-}" ] && extra_args+=(--permission-mode "$PLECT_CLAUDE_PERMISSION_MODE")
-
-# The stale socket is removed first so the wait below cannot mistake a
-# previous run's leftover file for this bridge being up.
-start_bridge() {
-    rm -f "$socket_path"
-    "$bridge_bin" queue --socket "$socket_path" --queue-dir "$queue_dir" >> "$state_dir/log/bridge.log" 2>&1 &
-    bridge=$!
-    local _
-    for _ in $(seq 1 100); do
-        [ -e "$socket_path" ] && return 0
-        kill -0 "$bridge" 2>/dev/null || return 1
-        sleep 0.1
-    done
-    return 1
-}
-
-# Checked while a turn runs too, not only between turns: an adapter dialing
-# a dead bridge mid-turn would otherwise lose its message for the whole turn.
-ensure_bridge() {
-    [ -n "$bridge" ] || return 0
-    kill -0 "$bridge" 2>/dev/null && return 0
-    echo "channel-server queue bridge exited; relaunching" >> "$state_dir/log/bridge.log"
-    start_bridge || true
-}
-
-# A bridge that never comes up fails the launch rather than leaving setup to
-# report a socket no adapter can dial.
-if [ -n "$socket_path" ] && [ -n "$bridge_bin" ]; then
-    if ! start_bridge; then
-        echo "channel-server queue bridge did not listen on $socket_path" >&2
-        kill -TERM "$bridge" 2>/dev/null
-        exit 1
-    fi
-fi
 
 # Marks the worker loop as reachable before the first turn ever runs; the
 # owning effect's setup polls this file instead of a TUI-readiness heuristic.
@@ -100,7 +61,6 @@ write_health() {
 }
 
 tick_session() {
-    [ -n "${PLECT_SESSION_NAME:-}" ] || return 0
     plect tick "$PLECT_SESSION_NAME" >/dev/null 2>&1 || true
 }
 
@@ -123,83 +83,125 @@ run_claude() {
         claude "$@" &
     fi
     child=$!
-    while kill -0 "$child" 2>/dev/null; do
-        ensure_bridge
-        sleep 1
-    done
     wait "$child"
     local status=$?
     child=""
     return "$status"
 }
 
-source "$(dirname "$0")/headless-batch.sh"
+# take_batch waits on the take in the background for the reason run_claude
+# does: a TERM must reach this worker while it is idle too.
+take_batch() {
+    plect inbox take "$PLECT_SESSION_NAME" --wait 20s > "$state_dir/.batch.json" 2>> "$state_dir/log/inbox.err" &
+    child=$!
+    wait "$child"
+    local status=$?
+    child=""
+    return "$status"
+}
+
+# render_batch prints the prompt for one batch. message_envelope is a format
+# string filled by literal replacement, never evaluated, so it chooses the
+# message's shape and nothing else.
+render_batch() {
+    local envelope='[{type}] {body_or_summary}{url_suffix}'
+    [ -f "$state_dir/message_envelope" ] && envelope="$(cat "$state_dir/message_envelope")"
+    jq -rj --arg envelope "$envelope" '
+      def put($name; $value): split("{" + $name + "}") | join($value);
+      def fill:
+        (.body // "") as $body | (.summary // "") as $summary | (.metadata.url // "") as $url
+        | (.type // "") as $type
+        | $envelope
+        | put("type"; $type)
+        | put("body_or_summary"; if $body != "" then $body else $summary end)
+        | put("body"; $body)
+        | put("summary"; $summary)
+        | put("url_suffix"; if $url != "" then " (" + $url + ")" else "" end)
+        | put("url"; $url);
+      "Consider and answer every numbered entry in this batch in one turn. Reply once after considering all entries.\n\n"
+      + ([.events | to_entries[]
+          | "[\(.key + 1)] id=\(.value.id) type=\(.value.type) source=\(.value.source // "")\n"
+            + (.value | fill) + "\n\n"] | join(""))
+    ' "$state_dir/.batch.json"
+}
+
 while true; do
-    if batch_claim "$queue_dir" && batch_render "$queue_dir"; then
-        if [ ! -s "$queue_dir/.inflight/input" ]; then
-            batch_ack "$queue_dir"
-            continue
-        fi
-        event_type="batch"
-        text="$(cat "$queue_dir/.inflight/input"; printf '\001')"
+    if ! take_batch; then
+        sleep 2
+        continue
+    fi
+    [ -s "$state_dir/.batch.json" ] || continue
+    batch_id="$(jq -r '.batch // empty' "$state_dir/.batch.json")"
+    deliveries="$(jq -r '.deliveries // 1' "$state_dir/.batch.json")"
+    if [ -z "$batch_id" ]; then
+        echo "inbox take returned no batch id" >&2
+        sleep 2
+        continue
+    fi
+    event_type="batch"
+    reply_payload="$state_dir/reply-$batch_id.json"
+    reply_marker="$state_dir/reply-$batch_id.published"
+    # A reply kept for any other batch belongs to one core has since parked.
+    for stale in "$state_dir"/reply-*; do
+        case "$stale" in "$reply_payload"|"$reply_marker") ;; *) rm -f "$stale" ;; esac
+    done
+
+    case "$deliveries" in ''|*[!0-9]*) deliveries=1 ;; esac
+    [ "$deliveries" -gt 1 ] && sleep "$(((deliveries - 1) * 2))"
+
+    # Retried here rather than by taking again: a failed status write says
+    # nothing about the batch and must not use up one of its deliveries.
+    until plect state set-message "$PLECT_SESSION_NAME" "working" >/dev/null 2>&1; do
+        echo "working status write failed; holding the batch" >&2
+        write_health 1 "$event_type"
+        sleep 1
+    done
+    write_health 0 "$event_type"
+
+    if [ ! -f "$reply_payload" ]; then
+        text="$(render_batch; printf '\001')" || { write_health 1 "$event_type"; continue; }
         text="${text%$'\001'}"
-        reply_marker="$queue_dir/.inflight/reply-published"
-        completed_marker="$queue_dir/.inflight/agent-completed"
-        reply_payload="$queue_dir/.inflight/reply.json"
-        if [ -f "$reply_marker" ]; then
-            batch_ack "$queue_dir"
-            tick_session
-            continue
-        fi
-        batch_wait_retry "$queue_dir"
+        # A failed turn may still report a conversation id, so its next
+        # invocation must resume that id rather than start a new one.
+        session_arg=(--session-id "$session_id")
+        [ "$(cat "$state_dir/started" 2>/dev/null)" = "$session_id" ] && session_arg=(--resume "$session_id")
 
-        if [ -n "${PLECT_SESSION_NAME:-}" ] && ! plect state set-message "$PLECT_SESSION_NAME" "working" >/dev/null 2>&1; then
-            echo "working status write failed; leaving turn queued" >&2
-            write_health 1 "$event_type"
-            sleep 1
-            continue
-        fi
-        write_health 0 "$event_type"
+        log_base="$state_dir/log/$(date +%s%N)"
+        export PLECT_BATCH_ID="$batch_id"
+        export PLECT_BATCH_REPLY_PAYLOAD="$reply_payload"
+        run_claude -p --output-format json \
+            "${session_arg[@]}" \
+            --mcp-config "$mcp_config" \
+            --settings "$hooks_settings" \
+            --disallowedTools AskUserQuestion \
+            ${extra_args[@]+"${extra_args[@]}"} \
+            -- "$text" > "$log_base.json" 2> "$log_base.err" < /dev/null
+        exit_code=$?
+        unset PLECT_BATCH_ID PLECT_BATCH_REPLY_PAYLOAD
 
-        if [ ! -f "$completed_marker" ]; then
+        jq -e '.session_id // empty' "$log_base.json" >/dev/null 2>&1 && printf '%s' "$session_id" > "$state_dir/started"
+        if [ "$exit_code" -ne 0 ] || [ ! -f "$reply_payload" ]; then
             rm -f "$reply_payload"
-            # A failed turn may still report a conversation id, so its next
-            # invocation must resume that id rather than start a new one.
-            session_arg=(--session-id "$session_id")
-            [ "$(cat "$state_dir/started" 2>/dev/null)" = "$session_id" ] && session_arg=(--resume "$session_id")
-
-            log_base="$state_dir/log/$(date +%s%N)"
-            export PLECT_BATCH_ID="$(cat "$queue_dir/.inflight/batch-id")"
-            export PLECT_BATCH_REPLY_PAYLOAD="$reply_payload"
-            run_claude -p --output-format json \
-                "${session_arg[@]}" \
-                --mcp-config "$mcp_config" \
-                --settings "$hooks_settings" \
-                --disallowedTools AskUserQuestion \
-                ${extra_args[@]+"${extra_args[@]}"} \
-                -- "$text" > "$log_base.json" 2> "$log_base.err" < /dev/null
-            exit_code=$?
-            unset PLECT_BATCH_ID PLECT_BATCH_REPLY_PAYLOAD
-
-            jq -e '.session_id // empty' "$log_base.json" >/dev/null 2>&1 && printf '%s' "$session_id" > "$state_dir/started"
-            if [ "$exit_code" -ne 0 ] || [ ! -f "$reply_payload" ]; then
-                write_health 1 "$event_type"
-                batch_failed "$queue_dir" agent || sleep 2
-                continue
-            fi
-            touch "$completed_marker" || { write_health 1 "$event_type"; sleep 2; continue; }
-        fi
-
-        batch_id="$(cat "$queue_dir/.inflight/batch-id")"
-        if { [ "${PLECT_CLAUDE_REPORT_REPLY:-true}" != true ] || PLECT_BATCH_ID="$batch_id" PLECT_BATCH_REPLY_MARKER="$reply_marker" "$activity_bin" reply < "$reply_payload"; } && touch "$reply_marker"; then
-            write_health 0 "$event_type"
-            batch_ack "$queue_dir"
-            tick_session
-        else
             write_health 1 "$event_type"
-            batch_failed "$queue_dir" reply || sleep 2
+            continue
         fi
     fi
-    ensure_bridge
-    sleep 1
+
+    if [ ! -f "$reply_marker" ]; then
+        if { [ "${PLECT_CLAUDE_REPORT_REPLY:-true}" != true ] || PLECT_BATCH_ID="$batch_id" PLECT_BATCH_REPLY_MARKER="$reply_marker" "$activity_bin" reply < "$reply_payload"; } && touch "$reply_marker"; then
+            :
+        else
+            write_health 1 "$event_type"
+            continue
+        fi
+    fi
+
+    if plect inbox ack "$PLECT_SESSION_NAME" "$batch_id" >/dev/null 2>> "$state_dir/log/inbox.err"; then
+        write_health 0 "$event_type"
+        rm -f "$reply_payload" "$reply_marker"
+        tick_session
+    else
+        write_health 1 "$event_type"
+        sleep 2
+    fi
 done

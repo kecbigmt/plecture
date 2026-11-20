@@ -88,7 +88,7 @@ alive
 == exec_runtime:launch-timeout-then-retry-succeeds / setup
 call[0]: "codex-agent-activity" "reset" "acme/widget-1"
 call[1]: "terminal-pid"
-call[2]: "terminal-send_text" "export PLECT_SESSION_NAME=acme/widget-1; export PLECT_AGENT_ACTIVITY_BIN='<plugin>/scripts/codex-agent-activity'; export PLECT_TEST_NEVER_READY='1'; export CODEX_PUBLISH_MESSAGE=true; <plugin>/scripts/codex-exec-worker '<state>/plect-codex-exec/acme/widget-1/queue' '<state>/plect-codex-exec/acme/widget-1'"
+call[2]: "terminal-send_text" "export PLECT_SESSION_NAME=acme/widget-1; export PLECT_AGENT_ACTIVITY_BIN='<plugin>/scripts/codex-agent-activity'; export PLECT_TEST_NEVER_READY='1'; export CODEX_PUBLISH_MESSAGE=true; <plugin>/scripts/codex-exec-worker '<state>/plect-codex-exec/acme/widget-1'"
 call[3]: "terminal-send_keys" "Enter"
 call[4]: "ps" "-o" "ppid=" "-p" "<pid>"
 call[5]: "ps" "-o" "ppid=" "-p" "<pid>"
@@ -98,15 +98,15 @@ declined: task "exec_runtime" setup: exit status 1
 == exec_runtime:launch-timeout-then-retry-succeeds / setup (retry)
 call[0]: "codex-agent-activity" "reset" "acme/widget-1"
 call[1]: "terminal-pid"
-call[2]: "terminal-send_text" "export PLECT_SESSION_NAME=acme/widget-1; export PLECT_AGENT_ACTIVITY_BIN='<plugin>/scripts/codex-agent-activity'; export PLECT_TEAM_CONTEXT='acme'; export PATH=/spy/guard:$PATH; export CODEX_MODEL='gpt-5.6-sol'; export CODEX_MODEL_REASONING_EFFORT='high'; export CODEX_PUBLISH_MESSAGE=true; <plugin>/scripts/codex-exec-worker '<state>/plect-codex-exec/acme/widget-1/queue' '<state>/plect-codex-exec/acme/widget-1'"
+call[2]: "terminal-send_text" "export PLECT_SESSION_NAME=acme/widget-1; export PLECT_AGENT_ACTIVITY_BIN='<plugin>/scripts/codex-agent-activity'; export PLECT_TEAM_CONTEXT='acme'; export PATH=/spy/guard:$PATH; export CODEX_MODEL='gpt-5.6-sol'; export CODEX_MODEL_REASONING_EFFORT='high'; export CODEX_PUBLISH_MESSAGE=true; <plugin>/scripts/codex-exec-worker '<state>/plect-codex-exec/acme/widget-1'"
 call[3]: "terminal-send_keys" "Enter"
 call[4]: "ps" "-o" "ppid=" "-p" "<pid>"
-outputs: {"pid":<pid>,"queue_dir":"<state>/plect-codex-exec/acme/widget-1/queue","state_dir":"<state>/plect-codex-exec/acme/widget-1"}
+outputs: {"pid":<pid>,"state_dir":"<state>/plect-codex-exec/acme/widget-1"}
 
 == exec_runtime:poisoned-pidfile-kills-real-worker / setup
 call[0]: "codex-agent-activity" "reset" "acme/widget-1"
 call[1]: "terminal-pid"
-call[2]: "terminal-send_text" "export PLECT_SESSION_NAME=acme/widget-1; export PLECT_AGENT_ACTIVITY_BIN='<plugin>/scripts/codex-agent-activity'; export PLECT_TEST_POISON_PID='1'; export CODEX_PUBLISH_MESSAGE=true; <plugin>/scripts/codex-exec-worker '<state>/plect-codex-exec/acme/widget-1/queue' '<state>/plect-codex-exec/acme/widget-1'"
+call[2]: "terminal-send_text" "export PLECT_SESSION_NAME=acme/widget-1; export PLECT_AGENT_ACTIVITY_BIN='<plugin>/scripts/codex-agent-activity'; export PLECT_TEST_POISON_PID='1'; export CODEX_PUBLISH_MESSAGE=true; <plugin>/scripts/codex-exec-worker '<state>/plect-codex-exec/acme/widget-1'"
 call[3]: "terminal-send_keys" "Enter"
 call[4]: "ps" "-o" "ppid=" "-p" "<pid>"
 call[5]: "ps" "-o" "ppid=" "-p" "<pid>"
@@ -118,7 +118,7 @@ declined: task "exec_runtime" setup: exit status 1
 == exec_runtime:no-pid-report-kills-real-worker / setup
 call[0]: "codex-agent-activity" "reset" "acme/widget-1"
 call[1]: "terminal-pid"
-call[2]: "terminal-send_text" "export PLECT_SESSION_NAME=acme/widget-1; export PLECT_AGENT_ACTIVITY_BIN='<plugin>/scripts/codex-agent-activity'; export PLECT_TEST_NO_PID_REPORT='1'; export CODEX_PUBLISH_MESSAGE=true; <plugin>/scripts/codex-exec-worker '<state>/plect-codex-exec/acme/widget-1/queue' '<state>/plect-codex-exec/acme/widget-1'"
+call[2]: "terminal-send_text" "export PLECT_SESSION_NAME=acme/widget-1; export PLECT_AGENT_ACTIVITY_BIN='<plugin>/scripts/codex-agent-activity'; export PLECT_TEST_NO_PID_REPORT='1'; export CODEX_PUBLISH_MESSAGE=true; <plugin>/scripts/codex-exec-worker '<state>/plect-codex-exec/acme/widget-1'"
 call[3]: "terminal-send_keys" "Enter"
 call[4]: "pgrep" "-P" "<pid>"
 call[5]: "ps" "-o" "ppid=" "-p" "<pid>"
@@ -128,10 +128,10 @@ declined: task "exec_runtime" setup: exit status 1
 == exec_runtime:launch-succeeds-then-output-fails-kills-worker / setup
 call[0]: "codex-agent-activity" "reset" "acme/widget-1"
 call[1]: "terminal-pid"
-call[2]: "terminal-send_text" "export PLECT_SESSION_NAME=acme/widget-1; export PLECT_AGENT_ACTIVITY_BIN='<plugin>/scripts/codex-agent-activity'; export CODEX_PUBLISH_MESSAGE=true; <plugin>/scripts/codex-exec-worker '<state>/plect-codex-exec/acme/widget-1/queue' '<state>/plect-codex-exec/acme/widget-1'"
+call[2]: "terminal-send_text" "export PLECT_SESSION_NAME=acme/widget-1; export PLECT_AGENT_ACTIVITY_BIN='<plugin>/scripts/codex-agent-activity'; export CODEX_PUBLISH_MESSAGE=true; <plugin>/scripts/codex-exec-worker '<state>/plect-codex-exec/acme/widget-1'"
 call[3]: "terminal-send_keys" "Enter"
 call[4]: "ps" "-o" "ppid=" "-p" "<pid>"
-call[5]: "jq" "-nc" "--argjson" "pid" "<pid>" "--arg" "queue_dir" "<state>/plect-codex-exec/acme/widget-1/queue" "--arg" "state_dir" "<state>/plect-codex-exec/acme/widget-1" "{pid:$pid, queue_dir:$queue_dir, state_dir:$state_dir}"
+call[5]: "jq" "-nc" "--argjson" "pid" "<pid>" "--arg" "state_dir" "<state>/plect-codex-exec/acme/widget-1" "{pid:$pid, state_dir:$state_dir}"
 call[6]: "ps" "-o" "ppid=" "-p" "<pid>"
 call[7]: "ps" "-o" "ppid=" "-p" "<pid>"
 declined: task "exec_runtime" setup: exit status 1
@@ -140,10 +140,10 @@ declined: task "exec_runtime" setup: exit status 1
 call[0]: "codex-agent-activity" "reset" "acme/widget-1"
 call[1]: "codex-mcp-servers"
 call[2]: "terminal-pid"
-call[3]: "terminal-send_text" "export PLECT_SESSION_NAME=acme/widget-1; export PLECT_AGENT_ACTIVITY_BIN='<plugin>/scripts/codex-agent-activity'; export CODEX_PUBLISH_MESSAGE=true; <plugin>/scripts/codex-exec-worker '<state>/plect-codex-exec/acme/widget-1/queue' '<state>/plect-codex-exec/acme/widget-1'"
+call[3]: "terminal-send_text" "export PLECT_SESSION_NAME=acme/widget-1; export PLECT_AGENT_ACTIVITY_BIN='<plugin>/scripts/codex-agent-activity'; export CODEX_PUBLISH_MESSAGE=true; <plugin>/scripts/codex-exec-worker '<state>/plect-codex-exec/acme/widget-1'"
 call[4]: "terminal-send_keys" "Enter"
 call[5]: "ps" "-o" "ppid=" "-p" "<pid>"
-outputs: {"pid":<pid>,"queue_dir":"<state>/plect-codex-exec/acme/widget-1/queue","state_dir":"<state>/plect-codex-exec/acme/widget-1"}
+outputs: {"pid":<pid>,"state_dir":"<state>/plect-codex-exec/acme/widget-1"}
 artifact state_dir/mcp_overrides.json:
 {"received":[{"name":"kbn","command":"kbn-mcp","args":["--scoped"]}]}
 

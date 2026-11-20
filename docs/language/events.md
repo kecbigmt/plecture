@@ -9,20 +9,22 @@ documents the core, provider-neutral vocabulary those globs can name.
 ## Supersession
 
 An event may set the top-level `supersedes` field to the ID of an earlier
-event in the same session. Both events remain in the durable log. An inbound
-queue omits an event from a pending turn only when another entry pending for
-that turn names its ID in `supersedes`. The newest pending event in a chain
-is retained. If the naming event is absent, the older entry is delivered.
-Consumers decide this from event IDs and references alone; type, source,
-metadata, and message text do not change the rule.
+event in the same session. Both events remain in the durable log. A consumer
+does not receive a pending event when another event pending for the same
+consumer names its ID in `supersedes`. The newest pending event in a chain
+is retained. If the naming event is not pending, the older event is
+delivered. The decision reads event IDs and references alone; type, source,
+metadata, and message text do not change it.
 
-Headless runtimes take all entries pending at the turn boundary, preserve queue
-order, and present the retained entries together in one agent turn. Events
-arriving during that turn wait for the next one. A failed invocation retries
-the same batch twice with increasing delay, then parks it and processes newer
-entries. If the agent completes but reply publication fails, the runtime keeps
-the reply and retries publication without invoking the agent again. Repeated
-publication failures also park the batch after two retries.
+What is pending is defined per consumer:
+
+- For a `unix_socket`, `exec`, or `shell` channel binding, the events past the
+  session's delivery position that the binding selects. The set is judged at
+  every delivery pass, so events that accumulated while the session was down,
+  asleep, or held for repair are judged together. Each retained event is one
+  delivery, in log order.
+- For the session inbox, the entries of the batch a take claims
+  ([`channels.md`](channels.md#session-inbox)).
 
 ## Session resume instructions
 

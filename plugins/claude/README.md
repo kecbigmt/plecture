@@ -2,7 +2,7 @@
 
 Claude Code launch task, initial-prompt submit/readiness composition,
 structured delivery via the channel-server daemon, and the headless
-`claude -p` worker/enqueue pair. Split out of the former
+`claude -p` worker. Split out of the former
 `session/runtime` plugin per `docs/design/plugin-boundary-contracts.md`;
 `gh-guard` moved to the `github` plugin, and `tmux` is a separate,
 independently selectable plugin this one composes through `{ terminal = "..." }` — never a direct dependency.
@@ -29,16 +29,14 @@ independently selectable plugin this one composes through `{ terminal = "..." }`
   Claude Code process over its channel-server Unix socket.
 - `config/tasks/headless_runtime.toml` + `config/channels/headless_delivery.toml`
   — the headless shape: starts `claude-headless-worker` via
-  `{ terminal = "..." }` instead of the interactive TUI, which drains a
-  per-session queue directory serially into `claude -p` (`--session-id` on
-  the first turn, `--resume` after). A later event is delivered by
-  appending to that queue (`claude-headless-enqueue`) rather than through
-  channel-server, so there is no input box to wedge and no long-lived
+  `{ terminal = "..." }` instead of the interactive TUI. The worker takes
+  one batch at a time from the session inbox and runs it as one `claude -p`
+  (`--session-id` on the first turn, `--resume` after). `headless_delivery`
+  is an `inbox` channel: core holds the events it selects until the worker
+  acknowledges them, so there is no input box to wedge and no long-lived
   process to push into. See Headless Runtime below.
-- `scripts/claude-headless-worker`, `scripts/claude-headless-enqueue` — the
-  worker `headless_runtime` launches and the enqueue `headless_delivery`
-  runs, each resolved through `bin = "<name>"` so neither needs a `PATH`
-  entry of its own.
+- `scripts/claude-headless-worker` — the worker `headless_runtime` launches,
+  resolved through `bin = "<name>"` so it needs no `PATH` entry of its own.
 - `scripts/claude-mcp-servers` — the author-fixed serialization step behind the
   `runtime` and `headless_runtime` effects' `mcp_servers` parameter: it merges the declared registration
   records into the MCP config that task assembles, and fails the launch on a
@@ -52,9 +50,7 @@ independently selectable plugin this one composes through `{ terminal = "..." }`
   (`scripts/claude-agent-activity_selftest.sh`).
 - `src/channel-server/` — generic message delivery to Claude Code, with no
   knowledge of message sources (Slack or otherwise) and no reply tool of its
-  own (see Turn Reporting below). Its `queue` mode is the bridge
-  `headless_runtime` keeps on the same socket protocol. See
-  `src/channel-server/CLAUDE.md`.
+  own (see Turn Reporting below). See `src/channel-server/CLAUDE.md`.
 
 ## Turn Reporting
 
@@ -133,10 +129,9 @@ replacing them (the parameterization rung of
 | `tasks/runtime.toml` | `publish_events` | Array of core event names to publish (`"message"`, `"message_delta"`), without their `plect.` prefix. Default `["message"]`. See Turn Reporting above. |
 | `tasks/headless_runtime.toml` | `model`, `effort`, `permission_mode`, `launch_env`, `mcp_servers`, `path_prepend`, `launch_timeout` | As for `runtime`, applied to every `claude -p` turn rather than one launch line. `launch_timeout` bounds the wait for the worker's readiness, and `permission_mode` still defaults to `bypassPermissions`, since `-p` denies every tool call nothing is present to approve. |
 | `tasks/headless_runtime.toml` | `api_key_file` | Path to a file holding an Anthropic API key. The worker reads it on every turn and passes it to `claude -p` alone as `ANTHROPIC_API_KEY`; it never reaches the pane's keystrokes. Empty = the CLI's own authentication. An unreadable or empty file fails the turn rather than falling back to another login. |
-| `tasks/headless_runtime.toml` | `state_root` | Directory the worker's per-session queue and state live under. Empty = a temporary directory. |
+| `tasks/headless_runtime.toml` | `state_root` | Directory the worker's per-session state lives under. Empty = a temporary directory. |
 | `tasks/headless_runtime.toml` | `publish_events` | `["message"]` or `[]`. Default `["message"]`. |
-| `channels/headless_delivery.toml` | `enqueue_timeout` | Per-attempt delivery deadline. Default `5s`. |
-| `channels/headless_delivery.toml` | `message_envelope` | Format of the queued message. Placeholders: `{type}`, `{body}`, `{summary}`, `{body_or_summary}`, `{url}`, `{url_suffix}`. Default `[{type}] {body_or_summary}{url_suffix}`. |
+| `tasks/headless_runtime.toml` | `message_envelope` | Format of each event in a turn's prompt. Placeholders: `{type}`, `{body}`, `{summary}`, `{body_or_summary}`, `{url}`, `{url_suffix}`. Default `[{type}] {body_or_summary}{url_suffix}`. |
 
 These are set on the node or channel binding that selects the declaration, as
 values over the workflow surface's own roots. A user-owned workflow names a
@@ -189,10 +184,19 @@ state_root   = "/var/lib/plect/claude-headless"
 name    = "runtime"
 uses    = "official.claude.headless_delivery"
 include = ["plect.instruction", "user.emit"]
-
-[my_workflow.event.channel.inputs]
-queue_dir = { from = "nodes.agent.outputs.queue_dir" }
 ```
+
+- A turn's prompt holds every event pending when the worker took its batch,
+  numbered in log order; an event that another pending event supersedes is
+  left out. Events that arrive during the turn form the next batch.
+- A batch whose turn fails is delivered again, after two seconds per earlier
+  delivery. After three deliveries core parks the batch and records a
+  `plect.channel.error` for each of its events; the worker moves on to the
+  next batch. The worker keeps a finished turn's reply until the batch is
+  acknowledged, so a failed publication is retried without a second
+  `claude -p`.
+- A sender reaches this runtime by publishing an event to the session. The
+  runtime has no socket.
 
 - Without `api_key_file`, turns use whatever login the CLI finds. To bill a
   Console organization through a login rather than a key file, give the
@@ -203,14 +207,6 @@ queue_dir = { from = "nodes.agent.outputs.queue_dir" }
   `launch_env = '{"CLAUDE_CONFIG_DIR":"<dir>"}'` on the node. That
   directory also replaces the user-level settings and memory the CLI would
   otherwise load.
-- When `channel-server` is built, the worker also keeps a
-  `channel-server queue` bridge listening on the per-session socket the
-  interactive runtime would use, and setup reports it as `socket_path`.
-  Adapters that speak the channel-server protocol can reach the queue.
-  Each message becomes its own turn, wrapped in the same
-  `<channel source="channel-server" user="…" user_id="…" thread_ts="…">`
-  tag an interactive session shows. A bridge that exits is relaunched, and
-  stopping the worker stops it.
 - A print-mode turn never raises a permission request, so nothing is relayed
   for approval: a `y <id>` reply reaches the agent as ordinary text. Choose
   `permission_mode` (default `bypassPermissions`) with that in mind.

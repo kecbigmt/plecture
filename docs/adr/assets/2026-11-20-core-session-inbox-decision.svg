@@ -1,6 +1,6 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1000 878" width="1000" height="878" role="img" aria-labelledby="title desc">
   <title id="title">Decision: core owns the session inbox</title>
-  <desc id="desc">Chosen option: inside core, the session dispatcher reads the event log past the delivery position and omits pending events that another pending event supersedes. A push binding gets one delivery per retained event to its pane runtime. The inbox binding gets an entry row in the core table inbox_entries. A headless worker takes the pending rows as one batch (batch id, deliveries, events) and acknowledges the batch id after the turn; a batch taken again before acknowledgement is the same batch, and after three unacknowledged deliveries core parks it and appends plect.channel.error to the event log. Superseded: per-plugin queue files and batch script copies; and the idle-sleep ADR rule giving the resume notice priority. Deferred: a batch value for push channels. Rejected: a byte-identity check on consumer copies, a position per consumer, take and acknowledge for push bindings, acknowledging a pane delivery at turn end, counting reported failures, and a priority property for one event.</desc>
+  <desc id="desc">Chosen option: inside core, the session dispatcher reads the event log past the delivery position and gives each binding the pending events its include selects. A push binding gets one delivery per retained event to its pane runtime, with pending events that another pending event supersedes omitted. The inbox binding gets one row per selected event in the core table inbox_entries, all rows of one pass in one transaction. A headless worker takes the pending rows as one batch (batch id, deliveries, events), in which superseded events are omitted, and acknowledges the batch id after the turn; a batch taken again before acknowledgement is the same batch, and after three unacknowledged deliveries core parks it and appends plect.channel.error to the event log. Superseded: per-plugin queue files and batch script copies; and the idle-sleep ADR rule giving the resume notice priority. Deferred: a batch value for push channels. Rejected: a byte-identity check on consumer copies, a position per consumer, take and acknowledge for push bindings, acknowledging a pane delivery at turn end, counting reported failures, and a priority property for one event.</desc>
   <defs>
     <style>
       svg {
@@ -65,12 +65,12 @@
 
   <rect class="neutral" x="346" y="160" width="240" height="84" rx="6"/>
   <text class="name" x="362" y="188">session dispatcher</text>
-  <text class="note" x="362" y="208"><tspan x="362">omits a pending event that another</tspan><tspan x="362" dy="16">pending event supersedes</tspan></text>
+  <text class="note" x="362" y="208"><tspan x="362">gives each binding the pending</tspan><tspan x="362" dy="16">events its include selects</tspan></text>
 
   <rect class="chosen" x="346" y="306" width="240" height="88" rx="6"/>
   <text class="tag t-chosen" x="362" y="328">CHOSEN</text>
   <text class="name" x="362" y="348">inbox_entries</text>
-  <text class="note" x="362" y="368"><tspan x="362">one row per unprocessed event,</tspan><tspan x="362" dy="16">naming it by log sequence</tspan></text>
+  <text class="note" x="362" y="368"><tspan x="362">one row per unprocessed event;</tspan><tspan x="362" dy="16">a take omits superseded ones</tspan></text>
 
   <rect class="neutral" x="784" y="160" width="184" height="84" rx="6"/>
   <text class="name" x="800" y="190">pane runtime</text>
@@ -84,10 +84,11 @@
   <text class="label" x="285" y="180" text-anchor="middle"><tspan x="285">events past the</tspan><tspan x="285" dy="15">delivery position</tspan></text>
 
   <line class="flow" x1="586" y1="202" x2="782" y2="202"/>
-  <text class="label" x="694" y="180" text-anchor="middle"><tspan x="694">one delivery per</tspan><tspan x="694" dy="15">retained event</tspan></text>
+  <text class="label" x="684" y="180" text-anchor="middle"><tspan x="684">one delivery per</tspan><tspan x="684" dy="15">retained event</tspan></text>
+  <text class="note" x="684" y="222" text-anchor="middle"><tspan x="684">superseded pending</tspan><tspan x="684" dy="15">events omitted</tspan></text>
 
   <line class="flow" x1="466" y1="244" x2="466" y2="304"/>
-  <text class="label" x="478" y="270"><tspan x="478">entry row for the</tspan><tspan x="478" dy="15">inbox binding</tspan></text>
+  <text class="label" x="478" y="270"><tspan x="478">one row per event,</tspan><tspan x="478" dy="15">a pass together</tspan></text>
 
   <line class="flow" x1="586" y1="334" x2="782" y2="334"/>
   <text class="label" x="694" y="311" text-anchor="middle"><tspan x="694">take: batch id,</tspan><tspan x="694" dy="15">deliveries, events</tspan></text>
