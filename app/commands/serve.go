@@ -4,11 +4,14 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"log/slog"
+	"maps"
 	"net"
 	"net/http"
 	"os"
 	"os/signal"
 	"path/filepath"
+	"slices"
 	"sync"
 	"syscall"
 	"time"
@@ -149,12 +152,7 @@ restart, within one refresh interval.`,
 				return stateStore.ListSubscriptions("", "")
 			},
 			Queries: func(_ context.Context, decl pluginservice.Declaration) ([]pluginservice.QueryRegistration, error) {
-				cfg := live.Get()
-				defs, err := population.Load(cfg, projectRoot)
-				if err != nil {
-					return nil, err
-				}
-				return serviceQueryRegistrations(cfg, defs, decl)
+				return serviceQueries(live.Get(), projectRoot, decl, slog.Default())
 			},
 			Publish: func(_ context.Context, req pluginservice.PublishRequest) (map[string]string, error) {
 				return service.EventPublishResource(live.Get(), stateStore, req.Resource, service.EventPublishParams{
@@ -189,6 +187,36 @@ restart, within one refresh interval.`,
 		}
 		return nil
 	},
+}
+
+// A subscribe population runs its entry resource's query.subscribe
+// executable, so on a population load error only a service some resource
+// subscribes through has an unknown snapshot; unloadable resources hold all.
+func serviceQueries(cfg *config.Config, projectRoot string, decl pluginservice.Declaration, logger *slog.Logger) ([]pluginservice.QueryRegistration, error) {
+	defs, err := population.Load(cfg, projectRoot)
+	if err == nil {
+		var registrations []pluginservice.QueryRegistration
+		if registrations, err = serviceQueryRegistrations(cfg, defs, decl); err == nil {
+			return registrations, nil
+		}
+	}
+	populationErr := err
+	resources, err := cfg.LoadResourceDefs(projectRoot)
+	if err != nil {
+		return nil, fmt.Errorf("query snapshot unknown: resource definitions failed to load, so whether a subscribe population uses this service cannot be decided: %w (population configuration: %v)", err, populationErr)
+	}
+	for _, id := range slices.Sorted(maps.Keys(resources)) {
+		resource := resources[id]
+		if resource.Query == nil || resource.Query.Subscribe == nil || resource.Query.Subscribe.Bin == "" {
+			continue
+		}
+		bins := config.MountedBins{Mounted: cfg.Plugins, SourcePath: resource.SourcePath}
+		if path, resolveErr := bins.ResolveBin(resource.Query.Subscribe.Bin, resource.Ownership()); resolveErr == nil && path == decl.ExecPath {
+			return nil, fmt.Errorf("query snapshot unknown: resource %q subscribes through this service and the population configuration failed to load: %w", id, populationErr)
+		}
+	}
+	logger.Warn("population configuration failed to load; starting service with an empty query snapshot because no resource subscribes through it", "service", decl.ID, "error", populationErr)
+	return []pluginservice.QueryRegistration{}, nil
 }
 
 func serviceQueryRegistrations(cfg *config.Config, defs []population.Definition, decl pluginservice.Declaration) ([]pluginservice.QueryRegistration, error) {

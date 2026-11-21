@@ -1,0 +1,130 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1120 560" width="1120" height="560" role="img" aria-labelledby="title desc">
+  <title id="title">Change: a population load error holds only the services it can affect</title>
+  <desc id="desc">Head structure of resident service startup. population.Load, unchanged, hands definitions or a load error to the serve Queries hook. The hook is changed. When the load fails, it now also reads the resource definitions' query.subscribe executables over an added path. A service that no resource subscribes through gets an empty snapshot, and a warning goes to the resident log. Otherwise the hook returns a hold error to pluginservice runProcess. runProcess is changed. It now settles the snapshot before spawning the service, and logs an error that the service is held. The service process, unchanged, receives config, subscriptions and queries, but only after the snapshot exists. A removed ghost path shows the old behaviour: the service was spawned and then killed on a query error.</desc>
+  <defs>
+    <style>
+      svg {
+        --bg: #ffffff; --fg: #1f2328; --muted: #59636e;
+        --neutral: #8c959f; --neutral-bg: #f6f8fa;
+        --added: #1a7f37; --added-bg: #dafbe1;
+        --changed: #0969da; --changed-bg: #ddf4ff;
+        --removed: #cf222e; --removed-bg: #ffebe9;
+      }
+      @media (prefers-color-scheme: dark) {
+        svg {
+          --bg: #0d1117; --fg: #e6edf3; --muted: #9198a1;
+          --neutral: #656c76; --neutral-bg: #151b23;
+          --added: #3fb950; --added-bg: #0f2a1a;
+          --changed: #4493f8; --changed-bg: #0c2441;
+          --removed: #f85149; --removed-bg: #3a1416;
+        }
+      }
+      text { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Helvetica, Arial, sans-serif; font-size: 13px; fill: var(--fg); }
+      .bg { fill: var(--bg); }
+      .title { font-size: 18px; font-weight: 600; }
+      .name { font-weight: 600; }
+      .note { font-size: 12px; fill: var(--muted); }
+      .label { font-size: 12px; }
+      .tag { font-size: 11px; font-weight: 700; letter-spacing: 0.06em; }
+      .neutral { fill: var(--neutral-bg); stroke: var(--neutral); stroke-width: 1.5; }
+      .added { fill: var(--added-bg); stroke: var(--added); stroke-width: 3; }
+      .changed { fill: var(--changed-bg); stroke: var(--changed); stroke-width: 2; }
+      .removed { fill: var(--removed-bg); stroke: var(--removed); stroke-width: 1.5; stroke-dasharray: 8 4; }
+      .ghost { opacity: 0.65; }
+      .t-neutral { fill: var(--muted); }
+      .t-added { fill: var(--added); }
+      .t-changed { fill: var(--changed); }
+      .t-removed { fill: var(--removed); }
+      .flow { fill: none; stroke: var(--fg); stroke-width: 1.5; marker-end: url(#arrow); }
+      .flow-changed { fill: none; stroke: var(--changed); stroke-width: 2; marker-end: url(#arrow-changed); }
+      .flow-added { fill: none; stroke: var(--added); stroke-width: 3; marker-end: url(#arrow-added); }
+      .flow-removed { fill: none; stroke: var(--removed); stroke-width: 1.5; stroke-dasharray: 6 4; marker-end: url(#arrow-removed); }
+      .head { fill: var(--fg); }
+      .head-changed { fill: var(--changed); }
+      .head-added { fill: var(--added); }
+      .head-removed { fill: var(--removed); }
+    </style>
+    <marker id="arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path class="head" d="M0,0 L10,5 L0,10 z"/>
+    </marker>
+    <marker id="arrow-changed" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
+      <path class="head-changed" d="M0,0 L10,5 L0,10 z"/>
+    </marker>
+    <marker id="arrow-added" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="4" markerHeight="4" orient="auto-start-reverse">
+      <path class="head-added" d="M0,0 L10,5 L0,10 z"/>
+    </marker>
+    <marker id="arrow-removed" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path class="head-removed" d="M0,0 L10,5 L0,10 z"/>
+    </marker>
+  </defs>
+
+  <rect class="bg" x="0" y="0" width="1120" height="560"/>
+
+  <text class="title" x="24" y="38">Change: a population load error holds only the services it can affect</text>
+  <text class="note" x="24" y="60">PR #814 · resident service startup in plect serve · head structure with the diff marked on it</text>
+
+  <rect class="neutral" x="32" y="100" width="230" height="70" rx="6"/>
+  <text class="tag t-neutral" x="48" y="122">UNCHANGED</text>
+  <text class="name" x="48" y="141">population.Load</text>
+  <text class="note" x="48" y="158">workflows · populations</text>
+
+  <rect class="neutral" x="32" y="230" width="230" height="70" rx="6"/>
+  <text class="tag t-neutral" x="48" y="252">UNCHANGED</text>
+  <text class="name" x="48" y="271">Resource definitions</text>
+  <text class="note" x="48" y="288">cfg.LoadResourceDefs</text>
+
+  <rect class="changed" x="372" y="100" width="236" height="70" rx="6"/>
+  <text class="tag t-changed" x="388" y="122">CHANGED</text>
+  <text class="name" x="388" y="141">serve: Queries hook</text>
+  <text class="note" x="388" y="158">serviceQueries, per service</text>
+
+  <rect class="changed" x="738" y="100" width="190" height="70" rx="6"/>
+  <text class="tag t-changed" x="754" y="122">CHANGED</text>
+  <text class="name" x="754" y="141">runProcess</text>
+  <text class="note" x="754" y="158">pluginservice</text>
+
+  <rect class="neutral" x="372" y="380" width="236" height="70" rx="6"/>
+  <text class="tag t-neutral" x="388" y="402">UNCHANGED</text>
+  <text class="name" x="388" y="421">Resident log</text>
+  <text class="note" x="388" y="438">slog</text>
+
+  <rect class="neutral" x="738" y="380" width="190" height="70" rx="6"/>
+  <text class="tag t-neutral" x="754" y="402">UNCHANGED</text>
+  <text class="name" x="754" y="421">Service process</text>
+  <text class="note" x="754" y="438">plugin executable</text>
+
+  <line class="flow" x1="262" y1="135" x2="372" y2="135"/>
+  <text class="label" text-anchor="middle" x="317" y="112"><tspan x="317">definitions</tspan><tspan x="317" dy="15">or load error</tspan></text>
+
+  <path class="flow-added" d="M262,265 H440 V170"/>
+  <text class="label t-added" x="290" y="320"><tspan x="290" font-weight="600">ADDED · on load error</tspan><tspan x="290" dy="15">query.subscribe executables</tspan></text>
+
+  <line class="flow-changed" x1="608" y1="135" x2="738" y2="135"/>
+  <text class="label t-changed" text-anchor="middle" x="673" y="96"><tspan x="673" font-weight="600">CHANGED</tspan><tspan x="673" dy="15">snapshot,</tspan><tspan x="673" dy="15">or hold error</tspan></text>
+
+  <line class="flow-added" x1="540" y1="170" x2="540" y2="380"/>
+  <text class="label t-added" x="452" y="215"><tspan x="452" font-weight="600">ADDED</tspan><tspan x="452" dy="15">warn: empty</tspan><tspan x="452" dy="15">snapshot,</tspan><tspan x="452" dy="15">population error</tspan></text>
+
+  <path class="flow-added" d="M760,170 V300 H580 V380"/>
+  <text class="label t-added" x="602" y="230"><tspan x="602" font-weight="600">ADDED</tspan><tspan x="602" dy="15">error: service held,</tspan><tspan x="602" dy="15">not spawned</tspan></text>
+
+  <line class="flow-changed" x1="850" y1="170" x2="850" y2="380"/>
+  <text class="label t-changed" x="860" y="215"><tspan x="860" font-weight="600">CHANGED</tspan><tspan x="860" dy="15">spawn, then config,</tspan><tspan x="860" dy="15">subscriptions, queries</tspan><tspan x="860" dy="15">after the snapshot</tspan></text>
+
+  <g class="ghost">
+    <path class="flow-removed" d="M928,120 H1010 V430 H928"/>
+    <text class="label t-removed" x="1018" y="260"><tspan x="1018" font-weight="600">REMOVED</tspan><tspan x="1018" dy="15">spawned,</tspan><tspan x="1018" dy="15">then killed</tspan><tspan x="1018" dy="15">on query</tspan><tspan x="1018" dy="15">error</tspan></text>
+  </g>
+
+  <rect class="added" x="32" y="487" width="28" height="16" rx="3"/>
+  <text class="label" x="70" y="499">ADDED · thick solid</text>
+  <rect class="changed" x="264" y="487" width="28" height="16" rx="3"/>
+  <text class="label" x="302" y="499">CHANGED · solid blue</text>
+  <rect class="removed ghost" x="496" y="487" width="28" height="16" rx="3"/>
+  <text class="label" x="534" y="499">REMOVED · faded dashed ghost</text>
+  <rect class="neutral" x="752" y="487" width="28" height="16" rx="3"/>
+  <text class="label" x="790" y="499">UNCHANGED · grey</text>
+  <line class="flow" x1="32" y1="531" x2="58" y2="531"/>
+  <text class="label" x="70" y="535">arrow, labelled with what crosses it</text>
+  <text class="note" x="496" y="535">each state is named in text; colour only repeats it</text>
+</svg>

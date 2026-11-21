@@ -64,6 +64,19 @@ func runProcess(ctx context.Context, decl Declaration, logger *slog.Logger, wait
 	if len(protocols) > 0 {
 		protocol = protocols[0]
 	}
+	// The query snapshot is settled before the child exists, so a service
+	// whose coverage is unknown never runs, not even until it is killed.
+	var queries []QueryRegistration
+	if protocol != nil && protocol.Queries != nil {
+		var err error
+		if queries, err = protocol.Queries(ctx, decl); err != nil {
+			logger.Error("service held: its population query snapshot is unavailable", "service", decl.ID, "error", err)
+			return err
+		}
+		if queries == nil {
+			queries = []QueryRegistration{}
+		}
+	}
 	cmd := exec.CommandContext(ctx, decl.ExecPath, decl.Args...)
 	dataDir := filepath.Join(datahome.Resolve(), "plugins", decl.PluginID)
 	cacheRoot, err := cachehome.Resolve()
@@ -130,17 +143,7 @@ func runProcess(ctx context.Context, decl Declaration, logger *slog.Logger, wait
 			return err
 		}
 	}
-	var queries []QueryRegistration
-	if protocol != nil && protocol.Queries != nil {
-		queries, err = protocol.Queries(ctx, decl)
-		if err != nil {
-			_ = cmd.Process.Kill()
-			_ = cmd.Wait()
-			return err
-		}
-		if queries == nil {
-			queries = []QueryRegistration{}
-		}
+	if queries != nil {
 		if err := write(map[string]any{"op": "queries", "items": queries}); err != nil {
 			_ = cmd.Process.Kill()
 			_ = cmd.Wait()
