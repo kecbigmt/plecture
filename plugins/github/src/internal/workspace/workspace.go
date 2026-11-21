@@ -352,7 +352,7 @@ func (m *Manager) removeWorktree(ctx context.Context, gitDir, wtPath string, for
 		if registered {
 			// Normal case: directory exists and is registered
 			args := []string{"worktree", "remove"}
-			if force {
+			if force || m.isCleanForRemoval(ctx, wtPath) {
 				args = append(args, "--force")
 			}
 			args = append(args, wtPath)
@@ -378,6 +378,17 @@ func (m *Manager) removeWorktree(ctx context.Context, gitDir, wtPath string, for
 		_ = m.runGit(ctx, gitDir, "worktree", "prune")
 	}
 	return nil
+}
+
+// isCleanForRemoval is git's own `worktree remove` cleanliness check. Git
+// refuses even a clean worktree with submodules unless forced, and one
+// --force skips only that refusal and this check; a lock still needs two.
+// -c, unlike --untracked-files, also reaches the status git runs inside each
+// submodule, so no showUntrackedFiles=no can hide work the removal deletes.
+// Any failure reads as unclean so git's own refusal stays the answer.
+func (m *Manager) isCleanForRemoval(ctx context.Context, wtPath string) bool {
+	out, _, err := m.runnerOrDefault().Run(ctx, wtPath, false, "git", "-c", "status.showUntrackedFiles=normal", "status", "--porcelain", "--ignore-submodules=none")
+	return err == nil && strings.TrimSpace(string(out)) == ""
 }
 
 // isRegisteredWorktree reports whether wtPath is listed in `git worktree
