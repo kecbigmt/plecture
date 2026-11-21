@@ -1,0 +1,46 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 960 450" width="960" height="450" role="img" aria-labelledby="title desc">
+  <title id="title">Population member recreation after session destruction</title>
+  <desc id="desc">A destroy request reaches one persistence transaction that destroys the session row and tombstones its population member together. If either write fails, both roll back. A later successful poll reopens the member and admits a new session incarnation.</desc>
+  <defs>
+    <style>
+      svg { --bg:#fff; --fg:#1f2328; --muted:#59636e; --neutral:#8c959f; --neutral-bg:#f6f8fa; --added:#1a7f37; --added-bg:#dafbe1; --changed:#0969da; --changed-bg:#ddf4ff; }
+      @media (prefers-color-scheme:dark) { svg { --bg:#0d1117; --fg:#e6edf3; --muted:#9198a1; --neutral:#656c76; --neutral-bg:#151b23; --added:#3fb950; --added-bg:#0f2a1a; --changed:#4493f8; --changed-bg:#0c2441; } }
+      text { font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Helvetica,Arial,sans-serif; font-size:13px; fill:var(--fg); }
+      .bg { fill:var(--bg); } .title { font-size:18px; font-weight:600; } .name { font-weight:600; } .note { font-size:12px; fill:var(--muted); } .label { font-size:12px; }
+      .tag { font-size:11px; font-weight:700; letter-spacing:.06em; } .neutral { fill:var(--neutral-bg); stroke:var(--neutral); stroke-width:1.5; }
+      .added { fill:var(--added-bg); stroke:var(--added); stroke-width:3; } .changed { fill:var(--changed-bg); stroke:var(--changed); stroke-width:2; }
+      .t-neutral { fill:var(--muted); } .t-added { fill:var(--added); } .t-changed { fill:var(--changed); }
+      .flow { fill:none; stroke:var(--fg); stroke-width:1.5; marker-end:url(#arrow); } .flow-added { fill:none; stroke:var(--added); stroke-width:3; marker-end:url(#arrow-added); }
+      .head { fill:var(--fg); } .head-added { fill:var(--added); }
+    </style>
+    <marker id="arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path class="head" d="M0,0 L10,5 L0,10 z"/></marker>
+    <marker id="arrow-added" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="4" markerHeight="4" orient="auto-start-reverse"><path class="head-added" d="M0,0 L10,5 L0,10 z"/></marker>
+  </defs>
+  <rect class="bg" width="960" height="450"/>
+  <text class="title" x="30" y="40">Population member recreation after destroy</text>
+  <text class="note" x="30" y="62">PR #813 · session teardown and next successful poll</text>
+
+  <rect class="neutral" x="35" y="100" width="180" height="70" rx="6"/>
+  <text class="tag t-neutral" x="50" y="122">UNCHANGED</text><text class="name" x="50" y="143">Destroy request</text>
+  <rect class="changed" x="315" y="100" width="220" height="70" rx="6"/>
+  <text class="tag t-changed" x="330" y="122">CHANGED</text><text class="name" x="330" y="143">Persistence transaction</text>
+  <rect class="neutral" x="680" y="100" width="240" height="70" rx="6"/>
+  <text class="tag t-neutral" x="695" y="122">UNCHANGED</text><text class="name" x="695" y="143">Session row</text><text class="note" x="695" y="160">destroyed incarnation</text>
+
+  <rect class="added" x="315" y="215" width="220" height="70" rx="6"/>
+  <text class="tag t-added" x="330" y="237">CHANGED STATE</text><text class="name" x="330" y="258">Population member</text><text class="note" x="330" y="275">tombstoned, session cleared</text>
+
+  <rect class="neutral" x="35" y="340" width="180" height="70" rx="6"/>
+  <text class="tag t-neutral" x="50" y="362">UNCHANGED</text><text class="name" x="50" y="383">Successful poll</text>
+  <rect class="neutral" x="315" y="340" width="220" height="70" rx="6"/>
+  <text class="tag t-neutral" x="330" y="362">UNCHANGED</text><text class="name" x="330" y="383">Population engine</text>
+  <rect class="neutral" x="680" y="340" width="240" height="70" rx="6"/>
+  <text class="tag t-neutral" x="695" y="362">UNCHANGED</text><text class="name" x="695" y="383">New session incarnation</text>
+
+  <line class="flow" x1="215" y1="135" x2="315" y2="135"/><text class="label" x="238" y="125">destroy call</text>
+  <line class="flow" x1="535" y1="135" x2="680" y2="135"/><text class="label" x="564" y="125">status update</text>
+  <line class="flow-added" x1="425" y1="170" x2="425" y2="215"/><text class="label t-added" x="441" y="195">member update</text>
+  <line class="flow" x1="215" y1="375" x2="315" y2="375"/><text class="label" x="235" y="365">snapshot</text>
+  <line class="flow" x1="425" y1="340" x2="425" y2="285"/><text class="label" x="441" y="317">reopen generation</text>
+  <line class="flow" x1="535" y1="375" x2="680" y2="375"/><text class="label" x="568" y="365">admit session</text>
+</svg>

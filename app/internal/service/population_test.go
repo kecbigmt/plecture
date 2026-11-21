@@ -1,6 +1,7 @@
 package service
 
 import (
+	"fmt"
 	"path/filepath"
 	"slices"
 	"strings"
@@ -71,6 +72,49 @@ func TestChainStyleDispatchCannotAdoptAPopulationSession(t *testing.T) {
 	_, err := Up(cfg, store, UpParams{Identifier: resource, Workflow: "agent", ParentSession: "work-session"})
 	if err == nil || !strings.Contains(err.Error(), "population") {
 		t.Fatalf("chain-style Up error = %v, want population ownership conflict", err)
+	}
+}
+
+func TestDestroyTombstonesOwnedPopulationMember(t *testing.T) {
+	for _, force := range []bool{false, true} {
+		t.Run(fmt.Sprintf("force=%v", force), func(t *testing.T) {
+			store := testStore(t)
+			cfg := writeWorkflowFixture(t, "agent",
+				[]taskFixture{{id: "noop", scope: "session", setup: "echo '{}'"}},
+				[]nodeFixture{{id: "noop"}})
+			useCapWorkflow(t, cfg, "agent", filepath.Join(t.TempDir(), "wd"), false)
+			resource := "https://example.test/cases/owned"
+			resourceID := testResource(resource)
+			owner := &contract.PopulationProvenance{Workflow: "agent", Name: "dispatch"}
+			seedPopulationRowForTest(t, store, owner)
+			result, err := Up(cfg, store, UpParams{Identifier: resource, Workflow: "agent", Population: owner})
+			if err != nil {
+				t.Fatal(err)
+			}
+			if err := store.UpdatePopulation(*owner, func(population *state.PopulationState) error {
+				population.Members[resourceID.Name] = &state.PopulationMember{Resource: *resourceID, SessionName: result.SessionName, Generation: 1, PendingUp: true}
+				sibling := testResource("https://example.test/cases/other")
+				population.Members[sibling.Name] = &state.PopulationMember{Resource: *sibling, SessionName: "other-session", Generation: 1, PendingUp: true}
+				return nil
+			}); err != nil {
+				t.Fatal(err)
+			}
+			if _, err := Destroy(cfg, store, DestroyParams{Identifier: result.SessionName, Force: force}); err != nil {
+				t.Fatal(err)
+			}
+			population, err := store.Population(*owner)
+			if err != nil {
+				t.Fatal(err)
+			}
+			member := population.Members[resourceID.Name]
+			if !member.Tombstoned || member.PendingUp || member.SessionName != "" || member.Generation != 1 {
+				t.Fatalf("member after destroy = %+v", member)
+			}
+			sibling := population.Members[testResource("https://example.test/cases/other").Name]
+			if sibling.Tombstoned || !sibling.PendingUp || sibling.SessionName != "other-session" {
+				t.Fatalf("unrelated member after destroy = %+v", sibling)
+			}
+		})
 	}
 }
 

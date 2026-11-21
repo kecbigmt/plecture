@@ -119,6 +119,63 @@ command = "true"
 	}
 }
 
+func TestPollRecreatesMemberAfterExternalDestroy(t *testing.T) {
+	for _, force := range []bool{false, true} {
+		t.Run(fmt.Sprintf("force=%v", force), func(t *testing.T) {
+			t.Setenv("PLECT_SESSION_NAME", "")
+			cfg := populationConfig(t, `[source.query.poll]
+type = "exec"
+command = "true"
+`, "uses = [\"poll\"]\npoll_every = \"1m\"", `resource = { from = "resource.id" }`)
+			definitions, err := Load(cfg, "")
+			if err != nil {
+				t.Fatal(err)
+			}
+			definition := definitions[0]
+			store := state.NewStore(t.TempDir())
+			logStore := eventlog.NewStore(store.Dir())
+			engine := NewEngine(definition, store, logStore, admitstatus.NewCache(logStore), serviceHooks(func() *config.Config { return cfg }, store, definition, nil))
+			item := map[string]any{"resource": "urn:case:a"}
+			if err := engine.ApplyPoll(context.Background(), []map[string]any{item}); err != nil {
+				t.Fatalf("initial poll: %v", err)
+			}
+			population, err := store.Population(engine.key)
+			if err != nil {
+				t.Fatal(err)
+			}
+			first := population.Members["a"]
+			if first == nil || first.SessionName == "" || first.Generation != 1 {
+				t.Fatalf("initial member = %+v", first)
+			}
+			original, err := store.GetE(first.SessionName)
+			if err != nil || original == nil {
+				t.Fatalf("initial session = %+v, %v", original, err)
+			}
+			if _, err := service.Destroy(cfg, store, service.DestroyParams{Identifier: first.SessionName, Force: force}); err != nil {
+				t.Fatalf("external destroy: %v", err)
+			}
+			if err := engine.ApplyPoll(context.Background(), []map[string]any{item}); err != nil {
+				t.Fatalf("poll after destroy: %v", err)
+			}
+			population, err = store.Population(engine.key)
+			if err != nil {
+				t.Fatal(err)
+			}
+			member := population.Members["a"]
+			if member == nil || member.Tombstoned || member.PendingUp || member.Generation != 2 || member.SessionName == "" {
+				t.Fatalf("recreated member = %+v", member)
+			}
+			recreated, err := store.GetE(member.SessionName)
+			if err != nil || recreated == nil {
+				t.Fatalf("recreated session = %+v, %v", recreated, err)
+			}
+			if recreated.ID == original.ID || !cfg.RunScopeUp(recreated) {
+				t.Fatalf("recreated session = %+v, want a new live session", recreated)
+			}
+		})
+	}
+}
+
 func TestPopulationCannotAdoptSameProvenanceSessionRecordedForAnotherEntry(t *testing.T) {
 	t.Setenv("PLECT_SESSION_NAME", "")
 	cfg := populationConfig(t, `[source.query.poll]
