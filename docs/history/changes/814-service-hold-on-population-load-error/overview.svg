@@ -63,73 +63,59 @@
   <text class="title" x="24" y="38">Change: a population load error holds only the services it can affect</text>
   <text class="note" x="24" y="60">PR #814 · resident service startup in plect serve · head structure with the diff marked on it</text>
 
-  <!-- Unchanged: population.Load -->
   <rect class="neutral" x="32" y="100" width="230" height="70" rx="6"/>
   <text class="tag t-neutral" x="48" y="122">UNCHANGED</text>
   <text class="name" x="48" y="141">population.Load</text>
   <text class="note" x="48" y="158">workflows · populations</text>
 
-  <!-- Unchanged: resource definitions -->
   <rect class="neutral" x="32" y="230" width="230" height="70" rx="6"/>
   <text class="tag t-neutral" x="48" y="252">UNCHANGED</text>
   <text class="name" x="48" y="271">Resource definitions</text>
   <text class="note" x="48" y="288">cfg.LoadResourceDefs</text>
 
-  <!-- Changed: serve Queries hook -->
   <rect class="changed" x="372" y="100" width="236" height="70" rx="6"/>
   <text class="tag t-changed" x="388" y="122">CHANGED</text>
   <text class="name" x="388" y="141">serve: Queries hook</text>
   <text class="note" x="388" y="158">serviceQueries, per service</text>
 
-  <!-- Changed: pluginservice runProcess -->
   <rect class="changed" x="738" y="100" width="190" height="70" rx="6"/>
   <text class="tag t-changed" x="754" y="122">CHANGED</text>
   <text class="name" x="754" y="141">runProcess</text>
   <text class="note" x="754" y="158">pluginservice</text>
 
-  <!-- Unchanged: resident log -->
   <rect class="neutral" x="372" y="380" width="236" height="70" rx="6"/>
   <text class="tag t-neutral" x="388" y="402">UNCHANGED</text>
   <text class="name" x="388" y="421">Resident log</text>
   <text class="note" x="388" y="438">slog</text>
 
-  <!-- Unchanged: service process -->
   <rect class="neutral" x="738" y="380" width="190" height="70" rx="6"/>
   <text class="tag t-neutral" x="754" y="402">UNCHANGED</text>
   <text class="name" x="754" y="421">Service process</text>
   <text class="note" x="754" y="438">plugin executable</text>
 
-  <!-- Unchanged flow: population.Load to hook -->
   <line class="flow" x1="262" y1="135" x2="372" y2="135"/>
   <text class="label" text-anchor="middle" x="317" y="112"><tspan x="317">definitions</tspan><tspan x="317" dy="15">or load error</tspan></text>
 
-  <!-- Added: resource definitions to hook, on load error -->
   <path class="flow-added" d="M262,265 H440 V170"/>
   <text class="label t-added" x="290" y="320"><tspan x="290" font-weight="600">ADDED · on load error</tspan><tspan x="290" dy="15">query.subscribe executables</tspan></text>
 
-  <!-- Changed: hook to runProcess -->
   <line class="flow-changed" x1="608" y1="135" x2="738" y2="135"/>
   <text class="label t-changed" text-anchor="middle" x="673" y="96"><tspan x="673" font-weight="600">CHANGED</tspan><tspan x="673" dy="15">snapshot,</tspan><tspan x="673" dy="15">or hold error</tspan></text>
 
-  <!-- Added: hook warns to log -->
   <line class="flow-added" x1="540" y1="170" x2="540" y2="380"/>
   <text class="label t-added" x="452" y="215"><tspan x="452" font-weight="600">ADDED</tspan><tspan x="452" dy="15">warn: empty</tspan><tspan x="452" dy="15">snapshot,</tspan><tspan x="452" dy="15">population error</tspan></text>
 
-  <!-- Added: runProcess logs hold -->
   <path class="flow-added" d="M760,170 V300 H580 V380"/>
   <text class="label t-added" x="602" y="230"><tspan x="602" font-weight="600">ADDED</tspan><tspan x="602" dy="15">error: service held,</tspan><tspan x="602" dy="15">not spawned</tspan></text>
 
-  <!-- Changed: runProcess to service -->
   <line class="flow-changed" x1="850" y1="170" x2="850" y2="380"/>
   <text class="label t-changed" x="860" y="215"><tspan x="860" font-weight="600">CHANGED</tspan><tspan x="860" dy="15">spawn, then config,</tspan><tspan x="860" dy="15">subscriptions, queries</tspan><tspan x="860" dy="15">after the snapshot</tspan></text>
 
-  <!-- Removed: spawn then kill -->
   <g class="ghost">
     <path class="flow-removed" d="M928,120 H1010 V430 H928"/>
     <text class="label t-removed" x="1018" y="260"><tspan x="1018" font-weight="600">REMOVED</tspan><tspan x="1018" dy="15">spawned,</tspan><tspan x="1018" dy="15">then killed</tspan><tspan x="1018" dy="15">on query</tspan><tspan x="1018" dy="15">error</tspan></text>
   </g>
 
-  <!-- Legend -->
   <rect class="added" x="32" y="487" width="28" height="16" rx="3"/>
   <text class="label" x="70" y="499">ADDED · thick solid</text>
   <rect class="changed" x="264" y="487" width="28" height="16" rx="3"/>

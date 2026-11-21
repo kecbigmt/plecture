@@ -64,9 +64,6 @@ func writeServeDefinition(t *testing.T, dir, name, body string) {
 	}
 }
 
-// serveQueriesConfig mounts two plugins with one service executable each and
-// a host resource whose subscribe query runs subscribeBin; populationQuery is
-// the workflow population's query table body.
 func serveQueriesConfig(t *testing.T, subscribeBin, populationQuery string) (*config.Config, string) {
 	t.Helper()
 	dir := t.TempDir()
