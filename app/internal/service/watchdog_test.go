@@ -1337,6 +1337,64 @@ func TestHealthcheckSession_PushesHealthEscalationAndRenotifies(t *testing.T) {
 	assertHealthEscalations(2)
 }
 
+func TestHealthcheckSession_RekicksUnmetWorkOnceAfterHealthRecovers(t *testing.T) {
+	store := testStore(t)
+	cfg := activityFixtureConfig(t, activityProbeCmd(t, "fp-1", false, time.Now()))
+	name := "owner/repo-1"
+	seedSessionWithNodes(t, store, name, "owner/repo", 1, "default", map[string]*contract.TaskState{
+		"initial": {Scope: contract.TaskScopeRun, TaskID: "runner", Status: contract.TaskStatusProduced},
+		"gate":    gateInstance("no"),
+	})
+	if _, err := TickSession(cfg, store, TickParams{SessionName: name, Trigger: TickTriggerManual}); err != nil {
+		t.Fatal(err)
+	}
+	if err := store.Update(name, func(s *domain.Session) error {
+		s.Health = &contract.HealthState{LastState: string(domain.HealthStalled), LastFingerprint: "initial:fp-1", LastActivityAt: time.Now()}
+		s.Nodes["gate"].DoneWhen.HeartbeatTicks = 103
+		return nil
+	}); err != nil {
+		t.Fatal(err)
+	}
+	for i := range 2 {
+		report, err := HealthcheckSession(cfg, store, HealthcheckParams{SessionName: name})
+		if err != nil || report.State() != domain.HealthHealthy {
+			t.Fatalf("healthcheck %d = (%+v, %v), want healthy", i, report, err)
+		}
+	}
+	if got := tickEventCount(t, store, name, event.TypeUserEmit); got != 2 {
+		t.Fatalf("kick events = %d, want one recovery kick after the first kick", got)
+	}
+	if got := store.Get(name).Nodes["gate"].DoneWhen.HeartbeatTicks; got != 103 {
+		t.Fatalf("heartbeat ticks = %d, want 103", got)
+	}
+}
+
+func TestHealthcheckSession_DoesNotRepeatKickAfterRuntimeRestart(t *testing.T) {
+	store := testStore(t)
+	cfg := activityFixtureConfig(t, activityProbeCmd(t, "fp-1", false, time.Now()))
+	name := "owner/repo-1"
+	checkedAt := time.Now().Add(-time.Minute)
+	seedSessionWithNodes(t, store, name, "owner/repo", 1, "default", map[string]*contract.TaskState{
+		"initial": {Scope: contract.TaskScopeRun, TaskID: "runner", Status: contract.TaskStatusProduced, SetupAt: time.Now()},
+		"gate":    gateInstance("no"),
+	})
+	if err := store.Update(name, func(s *domain.Session) error {
+		s.Health = &contract.HealthState{LastState: string(domain.HealthUnhealthy), LastCheckedAt: checkedAt}
+		return nil
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := TickSession(cfg, store, TickParams{SessionName: name, Trigger: TickTriggerRecovery}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := HealthcheckSession(cfg, store, HealthcheckParams{SessionName: name}); err != nil {
+		t.Fatal(err)
+	}
+	if got := tickEventCount(t, store, name, event.TypeUserEmit); got != 1 {
+		t.Fatalf("kick events = %d, want only the runtime recovery kick", got)
+	}
+}
+
 func TestHealthcheckSession_PushesStalledEscalationWithActivityTimestamp(t *testing.T) {
 	store := testStore(t)
 	longAgo := time.Now().Add(-24 * time.Hour)

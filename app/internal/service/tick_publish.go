@@ -59,6 +59,9 @@ func publishTickAction(cfg *config.Config, store *state.Store, sessionName strin
 			return nil, false, "", nil
 		}
 		meta := unmetItemsMetadata(instance, action.UnmetItems)
+		if trigger == TickTriggerRecovery {
+			meta["tick_trigger"] = string(trigger)
+		}
 		if len(action.LiveChildren) > 0 {
 			if b, err := json.Marshal(action.LiveChildren); err == nil {
 				meta["live_children"] = string(b)

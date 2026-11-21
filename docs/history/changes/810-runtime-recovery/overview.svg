@@ -1,6 +1,6 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1040 410" width="1040" height="410" role="img" aria-labelledby="title desc">
   <title id="title">Runtime recovery redelivers unmet work</title>
-  <desc id="desc">Up and RepairSession call TickSession with a recovery trigger after a successful runtime start. TickSession reads the session state, reevaluates done_when, and publishes one user.emit event to the session event log. The recovery trigger bypasses unchanged-state deduplication without advancing heartbeat ticks. The dispatcher reads the event from the log.</desc>
+  <desc id="desc">Up and RepairSession call TickSession with a recovery trigger after a successful runtime start. HealthcheckSession calls it when a stalled or unhealthy session becomes healthy. TickSession reads the session state, reevaluates done_when, and publishes one user.emit event to the session event log. The recovery trigger bypasses unchanged-state deduplication without advancing heartbeat ticks. The dispatcher reads the event from the log.</desc>
   <defs>
     <style>
       svg { --bg: #fff; --fg: #1f2328; --muted: #59636e; --neutral: #8c959f; --neutral-bg: #f6f8fa; --added: #1a7f37; --added-bg: #dafbe1; --changed: #0969da; --changed-bg: #ddf4ff; }
@@ -33,6 +33,11 @@
   <text class="name" x="46" y="160">Up / RepairSession</text>
   <text class="note" x="46" y="179">successful runtime start</text>
 
+  <rect class="changed" x="30" y="230" width="210" height="82" rx="7"/>
+  <text class="tag t-changed" x="46" y="254">CHANGED</text>
+  <text class="name" x="46" y="278">HealthcheckSession</text>
+  <text class="note" x="46" y="297">healthy transition</text>
+
   <rect class="changed" x="505" y="112" width="275" height="82" rx="7"/>
   <text class="tag t-changed" x="521" y="136">CHANGED</text>
   <text class="name" x="521" y="160">TickSession</text>
@@ -53,6 +58,8 @@
 
   <line class="flow-added" x1="240" y1="153" x2="505" y2="153"/>
   <text class="note t-added" text-anchor="middle" x="372" y="133">recovery tick request</text>
+  <path class="flow-added" d="M240 271 H400 V180 H505"/>
+  <text class="note t-added" text-anchor="middle" x="318" y="252">recovery tick</text>
   <line class="flow-added" x1="780" y1="153" x2="850" y2="153"/>
   <text class="note t-added" text-anchor="middle" x="815" y="133">user.emit</text>
   <line class="flow" x1="642" y1="287" x2="642" y2="194"/>

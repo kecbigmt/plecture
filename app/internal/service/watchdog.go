@@ -12,6 +12,7 @@ import (
 
 	"github.com/kecbigmt/plecture/app/internal/config"
 	"github.com/kecbigmt/plecture/app/internal/domain"
+	"github.com/kecbigmt/plecture/app/internal/eventlog"
 	"github.com/kecbigmt/plecture/app/internal/procid"
 	"github.com/kecbigmt/plecture/app/internal/state"
 	"github.com/kecbigmt/plecture/app/internal/task"
@@ -556,6 +557,25 @@ func HealthcheckSession(cfg *config.Config, store *state.Store, params Healthche
 				return nil
 			}); err != nil {
 				return nil, err
+			}
+		}
+	}
+	if prev != nil && report.State() == domain.HealthHealthy &&
+		(prev.LastState == string(domain.HealthUnhealthy) || prev.LastState == string(domain.HealthStalled)) {
+		evs, _, _, err := eventlog.NewStore(store.Dir()).List(params.SessionName, 0, event.Filter{Types: []string{event.TypeUserEmit}})
+		if err != nil {
+			return nil, fmt.Errorf("read recovery kicks: %w", err)
+		}
+		alreadyKicked := false
+		for _, ev := range evs {
+			if !prev.LastCheckedAt.IsZero() && ev.Time.After(prev.LastCheckedAt) && ev.Metadata["tick_trigger"] == string(TickTriggerRecovery) {
+				alreadyKicked = true
+				break
+			}
+		}
+		if !alreadyKicked {
+			if _, err := TickSession(cfg, store, TickParams{SessionName: params.SessionName, Trigger: TickTriggerRecovery}); err != nil {
+				return nil, fmt.Errorf("health recovered but recovery tick failed: %w", err)
 			}
 		}
 	}
