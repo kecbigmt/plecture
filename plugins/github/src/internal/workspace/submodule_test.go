@@ -95,6 +95,34 @@ func TestRemove_WorktreeWithSubmoduleNoForceRefusesUnsafeStates(t *testing.T) {
 			},
 		},
 		{
+			name: "untracked file in the superproject hidden by showUntrackedFiles=no",
+			prepare: func(t *testing.T, _ *Manager, _, wtPath string) {
+				runGitT(t, wtPath, "config", "status.showUntrackedFiles", "no")
+				if err := os.WriteFile(filepath.Join(wtPath, "untracked.txt"), []byte("x"), 0o644); err != nil {
+					t.Fatal(err)
+				}
+			},
+		},
+		{
+			name: "untracked file in submodule hidden by superproject showUntrackedFiles=no",
+			prepare: func(t *testing.T, _ *Manager, _, wtPath string) {
+				runGitT(t, wtPath, "config", "status.showUntrackedFiles", "no")
+				if err := os.WriteFile(filepath.Join(wtPath, "vendor", "sub", "untracked.txt"), []byte("x"), 0o644); err != nil {
+					t.Fatal(err)
+				}
+			},
+		},
+		{
+			name: "untracked file in submodule hidden by its own showUntrackedFiles=no",
+			prepare: func(t *testing.T, _ *Manager, _, wtPath string) {
+				subPath := filepath.Join(wtPath, "vendor", "sub")
+				runGitT(t, subPath, "config", "status.showUntrackedFiles", "no")
+				if err := os.WriteFile(filepath.Join(subPath, "untracked.txt"), []byte("x"), 0o644); err != nil {
+					t.Fatal(err)
+				}
+			},
+		},
+		{
 			name: "locked worktree",
 			prepare: func(t *testing.T, mgr *Manager, ownerRepo, wtPath string) {
 				runGitT(t, filepath.Join(mgr.RepoDir(ownerRepo), "main"), "worktree", "lock", wtPath)
