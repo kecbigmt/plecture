@@ -234,21 +234,49 @@ func (db *DB) ResetNodes(ctx context.Context, sessionName string) error {
 	})
 }
 
-// DestroySession transitions name's live row to SessionStatusDestroyed
-// (retaining the row and its history) and releases its up-slot
-// reservation, if any.
+// DestroySession transitions name's live row to SessionStatusDestroyed,
+// tombstones its population members, and releases its up-slot reservation
+// in one transaction. The row and its history are retained.
 func (db *DB) DestroySession(ctx context.Context, name string, destroyedAt time.Time) error {
-	if err := db.UpdateSession(ctx, name, func(s *domain.Session) error {
+	return db.WithImmediateTx(ctx, func(tx *sql.Tx) error {
+		q := sqlcgen.New(tx)
+		row, err := q.GetLiveSession(ctx, name)
+		if err != nil {
+			if errors.Is(err, sql.ErrNoRows) {
+				return fmt.Errorf("destroy session %q: no state entry for session %q", name, name)
+			}
+			return fmt.Errorf("destroy session %q: %w", name, err)
+		}
+		s, err := sessionFromRow(row)
+		if err != nil {
+			return err
+		}
+		if err := db.loadSessionExtras(ctx, tx, s); err != nil {
+			return err
+		}
 		s.Status = contract.SessionStatusDestroyed
 		s.DestroyedAt = destroyedAt
 		s.WorkflowRevision = ""
 		s.WorkflowRevisionBody = ""
-		return nil
-	}); err != nil {
-		return fmt.Errorf("destroy session %q: %w", name, err)
-	}
-	return db.WithImmediateTx(ctx, func(tx *sql.Tx) error {
-		if err := sqlcgen.New(tx).DeleteUpReservation(ctx, name); err != nil {
+		if err := db.writeSessionTx(ctx, tx, s); err != nil {
+			return fmt.Errorf("destroy session %q: %w", name, err)
+		}
+		if s.Population != nil {
+			key := s.Population
+			if _, err := tx.ExecContext(ctx, `DELETE FROM population_member_blockers
+WHERE project_root = ? AND workflow = ? AND name = ? AND resource_id IN (
+    SELECT resource_id FROM population_members
+    WHERE project_root = ? AND workflow = ? AND name = ? AND session_name = ?
+)`, key.ProjectRoot, key.Workflow, key.Name, key.ProjectRoot, key.Workflow, key.Name, name); err != nil {
+				return fmt.Errorf("clear population blockers for session %q: %w", name, err)
+			}
+			if _, err := tx.ExecContext(ctx, `UPDATE population_members SET tombstoned = 1, pending_up = 0,
+    session_name = NULL, decision_kind = NULL, decision_reason = NULL
+WHERE project_root = ? AND workflow = ? AND name = ? AND session_name = ?`, key.ProjectRoot, key.Workflow, key.Name, name); err != nil {
+				return fmt.Errorf("tombstone population members for session %q: %w", name, err)
+			}
+		}
+		if err := q.DeleteUpReservation(ctx, name); err != nil {
 			return fmt.Errorf("delete up-slot reservation for %q: %w", name, err)
 		}
 		return nil

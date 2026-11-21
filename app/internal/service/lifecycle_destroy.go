@@ -115,8 +115,8 @@ func destroyUnlocked(cfg *config.Config, store *state.Store, params DestroyParam
 	if len(retired) > 0 {
 		result.CleanupWarnings = append(result.CleanupWarnings, fmt.Sprintf("workflow revision uses retired declaration spellings (%s); cleanup skipped, release not verified", strings.Join(retired, ", ")))
 		recordLifecycle(store, sessionName, "destroyed", "session destroyed")
-		if err := store.Destroy(sessionName); err != nil {
-			return nil, &Error{Code: ErrExecutionFailed, Message: fmt.Sprintf("failed to destroy state entry: %v", err)}
+		if err := store.Destroy(session.Name); err != nil {
+			return nil, &Error{Code: ErrExecutionFailed, Message: fmt.Sprintf("failed to destroy session state (session remains live and can be retried): %v", err)}
 		}
 		return result, nil
 	}
@@ -126,8 +126,8 @@ func destroyUnlocked(cfg *config.Config, store *state.Store, params DestroyParam
 		}
 		result.CleanupWarnings = append(result.CleanupWarnings, "no stored workflow revision; cleanup skipped")
 		recordLifecycle(store, sessionName, "destroyed", "session destroyed")
-		if err := store.Destroy(sessionName); err != nil {
-			return nil, &Error{Code: ErrExecutionFailed, Message: fmt.Sprintf("failed to destroy state entry: %v", err)}
+		if err := store.Destroy(session.Name); err != nil {
+			return nil, &Error{Code: ErrExecutionFailed, Message: fmt.Sprintf("failed to destroy session state (session remains live and can be retried): %v", err)}
 		}
 		return result, nil
 	}
@@ -180,8 +180,8 @@ func destroyUnlocked(cfg *config.Config, store *state.Store, params DestroyParam
 	// transition before making the row non-live so the event shares its id.
 	recordLifecycle(store, sessionName, "destroyed", "session destroyed")
 
-	if err := store.Destroy(sessionName); err != nil {
-		return nil, &Error{Code: ErrExecutionFailed, Message: fmt.Sprintf("failed to destroy state entry: %v", err)}
+	if err := store.Destroy(session.Name); err != nil {
+		return nil, &Error{Code: ErrExecutionFailed, Message: fmt.Sprintf("failed to destroy session state (session remains live and can be retried): %v", err)}
 	}
 
 	if err := eventlog.NewStore(store.Dir()).ClearChainAttempts(session.ID); err != nil {
