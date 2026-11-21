@@ -120,6 +120,13 @@ unmerged work is never deleted. The remote branch is never touched.
 changes, and those changes are lost. It does not turn branch deletion on or
 make it unsafe.
 
+A worktree with initialized submodules is released without `--force` when it
+is clean by `git status --ignore-submodules=none`: no modified or untracked
+file in the worktree or in any submodule, and every submodule checked out at
+the commit the worktree records. A locked worktree is never released without
+`--force`. The submodules' repositories go with the worktree, so a submodule
+commit that is neither checked out nor pushed is lost.
+
 ### Change the policy for one session
 
 The `delete_branch` output is mutable. To change one session's policy without
