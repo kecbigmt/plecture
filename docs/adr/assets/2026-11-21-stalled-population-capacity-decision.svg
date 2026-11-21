@@ -1,0 +1,57 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 960 500" width="960" height="500" role="img" aria-labelledby="title desc">
+  <title id="title">Decision: stalled population members can release virtual-root capacity</title>
+  <desc id="desc">At a full virtual-root cap, the population capacity coordinator checks up parentless population members with auto_down enabled. An explicit clear at or after activation qualifies with the clear time as sort key. A persisted stalled verdict checked at or after activation and with no later status event also qualifies, using activation time as sort key. Both paths enter oldest-first ordering, ordinary down, and admission retry. The previous explicit-idle-only gate is superseded.</desc>
+  <defs>
+    <style>
+      svg { --bg:#fff; --fg:#1f2328; --muted:#59636e; --neutral:#8c959f; --neutral-bg:#f6f8fa; --chosen:#1a7f37; --chosen-bg:#dafbe1; --superseded:#59636e; --superseded-bg:#eaeef2; }
+      @media (prefers-color-scheme:dark) { svg { --bg:#0d1117; --fg:#e6edf3; --muted:#9198a1; --neutral:#656c76; --neutral-bg:#151b23; --chosen:#3fb950; --chosen-bg:#0f2a1a; --superseded:#9198a1; --superseded-bg:#212830; } }
+      text { font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Helvetica,Arial,sans-serif; font-size:13px; fill:var(--fg); }
+      .bg { fill:var(--bg); } .title { font-size:18px; font-weight:600; } .note { font-size:12px; fill:var(--muted); } .name { font-weight:600; } .tag { font-size:11px; font-weight:700; letter-spacing:.06em; fill:var(--chosen); }
+      .neutral { fill:var(--neutral-bg); stroke:var(--neutral); stroke-width:1.5; } .chosen { fill:var(--chosen-bg); stroke:var(--chosen); stroke-width:2.5; } .superseded { fill:var(--superseded-bg); stroke:var(--superseded); stroke-width:1.5; stroke-dasharray:10 3 2 3; }
+      .flow { fill:none; stroke:var(--fg); stroke-width:1.5; marker-end:url(#arrow); } .head { fill:var(--fg); }
+    </style>
+    <marker id="arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path class="head" d="M0,0 L10,5 L0,10 z"/></marker>
+  </defs>
+  <rect class="bg" width="960" height="500"/>
+  <text class="title" x="24" y="36">Capacity pressure: two ways to qualify</text>
+  <text class="note" x="24" y="58">The coordinator owns candidate selection; session lifecycle owns down and admission retry.</text>
+
+  <rect class="neutral" x="28" y="173" width="180" height="84" rx="7"/>
+  <text class="name" x="44" y="198">Population member</text>
+  <text class="note" x="44" y="217">up · parentless · owned</text>
+  <text class="note" x="44" y="234">auto_down enabled</text>
+
+  <rect class="chosen" x="295" y="91" width="235" height="94" rx="7"/>
+  <text class="tag" x="311" y="114">CHOSEN · CLEAR PATH</text>
+  <text class="name" x="311" y="137">Explicit status clear</text>
+  <text class="note" x="311" y="157">at or after activation</text>
+  <rect class="chosen" x="295" y="243" width="235" height="116" rx="7"/>
+  <text class="tag" x="311" y="266">CHOSEN · STALLED PATH</text>
+  <text class="name" x="311" y="289">Persisted stalled verdict</text>
+  <text class="note" x="311" y="309">check at or after activation</text>
+  <text class="note" x="311" y="328">no later status event</text>
+
+  <rect class="neutral" x="620" y="173" width="170" height="84" rx="7"/>
+  <text class="name" x="636" y="198">Candidate order</text>
+  <text class="note" x="636" y="217">oldest sort key first</text>
+  <text class="note" x="636" y="234">then session name</text>
+  <rect class="neutral" x="824" y="173" width="110" height="84" rx="7"/>
+  <text class="name" x="840" y="198">Lifecycle</text>
+  <text class="note" x="840" y="217">down</text>
+  <text class="note" x="840" y="234">retry up</text>
+
+  <path class="flow" d="M208 192 H246 V138 H293"/>
+  <text x="220" y="118">status event</text>
+  <path class="flow" d="M208 236 H246 V300 H293"/>
+  <text x="214" y="323">health verdict</text>
+  <path class="flow" d="M530 138 H570 V192 H618"/>
+  <text x="542" y="119">clear time</text>
+  <path class="flow" d="M530 300 H570 V237 H618"/>
+  <text x="538" y="323">activation time</text>
+  <path class="flow" d="M790 215 H822"/>
+  <text x="783" y="158">candidate</text>
+
+  <rect class="superseded" x="28" y="404" width="430" height="65" rx="7"/>
+  <text class="name" x="44" y="430">SUPERSEDED · explicit clear required for every member</text>
+  <text class="note" x="44" y="449">A runtime that never clears can now qualify through stalled health.</text>
+</svg>

@@ -491,12 +491,17 @@ last valid evaluator.
 Destruction waits until every dynamic task with `done_when` is satisfied. A
 missing predicate, observation failure, evaluation failure, or pending leaf
 blocks it. At virtual-root capacity, only an up, population-owned session from
-an `auto_down` population is eligible. Its latest durable status must be an
-explicit clear newer than creation, accepted appearance, and inbound events.
-Eligible members are selected by oldest activity then session name and run
-ordinary cleanup. An appearance, inbound event, or positive poll requests up
-again. Removing or invalidly changing provenance never lets another population
-adopt existing sessions.
+an `auto_down` population is eligible. Its latest durable status may be an
+explicit clear no earlier than creation, accepted appearance, and inbound
+events. Alternatively, its persisted health verdict may be `stalled`, checked
+no earlier than those activation signals, with no later status-message event.
+An unhealthy or undeclared verdict alone does not make a member eligible.
+Eligible members are selected by oldest activity then session name: the
+explicit-clear path uses the clear event's time, while the stalled path uses
+the latest activation time and does not use the health-check time for sorting.
+They run ordinary cleanup. An appearance, inbound event, or positive poll
+requests up again. Removing or invalidly changing provenance never lets
+another population adopt existing sessions.
 
 ```toml
 [standing_cases]
