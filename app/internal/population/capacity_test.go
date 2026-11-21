@@ -636,6 +636,126 @@ func TestCapacityCandidatesRequireExplicitIdleAndUseOldestActivity(t *testing.T)
 	}
 }
 
+func TestCapacityCandidatesIncludeStalledMemberAfterLatestActivation(t *testing.T) {
+	coordinator, def, store, logStore, base := capacityFixture(t)
+	addCapacityMember(t, def, store, logStore, "stalled", "urn:case:stalled", base, time.Time{})
+	if err := store.Update("stalled", func(s *contract.Session) error {
+		s.Health = &contract.HealthState{LastState: "stalled", LastCheckedAt: base.Add(time.Minute)}
+		return nil
+	}); err != nil {
+		t.Fatal(err)
+	}
+	assertCandidates := func(want int) {
+		t.Helper()
+		candidates, err := coordinator.idleCandidates()
+		if err != nil {
+			t.Fatal(err)
+		}
+		if len(candidates) != want {
+			t.Fatalf("candidates = %+v, want %d", candidates, want)
+		}
+	}
+	assertCandidates(1)
+	if _, _, _, err := logStore.Append(event.Event{SessionName: "stalled", Time: base.Add(2 * time.Minute), Type: "external.message", Direction: event.Inbound}); err != nil {
+		t.Fatal(err)
+	}
+	assertCandidates(0)
+	if err := store.Update("stalled", func(s *contract.Session) error {
+		s.Health.LastCheckedAt = base.Add(3 * time.Minute)
+		return nil
+	}); err != nil {
+		t.Fatal(err)
+	}
+	assertCandidates(1)
+	setMemberAppearance(t, def, store, "urn:case:stalled", base.Add(4*time.Minute))
+	assertCandidates(0)
+	if err := store.Update("stalled", func(s *contract.Session) error {
+		s.Health.LastCheckedAt = base.Add(5 * time.Minute)
+		return nil
+	}); err != nil {
+		t.Fatal(err)
+	}
+	assertCandidates(1)
+	if _, _, _, err := logStore.Append(event.Event{
+		SessionName: "stalled", Time: base.Add(6 * time.Minute), Type: event.TypeStatusMessage,
+		Direction: event.Outbound, Metadata: map[string]string{"cleared": "false"},
+	}); err != nil {
+		t.Fatal(err)
+	}
+	assertCandidates(0)
+}
+
+func TestCapacityCandidatesExcludeRecoveredAndNonAutoDownMembers(t *testing.T) {
+	coordinator, def, store, logStore, base := capacityFixture(t)
+	addCapacityMember(t, def, store, logStore, "member", "urn:case:member", base, time.Time{})
+	if err := store.Update("member", func(s *contract.Session) error {
+		s.Health = &contract.HealthState{LastState: "healthy", LastCheckedAt: base.Add(time.Minute)}
+		return nil
+	}); err != nil {
+		t.Fatal(err)
+	}
+	candidates, err := coordinator.idleCandidates()
+	if err != nil || len(candidates) != 0 {
+		t.Fatalf("healthy candidates = %+v, err = %v", candidates, err)
+	}
+	if err := store.Update("member", func(s *contract.Session) error {
+		s.Health.LastState = "stalled"
+		return nil
+	}); err != nil {
+		t.Fatal(err)
+	}
+	def.Population.AutoDown = false
+	coordinator.setDefinitions([]Definition{def})
+	candidates, err = coordinator.idleCandidates()
+	if err != nil || len(candidates) != 0 {
+		t.Fatalf("auto_down=false candidates = %+v, err = %v", candidates, err)
+	}
+}
+
+func TestCapacityReclaimsStalledMemberForNewAdmission(t *testing.T) {
+	t.Setenv("PLECT_SESSION_NAME", "")
+	cfg := populationConfig(t, `[source.query.poll]
+type = "exec"
+command = "true"
+`, "uses = [\"poll\"]\npoll_every = \"1m\"", `resource = { from = "resource.id" }`)
+	limit := 1
+	cfg.MaxUpChildren = &limit
+	definitions, err := Load(cfg, "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	definitions[0].Population.AutoDown = true
+	def := definitions[0]
+	store := state.NewStore(t.TempDir())
+	logStore := eventlog.NewStore(store.Dir())
+	coordinator := newCapacityCoordinator(func() *config.Config { return cfg }, store, logStore, admitstatus.NewCache(logStore))
+	coordinator.setDefinitions(definitions)
+	base := time.Date(2026, 9, 5, 0, 0, 0, 0, time.UTC)
+	addCapacityMember(t, def, store, logStore, "stalled+agent", "urn:case:stalled", base, time.Time{})
+	revision, err := cfg.CaptureWorkflowRevision("", def.Workflow.Address)
+	if err != nil {
+		t.Fatal(err)
+	}
+	body, digest, err := revision.CanonicalBody()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := store.Update("stalled+agent", func(s *contract.Session) error {
+		s.WorkflowRevision, s.WorkflowRevisionBody = digest, string(body)
+		s.Health = &contract.HealthState{LastState: "stalled", LastCheckedAt: base.Add(time.Minute)}
+		return nil
+	}); err != nil {
+		t.Fatal(err)
+	}
+	outcome, err := coordinator.up(context.Background(), def, "urn:case:new", map[string]any{"resource": "urn:case:new"})
+	if err != nil || outcome.Sleeping || outcome.SessionName == "" {
+		t.Fatalf("admission = %+v, err = %v, want new member admitted", outcome, err)
+	}
+	if stalled := store.Get("stalled+agent"); stalled == nil || cfg.RunScopeUp(stalled) || stalled.SleepSince.IsZero() {
+		t.Fatalf("stalled member = %+v, want sleeping with capacity released", stalled)
+	}
+}
+
 func TestCapacityCandidateIdleEvidenceIsInvalidatedByInboundEvent(t *testing.T) {
 	coordinator, def, store, logStore, base := capacityFixture(t)
 	addCapacityMember(t, def, store, logStore, "member", "urn:case:member", base, base.Add(time.Minute))

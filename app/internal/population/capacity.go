@@ -194,10 +194,6 @@ func (c *capacityCoordinator) idleCandidates() ([]idleCandidate, error) {
 		if member == nil || member.SessionName != sessionName || member.Tombstoned {
 			continue
 		}
-		status, ok := c.latestStatus(sessionName)
-		if !ok || status.Metadata["cleared"] != "true" {
-			continue
-		}
 		activation := session.CreatedAt
 		for _, at := range []time.Time{member.LastAppearance, member.LastInbound} {
 			if at.After(activation) {
@@ -211,12 +207,14 @@ func (c *capacityCoordinator) idleCandidates() ([]idleCandidate, error) {
 		if inbound.After(activation) {
 			activation = inbound
 		}
-		if !status.Time.After(activation) && !status.Time.Equal(activation) {
-			continue
-		}
 		last := activation
-		if status.Time.After(last) {
+		status, ok := c.latestStatus(sessionName)
+		if ok && status.Metadata["cleared"] == "true" && !status.Time.Before(activation) {
 			last = status.Time
+		} else if session.Health == nil || session.Health.LastState != string(domain.HealthStalled) ||
+			session.Health.LastCheckedAt.IsZero() || session.Health.LastCheckedAt.Before(activation) ||
+			(ok && status.Time.After(session.Health.LastCheckedAt)) {
+			continue
 		}
 		candidates = append(candidates, idleCandidate{session: sessionName, resource: session.Resource.Locator, key: key, last: last})
 	}
