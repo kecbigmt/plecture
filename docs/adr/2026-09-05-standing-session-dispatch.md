@@ -1,3 +1,7 @@
+---
+superseded_by: 2026-11-21-stalled-population-capacity
+---
+
 # Standing session dispatch from resource observation
 
 ## Context
