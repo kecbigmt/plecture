@@ -1,23 +1,27 @@
 #!/usr/bin/env bash
-# codex-headless runtime worker: the sole consumer of a session's queue
-# directory. Runs as an ordinary child of the pane's shell (not exec'd), so
-# a stuck worker can be terminated by its own pid without ending the pane's
-# root process — `codex exec` has no input box to wedge, so this still
-# needs no TUI-boot detection.
+# codex-headless runtime worker: the consumer of its session's inbox. Runs as
+# an ordinary child of the pane's shell (not exec'd), so a stuck worker can
+# be terminated by its own pid without ending the pane's root process —
+# `codex exec` has no input box to wedge, so this still needs no TUI-boot
+# detection.
 #
-# Turns are drained strictly serially (one `codex exec`/`codex exec resume`
-# at a time) so a kick arriving mid-turn queues instead of racing the
-# running one. The first turn has no thread_id yet; its `thread.started`
-# JSONL line seeds state_dir/thread_id for every subsequent resume.
+# Each pass takes one batch from the session inbox and runs one `codex exec`/
+# `codex exec resume` for it, so an event arriving mid-turn waits for the
+# next batch instead of racing the running one. The first turn has no
+# thread_id yet; its `thread.started` JSONL line seeds state_dir/thread_id
+# for every subsequent resume.
 #
-# Usage: codex-exec-worker <queue_dir> <state_dir>
+# Core owns what is pending, which events a batch holds, and when a batch is
+# given up; this worker keeps only the reply of the batch it is working on.
+#
+# Usage: codex-exec-worker <state_dir>
 
 set -u
 
-queue_dir="${1:?queue_dir required}"
-state_dir="${2:?state_dir required}"
+state_dir="${1:?state_dir required}"
+: "${PLECT_SESSION_NAME:?PLECT_SESSION_NAME required}"
 
-mkdir -p "$queue_dir" "$state_dir/log"
+mkdir -p "$state_dir/log"
 
 child=""
 terminate() {
@@ -61,7 +65,6 @@ write_health() {
 
 agent_activity() {
     local event="$1" activity="$2"
-    [ -n "${PLECT_SESSION_NAME:-}" ] || return 0
     # PLECT_AGENT_ACTIVITY_BIN (set by tasks/exec_runtime.toml's setup via
     # a `bin` reference) is the resolved absolute path; this script runs as a
     # standalone process outside plect's own resolution, so it cannot
@@ -72,7 +75,6 @@ agent_activity() {
 }
 
 tick_session() {
-    [ -n "${PLECT_SESSION_NAME:-}" ] || return 0
     plect tick "$PLECT_SESSION_NAME" >/dev/null 2>&1 || true
 }
 
@@ -87,90 +89,141 @@ tick_session() {
 # newlines before jq ever saw them, corrupting a message that ends in one.
 # --rawfile reads the file's exact bytes straight into the JSON value.
 publish_reply() {
-    [ -n "${PLECT_SESSION_NAME:-}" ] && [ "${CODEX_PUBLISH_MESSAGE:-false}" = "true" ] || return 0
-    local file="$1"
+    [ "${CODEX_PUBLISH_MESSAGE:-false}" = "true" ] || return 0
+    local file="$1" batch_id="$2"
     [ -f "$file" ] || return 1
     [ -s "$file" ] || return 0
-    jq -n --rawfile text "$file" --arg turn_id "$(cat "$queue_dir/.inflight/batch-id")" \
+    jq -n --rawfile text "$file" --arg turn_id "$batch_id" \
         '{last_assistant_message: $text, turn_id: $turn_id}' \
         | PLECT_REPLY_REQUIRED=true "${PLECT_AGENT_ACTIVITY_BIN:-codex-agent-activity}" reply >/dev/null 2>&1
 }
 
-source "$(dirname "$0")/headless-batch.sh"
+# take_batch waits on the take in the background: bash defers a trap until a
+# foreground child exits, and a TERM must reach this worker while it is idle.
+take_batch() {
+    plect inbox take "$PLECT_SESSION_NAME" --wait 20s > "$state_dir/.batch.json" 2>> "$state_dir/log/inbox.err" &
+    child=$!
+    wait "$child"
+    local status=$?
+    child=""
+    return "$status"
+}
+
+# render_batch prints the prompt for one batch. message_envelope is a format
+# string filled by literal replacement, never evaluated, so it chooses the
+# message's shape and nothing else.
+render_batch() {
+    local envelope='[{type}] {body_or_summary}{url_suffix}'
+    [ -f "$state_dir/message_envelope" ] && envelope="$(cat "$state_dir/message_envelope")"
+    jq -rj --arg envelope "$envelope" '
+      def put($name; $value): split("{" + $name + "}") | join($value);
+      def fill:
+        (.body // "") as $body | (.summary // "") as $summary | (.metadata.url // "") as $url
+        | (.type // "") as $type
+        | $envelope
+        | put("type"; $type)
+        | put("body_or_summary"; if $body != "" then $body else $summary end)
+        | put("body"; $body)
+        | put("summary"; $summary)
+        | put("url_suffix"; if $url != "" then " (" + $url + ")" else "" end)
+        | put("url"; $url);
+      "Consider and answer every numbered entry in this batch in one turn. Reply once after considering all entries.\n\n"
+      + ([.events | to_entries[]
+          | "[\(.key + 1)] id=\(.value.id) type=\(.value.type) source=\(.value.source // "")\n"
+            + (.value | fill) + "\n\n"] | join(""))
+    ' "$state_dir/.batch.json"
+}
+
 while true; do
-    if batch_claim "$queue_dir" && batch_render "$queue_dir"; then
-        if [ ! -s "$queue_dir/.inflight/input" ]; then
-            batch_ack "$queue_dir"
-            continue
-        fi
-        event_type="batch"
-        text="$(cat "$queue_dir/.inflight/input"; printf '\001')"
+    if ! take_batch; then
+        sleep 2
+        continue
+    fi
+    [ -s "$state_dir/.batch.json" ] || continue
+    batch_id="$(jq -r '.batch // empty' "$state_dir/.batch.json")"
+    deliveries="$(jq -r '.deliveries // 1' "$state_dir/.batch.json")"
+    if [ -z "$batch_id" ]; then
+        echo "inbox take returned no batch id" >&2
+        sleep 2
+        continue
+    fi
+    event_type="batch"
+    last_message_file="$state_dir/reply-$batch_id.txt"
+    completed_marker="$state_dir/reply-$batch_id.completed"
+    reply_marker="$state_dir/reply-$batch_id.published"
+    # A reply kept for any other batch belongs to one core has since parked.
+    for stale in "$state_dir"/reply-*; do
+        case "$stale" in "$last_message_file"|"$completed_marker"|"$reply_marker") ;; *) rm -f "$stale" ;; esac
+    done
+
+    case "$deliveries" in ''|*[!0-9]*) deliveries=1 ;; esac
+    [ "$deliveries" -gt 1 ] && sleep "$(((deliveries - 1) * 2))"
+
+    # Retried here rather than by taking again: a failed status write says
+    # nothing about the batch and must not use up one of its deliveries.
+    until plect state set-message "$PLECT_SESSION_NAME" "working" >/dev/null 2>&1; do
+        echo "working status write failed; holding the batch" >&2
+        write_health 1 "$event_type"
+        sleep 1
+    done
+    write_health 0 "$event_type"
+
+    # codex creates the last-message file before the turn ends, so a marker of
+    # its own says the turn completed.
+    if [ ! -f "$completed_marker" ]; then
+        text="$(render_batch; printf '\001')" || { write_health 1 "$event_type"; continue; }
         text="${text%$'\001'}"
-        reply_marker="$queue_dir/.inflight/reply-published"
-        completed_marker="$queue_dir/.inflight/agent-completed"
-        last_message_file="$queue_dir/.inflight/reply.txt"
-        if [ -f "$reply_marker" ]; then
-            batch_ack "$queue_dir"
-            tick_session
-            continue
+        : > "$last_message_file" || { write_health 1 "$event_type"; sleep 2; continue; }
+        thread_id="$(cat "$state_dir/thread_id" 2>/dev/null || true)"
+        log_file="$state_dir/log/$(date +%s%N).jsonl"
+        agent_activity "UserPromptSubmit" "working"
+        if [ -z "$thread_id" ]; then
+            codex exec --json \
+                --dangerously-bypass-approvals-and-sandbox \
+                --output-last-message "$last_message_file" \
+                "${extra_args[@]}" \
+                -- "$text" > "$log_file" 2>&1 &
+        else
+            codex exec resume --json \
+                --dangerously-bypass-approvals-and-sandbox \
+                --output-last-message "$last_message_file" \
+                "${extra_args[@]}" \
+                "$thread_id" -- "$text" > "$log_file" 2>&1 &
         fi
-        batch_wait_retry "$queue_dir"
+        child=$!
+        wait "$child"
+        exit_code=$?
+        child=""
 
-        if [ -n "${PLECT_SESSION_NAME:-}" ] && ! plect state set-message "$PLECT_SESSION_NAME" "working" >/dev/null 2>&1; then
-            echo "working status write failed; leaving turn queued" >&2
-            write_health 1 "$event_type"
-            sleep 1
-            continue
+        if [ -z "$thread_id" ] && [ "$exit_code" -eq 0 ]; then
+            new_thread_id="$(jq -r 'select(.type == "thread.started") | (.thread_id // .payload.thread_id // empty)' "$log_file" 2>/dev/null | head -1)"
+            [ -n "$new_thread_id" ] && printf '%s' "$new_thread_id" > "$state_dir/thread_id"
         fi
-        write_health 0 "$event_type"
-
-        if [ ! -f "$completed_marker" ]; then
+        if [ "$exit_code" -ne 0 ]; then
             rm -f "$last_message_file"
-            : > "$last_message_file" || { write_health 1 "$event_type"; batch_failed "$queue_dir" agent || sleep 2; continue; }
-            thread_id="$(cat "$state_dir/thread_id" 2>/dev/null || true)"
-            log_file="$state_dir/log/$(date +%s%N).jsonl"
-            agent_activity "UserPromptSubmit" "working"
-            if [ -z "$thread_id" ]; then
-                codex exec --json \
-                    --dangerously-bypass-approvals-and-sandbox \
-                    --output-last-message "$last_message_file" \
-                    "${extra_args[@]}" \
-                    -- "$text" > "$log_file" 2>&1 &
-            else
-                codex exec resume --json \
-                    --dangerously-bypass-approvals-and-sandbox \
-                    --output-last-message "$last_message_file" \
-                    "${extra_args[@]}" \
-                    "$thread_id" -- "$text" > "$log_file" 2>&1 &
-            fi
-            child=$!
-            wait "$child"
-            exit_code=$?
-            child=""
-
-            if [ -z "$thread_id" ] && [ "$exit_code" -eq 0 ]; then
-                new_thread_id="$(jq -r 'select(.type == "thread.started") | (.thread_id // .payload.thread_id // empty)' "$log_file" 2>/dev/null | head -1)"
-                [ -n "$new_thread_id" ] && printf '%s' "$new_thread_id" > "$state_dir/thread_id"
-            fi
-            if [ "$exit_code" -ne 0 ]; then
-                rm -f "$last_message_file"
-                write_health "$exit_code" "$event_type"
-                batch_failed "$queue_dir" agent || sleep 2
-                agent_activity "Stop" "waiting"
-                continue
-            fi
-            touch "$completed_marker" || { write_health 1 "$event_type"; sleep 2; continue; }
+            write_health "$exit_code" "$event_type"
             agent_activity "Stop" "waiting"
+            continue
         fi
+        touch "$completed_marker" || { write_health 1 "$event_type"; sleep 2; continue; }
+        agent_activity "Stop" "waiting"
+    fi
 
-        if publish_reply "$last_message_file" && touch "$reply_marker"; then
-            write_health 0 "$event_type"
-            batch_ack "$queue_dir"
-            tick_session
+    if [ ! -f "$reply_marker" ]; then
+        if publish_reply "$last_message_file" "$batch_id" && touch "$reply_marker"; then
+            :
         else
             write_health 1 "$event_type"
-            batch_failed "$queue_dir" reply || sleep 2
+            continue
         fi
     fi
-    sleep 1
+
+    if plect inbox ack "$PLECT_SESSION_NAME" "$batch_id" >/dev/null 2>> "$state_dir/log/inbox.err"; then
+        write_health 0 "$event_type"
+        rm -f "$last_message_file" "$completed_marker" "$reply_marker"
+        tick_session
+    else
+        write_health 1 "$event_type"
+        sleep 2
+    fi
 done

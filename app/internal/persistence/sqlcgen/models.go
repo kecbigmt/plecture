@@ -35,6 +35,14 @@ type EventCursor struct {
 	NextSequence int64
 }
 
+type InboxEntry struct {
+	SessionID  string
+	Sequence   int64
+	Channel    string
+	BatchID    sql.NullString
+	Deliveries int64
+}
+
 type NodeExecution struct {
 	ID                      string
 	SessionID               string

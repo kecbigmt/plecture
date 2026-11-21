@@ -584,6 +584,29 @@ SELECT next_sequence FROM event_cursors WHERE session_id = ? AND kind = ?;
 INSERT INTO event_cursors (session_id, kind, next_sequence) VALUES (?, ?, ?)
 ON CONFLICT(session_id, kind) DO UPDATE SET next_sequence = excluded.next_sequence;
 
+-- name: InsertInboxEntry :exec
+INSERT INTO inbox_entries (session_id, sequence, channel) VALUES (?, ?, ?)
+ON CONFLICT(session_id, sequence) DO NOTHING;
+
+-- name: ListInboxEntries :many
+SELECT i.channel, i.batch_id, i.deliveries,
+       e.id, e.sequence, e.time, e.type, e.source, e.direction, e.summary, e.body, e.supersedes, e.metadata_json
+FROM inbox_entries i
+JOIN events e ON e.session_id = i.session_id AND e.sequence = i.sequence
+WHERE i.session_id = ? ORDER BY i.sequence;
+
+-- name: ClaimInboxEntries :exec
+UPDATE inbox_entries SET batch_id = ?, deliveries = 1 WHERE session_id = ? AND batch_id IS NULL;
+
+-- name: CountInboxBatchDelivery :exec
+UPDATE inbox_entries SET deliveries = deliveries + 1 WHERE session_id = ? AND batch_id = ?;
+
+-- name: DeleteInboxBatch :execrows
+DELETE FROM inbox_entries WHERE session_id = ? AND batch_id = ?;
+
+-- name: CountInboxEntries :one
+SELECT COUNT(*) FROM inbox_entries WHERE session_id = ?;
+
 -- name: GetResourceByName :one
 SELECT id, type, name, locator, created_at, max_subscribers FROM resources WHERE name = ?;
 

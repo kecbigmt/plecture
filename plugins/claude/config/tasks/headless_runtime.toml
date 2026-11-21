@@ -2,12 +2,10 @@
 kind  = "effect"
 scope = "run"
 
-# Each turn is its own `claude -p` drained from a queue, not keystrokes into
-# a TUI, so there is no input box to wedge; turns billed through api_key_file
-# are API usage, which an interactive session is not. socket_path is offered
-# when channel-server is installed, so an adapter wired to a runtime's
-# socket_path reaches this queue without knowing which shape is behind it.
-# The README's Parameters table documents each input.
+# Each turn is its own `claude -p` for one batch taken from the session
+# inbox, not keystrokes into a TUI, so there is no input box to wedge; turns
+# billed through api_key_file are API usage, which an interactive session is
+# not. The README's Parameters table documents each input.
 [headless_runtime.setup]
 type   = "shell"
 script = '''
@@ -37,27 +35,21 @@ SID="${prev_session_id-}"
 
 # Keyed by session id, not only by name: a session destroyed and recreated
 # under the same name is a new conversation, and must not inherit the old
-# one's queue or started marker. A resumed session keeps all three.
+# one's started marker. A resumed session keeps both.
 STATE_ROOT="${state_root-}"
 [ -n "$STATE_ROOT" ] || STATE_ROOT="${TMPDIR:-/tmp}/plect-claude-headless"
 STATE_DIR="$STATE_ROOT/$session_name/$SID"
 PREV_STATE_DIR="${prev_state_dir-}"
 [ -n "${prev_session_id-}" ] && [ -n "$PREV_STATE_DIR" ] && STATE_DIR="$PREV_STATE_DIR"
-QUEUE_DIR="$STATE_DIR/queue"
-mkdir -p "$QUEUE_DIR"
+mkdir -p "$STATE_DIR"
 
-# The same per-session path the interactive runtime derives: a socket path
-# under STATE_DIR could exceed the platform's sun_path limit. channel_server_bin
-# resolves whether or not the binary was built, so presence is a file test.
-SOCKET=""
-if [ -x "$channel_server_bin" ]; then
-  SOCKET_DIR="${XDG_RUNTIME_DIR:-/tmp}/claude-channel"
-  mkdir -p "$SOCKET_DIR"
-  SOCKET="$SOCKET_DIR/$SID.sock"
-fi
+# Written to a file rather than exported on the launch line: the envelope is
+# free text, and the launch line is keystrokes.
+printf '%s' "$message_envelope" > "$STATE_DIR/message_envelope" || exit 1
 
 # No channel-server MCP registration: a later event reaches this runtime
-# through the queue, never through a notification into a running process.
+# through the session inbox, never through a notification into a running
+# process.
 MCP="$STATE_DIR/mcp.json"
 printf '%s' '{"mcpServers":{}}' \
   | CLAUDE_MCP_SERVERS="${mcp_servers-}" "$mcp_servers_bin" > "$MCP" || exit 1
@@ -110,9 +102,6 @@ EXPORTS="${EXPORTS}export PLECT_CLAUDE_MODEL='${model-}'; "
 EXPORTS="${EXPORTS}export PLECT_CLAUDE_EFFORT='${effort-}'; "
 EXPORTS="${EXPORTS}export PLECT_CLAUDE_PERMISSION_MODE='${permission_mode-}'; "
 EXPORTS="${EXPORTS}export PLECT_CLAUDE_API_KEY_FILE='${api_key_file-}'; "
-BRIDGE_BIN=""
-[ -n "$SOCKET" ] && BRIDGE_BIN="$channel_server_bin"
-EXPORTS="${EXPORTS}export PLECT_CLAUDE_CHANNEL_SERVER_BIN='$BRIDGE_BIN'; "
 
 rm -f "$STATE_DIR/ready" "$STATE_DIR/worker.pid"
 # Resolved before anything is typed: this is the identity every cleanup
@@ -126,7 +115,7 @@ fi
 # multiplexer session, a lifecycle this plugin does not own) down too. A
 # bash script's comm is always "bash", so worker.pid — written by the
 # worker itself — is this effect's only way to identify its own pid.
-sh -c "$send_text" terminal-send-text "${EXPORTS}$worker_bin '$QUEUE_DIR' '$STATE_DIR' '$SID' '$MCP' '$HOOKS' '$SOCKET'"
+sh -c "$send_text" terminal-send-text "${EXPORTS}$worker_bin '$STATE_DIR' '$SID' '$MCP' '$HOOKS'"
 sh -c "$send_keys" terminal-send-keys Enter
 
 READY_TIMEOUT_SECONDS="${launch_timeout%s}"
@@ -155,11 +144,8 @@ fi
 OUTPUT=$(jq -nc \
   --argjson pid "$PID" \
   --arg sid "$SID" \
-  --arg queue_dir "$QUEUE_DIR" \
   --arg state_dir "$STATE_DIR" \
-  --arg sock "$SOCKET" \
-  '{pid:$pid, session_id:$sid, queue_dir:$queue_dir, state_dir:$state_dir}
-   + (if $sock == "" then {} else {socket_path:$sock} end)') || {
+  '{pid:$pid, session_id:$sid, state_dir:$state_dir}') || {
     terminate_if_owned "$PID"
     exit 1
   }
@@ -180,10 +166,10 @@ state_root      = { from = "inputs.state_root", optional = true }
 path_prepend    = { from = "inputs.path_prepend", optional = true }
 launch_timeout  = { from = "inputs.launch_timeout", default = "120s" }
 publish_events  = { json = { from = "inputs.publish_events", default = ["message"] } }
+message_envelope = { from = "inputs.message_envelope", default = "[{type}] {body_or_summary}{url_suffix}" }
 activity_bin    = { bin = "claude-agent-activity" }
 mcp_servers_bin = { bin = "claude-mcp-servers" }
 worker_bin      = { bin = "claude-headless-worker" }
-channel_server_bin = { bin = "channel-server" }
 send_text       = { terminal = "send_text" }
 send_keys       = { terminal = "send_keys" }
 terminal_pid    = { terminal = "pid" }
@@ -221,8 +207,6 @@ if is_worker; then
   done
   is_worker && kill -KILL "$pid" 2>/dev/null
 fi
-# A bridge killed with its worker never gets to remove its own socket.
-[ -n "${socket_path-}" ] && rm -f "$socket_path"
 "$activity_bin" reset "$session_name"
 true
 '''
@@ -231,7 +215,6 @@ true
 pid              = { from = "self.outputs.pid", optional = true }
 process_identity = { from = "self.process.identity", optional = true }
 state_dir        = { from = "self.outputs.state_dir", optional = true }
-socket_path      = { from = "self.outputs.socket_path", optional = true }
 session_name     = { from = "session.name" }
 activity_bin     = { bin = "claude-agent-activity" }
 terminal_pid     = { terminal = "pid" }
@@ -274,14 +257,15 @@ state_root      = { type = "string", pattern = "^[A-Za-z0-9_./:-]*$" }
 path_prepend    = { type = "string", pattern = "^[A-Za-z0-9_./:-]*$" }
 launch_timeout  = { type = "string", pattern = "^[1-9][0-9]*s$", default = "120s" }
 publish_events  = { type = "array", items = { type = "string", enum = ["message"] }, default = ["message"] }
+# Reaches the worker through a file, never the pane, so it carries no charset
+# restriction.
+message_envelope = { type = "string", default = "[{type}] {body_or_summary}{url_suffix}" }
 
 [headless_runtime.outputs_schema]
 type     = "object"
-required = ["pid", "session_id", "queue_dir", "state_dir"]
+required = ["pid", "session_id", "state_dir"]
 
 [headless_runtime.outputs_schema.properties]
 pid         = { type = "integer" }
 session_id  = { type = "string" }
-queue_dir   = { type = "string" }
 state_dir   = { type = "string" }
-socket_path = { type = "string" }

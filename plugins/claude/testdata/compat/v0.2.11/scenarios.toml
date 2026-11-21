@@ -14,9 +14,10 @@ name  = "released-record-is-alive-and-cleaned-up"
 self  = { pid = "PID", pid_started = "started-PID", session_id = "aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee", socket_path = "STATE/claude-channel/aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee.sock", mcp_config = "STATE/mcp.json", hooks_settings = "STATE/hooks.json" }
 hooks = ["health.alive", "cleanup"]
 
-[[headless_runtime]]
-name = "fresh-lifecycle"
-
+# The released headless_runtime setup is not run here: it launches the worker
+# with a queue directory the worker no longer takes. A session on that release
+# is rebased before it is brought up again (docs/migrations/session-inbox.md),
+# so only its recorded outputs still have to be probed and cleaned up.
 [[headless_runtime]]
 name                       = "released-record-is-alive-and-cleaned-up"
 self                       = { pid = "WORKER_PID", pid_started = "started-WORKER_PID", state_dir = "HOME/headless" }

@@ -1,0 +1,8 @@
+# plect-fixture: result=invalid layer=structural diagnostic=PLECTURE-CFG-ACTION-VARIANT entry=definitions
+# reason: an inbox channel runs nothing, so a field that names a delivery has nothing to apply to.
+
+[runtime_inbox]
+kind = "channel"
+type = "inbox"
+bin  = "enqueue"
+args = [{ from = "event.type" }]

@@ -12,6 +12,7 @@ import (
 	"github.com/kecbigmt/plecture/app/internal/domain"
 	"github.com/kecbigmt/plecture/app/internal/effect"
 	"github.com/kecbigmt/plecture/app/internal/eventlog"
+	"github.com/kecbigmt/plecture/app/internal/inbox"
 	"github.com/kecbigmt/plecture/app/internal/lang"
 	"github.com/kecbigmt/plecture/app/internal/plugins"
 	"github.com/kecbigmt/plecture/app/internal/sessionhub"
@@ -64,7 +65,12 @@ type sessionDispatcher struct {
 	// held is memory only: a restart redelivers once, which at-least-once
 	// delivery allows, and it keeps a retry from re-sending to channels that
 	// already delivered.
-	held heldEvent
+	held  heldEvent
+	inbox *inbox.Store
+	// handedOver is memory only for the reason held is: a held push delivery
+	// makes every drain list the same events again, and an entry the runtime
+	// has since acknowledged must not come back.
+	handedOver int64
 }
 
 type heldEvent struct {
@@ -149,6 +155,7 @@ func (d *sessionDispatcher) drain(ctx context.Context, s *domain.Session, startG
 			slog.Default().Warn("dispatcher: reset cursor after log rotation failed", "session", d.session, "error", err)
 		}
 		*startGen = g
+		d.handedOver = 0
 	}
 	cur, err := d.log.ReadCursor(d.session, dispatcherConsumer)
 	if err != nil {
@@ -160,11 +167,15 @@ func (d *sessionDispatcher) drain(ctx context.Context, s *domain.Session, startG
 		slog.Default().Warn("dispatcher: list events failed; skipping this drain, will retry on next wake", "session", d.session, "error", err)
 		return
 	}
+	if !d.handOver(evs, offs) {
+		return
+	}
+	omitted := d.superseded(evs)
 	for i, ev := range evs {
 		if ctx.Err() != nil {
 			return
 		}
-		held := d.processEvent(ctx, s, ev)
+		held := d.processEvent(ctx, s, ev, omitted)
 		if ctx.Err() != nil {
 			return // cancelled mid-event; leave the cursor so it replays on restart
 		}
@@ -195,10 +206,7 @@ func (d *sessionDispatcher) drain(ctx context.Context, s *domain.Session, startG
 // session-level streak race each other, and the healthy channel's steady
 // stream of successes would starve the broken one's streak of ever reaching
 // the escalation threshold.
-func (d *sessionDispatcher) processEvent(ctx context.Context, s *domain.Session, ev event.Event) (held bool) {
-	if ev.Type == event.TypeChannelError && ev.Metadata["event_type"] == event.TypeChannelError {
-		return false
-	}
+func (d *sessionDispatcher) processEvent(ctx context.Context, s *domain.Session, ev event.Event, omitted map[string]map[string]bool) (held bool) {
 	var wg sync.WaitGroup
 	var mu sync.Mutex
 	matched := false
@@ -211,15 +219,12 @@ func (d *sessionDispatcher) processEvent(ctx context.Context, s *domain.Session,
 	}
 	rootErr := d.projectRootErr(s)
 	for i, ch := range d.channels {
-		if !channelMatches(ch, ev) {
-			continue
-		}
-		if ev.Type == event.TypeChannelError && ev.Metadata["channel"] == ch.Name {
+		if !selects(ch, ev) || omitted[ch.Name][ev.ID] {
 			continue
 		}
 		def, ok := d.defs[ch.Uses]
-		if !ok {
-			continue // resolution is validated at load; defensive
+		if !ok || def.Type == config.ChannelTypeInbox {
+			continue // resolution is validated at load; handOver served an inbox binding
 		}
 		matched = true // set on the main goroutine, before any worker starts — no lock needed
 		if delivered[ch.Name] {
@@ -329,6 +334,69 @@ func (d *sessionDispatcher) shouldHold(ev event.Event, failures map[int]delivery
 		return false
 	}
 	return awaiting
+}
+
+// selects is shared by push delivery, inbox hand-over and the supersession
+// judgment, so the three cannot disagree about what is pending for a binding.
+func selects(ch config.EventChannel, ev event.Event) bool {
+	if ev.Type == event.TypeChannelError {
+		if ev.Metadata["event_type"] == event.TypeChannelError || ev.Metadata["channel"] == ch.Name {
+			return false
+		}
+	}
+	return channelMatches(ch, ev)
+}
+
+// superseded is recomputed at every drain, so events that piled up while the
+// session was down or held are judged together.
+func (d *sessionDispatcher) superseded(evs []event.Event) map[string]map[string]bool {
+	out := map[string]map[string]bool{}
+	for _, ch := range d.channels {
+		if def, ok := d.defs[ch.Uses]; !ok || def.Type == config.ChannelTypeInbox {
+			continue
+		}
+		var selected []event.Event
+		for _, ev := range evs {
+			if selects(ch, ev) {
+				selected = append(selected, ev)
+			}
+		}
+		if omitted := inbox.Superseded(selected); len(omitted) > 0 {
+			out[ch.Name] = omitted
+		}
+	}
+	return out
+}
+
+// handOver adds a whole drain in one transaction, before any push delivery:
+// a runtime taking mid-backlog would otherwise get the backlog split across
+// batches and miss a supersession. False means the drain must be retried.
+func (d *sessionDispatcher) handOver(evs []event.Event, seqs []int64) bool {
+	for _, ch := range d.channels {
+		if def, ok := d.defs[ch.Uses]; !ok || def.Type != config.ChannelTypeInbox {
+			continue
+		}
+		var selected []int64
+		for i, ev := range evs {
+			if seqs[i] > d.handedOver && selects(ch, ev) {
+				selected = append(selected, seqs[i])
+			}
+		}
+		if len(selected) > 0 {
+			if d.inbox == nil {
+				slog.Default().Warn("dispatcher: no inbox store for an inbox binding; skipping this drain", "session", d.session, "channel", ch.Name)
+				return false
+			}
+			if err := d.inbox.Add(d.session, selected, ch.Name); err != nil {
+				slog.Default().Warn("dispatcher: inbox hand-over failed; skipping this drain, will retry on next wake", "session", d.session, "channel", ch.Name, "error", err)
+				return false
+			}
+		}
+	}
+	if len(seqs) > 0 && seqs[len(seqs)-1] > d.handedOver {
+		d.handedOver = seqs[len(seqs)-1]
+	}
+	return true
 }
 
 func channelMatches(ch config.EventChannel, ev event.Event) bool {

@@ -11,6 +11,20 @@ import (
 	"strings"
 )
 
+const claimInboxEntries = `-- name: ClaimInboxEntries :exec
+UPDATE inbox_entries SET batch_id = ?, deliveries = 1 WHERE session_id = ? AND batch_id IS NULL
+`
+
+type ClaimInboxEntriesParams struct {
+	BatchID   sql.NullString
+	SessionID string
+}
+
+func (q *Queries) ClaimInboxEntries(ctx context.Context, arg ClaimInboxEntriesParams) error {
+	_, err := q.db.ExecContext(ctx, claimInboxEntries, arg.BatchID, arg.SessionID)
+	return err
+}
+
 const clearParentReferencesToID = `-- name: ClearParentReferencesToID :exec
 UPDATE sessions SET parent_session_id = NULL WHERE parent_session_id = ?
 `
@@ -30,6 +44,31 @@ UPDATE sessions SET root_session_id = NULL WHERE root_session_id = ?
 func (q *Queries) ClearRootReferencesToID(ctx context.Context, rootSessionID sql.NullString) error {
 	_, err := q.db.ExecContext(ctx, clearRootReferencesToID, rootSessionID)
 	return err
+}
+
+const countInboxBatchDelivery = `-- name: CountInboxBatchDelivery :exec
+UPDATE inbox_entries SET deliveries = deliveries + 1 WHERE session_id = ? AND batch_id = ?
+`
+
+type CountInboxBatchDeliveryParams struct {
+	SessionID string
+	BatchID   sql.NullString
+}
+
+func (q *Queries) CountInboxBatchDelivery(ctx context.Context, arg CountInboxBatchDeliveryParams) error {
+	_, err := q.db.ExecContext(ctx, countInboxBatchDelivery, arg.SessionID, arg.BatchID)
+	return err
+}
+
+const countInboxEntries = `-- name: CountInboxEntries :one
+SELECT COUNT(*) FROM inbox_entries WHERE session_id = ?
+`
+
+func (q *Queries) CountInboxEntries(ctx context.Context, sessionID string) (int64, error) {
+	row := q.db.QueryRowContext(ctx, countInboxEntries, sessionID)
+	var count int64
+	err := row.Scan(&count)
+	return count, err
 }
 
 const countLiveSessionsNamed = `-- name: CountLiveSessionsNamed :one
@@ -95,6 +134,23 @@ DELETE FROM events WHERE session_id = ?
 func (q *Queries) DeleteEventsForSession(ctx context.Context, sessionID string) error {
 	_, err := q.db.ExecContext(ctx, deleteEventsForSession, sessionID)
 	return err
+}
+
+const deleteInboxBatch = `-- name: DeleteInboxBatch :execrows
+DELETE FROM inbox_entries WHERE session_id = ? AND batch_id = ?
+`
+
+type DeleteInboxBatchParams struct {
+	SessionID string
+	BatchID   sql.NullString
+}
+
+func (q *Queries) DeleteInboxBatch(ctx context.Context, arg DeleteInboxBatchParams) (int64, error) {
+	result, err := q.db.ExecContext(ctx, deleteInboxBatch, arg.SessionID, arg.BatchID)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected()
 }
 
 const deleteNodeExecutionDependencies = `-- name: DeleteNodeExecutionDependencies :exec
@@ -514,6 +570,22 @@ func (q *Queries) InsertEvent(ctx context.Context, arg InsertEventParams) error 
 		arg.Supersedes,
 		arg.MetadataJson,
 	)
+	return err
+}
+
+const insertInboxEntry = `-- name: InsertInboxEntry :exec
+INSERT INTO inbox_entries (session_id, sequence, channel) VALUES (?, ?, ?)
+ON CONFLICT(session_id, sequence) DO NOTHING
+`
+
+type InsertInboxEntryParams struct {
+	SessionID string
+	Sequence  int64
+	Channel   string
+}
+
+func (q *Queries) InsertInboxEntry(ctx context.Context, arg InsertInboxEntryParams) error {
+	_, err := q.db.ExecContext(ctx, insertInboxEntry, arg.SessionID, arg.Sequence, arg.Channel)
 	return err
 }
 
@@ -1216,6 +1288,67 @@ func (q *Queries) ListEverSessionNames(ctx context.Context) ([]string, error) {
 			return nil, err
 		}
 		items = append(items, name)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const listInboxEntries = `-- name: ListInboxEntries :many
+SELECT i.channel, i.batch_id, i.deliveries,
+       e.id, e.sequence, e.time, e.type, e.source, e.direction, e.summary, e.body, e.supersedes, e.metadata_json
+FROM inbox_entries i
+JOIN events e ON e.session_id = i.session_id AND e.sequence = i.sequence
+WHERE i.session_id = ? ORDER BY i.sequence
+`
+
+type ListInboxEntriesRow struct {
+	Channel      string
+	BatchID      sql.NullString
+	Deliveries   int64
+	ID           string
+	Sequence     int64
+	Time         string
+	Type         string
+	Source       string
+	Direction    string
+	Summary      string
+	Body         string
+	Supersedes   string
+	MetadataJson string
+}
+
+func (q *Queries) ListInboxEntries(ctx context.Context, sessionID string) ([]ListInboxEntriesRow, error) {
+	rows, err := q.db.QueryContext(ctx, listInboxEntries, sessionID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []ListInboxEntriesRow
+	for rows.Next() {
+		var i ListInboxEntriesRow
+		if err := rows.Scan(
+			&i.Channel,
+			&i.BatchID,
+			&i.Deliveries,
+			&i.ID,
+			&i.Sequence,
+			&i.Time,
+			&i.Type,
+			&i.Source,
+			&i.Direction,
+			&i.Summary,
+			&i.Body,
+			&i.Supersedes,
+			&i.MetadataJson,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
 	}
 	if err := rows.Close(); err != nil {
 		return nil, err

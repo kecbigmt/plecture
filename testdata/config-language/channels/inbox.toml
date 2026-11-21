@@ -1,0 +1,6 @@
+# plect-fixture: result=valid entry=definitions
+# reason: the inbox primitive hands a matching event to the session's inbox for the runtime to take, so it declares no delivery of its own.
+
+[runtime_inbox]
+kind = "channel"
+type = "inbox"

@@ -6,7 +6,7 @@
 # PLECT_TEST_NO_PID_REPORT exercise the two ways that self-report can't be
 # trusted: a syntactically valid but unrelated pid, and no report at all.
 plect-effect-record terminal-send_text "$@"
-state_dir=$(printf '%s' "$1" | sed -n "s/.*claude-headless-worker '[^']*' '\([^']*\)'.*/\1/p")
+state_dir=$(printf '%s' "$1" | sed -n "s/.*claude-headless-worker '\([^']*\)'.*/\1/p")
 [ -n "$state_dir" ] || exit 0
 mkdir -p "$state_dir"
 if [ -n "${PLECT_EFFECT_REAL_WORKER:-}" ]; then

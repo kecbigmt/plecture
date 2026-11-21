@@ -396,6 +396,16 @@ CREATE TABLE event_cursors (
     PRIMARY KEY (session_id, kind)
 );
 
+-- An entry names an event its session's runtime has not acknowledged; events keeps the only copy.
+CREATE TABLE inbox_entries (
+    session_id TEXT NOT NULL REFERENCES sessions(id) ON DELETE CASCADE,
+    sequence INTEGER NOT NULL CHECK (sequence > 0),
+    channel TEXT NOT NULL,
+    batch_id TEXT,
+    deliveries INTEGER NOT NULL DEFAULT 0 CHECK (deliveries >= 0),
+    PRIMARY KEY (session_id, sequence)
+);
+
 -- A resources row is released by the schema, not by each writer, so a write
 -- that drops the last reference releases it whatever code made the write.
 -- resource_references is the one list of those references; a new column that

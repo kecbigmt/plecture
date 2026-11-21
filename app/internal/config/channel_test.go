@@ -230,6 +230,7 @@ func TestValidateWorkflowChannels(t *testing.T) {
 	defs := map[string]ChannelDefinition{
 		"claude_channel": {Type: ChannelTypeUnixSocket, InputSchema: map[string]ChannelInputSpec{"path": {Type: "string", Required: true}}},
 		"slack_thread":   {Type: ChannelTypeExec, InputSchema: map[string]ChannelInputSpec{"channel_id": {Type: "string", Required: true}, "thread_ts": {Type: "string"}}},
+		"runtime_inbox":  {Type: ChannelTypeInbox},
 	}
 	chan1 := func(c ...EventChannel) WorkflowFile { return WorkflowFile{Event: WorkflowEvent{Channel: c}} }
 	cases := []struct {
@@ -247,6 +248,21 @@ func TestValidateWorkflowChannels(t *testing.T) {
 				EventChannel{Name: "runtime", Uses: "claude_channel", Inputs: map[string]*lang.Value{"path": literalValue("p")}, Include: []string{"plect.instruction"}},
 				EventChannel{Name: "slack", Uses: "slack_thread", Inputs: map[string]*lang.Value{"channel_id": literalValue("c")}, Include: []string{"github.*", "user.emit"}},
 			),
+		},
+		{
+			name: "ok one inbox beside a push channel",
+			wf: chan1(
+				EventChannel{Name: "runtime", Uses: "runtime_inbox", Include: []string{"plect.instruction"}},
+				EventChannel{Name: "slack", Uses: "slack_thread", Inputs: map[string]*lang.Value{"channel_id": literalValue("c")}, Include: []string{"user.emit"}},
+			),
+		},
+		{
+			name: "second inbox binding",
+			wf: chan1(
+				EventChannel{Name: "runtime", Uses: "runtime_inbox", Include: []string{"plect.instruction"}},
+				EventChannel{Name: "extra", Uses: "runtime_inbox", Include: []string{"user.emit"}},
+			),
+			wantErr: "at most one inbox channel",
 		},
 		{
 			name:    "unknown uses",

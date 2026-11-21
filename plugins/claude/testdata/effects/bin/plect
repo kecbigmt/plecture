@@ -13,4 +13,10 @@ if [ "$1 $2" = "process verify" ]; then
   esac
   exit 0
 fi
+# A real worker polls the inbox for as long as it lives, so the poll is
+# neither recorded nor answered at once.
+if [ "$1 $2" = "inbox take" ]; then
+  sleep 1
+  exit 0
+fi
 plect-effect-record plect "$@"

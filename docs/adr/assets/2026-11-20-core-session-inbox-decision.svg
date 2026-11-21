@@ -1,0 +1,154 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1000 878" width="1000" height="878" role="img" aria-labelledby="title desc">
+  <title id="title">Decision: core owns the session inbox</title>
+  <desc id="desc">Chosen option: inside core, the session dispatcher reads the event log past the delivery position and gives each binding the pending events its include selects. A push binding gets one delivery per retained event to its pane runtime, with pending events that another pending event supersedes omitted. The inbox binding gets one row per selected event in the core table inbox_entries, all rows of one pass in one transaction. A headless worker takes the pending rows as one batch (batch id, deliveries, events), in which superseded events are omitted, and acknowledges the batch id after the turn; a batch taken again before acknowledgement is the same batch, and after three unacknowledged deliveries core parks it and appends plect.channel.error to the event log. Superseded: per-plugin queue files and batch script copies; and the idle-sleep ADR rule giving the resume notice priority. Deferred: a batch value for push channels. Rejected: a byte-identity check on consumer copies, a position per consumer, take and acknowledge for push bindings, acknowledging a pane delivery at turn end, counting reported failures, and a priority property for one event.</desc>
+  <defs>
+    <style>
+      svg {
+        --bg: #ffffff; --fg: #1f2328; --muted: #59636e; --line: #d0d7de;
+        --neutral: #8c959f; --neutral-bg: #f6f8fa;
+        --chosen: #1a7f37; --chosen-bg: #dafbe1;
+        --rejected: #cf222e; --rejected-bg: #ffebe9;
+        --deferred: #9a6700; --deferred-bg: #fff8c5;
+        --superseded: #59636e; --superseded-bg: #eaeef2;
+      }
+      @media (prefers-color-scheme: dark) {
+        svg {
+          --bg: #0d1117; --fg: #e6edf3; --muted: #9198a1; --line: #3d444d;
+          --neutral: #656c76; --neutral-bg: #151b23;
+          --chosen: #3fb950; --chosen-bg: #0f2a1a;
+          --rejected: #f85149; --rejected-bg: #3a1416;
+          --deferred: #d29922; --deferred-bg: #2e2208;
+          --superseded: #9198a1; --superseded-bg: #212830;
+        }
+      }
+      text { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Helvetica, Arial, sans-serif; font-size: 13px; fill: var(--fg); }
+      .bg { fill: var(--bg); }
+      .title { font-size: 18px; font-weight: 600; }
+      .heading { font-size: 14px; font-weight: 600; }
+      .name { font-weight: 600; }
+      .note { font-size: 12px; fill: var(--muted); }
+      .label { font-size: 12px; }
+      .tag { font-size: 11px; font-weight: 700; letter-spacing: 0.06em; }
+      .panel { fill: none; stroke: var(--line); }
+      .boundary { fill: none; stroke: var(--muted); stroke-width: 1.5; stroke-dasharray: 4 4; }
+      .neutral { fill: var(--neutral-bg); stroke: var(--neutral); stroke-width: 1.5; }
+      .chosen { fill: var(--chosen-bg); stroke: var(--chosen); stroke-width: 3; }
+      .rejected { fill: var(--rejected-bg); stroke: var(--rejected); stroke-width: 1.5; stroke-dasharray: 8 4; }
+      .deferred { fill: var(--deferred-bg); stroke: var(--deferred); stroke-width: 1.5; stroke-dasharray: 2 3; }
+      .superseded { fill: var(--superseded-bg); stroke: var(--superseded); stroke-width: 1.5; stroke-dasharray: 12 3 2 3; }
+      .t-chosen { fill: var(--chosen); }
+      .t-rejected { fill: var(--rejected); }
+      .t-deferred { fill: var(--deferred); }
+      .t-superseded { fill: var(--superseded); }
+      .flow { fill: none; stroke: var(--fg); stroke-width: 1.5; marker-end: url(#arrow); }
+      .head { fill: var(--fg); }
+    </style>
+    <marker id="arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path class="head" d="M0,0 L10,5 L0,10 z"/>
+    </marker>
+  </defs>
+
+  <rect class="bg" x="0" y="0" width="1000" height="878"/>
+
+  <text class="title" x="24" y="38">Decision: core owns the session inbox</text>
+  <text class="note" x="24" y="60">2026-11-20-core-session-inbox · unprocessed events live in core storage; supersession is applied before delivery</text>
+
+  <rect class="panel" x="16" y="80" width="968" height="356" rx="8"/>
+  <text class="heading" x="32" y="106">Chosen option · boundary and data flow</text>
+
+  <rect class="boundary" x="32" y="122" width="574" height="298" rx="8"/>
+  <text class="note" x="48" y="144">boundary · core</text>
+
+  <rect class="neutral" x="52" y="160" width="172" height="84" rx="6"/>
+  <text class="name" x="68" y="190">event log</text>
+  <text class="note" x="68" y="210"><tspan x="68">the only copy</tspan><tspan x="68" dy="16">of every event</tspan></text>
+
+  <rect class="neutral" x="346" y="160" width="240" height="84" rx="6"/>
+  <text class="name" x="362" y="188">session dispatcher</text>
+  <text class="note" x="362" y="208"><tspan x="362">gives each binding the pending</tspan><tspan x="362" dy="16">events its include selects</tspan></text>
+
+  <rect class="chosen" x="346" y="306" width="240" height="88" rx="6"/>
+  <text class="tag t-chosen" x="362" y="328">CHOSEN</text>
+  <text class="name" x="362" y="348">inbox_entries</text>
+  <text class="note" x="362" y="368"><tspan x="362">one row per unprocessed event;</tspan><tspan x="362" dy="16">a take omits superseded ones</tspan></text>
+
+  <rect class="neutral" x="784" y="160" width="184" height="84" rx="6"/>
+  <text class="name" x="800" y="190">pane runtime</text>
+  <text class="note" x="800" y="210"><tspan x="800">push binding: socket,</tspan><tspan x="800" dy="16">exec or shell channel</tspan></text>
+
+  <rect class="neutral" x="784" y="306" width="184" height="88" rx="6"/>
+  <text class="name" x="800" y="336">headless worker</text>
+  <text class="note" x="800" y="356"><tspan x="800">renders one prompt,</tspan><tspan x="800" dy="16">runs one agent turn</tspan></text>
+
+  <line class="flow" x1="224" y1="202" x2="344" y2="202"/>
+  <text class="label" x="285" y="180" text-anchor="middle"><tspan x="285">events past the</tspan><tspan x="285" dy="15">delivery position</tspan></text>
+
+  <line class="flow" x1="586" y1="202" x2="782" y2="202"/>
+  <text class="label" x="684" y="180" text-anchor="middle"><tspan x="684">one delivery per</tspan><tspan x="684" dy="15">retained event</tspan></text>
+  <text class="note" x="684" y="222" text-anchor="middle"><tspan x="684">superseded pending</tspan><tspan x="684" dy="15">events omitted</tspan></text>
+
+  <line class="flow" x1="466" y1="244" x2="466" y2="304"/>
+  <text class="label" x="478" y="270"><tspan x="478">one row per event,</tspan><tspan x="478" dy="15">a pass together</tspan></text>
+
+  <line class="flow" x1="586" y1="334" x2="782" y2="334"/>
+  <text class="label" x="694" y="311" text-anchor="middle"><tspan x="694">take: batch id,</tspan><tspan x="694" dy="15">deliveries, events</tspan></text>
+  <line class="flow" x1="784" y1="368" x2="588" y2="368"/>
+  <text class="label" x="694" y="386" text-anchor="middle">ack: batch id</text>
+  <text class="note" x="622" y="408"><tspan x="622">taken again before ack: the same batch</tspan></text>
+
+  <path class="flow" d="M346,350 L138,350 L138,246"/>
+  <text class="label" x="150" y="296"><tspan x="150">parked after 3 deliveries</tspan><tspan x="150" dy="15">without ack:</tspan><tspan x="150" dy="15">plect.channel.error</tspan></text>
+
+  <rect class="panel" x="16" y="452" width="968" height="340" rx="8"/>
+  <text class="heading" x="32" y="478">Not chosen · only what the ADR states</text>
+  <rect class="superseded" x="32" y="494" width="300" height="86" rx="6"/>
+  <text class="tag t-superseded" x="48" y="514">SUPERSEDED</text>
+  <text class="name" x="48" y="533">plugin file queues</text>
+  <text class="note" x="48" y="551"><tspan x="48">per-plugin queue files and batch</tspan><tspan x="48" dy="16">script copies are no longer the record</tspan></text>
+  <rect class="superseded" x="348" y="494" width="300" height="86" rx="6"/>
+  <text class="tag t-superseded" x="364" y="514">SUPERSEDED</text>
+  <text class="name" x="364" y="533">resume notice priority</text>
+  <text class="note" x="364" y="551"><tspan x="364">idle-sleep ADR rule; pending events</tspan><tspan x="364" dy="16">are delivered in log order</tspan></text>
+  <rect class="deferred" x="664" y="494" width="300" height="86" rx="6"/>
+  <text class="tag t-deferred" x="680" y="514">DEFERRED</text>
+  <text class="name" x="680" y="533">batch value for push channels</text>
+  <text class="note" x="680" y="551"><tspan x="680">until a pane runtime shows separate</tspan><tspan x="680" dy="16">turns for back-to-back deliveries</tspan></text>
+  <rect class="rejected" x="32" y="592" width="300" height="86" rx="6"/>
+  <text class="tag t-rejected" x="48" y="612">REJECTED</text>
+  <text class="name" x="48" y="631">byte-identity check on copies</text>
+  <text class="note" x="48" y="649"><tspan x="48">standing check; panes still excluded,</tspan><tspan x="48" dy="16">file-queue failures remain</tspan></text>
+  <rect class="rejected" x="348" y="592" width="300" height="86" rx="6"/>
+  <text class="tag t-rejected" x="364" y="612">REJECTED</text>
+  <text class="name" x="364" y="631">position per consumer</text>
+  <text class="note" x="364" y="649"><tspan x="364">needs a second authority for where</tspan><tspan x="364" dy="16">a binding's position starts</tspan></text>
+  <rect class="rejected" x="664" y="592" width="300" height="86" rx="6"/>
+  <text class="tag t-rejected" x="680" y="612">REJECTED</text>
+  <text class="name" x="680" y="631">take and ack for push bindings</text>
+  <text class="note" x="680" y="649"><tspan x="680">no interval between delivery and</tspan><tspan x="680" dy="16">acknowledgement to protect</tspan></text>
+  <rect class="rejected" x="32" y="690" width="300" height="86" rx="6"/>
+  <text class="tag t-rejected" x="48" y="710">REJECTED</text>
+  <text class="name" x="48" y="729">pane ack at turn end</text>
+  <text class="note" x="48" y="747"><tspan x="48">stalls when a turn never ends;</tspan><tspan x="48" dy="16">withholds steering messages</tspan></text>
+  <rect class="rejected" x="348" y="690" width="300" height="86" rx="6"/>
+  <text class="tag t-rejected" x="364" y="710">REJECTED</text>
+  <text class="name" x="364" y="729">count reported failures</text>
+  <text class="note" x="364" y="747"><tspan x="364">a crashing consumer reports nothing;</tspan><tspan x="364" dy="16">its batch would never park</tspan></text>
+  <rect class="rejected" x="664" y="690" width="300" height="86" rx="6"/>
+  <text class="tag t-rejected" x="680" y="710">REJECTED</text>
+  <text class="name" x="680" y="729">priority property for one event</text>
+  <text class="note" x="680" y="747"><tspan x="680">no consumer needs an order</tspan><tspan x="680" dy="16">other than log order</tspan></text>
+  <rect class="chosen" x="32" y="812" width="28" height="16" rx="3"/>
+  <text class="label" x="70" y="824">CHOSEN · thick solid</text>
+  <rect class="rejected" x="264" y="812" width="28" height="16" rx="3"/>
+  <text class="label" x="302" y="824">REJECTED · dashed</text>
+  <rect class="deferred" x="496" y="812" width="28" height="16" rx="3"/>
+  <text class="label" x="534" y="824">DEFERRED · dotted</text>
+  <rect class="superseded" x="728" y="812" width="28" height="16" rx="3"/>
+  <text class="label" x="766" y="824">SUPERSEDED · dash-dot</text>
+
+  <rect class="boundary" x="32" y="844" width="28" height="16" rx="3"/>
+  <text class="label" x="70" y="856">responsibility boundary</text>
+  <line class="flow" x1="264" y1="852" x2="290" y2="852"/>
+  <text class="label" x="302" y="856">data flow, labelled with what crosses it</text>
+  <text class="note" x="616" y="856">each state is named in text; colour only repeats it</text>
+</svg>

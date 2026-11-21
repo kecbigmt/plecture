@@ -225,26 +225,30 @@ func startFakeSocketAt(t *testing.T, path string) <-chan protocol.MessagePayload
 			}
 			go func(conn net.Conn) {
 				defer conn.Close()
-				header := make([]byte, 4)
-				if _, err := io.ReadFull(conn, header); err != nil {
-					return
-				}
-				data := make([]byte, binary.BigEndian.Uint32(header))
-				if _, err := io.ReadFull(conn, data); err != nil {
-					return
-				}
-				var env protocol.Envelope
-				if json.Unmarshal(data, &env) != nil {
-					return
-				}
-				var pl protocol.MessagePayload
-				if env.UnmarshalPayload(&pl) == nil {
+				if pl, ok := readFakeMessage(conn); ok {
 					recv <- pl
 				}
 			}(conn)
 		}
 	}()
 	return recv
+}
+
+func readFakeMessage(conn net.Conn) (protocol.MessagePayload, bool) {
+	var pl protocol.MessagePayload
+	header := make([]byte, 4)
+	if _, err := io.ReadFull(conn, header); err != nil {
+		return pl, false
+	}
+	data := make([]byte, binary.BigEndian.Uint32(header))
+	if _, err := io.ReadFull(conn, data); err != nil {
+		return pl, false
+	}
+	var env protocol.Envelope
+	if json.Unmarshal(data, &env) != nil {
+		return pl, false
+	}
+	return pl, env.UnmarshalPayload(&pl) == nil
 }
 
 func runtimeDispatcher(t *testing.T, session string, log *eventlog.Store, socketPath string, include ...string) (*sessionDispatcher, *domain.Session) {

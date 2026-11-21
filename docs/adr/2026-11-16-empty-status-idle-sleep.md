@@ -1,3 +1,7 @@
+---
+superseded_by: 2026-11-20-core-session-inbox
+---
+
 # Use the durable empty status for idle sleep and resume decisions
 
 ## Context

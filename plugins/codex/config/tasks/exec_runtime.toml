@@ -22,10 +22,13 @@ scope = "run"
 #                  shape) applied to every `codex exec`/`codex exec resume`
 #                  call as `-c mcp_servers.<name>=...` overrides. Empty = no
 #                  overrides.
-#   state_root   — when set, the directory the worker's per-session queue and
-#                  state live under. Empty = a temporary directory, which a
+#   state_root   — when set, the directory the worker's per-session state
+#                  lives under. Empty = a temporary directory, which a
 #                  reboot or a tmp sweep may reclaim; a workflow that wants
-#                  the queue to survive that names a durable root here.
+#                  the conversation's thread id to survive that names a
+#                  durable root here.
+#   message_envelope — format of each event in a turn's prompt; see the
+#                  README's Parameters table.
 #   path_prepend — when set, a directory prepended to this session's PATH.
 #                  Generic by design (docs/design/plugin-boundary-contracts.md's
 #                  GitHub CLI Guard section): this plugin carries no
@@ -42,8 +45,9 @@ scope = "run"
 #                  Reporting section. Default ["message"].
 #
 # codex_exec starts a headless worker (codex-exec-worker) instead of the
-# interactive Codex TUI, so instruction delivery is a queued `codex exec`/
-# `codex exec resume` call rather than terminal keystrokes — the
+# interactive Codex TUI, so instruction delivery is a `codex exec`/
+# `codex exec resume` call per batch taken from the session inbox rather
+# than terminal keystrokes — the
 # submit-race and boot-race classes that motivate this plugin's
 # terminal_submit channel and initial_prompt effect do not exist for a
 # runtime with no input box.
@@ -83,13 +87,16 @@ printf '%s' "$publish_events" | jq -e 'any(.[]?; . == "message")' >/dev/null 2>&
 STATE_ROOT="${state_root-}"
 [ -n "$STATE_ROOT" ] || STATE_ROOT="${TMPDIR:-/tmp}/plect-codex-exec"
 STATE_DIR="$STATE_ROOT/$session_name"
-QUEUE_DIR="$STATE_DIR/queue"
-mkdir -p "$QUEUE_DIR"
 
-# A resumed session keeps its queue/state dir and thread_id file — the
-# worker just needs restarting, not reseeding.
+# A resumed session keeps its state dir and thread_id file — the worker just
+# needs restarting, not reseeding.
 PREV_STATE_DIR="${prev_state_dir-}"
-[ -n "$PREV_STATE_DIR" ] && [ "$PREV_STATE_DIR" != "$STATE_DIR" ] && STATE_DIR="$PREV_STATE_DIR" && QUEUE_DIR="$STATE_DIR/queue"
+[ -n "$PREV_STATE_DIR" ] && [ "$PREV_STATE_DIR" != "$STATE_DIR" ] && STATE_DIR="$PREV_STATE_DIR"
+mkdir -p "$STATE_DIR"
+
+# Written to a file rather than exported on the launch line: the envelope is
+# free text, and the launch line is keystrokes.
+printf '%s' "$message_envelope" > "$STATE_DIR/message_envelope" || exit 1
 
 # Removed unconditionally: a resumed session reuses STATE_DIR, and a file a
 # previous launch wrote would otherwise outlive an mcp_servers input this
@@ -160,7 +167,7 @@ fi
 # The terminal verbs compose against whichever effect in this workflow
 # declares the interactive endpoint — never a concrete multiplexer named
 # here directly.
-sh -c "$send_text" terminal-send-text "${EXPORTS}$worker_bin '$QUEUE_DIR' '$STATE_DIR'"
+sh -c "$send_text" terminal-send-text "${EXPORTS}$worker_bin '$STATE_DIR'"
 sh -c "$send_keys" terminal-send-keys Enter
 
 READY_TIMEOUT_SECONDS="${launch_timeout%s}"
@@ -188,9 +195,8 @@ fi
 
 OUTPUT=$(jq -nc \
   --argjson pid "$PID" \
-  --arg queue_dir "$QUEUE_DIR" \
   --arg state_dir "$STATE_DIR" \
-  '{pid:$pid, queue_dir:$queue_dir, state_dir:$state_dir}') || {
+  '{pid:$pid, state_dir:$state_dir}') || {
     terminate_if_owned "$PID"
     exit 1
   }
@@ -207,6 +213,7 @@ state_root     = { from = "inputs.state_root", optional = true }
 path_prepend   = { from = "inputs.path_prepend", optional = true }
 launch_timeout = { from = "inputs.launch_timeout", default = "120s" }
 publish_events = { json = { from = "inputs.publish_events", default = ["message"] } }
+message_envelope = { from = "inputs.message_envelope", default = "[{type}] {body_or_summary}{url_suffix}" }
 prev_state_dir = { from = "prev.state_dir", optional = true }
 activity_bin   = { bin = "codex-agent-activity" }
 worker_bin     = { bin = "codex-exec-worker" }
@@ -290,12 +297,14 @@ path_prepend = { type = "string", pattern = "^[A-Za-z0-9_./:-]*$" }
 # (`default = "120s"` on the launch_timeout binding), not by this key.
 launch_timeout = { type = "string", pattern = "^[1-9][0-9]*s$", default = "120s" }
 publish_events = { type = "array", items = { type = "string", enum = ["message"] }, default = ["message"] }
+# message_envelope reaches the worker through a file, never the pane, so it
+# carries no charset restriction.
+message_envelope = { type = "string", default = "[{type}] {body_or_summary}{url_suffix}" }
 
 [exec_runtime.outputs_schema]
 type     = "object"
-required = ["pid", "queue_dir", "state_dir"]
+required = ["pid", "state_dir"]
 
 [exec_runtime.outputs_schema.properties]
 pid       = { type = "integer" }
-queue_dir = { type = "string" }
 state_dir = { type = "string" }

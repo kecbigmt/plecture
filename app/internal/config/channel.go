@@ -14,6 +14,9 @@ const (
 	ChannelTypeUnixSocket = "unix_socket"
 	ChannelTypeExec       = "exec"
 	ChannelTypeShell      = "shell"
+	// ChannelTypeInbox hands a matching event to the session's inbox, where
+	// the runtime takes it; core runs nothing for it.
+	ChannelTypeInbox = "inbox"
 )
 
 // ChannelInputSpec is the per-key shorthand in a channel's [input_schema]
@@ -246,6 +249,7 @@ func sortedSpecKeys(spec map[string]any) []string {
 // so a value referencing a missing node output surfaces at delivery, not now.
 func ValidateWorkflowChannels(wf WorkflowFile, defs map[string]ChannelDefinition) error {
 	seen := make(map[string]bool, len(wf.Event.Channel))
+	inbox := ""
 	for i, ch := range wf.Event.Channel {
 		if ch.Name == "" {
 			return fmt.Errorf("event.channel[%d]: `name` is required", i)
@@ -260,6 +264,14 @@ func ValidateWorkflowChannels(wf WorkflowFile, defs map[string]ChannelDefinition
 		def, ok := defs[ch.Uses]
 		if !ok {
 			return fmt.Errorf("event.channel %q: uses unknown channel definition %q%s", ch.Name, ch.Uses, AddressHint(Addresses(defs), ch.Uses))
+		}
+		// A session has one inbox and a take names only the session, so two
+		// bindings would feed one consumer events it cannot tell apart.
+		if def.Type == ChannelTypeInbox {
+			if inbox != "" {
+				return fmt.Errorf("event.channel %q: a workflow binds at most one inbox channel, and %q already is one", ch.Name, inbox)
+			}
+			inbox = ch.Name
 		}
 		for key := range ch.Inputs {
 			if _, declared := def.InputSchema[key]; !declared {

@@ -200,9 +200,19 @@ func (v Validation) validateChannel(def *Definition, pos Position) error {
 		if err := v.checkAction(action, surfaceChannelDelivery, pos); err != nil {
 			return err
 		}
+	case "inbox":
+		// Core hands the event over itself, so every field that shapes or
+		// bounds a delivery has nothing to apply to.
+		fields := append([]string{"path", "body", "timeout", "input_schema"}, execOnlyFields...)
+		for _, field := range append(fields, shellOnlyFields...) {
+			if _, ok := def.Body[field]; ok {
+				return newDiag(CodeActionVariant, LayerStructural, childPos(pos, field),
+					fmt.Sprintf("%s belongs to a delivery core performs, and an inbox channel has none", field))
+			}
+		}
 	default:
 		return newDiag(CodeActionTypeUnknown, LayerStructural, childPos(pos, "type"),
-			fmt.Sprintf("a channel's type is unix_socket, exec, or shell, not %v", def.Body["type"]))
+			fmt.Sprintf("a channel's type is unix_socket, exec, shell, or inbox, not %v", def.Body["type"]))
 	}
 	if timeout, ok := def.Body["timeout"]; ok {
 		value, err := ParseValue(timeout, ClassData, childPos(pos, "timeout"))

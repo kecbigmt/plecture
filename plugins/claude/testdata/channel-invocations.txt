@@ -11,29 +11,9 @@ body: "{\"body\":\"\",\"direction\":\"internal\",\"id\":\"01DEF\",\"metadata\":{
 timeout: 0s
 
 == headless_delivery / with-body
-type: exec
-argv[0]: "<plugin>/scripts/claude-headless-enqueue"
-argv[1]: "stand-in-queue_dir"
-argv[2]: "[{type}] {body_or_summary}{url_suffix}"
-argv[3]: "user.emit"
-argv[4]: "a <tag> & an \"amp\"\nover two lines"
-argv[5]: "a summary"
-argv[6]: "https://example.test/x"
-argv[7]: "01ABC"
-argv[8]: "plect"
-argv[9]: "01OLD"
-timeout: 5s
+type: inbox
+timeout: 0s
 
 == headless_delivery / summary-only
-type: exec
-argv[0]: "<plugin>/scripts/claude-headless-enqueue"
-argv[1]: "stand-in-queue_dir"
-argv[2]: "[{type}] {body_or_summary}{url_suffix}"
-argv[3]: "example.status"
-argv[4]: ""
-argv[5]: "only a summary"
-argv[6]: ""
-argv[7]: "01DEF"
-argv[8]: "plect"
-argv[9]: ""
-timeout: 5s
+type: inbox
+timeout: 0s
