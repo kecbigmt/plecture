@@ -109,6 +109,36 @@ func TestUp_RekicksExistingUnmetWorkOnceWhenRuntimeStarts(t *testing.T) {
 	}
 }
 
+func TestUp_NudgesPendingWaitOnceWhenRuntimeStarts(t *testing.T) {
+	store := testStore(t)
+	name := "work-1"
+	cfg := writeWorkflowFixture(t, "default", []taskFixture{
+		{id: "work", scope: "session", extra: "[done_when]\nheartbeat_budget = 3\nall = [{ expr = \"self.state.verdict_revision == 'r1'\" }]\n"},
+		{id: "runtime", scope: "run", setup: "echo '{}'"},
+	}, []nodeFixture{{id: "runtime"}})
+	seedSession(t, store, name, "acct", 1, "default", map[string]*contract.TaskState{
+		"initial": {Scope: contract.TaskScopeSession, TaskID: "work", Status: contract.TaskStatusProduced,
+			DoneWhen: &contract.DoneWhenState{HeartbeatTicks: 103, LastAction: "wait"}},
+	})
+	if err := store.Update(name, func(s *domain.Session) error {
+		s.Status = contract.SessionStatusUp
+		return nil
+	}); err != nil {
+		t.Fatal(err)
+	}
+	for i := range 2 {
+		if _, err := Up(cfg, store, UpParams{Identifier: name}); err != nil {
+			t.Fatalf("Up(%d): %v", i, err)
+		}
+	}
+	if got := tickEventCount(t, store, name, event.TypeUserEmit); got != 1 {
+		t.Fatalf("recovery nudge events = %d, want 1", got)
+	}
+	if got := store.Get(name).Tasks["initial"].DoneWhen.HeartbeatTicks; got != 103 {
+		t.Fatalf("heartbeat ticks = %d, want 103", got)
+	}
+}
+
 func TestUp_FailedLaunchLeavesStatusDown(t *testing.T) {
 	if _, err := exec.LookPath("bash"); err != nil {
 		t.Skip("bash not available")

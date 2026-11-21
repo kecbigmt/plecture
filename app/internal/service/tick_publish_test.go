@@ -98,6 +98,46 @@ func TestTickSession_RecoveryRekicksUnchangedWorkWithoutConsumingHeartbeat(t *te
 	}
 }
 
+func TestTickSession_RecoveryNudgesPendingWaitWithoutConsumingHeartbeat(t *testing.T) {
+	store := testStore(t)
+	cfg := writeWorkflowFixture(t, "default", []taskFixture{
+		{id: "work", scope: "session", extra: "[done_when]\nheartbeat_budget = 3\nall = [{ expr = \"self.state.verdict_revision == 'r1'\" }]\n"},
+	}, nil)
+	name := "owner/repo-1"
+	seedSession(t, store, name, "owner/repo", 1, "default", map[string]*contract.TaskState{
+		"initial": {Scope: contract.TaskScopeSession, TaskID: "work", Status: contract.TaskStatusProduced},
+	})
+	if err := store.Update(name, func(s *domain.Session) error {
+		s.Tasks["initial"].DoneWhen = &contract.DoneWhenState{HeartbeatTicks: 103, LastAction: "wait"}
+		return nil
+	}); err != nil {
+		t.Fatal(err)
+	}
+	result, err := TickSession(cfg, store, TickParams{SessionName: name, Trigger: TickTriggerRecovery})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(result.Actions) != 1 || result.Actions[0].Action != "wait" {
+		t.Fatalf("recovery actions = %+v, want wait", result.Actions)
+	}
+	evs, _, _, err := eventlog.NewStore(store.Dir()).List(name, 0, event.Filter{Types: []string{event.TypeUserEmit}})
+	if err != nil || len(evs) != 1 {
+		t.Fatalf("recovery nudge events = %+v, %v; want one", evs, err)
+	}
+	if evs[0].Metadata["tick_trigger"] != string(TickTriggerRecovery) || !strings.Contains(evs[0].Body, "initial") {
+		t.Fatalf("recovery nudge = %+v, want recovery instruction for initial", evs[0])
+	}
+	if got := store.Get(name).Tasks["initial"].DoneWhen.HeartbeatTicks; got != 103 {
+		t.Fatalf("heartbeat ticks = %d, want 103", got)
+	}
+	if _, err := TickSession(cfg, store, TickParams{SessionName: name, Trigger: TickTriggerManual}); err != nil {
+		t.Fatal(err)
+	}
+	if got := tickEventCount(t, store, name, event.TypeUserEmit); got != 1 {
+		t.Fatalf("events after manual wait = %d, want 1", got)
+	}
+}
+
 func TestTickSession_KicksSupersedePreviousKickForSameInstance(t *testing.T) {
 	store := testStore(t)
 	cfg := checkScenarioConfig(t, 6)

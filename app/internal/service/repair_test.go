@@ -324,6 +324,34 @@ func TestRepairSession_RekicksUnmetWorkAfterRuntimeRepair(t *testing.T) {
 	}
 }
 
+func TestRepairSession_NudgesPendingWaitAfterRuntimeRepair(t *testing.T) {
+	store := testStore(t)
+	cfg := repairWorkflowFixture(t, "echo '{}'", "true", 2)
+	name := "session-1"
+	seedRepairSession(t, store, name, nil)
+	if err := store.Update(name, func(s *domain.Session) error {
+		s.Status = contract.SessionStatusUp
+		s.Tasks = map[string]*contract.TaskState{
+			"work": {Scope: contract.TaskScopeSession, TaskID: "runner", Status: contract.TaskStatusProduced,
+				ExtraDoneWhen: json.RawMessage(`{"all":[{"expr":"self.state.verdict_revision == 'r1'"}],"heartbeat_budget":3}`),
+				DoneWhen:      &contract.DoneWhenState{HeartbeatTicks: 103, LastAction: "wait"}},
+		}
+		return nil
+	}); err != nil {
+		t.Fatal(err)
+	}
+	attempted, err := RepairSession(cfg, store, name, nil, NewRepairGate())
+	if err != nil || !attempted {
+		t.Fatalf("RepairSession = (%t, %v), want an attempted repair", attempted, err)
+	}
+	if got := tickEventCount(t, store, name, event.TypeUserEmit); got != 1 {
+		t.Fatalf("recovery nudge events = %d, want 1", got)
+	}
+	if got := store.Get(name).Tasks["work"].DoneWhen.HeartbeatTicks; got != 103 {
+		t.Fatalf("heartbeat ticks = %d, want 103", got)
+	}
+}
+
 func TestRepairSession_SuspendsAfterAttemptLimit(t *testing.T) {
 	store := testStore(t)
 	cfg := repairWorkflowFixture(t, "exit 1", "false", 2)

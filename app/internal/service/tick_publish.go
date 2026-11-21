@@ -54,6 +54,23 @@ func publishTickAction(cfg *config.Config, store *state.Store, sessionName strin
 		}); err != nil {
 			return nil, false, "", err
 		}
+	case "wait":
+		if trigger != TickTriggerRecovery {
+			return nil, false, "", nil
+		}
+		nudge, err := EventPublish(cfg, store, sessionName, EventPublishParams{
+			Type:       event.TypeUserEmit,
+			Direction:  event.Outbound,
+			Source:     event.SourceTick,
+			Summary:    fmt.Sprintf("resume pending work for %s", instance),
+			Body:       fmt.Sprintf("Resume work for %s. Its done_when is still pending. Review the outstanding task instruction and continue it.", instance),
+			Supersedes: c.lastKickEventID,
+			Metadata:   map[string]string{"instance": instance, "tick_trigger": string(trigger)},
+		})
+		if err != nil {
+			return nil, false, "", err
+		}
+		return nil, true, nudge.ID, nil
 	case "kick":
 		if repeatsUnchangedState(c, trigger) {
 			return nil, false, "", nil

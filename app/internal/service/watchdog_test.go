@@ -2,6 +2,7 @@ package service
 
 import (
 	"bytes"
+	"encoding/json"
 	"fmt"
 	"log/slog"
 	"os"
@@ -1363,6 +1364,37 @@ func TestHealthcheckSession_RekicksUnmetWorkOnceAfterHealthRecovers(t *testing.T
 	}
 	if got := tickEventCount(t, store, name, event.TypeUserEmit); got != 2 {
 		t.Fatalf("kick events = %d, want one recovery kick after the first kick", got)
+	}
+	if got := store.Get(name).Nodes["gate"].DoneWhen.HeartbeatTicks; got != 103 {
+		t.Fatalf("heartbeat ticks = %d, want 103", got)
+	}
+}
+
+func TestHealthcheckSession_NudgesPendingWaitOnceAfterHealthRecovers(t *testing.T) {
+	store := testStore(t)
+	cfg := activityFixtureConfig(t, activityProbeCmd(t, "fp-1", false, time.Now()))
+	name := "owner/repo-1"
+	gate := gateInstance("no")
+	gate.ExtraDoneWhen = json.RawMessage(`{"all":[{"expr":"self.state.verdict_revision == 'r1'"}],"heartbeat_budget":3}`)
+	gate.DoneWhen = &contract.DoneWhenState{HeartbeatTicks: 103, LastAction: "wait"}
+	seedSessionWithNodes(t, store, name, "owner/repo", 1, "default", map[string]*contract.TaskState{
+		"initial": {Scope: contract.TaskScopeRun, TaskID: "runner", Status: contract.TaskStatusProduced},
+		"gate":    gate,
+	})
+	if err := store.Update(name, func(s *domain.Session) error {
+		s.Health = &contract.HealthState{LastState: string(domain.HealthStalled), LastFingerprint: "initial:fp-1", LastActivityAt: time.Now()}
+		return nil
+	}); err != nil {
+		t.Fatal(err)
+	}
+	for i := range 2 {
+		report, err := HealthcheckSession(cfg, store, HealthcheckParams{SessionName: name})
+		if err != nil || report.State() != domain.HealthHealthy {
+			t.Fatalf("healthcheck %d = (%+v, %v), want healthy", i, report, err)
+		}
+	}
+	if got := tickEventCount(t, store, name, event.TypeUserEmit); got != 1 {
+		t.Fatalf("recovery nudge events = %d, want 1", got)
 	}
 	if got := store.Get(name).Nodes["gate"].DoneWhen.HeartbeatTicks; got != 103 {
 		t.Fatalf("heartbeat ticks = %d, want 103", got)
