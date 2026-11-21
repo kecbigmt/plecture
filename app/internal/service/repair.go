@@ -109,6 +109,11 @@ func RepairSession(cfg *config.Config, store *state.Store, name string, report *
 		}
 		return upErr
 	})
+	if err == nil && attempted {
+		if _, tickErr := TickSession(cfg, store, TickParams{SessionName: name, Trigger: TickTriggerRecovery}); tickErr != nil {
+			return attempted, fmt.Errorf("repair completed but recovery tick failed: %w", tickErr)
+		}
+	}
 	return attempted, err
 }
 

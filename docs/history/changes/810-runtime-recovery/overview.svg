@@ -1,0 +1,70 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1040 410" width="1040" height="410" role="img" aria-labelledby="title desc">
+  <title id="title">Runtime recovery redelivers unmet work</title>
+  <desc id="desc">Up and RepairSession call TickSession with a recovery trigger after a successful runtime start. HealthcheckSession calls it when a stalled or unhealthy session becomes healthy. TickSession reads the session state and reevaluates done_when. For unmet work, it republishes a kick or sends a nudge when the result is wait, without advancing heartbeat ticks. The dispatcher reads the user.emit event from the session event log.</desc>
+  <defs>
+    <style>
+      svg { --bg: #fff; --fg: #1f2328; --muted: #59636e; --neutral: #8c959f; --neutral-bg: #f6f8fa; --added: #1a7f37; --added-bg: #dafbe1; --changed: #0969da; --changed-bg: #ddf4ff; }
+      @media (prefers-color-scheme: dark) { svg { --bg: #0d1117; --fg: #e6edf3; --muted: #9198a1; --neutral: #656c76; --neutral-bg: #151b23; --added: #3fb950; --added-bg: #0f2a1a; --changed: #4493f8; --changed-bg: #0c2441; } }
+      text { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Helvetica, Arial, sans-serif; font-size: 14px; fill: var(--fg); }
+      .bg { fill: var(--bg); }
+      .title { font-size: 19px; font-weight: 600; }
+      .name { font-size: 16px; font-weight: 600; }
+      .note { font-size: 12px; fill: var(--muted); }
+      .tag { font-size: 11px; font-weight: 700; letter-spacing: .05em; }
+      .neutral { fill: var(--neutral-bg); stroke: var(--neutral); stroke-width: 1.5; }
+      .changed { fill: var(--changed-bg); stroke: var(--changed); stroke-width: 2; }
+      .added { fill: var(--added-bg); stroke: var(--added); stroke-width: 2.5; }
+      .t-changed { fill: var(--changed); }
+      .t-added { fill: var(--added); }
+      .flow { fill: none; stroke: var(--fg); stroke-width: 1.5; marker-end: url(#arrow); }
+      .flow-added { fill: none; stroke: var(--added); stroke-width: 2.5; marker-end: url(#arrow-added); }
+      .head { fill: var(--fg); }
+      .head-added { fill: var(--added); }
+    </style>
+    <marker id="arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path class="head" d="M0,0 L10,5 L0,10z"/></marker>
+    <marker id="arrow-added" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path class="head-added" d="M0,0 L10,5 L0,10z"/></marker>
+  </defs>
+  <rect class="bg" width="1040" height="410"/>
+  <text class="title" x="30" y="38">Runtime recovery redelivers unmet work</text>
+  <text class="note" x="30" y="60">PR #810 · head structure · green: added path · blue: changed behavior</text>
+
+  <rect class="changed" x="30" y="112" width="210" height="82" rx="7"/>
+  <text class="tag t-changed" x="46" y="136">CHANGED</text>
+  <text class="name" x="46" y="160">Up / RepairSession</text>
+  <text class="note" x="46" y="179">successful runtime start</text>
+
+  <rect class="changed" x="30" y="230" width="210" height="82" rx="7"/>
+  <text class="tag t-changed" x="46" y="254">CHANGED</text>
+  <text class="name" x="46" y="278">HealthcheckSession</text>
+  <text class="note" x="46" y="297">healthy transition</text>
+
+  <rect class="changed" x="505" y="112" width="275" height="82" rx="7"/>
+  <text class="tag t-changed" x="521" y="136">CHANGED</text>
+  <text class="name" x="521" y="160">TickSession</text>
+  <text class="note" x="521" y="179">kick or pending wait nudge</text>
+
+  <rect class="neutral" x="850" y="112" width="160" height="82" rx="7"/>
+  <text class="tag" x="866" y="136">UNCHANGED</text>
+  <text class="name" x="866" y="160">Event log</text>
+  <text class="note" x="866" y="179">session partition</text>
+
+  <rect class="neutral" x="505" y="287" width="275" height="72" rx="7"/>
+  <text class="tag" x="521" y="311">UNCHANGED</text>
+  <text class="name" x="521" y="337">Session state</text>
+
+  <rect class="neutral" x="850" y="287" width="160" height="72" rx="7"/>
+  <text class="tag" x="866" y="311">UNCHANGED</text>
+  <text class="name" x="866" y="337">Dispatcher</text>
+
+  <line class="flow-added" x1="240" y1="153" x2="505" y2="153"/>
+  <text class="note t-added" text-anchor="middle" x="372" y="133">recovery tick request</text>
+  <path class="flow-added" d="M240 271 H400 V180 H505"/>
+  <text class="note t-added" text-anchor="middle" x="318" y="252">recovery tick</text>
+  <line class="flow-added" x1="780" y1="153" x2="850" y2="153"/>
+  <text class="note t-added" text-anchor="middle" x="815" y="133">user.emit</text>
+  <line class="flow" x1="642" y1="287" x2="642" y2="194"/>
+  <text class="note" x="655" y="244">done_when state</text>
+  <line class="flow" x1="930" y1="194" x2="930" y2="287"/>
+  <text class="note" x="942" y="245">event</text>
+  <text class="note" x="30" y="385">Recovery leaves heartbeat ticks unchanged; pending wait receives a nudge.</text>
+</svg>

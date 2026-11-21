@@ -68,12 +68,18 @@ func Up(cfg *config.Config, store *state.Store, params UpParams) (*UpResult, err
 		return nil, err
 	}
 	var result *UpResult
+	restarted := false
 	err = tryLifecycleLock(store, name, func() error {
+		before, err := store.GetE(name)
+		if err != nil {
+			return err
+		}
 		var upErr error
 		result, upErr = upUnlocked(cfg, store, params)
 		if upErr != nil {
 			return upErr
 		}
+		restarted = before != nil && sessionRunState(cfg, before) != domain.RunUp && result.Result == "up"
 		if params.HumanInitiated {
 			if err := resetRepairStreak(store, name, "manual_up"); err != nil {
 				return &Error{Code: ErrExecutionFailed, Message: fmt.Sprintf("up completed but repair reset event failed: %v", err)}
@@ -83,6 +89,11 @@ func Up(cfg *config.Config, store *state.Store, params UpParams) (*UpResult, err
 	})
 	if err == errLifecycleBusy {
 		return nil, &Error{Code: ErrChildUpInProgress, Message: fmt.Sprintf("session %q already has an up in progress", name)}
+	}
+	if err == nil && restarted {
+		if _, tickErr := TickSession(cfg, store, TickParams{SessionName: name, Trigger: TickTriggerRecovery}); tickErr != nil {
+			return result, &Error{Code: ErrExecutionFailed, Message: fmt.Sprintf("up completed but recovery tick failed: %v", tickErr)}
+		}
 	}
 	return result, err
 }

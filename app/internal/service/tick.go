@@ -25,6 +25,7 @@ const (
 	TickTriggerManual    TickTrigger = "manual"
 	TickTriggerEvent     TickTrigger = "event"
 	TickTriggerHeartbeat TickTrigger = "heartbeat"
+	TickTriggerRecovery  TickTrigger = "recovery"
 )
 
 // TickSession is the Goal Loop actuator: it refreshes outputs unless

@@ -54,11 +54,31 @@ func publishTickAction(cfg *config.Config, store *state.Store, sessionName strin
 		}); err != nil {
 			return nil, false, "", err
 		}
+	case "wait":
+		if trigger != TickTriggerRecovery {
+			return nil, false, "", nil
+		}
+		nudge, err := EventPublish(cfg, store, sessionName, EventPublishParams{
+			Type:       event.TypeUserEmit,
+			Direction:  event.Outbound,
+			Source:     event.SourceTick,
+			Summary:    fmt.Sprintf("resume pending work for %s", instance),
+			Body:       fmt.Sprintf("Resume work for %s. Its done_when is still pending. Review the outstanding task instruction and continue it.", instance),
+			Supersedes: c.lastKickEventID,
+			Metadata:   map[string]string{"instance": instance, "tick_trigger": string(trigger)},
+		})
+		if err != nil {
+			return nil, false, "", err
+		}
+		return nil, true, nudge.ID, nil
 	case "kick":
 		if repeatsUnchangedState(c, trigger) {
 			return nil, false, "", nil
 		}
 		meta := unmetItemsMetadata(instance, action.UnmetItems)
+		if trigger == TickTriggerRecovery {
+			meta["tick_trigger"] = string(trigger)
+		}
 		if len(action.LiveChildren) > 0 {
 			if b, err := json.Marshal(action.LiveChildren); err == nil {
 				meta["live_children"] = string(b)
@@ -116,10 +136,10 @@ func publishTickAction(cfg *config.Config, store *state.Store, sessionName strin
 	return nil, action.Action == "kick" || action.Action == "review_required", "", nil
 }
 
-// Only the bounded heartbeat cadence re-announces unchanged unmet work;
-// a manual or event tick can otherwise feed its own kick back into a turn loop.
+// Manual and event ticks can feed their own kick back into a turn loop;
+// runtime recovery is a separate delivery opportunity after that loop stopped.
 func repeatsUnchangedState(c computedAction, trigger TickTrigger) bool {
-	return trigger != TickTriggerHeartbeat &&
+	return trigger != TickTriggerHeartbeat && trigger != TickTriggerRecovery &&
 		c.lastAction == c.action.Action &&
 		c.lastFingerprint == c.action.Fingerprint
 }
