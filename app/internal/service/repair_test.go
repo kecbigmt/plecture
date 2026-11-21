@@ -1,6 +1,7 @@
 package service
 
 import (
+	"encoding/json"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -293,6 +294,33 @@ func TestRepairSession_RunDownWithUpIntentStartsPlainUp(t *testing.T) {
 	if err != nil || len(events) != 2 || events[0].Metadata["result"] != "started" || events[1].Metadata["result"] != "succeeded" ||
 		events[0].Metadata["trigger"] != "run_down" || events[0].Metadata["attempt"] != "1" {
 		t.Fatalf("repair events = %+v, %v", events, err)
+	}
+}
+
+func TestRepairSession_RekicksUnmetWorkAfterRuntimeRepair(t *testing.T) {
+	store := testStore(t)
+	cfg := repairWorkflowFixture(t, "echo '{}'", "true", 2)
+	name := "session-1"
+	seedRepairSession(t, store, name, nil)
+	if err := store.Update(name, func(s *domain.Session) error {
+		s.Status = contract.SessionStatusUp
+		s.Tasks = map[string]*contract.TaskState{
+			"work": {Scope: contract.TaskScopeSession, TaskID: "runner", Status: contract.TaskStatusProduced,
+				ExtraDoneWhen: json.RawMessage(`{"all":[{"expr":"false"}]}`)},
+		}
+		return nil
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := TickSession(cfg, store, TickParams{SessionName: name, Trigger: TickTriggerManual}); err != nil {
+		t.Fatal(err)
+	}
+	attempted, err := RepairSession(cfg, store, name, nil, NewRepairGate())
+	if err != nil || !attempted {
+		t.Fatalf("RepairSession = (%t, %v), want an attempted repair", attempted, err)
+	}
+	if got := tickEventCount(t, store, name, event.TypeUserEmit); got != 2 {
+		t.Fatalf("kick events = %d, want 2 after repair", got)
 	}
 }
 

@@ -76,6 +76,39 @@ func TestUp_SuccessfulLaunchSetsStatusUp(t *testing.T) {
 	}
 }
 
+func TestUp_RekicksExistingUnmetWorkOnceWhenRuntimeStarts(t *testing.T) {
+	store := testStore(t)
+	name := "work-1"
+	cfg := writeWorkflowFixture(t, "default", []taskFixture{
+		{id: "work", scope: "session", extra: "[done_when]\nall = [{ expr = \"false\" }]\n"},
+		{id: "runtime", scope: "run", setup: "echo '{}'"},
+	}, []nodeFixture{{id: "runtime"}})
+	seedSession(t, store, name, "acct", 1, "default", map[string]*contract.TaskState{
+		"initial": {Scope: contract.TaskScopeSession, TaskID: "work", Status: contract.TaskStatusProduced},
+	})
+	if _, err := TickSession(cfg, store, TickParams{SessionName: name, Trigger: TickTriggerManual}); err != nil {
+		t.Fatal(err)
+	}
+	if err := store.Update(name, func(s *domain.Session) error {
+		s.Tasks["initial"].DoneWhen.HeartbeatTicks = 103
+		s.Status = contract.SessionStatusUp
+		return nil
+	}); err != nil {
+		t.Fatal(err)
+	}
+	for i := range 2 {
+		if _, err := Up(cfg, store, UpParams{Identifier: name}); err != nil {
+			t.Fatalf("Up(%d): %v", i, err)
+		}
+	}
+	if got := tickEventCount(t, store, name, event.TypeUserEmit); got != 2 {
+		t.Fatalf("kick events = %d, want 2 after two Up calls", got)
+	}
+	if got := store.Get(name).Tasks["initial"].DoneWhen.HeartbeatTicks; got != 103 {
+		t.Fatalf("heartbeat ticks = %d, want 103", got)
+	}
+}
+
 func TestUp_FailedLaunchLeavesStatusDown(t *testing.T) {
 	if _, err := exec.LookPath("bash"); err != nil {
 		t.Skip("bash not available")

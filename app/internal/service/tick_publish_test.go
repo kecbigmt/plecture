@@ -69,6 +69,35 @@ func TestTickSession_ManualUnchangedKickDoesNotRepeatOrAdvanceHeartbeat(t *testi
 	}
 }
 
+func TestTickSession_RecoveryRekicksUnchangedWorkWithoutConsumingHeartbeat(t *testing.T) {
+	store := testStore(t)
+	cfg := checkScenarioConfig(t, 3)
+	seedPendingJudgeWork(t, store, "owner/repo-1")
+	setCheckStatus(t, store, "owner/repo-1", "FAILURE")
+	if _, err := TickSession(cfg, store, TickParams{SessionName: "owner/repo-1", Trigger: TickTriggerManual}); err != nil {
+		t.Fatal(err)
+	}
+	if err := store.Update("owner/repo-1", func(s *domain.Session) error {
+		s.Tasks["initial"].DoneWhen.HeartbeatTicks = 103
+		return nil
+	}); err != nil {
+		t.Fatal(err)
+	}
+	result, err := TickSession(cfg, store, TickParams{SessionName: "owner/repo-1", Trigger: TickTriggerRecovery})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(result.Actions) != 1 || result.Actions[0].Action != "kick" || result.Actions[0].Unchanged {
+		t.Fatalf("recovery actions = %+v, want a delivered kick", result.Actions)
+	}
+	if got := tickEventCount(t, store, "owner/repo-1", event.TypeUserEmit); got != 2 {
+		t.Fatalf("kick events = %d, want 2", got)
+	}
+	if got := store.Get("owner/repo-1").Tasks["initial"].DoneWhen.HeartbeatTicks; got != 103 {
+		t.Fatalf("heartbeat ticks = %d, want 103", got)
+	}
+}
+
 func TestTickSession_KicksSupersedePreviousKickForSameInstance(t *testing.T) {
 	store := testStore(t)
 	cfg := checkScenarioConfig(t, 6)
