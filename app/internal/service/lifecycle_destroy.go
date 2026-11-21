@@ -7,7 +7,6 @@ import (
 	"time"
 
 	"github.com/kecbigmt/plecture/app/internal/config"
-	"github.com/kecbigmt/plecture/app/internal/domain"
 	"github.com/kecbigmt/plecture/app/internal/eventlog"
 	"github.com/kecbigmt/plecture/app/internal/inbox"
 	"github.com/kecbigmt/plecture/app/internal/state"
@@ -116,8 +115,8 @@ func destroyUnlocked(cfg *config.Config, store *state.Store, params DestroyParam
 	if len(retired) > 0 {
 		result.CleanupWarnings = append(result.CleanupWarnings, fmt.Sprintf("workflow revision uses retired declaration spellings (%s); cleanup skipped, release not verified", strings.Join(retired, ", ")))
 		recordLifecycle(store, sessionName, "destroyed", "session destroyed")
-		if err := destroySessionState(store, session); err != nil {
-			return nil, &Error{Code: ErrExecutionFailed, Message: fmt.Sprintf("failed to destroy state entry: %v", err)}
+		if err := store.Destroy(session.Name); err != nil {
+			return nil, &Error{Code: ErrExecutionFailed, Message: fmt.Sprintf("failed to destroy session state (session remains live and can be retried): %v", err)}
 		}
 		return result, nil
 	}
@@ -127,8 +126,8 @@ func destroyUnlocked(cfg *config.Config, store *state.Store, params DestroyParam
 		}
 		result.CleanupWarnings = append(result.CleanupWarnings, "no stored workflow revision; cleanup skipped")
 		recordLifecycle(store, sessionName, "destroyed", "session destroyed")
-		if err := destroySessionState(store, session); err != nil {
-			return nil, &Error{Code: ErrExecutionFailed, Message: fmt.Sprintf("failed to destroy state entry: %v", err)}
+		if err := store.Destroy(session.Name); err != nil {
+			return nil, &Error{Code: ErrExecutionFailed, Message: fmt.Sprintf("failed to destroy session state (session remains live and can be retried): %v", err)}
 		}
 		return result, nil
 	}
@@ -181,8 +180,8 @@ func destroyUnlocked(cfg *config.Config, store *state.Store, params DestroyParam
 	// transition before making the row non-live so the event shares its id.
 	recordLifecycle(store, sessionName, "destroyed", "session destroyed")
 
-	if err := destroySessionState(store, session); err != nil {
-		return nil, &Error{Code: ErrExecutionFailed, Message: fmt.Sprintf("failed to destroy state entry: %v", err)}
+	if err := store.Destroy(session.Name); err != nil {
+		return nil, &Error{Code: ErrExecutionFailed, Message: fmt.Sprintf("failed to destroy session state (session remains live and can be retried): %v", err)}
 	}
 
 	if err := eventlog.NewStore(store.Dir()).ClearChainAttempts(session.ID); err != nil {
@@ -194,26 +193,4 @@ func destroyUnlocked(cfg *config.Config, store *state.Store, params DestroyParam
 	}
 
 	return result, nil
-}
-
-func destroySessionState(store *state.Store, session *domain.Session) error {
-	if err := store.Destroy(session.Name); err != nil {
-		return err
-	}
-	if session.Population == nil {
-		return nil
-	}
-	return store.UpdatePopulation(*session.Population, func(population *state.PopulationState) error {
-		for _, member := range population.Members {
-			if member == nil || member.SessionName != session.Name {
-				continue
-			}
-			member.Tombstoned = true
-			member.PendingUp = false
-			member.SessionName = ""
-			member.LastDecision = ""
-			member.LastBlockers = nil
-		}
-		return nil
-	})
 }

@@ -5,6 +5,7 @@ import (
 	"database/sql"
 	"fmt"
 	"reflect"
+	"strings"
 	"testing"
 	"time"
 
@@ -1152,6 +1153,54 @@ func TestEnsureLiveSession_RefusesToResurrectADestroyedName(t *testing.T) {
 	}
 	if status != contract.SessionStatusDestroyed {
 		t.Fatalf("original row status = %q, want %q", status, contract.SessionStatusDestroyed)
+	}
+}
+
+func TestDestroySession_RollsBackWhenPopulationTombstoneFails(t *testing.T) {
+	db := migratedTestDB(t)
+	ctx := context.Background()
+	key := contract.PopulationProvenance{Workflow: "wf", Name: "pop"}
+	if err := db.UpdatePopulation(ctx, key, func(p *domain.PopulationState) error {
+		p.Members["case"] = &domain.PopulationMember{Resource: contract.Resource{Type: "case", Name: "case", Locator: "urn:case:1"}, SessionName: "session", Generation: 1, LastDecision: "plect.workflow_population.destroy_deferred:busy", LastBlockers: []string{"busy"}}
+		return nil
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if err := db.PutSession(ctx, &domain.Session{Name: "session", Workflow: "wf", Population: &key, CreatedAt: time.Now().UTC(), UpdatedAt: time.Now().UTC()}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := db.write.ExecContext(ctx, `CREATE TRIGGER fail_member_tombstone BEFORE UPDATE ON population_members BEGIN SELECT RAISE(ABORT, 'member tombstone failed'); END`); err != nil {
+		t.Fatal(err)
+	}
+	if err := db.DestroySession(ctx, "session", time.Now().UTC()); err == nil || !strings.Contains(err.Error(), "member tombstone failed") {
+		t.Fatalf("DestroySession error = %v, want member tombstone failure", err)
+	}
+	if session, err := db.GetSession(ctx, "session"); err != nil || session == nil {
+		t.Fatalf("session after failed destroy = %+v, %v; want live session", session, err)
+	}
+	population, err := db.Population(ctx, key)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if member := population.Members["case"]; member.Tombstoned || member.SessionName != "session" {
+		t.Fatalf("member after failed destroy = %+v", member)
+	}
+	if _, err := db.write.ExecContext(ctx, `DROP TRIGGER fail_member_tombstone`); err != nil {
+		t.Fatal(err)
+	}
+	if err := db.DestroySession(ctx, "session", time.Now().UTC()); err != nil {
+		t.Fatalf("retry DestroySession: %v", err)
+	}
+	if session, err := db.GetSession(ctx, "session"); err != nil || session != nil {
+		t.Fatalf("session after retry = %+v, %v; want destroyed", session, err)
+	}
+	population, err = db.Population(ctx, key)
+	if err != nil {
+		t.Fatal(err)
+	}
+	member := population.Members["case"]
+	if !member.Tombstoned || member.PendingUp || member.SessionName != "" || member.LastDecision != "" || len(member.LastBlockers) != 0 {
+		t.Fatalf("member after retry = %+v, want tombstone without session or decision", member)
 	}
 }
 
