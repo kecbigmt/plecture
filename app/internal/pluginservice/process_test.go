@@ -59,20 +59,28 @@ func TestRunProcessConfigFirstAndCorrelatedPublishReply(t *testing.T) {
 	}
 }
 
-func TestRunProcessStopsChildWhenInitialQueriesFail(t *testing.T) {
+func TestRunProcessDoesNotStartChildWhenInitialQueriesFail(t *testing.T) {
 	dir := t.TempDir()
 	t.Setenv("PLECT_DATA_HOME", filepath.Join(dir, "data"))
 	t.Setenv("PLECT_CACHE_HOME", filepath.Join(dir, "cache"))
-	script := writeScript(t, dir, "worker", "read -r config\nread -r subscriptions\nread -r queries\n")
+	marker := filepath.Join(dir, "ran")
+	script := writeScript(t, dir, "worker", "touch \""+marker+"\"\nread -r config\nread -r subscriptions\nread -r queries\n")
 	want := errors.New("query snapshot unavailable")
 	started := false
+	var log bytes.Buffer
 	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
 	defer cancel()
-	err := runProcess(ctx, Declaration{ID: "worker", PluginID: "local/work", ExecPath: script}, slog.New(slog.NewTextHandler(&bytes.Buffer{}, nil)), time.Second, func(int) { started = true }, &Protocol{
+	err := runProcess(ctx, Declaration{ID: "worker", PluginID: "local/work", ExecPath: script}, slog.New(slog.NewTextHandler(&log, nil)), time.Second, func(int) { started = true }, &Protocol{
 		Queries: func(context.Context, Declaration) ([]QueryRegistration, error) { return nil, want },
 	})
-	if !started || !errors.Is(err, want) {
-		t.Fatalf("started = %v, error = %v; want query error", started, err)
+	if started || !errors.Is(err, want) {
+		t.Fatalf("started = %v, error = %v; want no start and the query error", started, err)
+	}
+	if _, statErr := os.Stat(marker); !errors.Is(statErr, os.ErrNotExist) {
+		t.Fatalf("child ran despite the held query snapshot: %v", statErr)
+	}
+	if !strings.Contains(log.String(), "worker") || !strings.Contains(log.String(), want.Error()) {
+		t.Fatalf("log = %s, want the service and the hold reason", log.String())
 	}
 }
 
