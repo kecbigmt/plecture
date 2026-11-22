@@ -50,26 +50,36 @@ func main() {
 
 func run(args []string, stdout, stderr io.Writer) int {
 	if len(args) != 1 {
-		fmt.Fprintln(stderr, "usage: check-migration-order <input-dir>")
+		if _, err := fmt.Fprintln(stderr, "usage: check-migration-order <input-dir>"); err != nil {
+			return 2
+		}
 		return 2
 	}
 	in, err := readInput(args[0])
 	if err != nil {
-		fmt.Fprintf(stderr, "check-migration-order: %v\n", err)
+		if _, err := fmt.Fprintf(stderr, "check-migration-order: %v\n", err); err != nil {
+			return 2
+		}
 		return 2
 	}
 	problems, err := check(in)
 	if err != nil {
-		fmt.Fprintf(stderr, "check-migration-order: %v\n", err)
+		if _, err := fmt.Fprintf(stderr, "check-migration-order: %v\n", err); err != nil {
+			return 2
+		}
 		return 2
 	}
 	for _, p := range problems {
-		fmt.Fprintf(stderr, "check-migration-order: %s\n", p)
+		if _, err := fmt.Fprintf(stderr, "check-migration-order: %s\n", p); err != nil {
+			return 2
+		}
 	}
 	if len(problems) > 0 {
 		return 1
 	}
-	fmt.Fprintf(stdout, "check-migration-order: %d new migration(s), all ordered\n", len(migrationFiles(in.AddedMigrations)))
+	if _, err := fmt.Fprintf(stdout, "check-migration-order: %d new migration(s), all ordered\n", len(migrationFiles(in.AddedMigrations))); err != nil {
+		return 2
+	}
 	return 0
 }
 

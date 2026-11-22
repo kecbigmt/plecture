@@ -1,12 +1,20 @@
 package main
 
 import (
+	"errors"
+	"io"
 	"os"
 	"path/filepath"
 	"reflect"
 	"strings"
 	"testing"
 )
+
+type failingWriter struct{}
+
+func (failingWriter) Write([]byte) (int, error) {
+	return 0, errors.New("write failed")
+}
 
 const (
 	inboxMigration = "app/db/migrations/20261120000000_inbox_entries.sql"
@@ -205,6 +213,64 @@ func TestRun_ExitStatus(t *testing.T) {
 			}
 			if tt.inStderr != "" && !strings.Contains(stderr.String(), tt.inStderr) {
 				t.Fatalf("stderr %q does not contain %q", stderr.String(), tt.inStderr)
+			}
+		})
+	}
+}
+
+func TestRun_OutputFailureExitsWithError(t *testing.T) {
+	tests := []struct {
+		name       string
+		base       string
+		added      string
+		args       func(string) []string
+		failStdout bool
+	}{
+		{
+			name: "usage",
+			args: func(string) []string { return nil },
+		},
+		{
+			name: "input error",
+			args: func(dir string) []string { return []string{filepath.Join(dir, "missing")} },
+		},
+		{
+			name: "base migration error",
+			base: "app/db/migrations/broken.sql\x00",
+		},
+		{
+			name:  "violation",
+			base:  inboxMigration + "\x00",
+			added: "app/db/migrations/20261118000000_concurrent.sql\x00",
+		},
+		{
+			name:       "success",
+			base:       inboxMigration + "\x00",
+			added:      nextMigration + "\x00",
+			failStdout: true,
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			dir := t.TempDir()
+			for name, content := range map[string]string{
+				"base-migrations":  tt.base,
+				"added-migrations": tt.added,
+			} {
+				if err := os.WriteFile(filepath.Join(dir, name), []byte(content), 0o644); err != nil {
+					t.Fatal(err)
+				}
+			}
+			args := []string{dir}
+			if tt.args != nil {
+				args = tt.args(dir)
+			}
+			var stdout, stderr io.Writer = &strings.Builder{}, failingWriter{}
+			if tt.failStdout {
+				stdout, stderr = failingWriter{}, &strings.Builder{}
+			}
+			if code := run(args, stdout, stderr); code != 2 {
+				t.Fatalf("exit = %d, want 2 for an output failure", code)
 			}
 		})
 	}
