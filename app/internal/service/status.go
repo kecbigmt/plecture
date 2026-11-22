@@ -81,7 +81,7 @@ type StatusChain struct {
 // StatusTask is layer 3: one task instance's work — its outputs (dynamic and
 // mutable alike, rendered generically) and, when it declares a done_when, the
 // gate's evaluation, heartbeat budget, and chain plan. Action/Summary/Body/
-// ReviewerCommand/JudgeCommands/UnmetItems/Fingerprint carry the same
+// JudgeCommands/UnmetItems/Fingerprint carry the same
 // decision-making material the retired `plect check` used to report per
 // instance, so orchestrator consumers reading `plect status --json` lose
 // nothing by that CLI's retirement.
@@ -107,7 +107,6 @@ type StatusTask struct {
 	HeartbeatBudget   int                           `json:"heartbeat_budget,omitempty"`
 	Summary           string                        `json:"summary,omitempty"`
 	Body              string                        `json:"body,omitempty"`
-	ReviewerCommand   string                        `json:"reviewer_command,omitempty"`
 	JudgeCommands     []string                      `json:"judge_commands,omitempty"`
 	UnmetItems        []CheckUnmetItem              `json:"unmet_items,omitempty"`
 	Fingerprint       string                        `json:"fingerprint,omitempty"`
@@ -364,7 +363,6 @@ func statusTaskViews(cfg *config.Config, declarations taskDeclarations, session 
 			v.HeartbeatBudget = a.action.HeartbeatBudget
 			v.Summary = a.action.Summary
 			v.Body = a.action.Body
-			v.ReviewerCommand = a.action.ReviewerCommand
 			v.JudgeCommands = a.action.JudgeCommands
 			v.UnmetItems = a.action.UnmetItems
 			v.Fingerprint = a.action.Fingerprint

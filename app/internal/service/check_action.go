@@ -79,14 +79,8 @@ func checkActionForResult(sessionName, instance, resource string, dw *config.Don
 	}
 
 	if result.Overall == task.DonePending {
-		cmd := reviewerDispatchCommand(resource, instance)
 		judgeCmds := judgeCommands(sessionName, instance, unmetItems)
-		var warnings []string
-		if cmd == "" {
-			warnings = append(warnings, "reviewer dispatch command unavailable: task instance has no resource")
-			items = append(items, warnings...)
-		}
-		body := reviewRequiredBody(instance, nextHeartbeatTicks, heartbeatBudget, cmd, unmetItems, judgeCmds, warnings)
+		body := reviewRequiredBody(instance, nextHeartbeatTicks, heartbeatBudget, unmetItems, judgeCmds)
 		return CheckAction{
 			SessionName:      sessionName,
 			Instance:         instance,
@@ -96,18 +90,13 @@ func checkActionForResult(sessionName, instance, resource string, dw *config.Don
 			HeartbeatChanged: consumedHeartbeat,
 			Items:            items,
 			UnmetItems:       unmetItems,
-			Warnings:         warnings,
 			Summary:          fmt.Sprintf("done_when review required for %s", instance),
 			Body:             body,
-			ReviewerCommand:  cmd,
 			JudgeCommands:    judgeCmds,
 			Fingerprint:      fingerprint,
 		}
 	}
 	body := fmt.Sprintf("done_when is unsatisfied for %s (heartbeat budget %s).\n\nAddress these unmet items:\n%s", instance, heartbeatBudgetText(nextHeartbeatTicks, heartbeatBudget), unmetItemBulletList(unmetItems))
-	if hint := mergeableStateHint(observedState(st)); hint != "" {
-		body += "\n\n" + hint
-	}
 	if len(liveChildren) > 0 {
 		body += "\n\n" + liveChildrenBulletList(liveChildren)
 	}
@@ -127,16 +116,6 @@ func checkActionForResult(sessionName, instance, resource string, dw *config.Don
 	}
 }
 
-func reviewerDispatchCommand(resource, instance string) string {
-	if resource == "" {
-		return ""
-	}
-	// Which reviewer workflow runs is a chaining concern, not a judge-leaf field;
-	// this advisory suggestion has a fixed interim default until chaining
-	// (slice 6) owns it.
-	return fmt.Sprintf("plect up %q --workflow claude --task review --tag %s", resource, reviewerTag(instance)) // boundary-allow: This hardcodes a fixed interim default for an advisory suggestion, and chaining (slice 6) will remove it once it picks the reviewer workflow instead.
-}
-
 func judgeCommands(sessionName, instance string, items []CheckUnmetItem) []string {
 	var out []string
 	for _, item := range items {
@@ -153,20 +132,6 @@ func judgeCommands(sessionName, instance string, items []CheckUnmetItem) []strin
 
 func judgeCommand(action, sessionName, instance, id string) string {
 	return fmt.Sprintf("plect judge %s %q %q %q --reason %q", action, sessionName, instance, id, "<reason>")
-}
-
-func reviewerTag(instance string) string {
-	var b strings.Builder
-	b.WriteString("review-")
-	for _, r := range instance {
-		switch {
-		case r >= 'a' && r <= 'z', r >= 'A' && r <= 'Z', r >= '0' && r <= '9', r == '_', r == '-':
-			b.WriteRune(r)
-		default:
-			b.WriteByte('-')
-		}
-	}
-	return strings.Trim(b.String(), "-")
 }
 
 const defaultHeartbeatBudget = 3
@@ -296,33 +261,6 @@ func unmetItemSummary(item CheckUnmetItem) string {
 	return summary
 }
 
-// observedState is what the instance's resource last reported, which is
-// where an advisory reads a fact the completion predicate does not gate on.
-func observedState(st *contract.TaskState) map[string]any {
-	if st == nil || st.Observed == nil {
-		return nil
-	}
-	return st.Observed.State
-}
-
-// mergeableStateHint surfaces a PR merge conflict as an advisory kick note
-// rather than a done_when leaf: a review host generally does not run CI on a
-// change with merge conflicts, so checks_status would otherwise sit PENDING
-// forever and the session would wait indefinitely for CI that will never
-// arrive. "unknown" (mergeability still being computed) and "NULL" (nothing
-// to read it from) are intentionally silent.
-func mergeableStateHint(outputs map[string]any) string {
-	v, ok := outputs[outputKeyMergeableState]
-	if !ok {
-		return ""
-	}
-	s, _ := v.(string)
-	if s != "dirty" {
-		return ""
-	}
-	return "Note: mergeable_state=dirty — this PR conflicts with its base branch. Rebase or merge the base branch in before continuing."
-}
-
 func unmetItemBulletList(items []CheckUnmetItem) string {
 	if len(items) == 0 {
 		return "- (none)"
@@ -374,18 +312,9 @@ func orUndeclared(h domain.HealthState) domain.HealthState {
 	return h
 }
 
-func reviewRequiredBody(instance string, heartbeatTicks, heartbeatBudget int, reviewerCommand string, items []CheckUnmetItem, judgeCmds []string, warnings []string) string {
+func reviewRequiredBody(instance string, heartbeatTicks, heartbeatBudget int, items []CheckUnmetItem, judgeCmds []string) string {
 	var b strings.Builder
 	fmt.Fprintf(&b, "done_when needs independent review for %s (heartbeat budget %s).\n\n", instance, heartbeatBudgetText(heartbeatTicks, heartbeatBudget))
-	if reviewerCommand != "" {
-		fmt.Fprintf(&b, "Dispatch reviewer:\n%s\n\n", reviewerCommand)
-	} else {
-		b.WriteString("Dispatch reviewer:\n")
-		for _, warning := range warnings {
-			fmt.Fprintf(&b, "- %s\n", warning)
-		}
-		b.WriteString("\n")
-	}
 	b.WriteString("Review these judge leaves:\n")
 	b.WriteString(unmetItemBulletList(items))
 	if len(judgeCmds) > 0 {

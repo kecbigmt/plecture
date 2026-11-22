@@ -369,6 +369,108 @@ pr_url = { from = "resource.state.pr_url" }
 	}
 }
 
+func alreadyActiveKicks(t *testing.T, store *state.Store, target string) []event.Event {
+	t.Helper()
+	evs, _, _, err := eventlog.NewStore(store.Dir()).List(target, 0, event.Filter{
+		Types:   []string{event.TypeUserEmit},
+		Sources: []string{event.SourceTick},
+	})
+	if err != nil {
+		t.Fatalf("List: %v", err)
+	}
+	return evs
+}
+
+func setObservedFact(t *testing.T, store *state.Store, session, key string, value any) {
+	t.Helper()
+	if err := store.Update(session, func(s *domain.Session) error {
+		s.Nodes["work"].Observed.State[key] = value
+		return nil
+	}); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func TestTickSession_AlreadyActiveKickCarriesEveryChainInputUniformly(t *testing.T) {
+	store := testStore(t)
+	cfg := writeWorkflowFixture(t, "wf",
+		[]taskFixture{workTaskWithChain(`
+[[chains]]
+id       = "review"
+workflow = "codex"
+[chains.when]
+all = [ { judge_pending = "ac-met" } ]
+[chains.inputs]
+b = { from = "resource.state.beta" }
+a = { from = "resource.state.alpha" }
+`)},
+		[]nodeFixture{{id: "work"}})
+	writeWorkflowFile(t, cfg, "codex", "")
+	seedReviewWork(t, store, "owner/repo-1", map[string]any{"checks_status": "SUCCESS", "alpha": "one", "beta": "two"})
+	seedSessionWithNodes(t, store, "owner/repo-1+review-work", "owner/repo", 1, "codex", nil)
+	const target = "owner/repo-1+review-work"
+
+	if _, err := TickSession(cfg, store, TickParams{SessionName: "owner/repo-1", SkipRefresh: true}); err != nil {
+		t.Fatalf("TickSession: %v", err)
+	}
+	evs := alreadyActiveKicks(t, store, target)
+	if len(evs) != 1 {
+		t.Fatalf("kick count = %d, want 1: %+v", len(evs), evs)
+	}
+	if evs[0].Metadata["a"] != "one" || evs[0].Metadata["b"] != "two" {
+		t.Fatalf("kick metadata = %+v, want every chain input", evs[0].Metadata)
+	}
+	if !strings.Contains(evs[0].Body, "- a: one\n- b: two") {
+		t.Fatalf("kick body = %q, want each input listed in sorted key order", evs[0].Body)
+	}
+	if strings.Contains(evs[0].Body, "PR") || strings.Contains(evs[0].Summary, "revision") {
+		t.Fatalf("kick names a provider concept or an input it does not have: summary %q body %q", evs[0].Summary, evs[0].Body)
+	}
+
+	setObservedFact(t, store, "owner/repo-1", "beta", "three")
+	if _, err := TickSession(cfg, store, TickParams{SessionName: "owner/repo-1", SkipRefresh: true}); err != nil {
+		t.Fatalf("TickSession(2): %v", err)
+	}
+	evs = alreadyActiveKicks(t, store, target)
+	if len(evs) != 2 || evs[1].Metadata["b"] != "three" {
+		t.Fatalf("a change to any input must re-kick, got %d kicks: %+v", len(evs), evs)
+	}
+}
+
+func TestTickSession_AlreadyActiveKickKeepsItsOwnMetadataOverACollidingInput(t *testing.T) {
+	store := testStore(t)
+	cfg := writeWorkflowFixture(t, "wf",
+		[]taskFixture{workTaskWithChain(`
+[[chains]]
+id       = "review"
+workflow = "codex"
+[chains.when]
+all = [ { judge_pending = "ac-met" } ]
+[chains.inputs]
+chain_dedup_key = { from = "resource.state.alpha" }
+`)},
+		[]nodeFixture{{id: "work"}})
+	writeWorkflowFile(t, cfg, "codex", "")
+	seedReviewWork(t, store, "owner/repo-1", map[string]any{"checks_status": "SUCCESS", "alpha": "one"})
+	seedSessionWithNodes(t, store, "owner/repo-1+review-work", "owner/repo", 1, "codex", nil)
+
+	for i := 0; i < 2; i++ {
+		if _, err := TickSession(cfg, store, TickParams{SessionName: "owner/repo-1", SkipRefresh: true}); err != nil {
+			t.Fatalf("TickSession(%d): %v", i, err)
+		}
+	}
+	evs := alreadyActiveKicks(t, store, "owner/repo-1+review-work")
+	if len(evs) != 1 {
+		t.Fatalf("an input named like the dedup key must not defeat dedup, got %d kicks: %+v", len(evs), evs)
+	}
+	if evs[0].Metadata["chain_dedup_key"] == "one" {
+		t.Fatalf("input overwrote the kick's own dedup key: %+v", evs[0].Metadata)
+	}
+	if !strings.Contains(evs[0].Body, "- chain_dedup_key: one") {
+		t.Fatalf("kick body = %q, want the colliding input still listed", evs[0].Body)
+	}
+}
+
 func TestTickSession_ChainCannotAdoptPopulationOwnedTarget(t *testing.T) {
 	store := testStore(t)
 	cfg := writeWorkflowFixture(t, "wf",

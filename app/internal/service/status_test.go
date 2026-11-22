@@ -52,8 +52,8 @@ revision = "{{.Work.outputs.revision}}"
 	if w.Action != "review_required" {
 		t.Errorf("Action = %q, want review_required", w.Action)
 	}
-	if w.ReviewerCommand == "" {
-		t.Error("expected a non-empty ReviewerCommand for review_required")
+	if len(w.JudgeCommands) == 0 {
+		t.Error("expected judge commands for review_required")
 	}
 	if w.HeartbeatBudget == 0 {
 		t.Error("expected heartbeat budget to be reported")
