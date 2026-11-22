@@ -1,0 +1,140 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 960 720" width="960" height="720" role="img" aria-labelledby="title desc">
+  <title id="title">Change: four pinned linters in CI and check-all.sh</title>
+  <desc id="desc">The added CI lint job, whose result ci-ok now requires, and the changed check-all.sh both run four added check scripts: check-go-unused.sh (staticcheck U1000 under a build-tag matrix), check-go-errcheck.sh (golangci-lint on added lines only, given a base ref), check-shellcheck.sh (shellcheck at severity warning) and check-actionlint.sh (actionlint with the pinned shellcheck). check-go-unused.sh first passes every tracked Go file to the added lint-directive guard. check-go-errcheck.sh reads the added golangci-errcheck.yml config. check-shellcheck.sh hands the shellcheck binary to the added shellcheck_report.py, which validates exceptions. Every script asks the added lint-tools.sh for a pinned binary path; lint-tools.sh holds the versions and installs into a cache, verifying the shellcheck tarball's sha256.</desc>
+  <defs>
+    <style>
+      svg {
+        --bg: #ffffff; --fg: #1f2328; --muted: #59636e;
+        --neutral: #8c959f; --neutral-bg: #f6f8fa;
+        --added: #1a7f37; --added-bg: #dafbe1;
+        --changed: #0969da; --changed-bg: #ddf4ff;
+      }
+      @media (prefers-color-scheme: dark) {
+        svg {
+          --bg: #0d1117; --fg: #e6edf3; --muted: #9198a1;
+          --neutral: #656c76; --neutral-bg: #151b23;
+          --added: #3fb950; --added-bg: #0f2a1a;
+          --changed: #4493f8; --changed-bg: #0c2441;
+        }
+      }
+      text { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Helvetica, Arial, sans-serif; font-size: 13px; fill: var(--fg); }
+      .bg { fill: var(--bg); }
+      .title { font-size: 18px; font-weight: 600; }
+      .name { font-weight: 600; }
+      .note { font-size: 12px; fill: var(--muted); }
+      .label { font-size: 12px; }
+      .tag { font-size: 11px; font-weight: 700; letter-spacing: 0.06em; }
+      .group { fill: none; stroke: var(--neutral); stroke-width: 1.5; stroke-dasharray: 4 3; }
+      .neutral { fill: var(--neutral-bg); stroke: var(--neutral); stroke-width: 1.5; }
+      .added { fill: var(--added-bg); stroke: var(--added); stroke-width: 3; }
+      .changed { fill: var(--changed-bg); stroke: var(--changed); stroke-width: 2; }
+      .t-neutral { fill: var(--muted); }
+      .t-added { fill: var(--added); }
+      .t-changed { fill: var(--changed); }
+      .flow-added { fill: none; stroke: var(--added); stroke-width: 3; marker-end: url(#arrow-added); }
+      .flow { fill: none; stroke: var(--fg); stroke-width: 1.5; marker-end: url(#arrow); }
+      .head { fill: var(--fg); }
+      .head-added { fill: var(--added); }
+    </style>
+    <marker id="arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path class="head" d="M0,0 L10,5 L0,10 z"/>
+    </marker>
+    <marker id="arrow-added" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="4" markerHeight="4" orient="auto-start-reverse">
+      <path class="head-added" d="M0,0 L10,5 L0,10 z"/>
+    </marker>
+  </defs>
+
+  <rect class="bg" x="0" y="0" width="960" height="720"/>
+
+  <text class="title" x="24" y="38">Change: four pinned linters in CI and check-all.sh</text>
+  <text class="note" x="24" y="60">PR #830 · head structure with the diff marked on it</text>
+
+  <!-- Entry points -->
+  <rect class="changed" x="32" y="140" width="170" height="64" rx="6"/>
+  <text class="tag t-changed" x="48" y="161">CHANGED</text>
+  <text class="name" x="48" y="179">ci-ok</text>
+  <text class="note" x="48" y="195">required CI job</text>
+
+  <rect class="added" x="32" y="300" width="170" height="64" rx="6"/>
+  <text class="tag t-added" x="48" y="321">ADDED</text>
+  <text class="name" x="48" y="339">lint job</text>
+  <text class="note" x="48" y="355">ci.yml</text>
+
+  <rect class="changed" x="32" y="430" width="170" height="64" rx="6"/>
+  <text class="tag t-changed" x="48" y="451">CHANGED</text>
+  <text class="name" x="48" y="469">check-all.sh</text>
+  <text class="note" x="48" y="485">local pre-push run</text>
+
+  <path class="flow-added" d="M117,300 V204"/>
+  <text class="label t-added" x="127" y="248"><tspan x="127" font-weight="600">ADDED</tspan><tspan x="127" dy="15">job result</tspan></text>
+
+  <!-- Check scripts group -->
+  <rect class="group" x="270" y="120" width="300" height="400" rx="8"/>
+  <text class="note" x="286" y="140">check scripts</text>
+
+  <rect class="added" x="290" y="150" width="260" height="70" rx="6"/>
+  <text class="tag t-added" x="306" y="171">ADDED</text>
+  <text class="name" x="306" y="190">check-go-unused.sh</text>
+  <text class="note" x="306" y="207">staticcheck U1000 · build-tag matrix</text>
+
+  <rect class="added" x="290" y="240" width="260" height="70" rx="6"/>
+  <text class="tag t-added" x="306" y="261">ADDED</text>
+  <text class="name" x="306" y="280">check-go-errcheck.sh</text>
+  <text class="note" x="306" y="297">golangci-lint · added lines only</text>
+
+  <rect class="added" x="290" y="330" width="260" height="70" rx="6"/>
+  <text class="tag t-added" x="306" y="351">ADDED</text>
+  <text class="name" x="306" y="370">check-shellcheck.sh</text>
+  <text class="note" x="306" y="387">shellcheck · severity warning</text>
+
+  <rect class="added" x="290" y="420" width="260" height="70" rx="6"/>
+  <text class="tag t-added" x="306" y="441">ADDED</text>
+  <text class="name" x="306" y="460">check-actionlint.sh</text>
+  <text class="note" x="306" y="477">actionlint · pinned shellcheck</text>
+
+  <path class="flow-added" d="M202,332 H270"/>
+  <text class="label t-added" text-anchor="middle" x="236" y="278"><tspan x="236" font-weight="600">ADDED</tspan><tspan x="236" dy="15">runs;</tspan><tspan x="236" dy="15">PR base</tspan></text>
+  <path class="flow-added" d="M202,462 H270"/>
+  <text class="label t-added" text-anchor="middle" x="236" y="408"><tspan x="236" font-weight="600">ADDED</tspan><tspan x="236" dy="15">runs;</tspan><tspan x="236" dy="15">merge-base</tspan></text>
+
+  <!-- Helpers -->
+  <rect class="added" x="660" y="150" width="270" height="70" rx="6"/>
+  <text class="tag t-added" x="676" y="171">ADDED</text>
+  <text class="name" x="676" y="190">lint-directive guard</text>
+  <text class="note" x="676" y="207">app/cmd/check-lint-directives</text>
+
+  <rect class="added" x="660" y="240" width="270" height="70" rx="6"/>
+  <text class="tag t-added" x="676" y="261">ADDED</text>
+  <text class="name" x="676" y="280">golangci-errcheck.yml</text>
+  <text class="note" x="676" y="297">errcheck + nolintlint</text>
+
+  <rect class="added" x="660" y="330" width="270" height="70" rx="6"/>
+  <text class="tag t-added" x="676" y="351">ADDED</text>
+  <text class="name" x="676" y="370">shellcheck_report.py</text>
+  <text class="note" x="676" y="387">exception validator</text>
+
+  <path class="flow-added" d="M550,185 H660"/>
+  <text class="label t-added" text-anchor="middle" x="615" y="160"><tspan x="615" font-weight="600">ADDED</tspan><tspan x="615" dy="15">Go files</tspan></text>
+  <path class="flow-added" d="M550,275 H660"/>
+  <text class="label t-added" text-anchor="middle" x="615" y="250"><tspan x="615" font-weight="600">ADDED</tspan><tspan x="615" dy="15">--config</tspan></text>
+  <path class="flow-added" d="M550,365 H660"/>
+  <text class="label t-added" text-anchor="middle" x="615" y="340"><tspan x="615" font-weight="600">ADDED</tspan><tspan x="615" dy="15">binary path</tspan></text>
+
+  <!-- Pins -->
+  <rect class="added" x="270" y="570" width="650" height="64" rx="6"/>
+  <text class="tag t-added" x="286" y="591">ADDED</text>
+  <text class="name" x="286" y="609">lint-tools.sh</text>
+  <text class="note" x="286" y="625">version pins · cached install · shellcheck sha256</text>
+
+  <path class="flow-added" d="M420,520 V570"/>
+  <text class="label t-added" x="432" y="540"><tspan x="432" font-weight="600">ADDED</tspan><tspan x="432" dy="15">lint_tool name → binary path</tspan></text>
+
+  <!-- Legend -->
+  <rect class="added" x="32" y="667" width="28" height="16" rx="3"/>
+  <text class="label" x="70" y="679">ADDED · thick solid</text>
+  <rect class="changed" x="264" y="667" width="28" height="16" rx="3"/>
+  <text class="label" x="302" y="679">CHANGED · solid</text>
+  <rect class="group" x="496" y="667" width="28" height="16" rx="3"/>
+  <text class="label" x="534" y="679">grouping only</text>
+  <text class="note" x="32" y="707">each state is named in text; colour only repeats it</text>
+</svg>
