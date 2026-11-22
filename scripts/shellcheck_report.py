@@ -5,6 +5,8 @@ Usage: shellcheck_report.py <shellcheck-binary>, run from the repository root.
 shellcheck itself never reports a `disable=` directive that suppresses
 nothing, so each one is proven live here by re-running shellcheck with only
 that directive removed and requiring a finding it disables to reappear.
+A directive-shaped line counts only once shellcheck's own parser reads it
+as a directive, so text inside a heredoc is never taken for one.
 """
 
 import json
@@ -74,35 +76,51 @@ def precedes_first_command(lines, index):
     return all(not l.strip() or l.lstrip().startswith("#") for l in lines[:index])
 
 
-def live_codes(binary, path, lines, index, codes):
-    """Returns the codes the directive at lines[index] still suppresses."""
+def findings_of(binary, path, body):
+    """Runs shellcheck over body as a copy of path; returns (code, line) pairs."""
     with tempfile.TemporaryDirectory() as tmp:
         copy = os.path.join(tmp, os.path.basename(path))
+        with open(copy, "w") as f:
+            f.writelines(body)
+        return [(f"SC{c['code']}", c["line"]) for c in shellcheck(binary, [copy])]
 
-        def count(body):
-            with open(copy, "w") as f:
-                f.writelines(body)
-            found = {}
-            for c in shellcheck(binary, [copy]):
-                found[f"SC{c['code']}"] = found.get(f"SC{c['code']}", 0) + 1
-            return found
 
-        before = count(lines)
-        neutralized = list(lines)
-        neutralized[index] = "#\n"
-        after = count(neutralized)
+def parsed_directive_lines(binary, path, lines, candidates):
+    """Returns the candidate indexes shellcheck parses as directives."""
+    unknown = "SC1107"
+    probe = list(lines)
+    for index in candidates:
+        indent = lines[index][: len(lines[index]) - len(lines[index].lstrip())]
+        probe[index] = f"{indent}# shellcheck plecture-probe=1\n"
+    before = {line for code, line in findings_of(binary, path, lines) if code == unknown}
+    after = {line for code, line in findings_of(binary, path, probe) if code == unknown}
+    return {index for index in candidates if index + 1 in after - before}
+
+
+def live_codes(binary, path, lines, index, codes):
+    """Returns the codes the directive at lines[index] still suppresses."""
+
+    def count(body):
+        found = {}
+        for code, _ in findings_of(binary, path, body):
+            found[code] = found.get(code, 0) + 1
+        return found
+
+    neutralized = list(lines)
+    neutralized[index] = "#\n"
+    before, after = count(lines), count(neutralized)
     return {c for c in codes if after.get(c, 0) > before.get(c, 0)}
 
 
 def exception_problems(binary, path):
     with open(path) as f:
         lines = f.readlines()
+    candidates = {i: p for i, p in enumerate(map(disabled_codes, lines)) if p}
+    if not candidates:
+        return []
     problems = []
-    for index, line in enumerate(lines):
-        parsed = disabled_codes(line)
-        if parsed is None:
-            continue
-        codes, reason = parsed
+    for index in sorted(parsed_directive_lines(binary, path, lines, candidates)):
+        codes, reason = candidates[index]
         where = f"{path}:{index + 1}"
         if not reason:
             problems.append(f"{where}: exception has no reason; write it as {EXCEPTION_SYNTAX}")

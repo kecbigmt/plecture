@@ -104,3 +104,11 @@ echo start
 echo $(ls)
 EOF
 expect_fail_naming "an exception naming no specific code fails" "bin/tool:3: exception names all"
+
+script bin/tool <<'EOF'
+echo start
+cat <<'TEXT'
+# shellcheck disable=SC2046
+TEXT
+EOF
+expect_pass "directive-shaped text inside a heredoc is not taken for an exception"
