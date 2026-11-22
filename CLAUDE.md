@@ -236,6 +236,36 @@ BDD-positive bullet is Tests as Specification, and the
 never-scale-with-legitimate-edits prohibition generalizes the Fragile
 Test smell.
 
+**Promotion.** A correction becomes a standing check when both hold:
+(a) the same kind of mistake appears in review findings on three merged
+PRs, or in two owner corrections, or in one incident that touched
+production data; (b) the rule is decidable from the repository or the
+diff without judgment. If (a) holds and a design change would make the
+mistake unrepresentable, do the design change instead. If (b) does not
+hold, the rule stays prose.
+
+**Where it goes**, in order of preference: an existing harness; an
+off-the-shelf linter with only the named analyzers enabled; a new
+script.
+
+**Admission contract.** A standing check
+
+- decodes structured input with a real parser, never a text scan;
+- pins no prose literal and asserts no count of document structure;
+- fails with the rule, the `file:line`, and the root-cause fix, naming
+  the exception syntax last;
+- has a selftest that proves it against a seeded defect;
+- runs from `scripts/check-all.sh` with the arguments CI uses;
+- takes exceptions per line, each with a reason and a removal condition
+  the check itself evaluates, and fails on an exception that no longer
+  suppresses anything. No file-level allowlists. Adding an exception
+  needs the owner.
+
+**Retirement.** A check is deleted when a design change makes its class
+unrepresentable, when a broader check subsumes it, or when it produces
+more than one false failure in ten runs. Not having fired is not a
+reason by itself.
+
 ### Test placement and speed
 
 Prefer table-driven tests where idiomatic to the case being tested.
