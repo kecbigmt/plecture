@@ -444,6 +444,9 @@ jobs:
         with:
           go-version: ${{ env.GO_VERSION }}
           cache: false
+      - name: go vet -tags browser ./internal/webui/...
+        run: go vet -tags browser ./internal/webui/...
+        working-directory: app
       # check-all-skip: while "--with-deps": it installs system packages as root, which check-all.sh must not do to a developer's machine.
       - name: Install the pinned Playwright driver + Chromium
         run: go run github.com/mxschmitt/playwright-go/cmd/playwright@v0.6201.1 install --with-deps chromium
