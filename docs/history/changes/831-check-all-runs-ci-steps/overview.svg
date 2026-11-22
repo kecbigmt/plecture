@@ -1,6 +1,6 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 960 500" width="960" height="500" role="img" aria-labelledby="title desc">
   <title id="title">Change: check-all.sh runs the steps ci-ok requires</title>
-  <desc id="desc">check-all.sh, changed, no longer keeps its own list of commands; that hand-kept list is a removed ghost. It now calls the added scripts/ci_steps.py with run, the aggregator job ci-ok and a base ref. ci_steps.py decodes the changed ci.yml with yq, keeping lines and comments, and runs each required job step in bash with expressions substituted. The added check-ci-parity.sh, run by a step of ci.yml's check-all job, calls ci_steps.py check. ci.yml gains two check-all-skip exceptions and the two parity steps.</desc>
+  <desc id="desc">check-all.sh, changed, no longer keeps its own list of commands; that hand-kept list, whose steps it once ran in order, is a removed ghost. It now calls the added scripts/ci_steps.py with run, the aggregator job ci-ok and a base ref. ci_steps.py decodes the changed ci.yml with yq, keeping lines and comments, and runs each required job step in bash with expressions substituted. The added check-ci-parity.sh, run by a step of ci.yml's check-all job, calls ci_steps.py check. ci.yml gains two check-all-skip exceptions and the two parity steps.</desc>
   <defs>
     <style>
       svg {
@@ -78,6 +78,7 @@
     <text class="name" x="48" y="331">hand-kept step list</text>
     <text class="note" x="48" y="348">inside check-all.sh</text>
     <line class="flow-removed" x1="137" y1="170" x2="137" y2="290"/>
+    <text class="label t-removed" x="149" y="222"><tspan x="149" font-weight="600">REMOVED</tspan><tspan x="149" dy="15">its steps, in order</tspan></text>
     <line class="flow-removed" x1="242" y1="325" x2="370" y2="325"/>
     <text class="label t-removed" text-anchor="middle" x="306" y="295"><tspan x="306" font-weight="600">REMOVED</tspan><tspan x="306" dy="15">own commands</tspan></text>
   </g>
