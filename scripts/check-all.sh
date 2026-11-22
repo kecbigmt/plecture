@@ -1,21 +1,21 @@
 #!/usr/bin/env bash
-# It only invokes the existing scripts: duplicating any one check's logic
-# here would let this and CI drift apart.
+# Usage: check-all.sh [--list] [<base>]
+#
+# Runs the scripts/ci/ script of every job ci-ok requires, for every module
+# rather than a diff's selection. --list prints the scripts instead of
+# running them, which is how check-ci-scripts.sh learns what this runs.
 set -euo pipefail
 
-# CHECK_ALL_ROOT lets check-all_selftest.sh point the scanned/tested tree
-# at a small fixture while still invoking the real scripts below (resolved
-# from this script's own location, unaffected by the override) — the same
-# root-override convention every scripts/check-*.sh here already follows
-# for its own selftest.
 scripts_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-root="${CHECK_ALL_ROOT:-$(cd "$scripts_dir/.." && pwd)}"
-cd "$root"
+cd "$scripts_dir/.."
 
-base_ref="${1:-}"
-if [ -z "$base_ref" ]; then
-  base_ref="$(git merge-base HEAD origin/main)"
+list=false
+if [ "${1:-}" = --list ]; then
+  list=true
+  shift
 fi
+# CI's pull_request base sha is the base branch's tip, not the merge-base.
+base_ref="${1:-origin/main}"
 
 fail() {
   echo "check-all.sh: FAILED: $1" >&2
@@ -23,36 +23,60 @@ fail() {
 }
 
 step() {
-  local name="$1"
-  shift
-  echo "==> $name"
-  if ! "$@"; then
-    fail "$name"
+  local name="scripts/${1#"$scripts_dir"/}"
+  if [ "$list" = true ]; then
+    echo "$name"
+    return
   fi
+  echo "==> $name ${*:2}"
+  "$@" || fail "$name"
 }
 
-echo "==> gofmt -l"
-unformatted="$(find . -name '*.go' -not -path './app/internal/webui/*' -exec gofmt -l {} +)" || fail "gofmt -l"
-if [ -n "$unformatted" ]; then
-  echo "$unformatted"
-  fail "gofmt -l"
+if [ "$list" = false ]; then
+  # The scripts that compare commits see only what is committed, so an
+  # uncommitted change would be tested by some scripts and invisible to
+  # others. The override keeps a status.showUntrackedFiles=no setting from
+  # hiding an untracked file.
+  if [ -n "$(git -c status.showUntrackedFiles=normal status --porcelain)" ]; then
+    git -c status.showUntrackedFiles=normal status --short >&2
+    fail "uncommitted changes; commit them so every script sees the head CI will run"
+  fi
+  # CI installs pinned global tools (npm install -g); a throwaway prefix
+  # gives the same pinned versions without touching the developer's own.
+  npm_prefix="$(mktemp -d)"
+  trap 'rm -rf "$npm_prefix"' EXIT
+  export NPM_CONFIG_PREFIX="$npm_prefix"
+  export PATH="$npm_prefix/bin:$PATH"
 fi
 
-step "go vet ./app/..." bash -c 'cd app && go vet ./...'
-step "go test ./app/..." bash -c 'cd app && go test ./...'
-step "contracts/state go test ./..." bash -c 'cd contracts/state && go test ./...'
+modules="$(FORCE_FULL_RUN=true "$scripts_dir/ci-changed-modules.sh" </dev/null | sed -n 's/^BUILD_TEST_MATRIX=//p')"
+mapfile -t modules < <(jq -r '.[]' <<<"$modules")
 
-step "scripts/check-provider-boundary.sh" "$scripts_dir/check-provider-boundary.sh"
-step "scripts/check-sqlite-driver-boundary.sh" "$scripts_dir/check-sqlite-driver-boundary.sh"
-step "scripts/check-comment-references.sh" "$scripts_dir/check-comment-references.sh"
-step "scripts/check-comment-density.sh $base_ref HEAD" "$scripts_dir/check-comment-density.sh" "$base_ref" HEAD
-step "scripts/check-instruction-orphans.sh" "$scripts_dir/check-instruction-orphans.sh"
-step "scripts/check-agent-config.sh" "$scripts_dir/check-agent-config.sh"
-step "scripts/check-adr-lifecycle.sh origin/main HEAD" "$scripts_dir/check-adr-lifecycle.sh" origin/main HEAD
-step "scripts/check-migration-order.sh origin/main HEAD" "$scripts_dir/check-migration-order.sh" origin/main HEAD
-step "scripts/check-go-unused.sh" "$scripts_dir/check-go-unused.sh"
-step "scripts/check-go-errcheck.sh $base_ref" "$scripts_dir/check-go-errcheck.sh" "$base_ref"
-step "scripts/check-shellcheck.sh" "$scripts_dir/check-shellcheck.sh"
-step "scripts/check-actionlint.sh" "$scripts_dir/check-actionlint.sh"
+step "$scripts_dir/ci/changes.sh"
+step "$scripts_dir/ci/gofmt.sh"
+step "$scripts_dir/ci/go-install.sh"
+step "$scripts_dir/ci/provider-boundary.sh"
+step "$scripts_dir/ci/comment-references.sh"
+HEAD_REF="$(git branch --show-current)" step "$scripts_dir/ci/comment-density.sh" "$base_ref" HEAD
+step "$scripts_dir/ci/instruction-orphans.sh"
+step "$scripts_dir/ci/lint.sh" "$base_ref"
+step "$scripts_dir/ci/check-all.sh" HEAD
+step "$scripts_dir/ci/gh-guard.sh"
+step "$scripts_dir/ci/web-api-contract.sh"
+step "$scripts_dir/ci/web-app-build.sh"
+# Not web-browser-acceptance-browser.sh, the job's browser half: its
+# playwright install --with-deps installs system packages as root, which a
+# check must not do to a developer's machine.
+step "$scripts_dir/ci/web-browser-acceptance.sh"
+step "$scripts_dir/ci/plugin-script-selftests.sh"
+step "$scripts_dir/ci/storage-contract.sh" origin/main HEAD
+for module in "${modules[@]}"; do
+  step "$scripts_dir/ci/build-test.sh" "$module"
+done
+step "$scripts_dir/ci/integration-test.sh"
+step "$scripts_dir/ci/readme-verify.sh"
+step "$scripts_dir/check-agent-config.sh"
 
-echo "check-all.sh: all checks passed"
+if [ "$list" = false ]; then
+  echo "check-all.sh: all checks passed"
+fi

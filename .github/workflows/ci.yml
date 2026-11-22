@@ -40,37 +40,8 @@ jobs:
       - uses: actions/checkout@v4
         with:
           fetch-depth: 0
-      - name: Prove the mapper reproduces the documented trigger map
-        run: ./scripts/ci-changed-modules_selftest.sh
-      - name: Prove a cross-scope rename keeps both its old and new path
-        run: ./scripts/ci-diff-no-renames_selftest.sh
       - id: decide
-        run: |
-          if [ "${{ github.event_name }}" = "pull_request" ]; then
-            # --no-renames: default rename detection reports only the
-            # destination path, so a rename across a mapped boundary (e.g.
-            # app/x.go -> docs/x.md) would hide that the source side lost a
-            # file. Reporting both the old and new path keeps both sides in
-            # the trigger-map decision.
-            out="$(git diff --no-renames --name-only "${{ github.event.pull_request.base.sha }}" "${{ github.event.pull_request.head.sha }}" | ./scripts/ci-changed-modules.sh)"
-          else
-            # No base to diff against on a direct push to main: that build is
-            # the authoritative one, so run everything unconditionally.
-            out="$(FORCE_FULL_RUN=true ./scripts/ci-changed-modules.sh < /dev/null)"
-          fi
-          echo "$out"
-          full_run="$(echo "$out" | sed -n 's/^FULL_RUN=//p')"
-          matrix="$(echo "$out" | sed -n 's/^BUILD_TEST_MATRIX=//p')"
-          integration_test="$(echo "$out" | sed -n 's/^INTEGRATION_TEST=//p')"
-          readme_verify="$(echo "$out" | sed -n 's/^README_VERIFY=//p')"
-          affected_plugins="$(echo "$out" | sed -n 's/^AFFECTED_PLUGINS=//p')"
-          web_ci="$(echo "$out" | sed -n 's/^WEB_CI=//p')"
-          echo "full_run=$full_run" >> "$GITHUB_OUTPUT"
-          echo "build_test_matrix=$matrix" >> "$GITHUB_OUTPUT"
-          echo "integration_test=$integration_test" >> "$GITHUB_OUTPUT"
-          echo "readme_verify=$readme_verify" >> "$GITHUB_OUTPUT"
-          echo "affected_plugins=$affected_plugins" >> "$GITHUB_OUTPUT"
-          echo "web_ci=$web_ci" >> "$GITHUB_OUTPUT"
+        run: ./scripts/ci/changes.sh "${{ github.event.pull_request.base.sha }}" "${{ github.event.pull_request.head.sha }}"
 
   # gofmt, go-install, provider-boundary, comment-references,
   # instruction-orphans, and check-all are whole-repo invariant checks, not
@@ -87,14 +58,7 @@ jobs:
         with:
           go-version: ${{ env.GO_VERSION }}
           cache: false
-      - name: Check gofmt
-        run: |
-          unformatted=$(find . -name '*.go' -not -path './app/internal/webui/*' -exec gofmt -l {} +)
-          if [ -n "$unformatted" ]; then
-            echo "The following files are not gofmt'd:"
-            echo "$unformatted"
-            exit 1
-          fi
+      - run: ./scripts/ci/gofmt.sh
 
   # app/internal/webui/webapp/embed.go embeds a committed
   # static/unbuilt.html placeholder (static/dist/, Vite's real output, is
@@ -123,8 +87,7 @@ jobs:
           key: go-${{ runner.os }}-${{ github.job }}-${{ hashFiles('go.work.sum', '**/go.sum') }}
           restore-keys: go-${{ runner.os }}-${{ github.job }}-
       - name: go build ./app/... from a fresh checkout, no Node installed
-        run: go build ./...
-        working-directory: app
+        run: ./scripts/ci/go-install.sh
 
   provider-boundary:
     name: provider-boundary
@@ -134,30 +97,18 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: ${{ env.PYTHON_VERSION }}
-      - name: Prove the vocabulary derivation handles its failure paths
-        run: ./scripts/provider-vocab_selftest.sh
-      - name: Prove the checker catches a seeded violation
-        run: ./scripts/check-provider-boundary_selftest.sh
-      - name: Check core provider-neutrality
-        run: ./scripts/check-provider-boundary.sh
       - uses: actions/setup-go@v5
         with:
           go-version: ${{ env.GO_VERSION }}
           cache: false
-      - name: Prove the SQLite driver boundary checker catches a seeded requirement
-        run: ./scripts/check-sqlite-driver-boundary_selftest.sh
-      - name: Check the SQLite driver stays out of contracts/ and plugins/ build lists
-        run: ./scripts/check-sqlite-driver-boundary.sh
+      - run: ./scripts/ci/provider-boundary.sh
 
   comment-references:
     name: comment-references
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - name: Prove the checker catches a seeded violation
-        run: ./scripts/check-comment-references_selftest.sh
-      - name: Check comments for issue/PR/ADR number references
-        run: ./scripts/check-comment-references.sh
+      - run: ./scripts/ci/comment-references.sh
 
   # Diff-scoped, not a whole-repo scan like comment-references above: it
   # enforces CLAUDE.md's Comments-section shape rules (density, block
@@ -168,9 +119,6 @@ jobs:
     name: comment-density
     if: github.event_name == 'pull_request'
     runs-on: ubuntu-latest
-    # An integration/* or release/* head is scored one commit at a time (#724).
-    env:
-      AGGREGATE_BRANCH: ${{ startsWith(github.head_ref, 'integration/') || startsWith(github.head_ref, 'release/') }}
     steps:
       - uses: actions/checkout@v4
         with:
@@ -178,14 +126,9 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: ${{ env.PYTHON_VERSION }}
-      - name: Prove the checker catches seeded density/block-length/duplication violations
-        run: ./scripts/check-comment-density_selftest.sh
-      - name: Check the PR diff's comment shape
-        if: env.AGGREGATE_BRANCH != 'true'
-        run: ./scripts/check-comment-density.sh "${{ github.event.pull_request.base.sha }}" "${{ github.event.pull_request.head.sha }}"
-      - name: Check each commit's comment shape on an aggregate branch
-        if: env.AGGREGATE_BRANCH == 'true'
-        run: ./scripts/check-comment-density.sh --per-commit "${{ github.event.pull_request.base.sha }}" "${{ github.event.pull_request.head.sha }}"
+      - run: ./scripts/ci/comment-density.sh "${{ github.event.pull_request.base.sha }}" "${{ github.event.pull_request.head.sha }}"
+        env:
+          HEAD_REF: ${{ github.head_ref }}
 
   instruction-orphans:
     name: instruction-orphans
@@ -196,15 +139,10 @@ jobs:
         with:
           go-version: ${{ env.GO_VERSION }}
           cache: false
-      - name: Prove the checker catches a seeded orphaned sidecar
-        run: ./scripts/check-instruction-orphans_selftest.sh
-      - name: Check every task instruction sidecar is referenced
-        run: ./scripts/check-instruction-orphans.sh
+      - run: ./scripts/ci/instruction-orphans.sh
 
   # The linter versions are pinned in scripts/lint-tools.sh, which is part
   # of the cache key, so a version bump never restores a stale install.
-  # errcheck is scoped to the lines a PR adds, so like comment-density it
-  # runs only where a PR base exists.
   lint:
     name: lint
     runs-on: ubuntu-latest
@@ -228,35 +166,13 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: ${{ env.PYTHON_VERSION }}
-      - name: Prove the shellcheck install refuses a tarball off its pinned checksum
-        run: ./scripts/lint-tools_selftest.sh
-      - name: Prove the dead-code check catches seeded dead code and exceptions
-        run: ./scripts/check-go-unused_selftest.sh
-      - name: Prove the errcheck check catches a seeded discarded error and bad exceptions
-        run: ./scripts/check-go-errcheck_selftest.sh
-      - name: Prove the shellcheck check catches seeded warnings and bad exceptions
-        run: ./scripts/check-shellcheck_selftest.sh
-      - name: Prove the actionlint check catches seeded workflow errors
-        run: ./scripts/check-actionlint_selftest.sh
-      - name: Check for dead Go code (staticcheck U1000)
-        run: ./scripts/check-go-unused.sh
-      - name: Check the PR's added lines for discarded Go errors (errcheck -blank)
-        if: github.event_name == 'pull_request'
-        run: ./scripts/check-go-errcheck.sh "${{ github.event.pull_request.base.sha }}"
-      - name: Check shell scripts (shellcheck)
-        run: ./scripts/check-shellcheck.sh
-      - name: Check workflows (actionlint)
-        run: ./scripts/check-actionlint.sh
+      - run: ./scripts/ci/lint.sh "${{ github.event.pull_request.base.sha }}"
 
-  # This proves check-all.sh's own sequencing/failure-naming against a
-  # fixture; the individual checks it wraps are exercised for real by the
-  # jobs above, so re-running check-all.sh itself against this repository
-  # here would only duplicate their coverage.
-  #
-  # The ADR lifecycle check lives here rather than in its own job: its
-  # whole-repo links and scope heading run on every event, and its
-  # immutability comparison needs main and the PR head with full history:
-  # an ADR on an unmerged base PR is still a proposal.
+  # check-all.sh runs every script below on a developer's machine; here it
+  # is proved against a fixture rather than re-run, which would only run
+  # those scripts twice. The ADR lifecycle check lives here rather than in
+  # its own job: its immutability comparison needs main and the PR head
+  # with full history.
   check-all:
     name: check-all
     runs-on: ubuntu-latest
@@ -278,16 +194,7 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: ${{ env.PYTHON_VERSION }}
-      - name: Prove check-all.sh sequences its steps and stops naming the first failure
-        run: ./scripts/check-all_selftest.sh
-      - name: Prove the ADR lifecycle checker catches seeded violations
-        run: ./scripts/check-adr-lifecycle_selftest.sh
-      - name: Check ADR supersession links, immutability, and scope
-        if: github.event_name != 'pull_request'
-        run: ./scripts/check-adr-lifecycle.sh
-      - name: Check ADR supersession links, immutability, and scope against main
-        if: github.event_name == 'pull_request'
-        run: ./scripts/check-adr-lifecycle.sh origin/main "${{ github.event.pull_request.head.sha }}"
+      - run: ./scripts/ci/check-all.sh "${{ github.event.pull_request.head.sha }}"
 
   gh-guard:
     name: gh-guard
@@ -295,7 +202,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - name: Prove the gh_guard shim denies merge/close and passes through everything else
-        run: ./scripts/gh-guard_selftest.sh
+        run: ./scripts/ci/gh-guard.sh
 
   gh-app-guard:
     name: gh-app-guard
@@ -322,31 +229,6 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: ${{ env.NODE_VERSION }}
-      # Not corepack: corepack enable's own package-manager download path
-      # currently fails signature verification against npm's registry
-      # ("Cannot find matching keyid"), independent of this repo. `npm
-      # install -g` uses npm's own, unrelated package-integrity check, and
-      # npm ships with actions/setup-node above — no new tool dependency.
-      # The version comes from package.json's own packageManager field
-      # rather than being retyped here, so the two cannot drift apart.
-      - name: Install the pnpm version pinned in web/package.json
-        run: npm install -g "pnpm@$(node -p "require('./package.json').packageManager.split('@')[1]")"
-        working-directory: web
-      # One lockfile at the workspace root covers both web/api and web/app.
-      - name: pnpm install (workspace-wide)
-        run: pnpm install --frozen-lockfile
-        working-directory: web
-      - name: Regenerate OpenAPI + TypeScript and check for drift
-        run: |
-          pnpm generate
-          git diff --exit-code -- generated/ || {
-            echo "::error::web/api/generated/ is out of date; run 'pnpm generate' in web/api and commit the result." >&2
-            exit 1
-          }
-        working-directory: web/api
-      - name: Type-check and run the fixture round-trip script
-        run: pnpm verify
-        working-directory: web/api
       - uses: actions/setup-go@v5
         with:
           go-version: ${{ env.GO_VERSION }}
@@ -358,14 +240,7 @@ jobs:
             ~/.cache/go-build
           key: go-${{ runner.os }}-${{ github.job }}-${{ hashFiles('go.work.sum', '**/go.sum') }}
           restore-keys: go-${{ runner.os }}-${{ github.job }}-
-      - name: Regenerate Go types and check for drift
-        run: |
-          go tool oapi-codegen -config oapi-codegen.yaml ../../../web/api/generated/openapi.yaml
-          git diff --exit-code -- generated/ || {
-            echo "::error::app/internal/webapi/generated/ is out of date; run 'go generate ./internal/webapi/...' in app and commit the result." >&2
-            exit 1
-          }
-        working-directory: app/internal/webapi
+      - run: ./scripts/ci/web-api-contract.sh
 
   # app/internal/webui/webapp/static/dist/ is gitignored and untracked,
   # built only by the release workflow and by web-browser-acceptance below;
@@ -385,18 +260,7 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: ${{ env.NODE_VERSION }}
-      - name: Install the pnpm version pinned in web/package.json
-        run: npm install -g "pnpm@$(node -p "require('./package.json').packageManager.split('@')[1]")"
-        working-directory: web
-      - name: pnpm install (workspace-wide)
-        run: pnpm install --frozen-lockfile
-        working-directory: web
-      - name: Unit tests (vitest)
-        run: pnpm test
-        working-directory: web/app
-      - name: Build
-        run: pnpm build
-        working-directory: web/app
+      - run: ./scripts/ci/web-app-build.sh
 
   # Browser-level acceptance for the /app/ shell's read/live milestone: a
   # real Chromium against a freshly built /app/ (dist/ is gitignored, so
@@ -428,25 +292,12 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: ${{ env.NODE_VERSION }}
-      - name: Install the pnpm version pinned in web/package.json
-        run: npm install -g "pnpm@$(node -p "require('./package.json').packageManager.split('@')[1]")"
-        working-directory: web
-      - name: pnpm install (workspace-wide)
-        run: pnpm install --frozen-lockfile
-        working-directory: web
-      - name: Build the Web UI
-        run: pnpm build
-        working-directory: web/app
       - uses: actions/setup-go@v5
         with:
           go-version: ${{ env.GO_VERSION }}
           cache: false
-      - name: Install the pinned Playwright driver + Chromium
-        run: go run github.com/mxschmitt/playwright-go/cmd/playwright@v0.6201.1 install --with-deps chromium
-        working-directory: app
-      - name: go test -tags browser ./internal/webui/...
-        run: go test -tags browser ./internal/webui/...
-        working-directory: app
+      - run: ./scripts/ci/web-browser-acceptance.sh
+      - run: ./scripts/ci/web-browser-acceptance-browser.sh
 
   # This job covers the script-side half of a plugin's delivery contract;
   # its argv side is pinned by the channel-invocation records the
@@ -460,14 +311,10 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - name: Prove the runner isolates one plugin's selftests from another's
-        run: ./scripts/run-plugin-selftests_selftest.sh
-      - name: Run each affected plugin's script selftests
+      - run: ./scripts/ci/plugin-script-selftests.sh
         env:
+          AFFECTED_PLUGINS: ${{ needs.changes.outputs.affected_plugins }}
           REQUIRE_FOUND: ${{ needs.changes.outputs.full_run }}
-        run: |
-          mapfile -t names < <(jq -r '.[]' <<< '${{ needs.changes.outputs.affected_plugins }}')
-          ./scripts/run-plugin-selftests.sh "${names[@]}"
 
   # The storage contract in app/db gets its own required check, so a
   # contract failure is reported by name rather than as one failure among
@@ -493,30 +340,7 @@ jobs:
             ~/.cache/go-build
           key: go-${{ runner.os }}-${{ github.job }}-${{ hashFiles('go.work.sum', '**/go.sum') }}
           restore-keys: go-${{ runner.os }}-${{ github.job }}-
-      - name: manifest
-        run: go test -count=1 ./db -run '^TestMigrationsMatchTheirManifest$|^TestManifest_'
-        working-directory: app
-      - name: drift
-        run: go test -count=1 ./db -skip '^TestMigrationsMatchTheirManifest$|^TestManifest_'
-        working-directory: app
-      - name: sqlc
-        run: |
-          go generate ./internal/persistence/...
-          git diff --exit-code -- internal/persistence/sqlcgen/ || {
-            echo "::error::app/internal/persistence/sqlcgen is out of date; run 'go generate ./internal/persistence/...' in app and commit the result." >&2
-            exit 1
-          }
-        working-directory: app
-      - name: upgrade
-        run: go test -count=1 -tags integration ./internal/persistence -run '^TestMigrate_UpgradesEveryReleasedSchema$'
-        working-directory: app
-      - name: migration order selftest
-        run: ./scripts/check-migration-order_selftest.sh
-      # A push to main has no change to scope to: the PR that merged it was
-      # checked against its base branch's tip.
-      - name: migration order
-        if: github.event_name == 'pull_request'
-        run: ./scripts/check-migration-order.sh "${{ github.event.pull_request.base.sha }}" "${{ github.event.pull_request.head.sha }}"
+      - run: ./scripts/ci/storage-contract.sh "${{ github.event.pull_request.base.sha }}" "${{ github.event.pull_request.head.sha }}"
 
   # Every past darwin-only breakage was first seen in release.yml's
   # darwin-arm64 job, because this workflow otherwise runs go test on Linux
@@ -541,12 +365,7 @@ jobs:
           restore-keys: go-${{ runner.os }}-${{ github.job }}-
       # release.yml's darwin-arm64 build job runs this same `go test ./...`
       # against the app module before packaging.
-      - name: go test
-        run: go test ./...
-        working-directory: app
-      - name: go vet
-        run: go vet ./...
-        working-directory: app
+      - run: ./scripts/ci/build-test.sh app
 
   build-test:
     name: build-test (${{ matrix.module }})
@@ -572,15 +391,7 @@ jobs:
             ~/.cache/go-build
           key: go-${{ runner.os }}-${{ github.job }}-${{ matrix.module }}-${{ hashFiles('go.work.sum', '**/go.sum') }}
           restore-keys: go-${{ runner.os }}-${{ github.job }}-${{ matrix.module }}-
-      - name: go build
-        run: go build ./...
-        working-directory: ${{ matrix.module }}
-      - name: go vet
-        run: go vet ./...
-        working-directory: ${{ matrix.module }}
-      - name: go test
-        run: go test ./...
-        working-directory: ${{ matrix.module }}
+      - run: ./scripts/ci/build-test.sh "${{ matrix.module }}"
 
   integration-test:
     name: integration-test
@@ -600,34 +411,7 @@ jobs:
             ~/.cache/go-build
           key: go-${{ runner.os }}-${{ github.job }}-${{ hashFiles('go.work.sum', '**/go.sum') }}
           restore-keys: go-${{ runner.os }}-${{ github.job }}-
-      # The integration-tagged tests (app/internal/service, app/internal/webui)
-      # spin up real git repos and worktrees and, for the shipped
-      # worktree-effect cases, build the plect/github-worktree/
-      # github-watcher binaries (from plugins/github/src) under test — that's
-      # slow enough to be excluded from the default
-      # go test run but is exactly the coverage that would otherwise let a
-      # spec-encoding test like TestIntegration_DestroyRefusesWhenWorkdirDirty
-      # rot unnoticed.
-      #
-      # `./...` would also re-run every untagged unit test in every other
-      # package a second time, duplicating build-test (app) for no
-      # additional coverage; deriving the package list from the tag itself
-      # (rather than hard-coding it) means a new `//go:build integration`
-      # file is picked up here without a workflow edit.
-      - name: go test -tags integration (tagged packages only)
-        run: |
-          # Normalized to exactly one "./" prefix: go test treats a bare
-          # "internal/foo" as an import path rather than a directory, and
-          # grep's own "./" prefixing on a "." search target is not
-          # consistent across grep implementations.
-          pkgs="$(grep -rl --include='*_test.go' 'go:build integration' . | xargs -n1 dirname | sort -u | sed 's#^\(\./\)\?#./#')"
-          echo "Tagged packages:"
-          echo "$pkgs"
-          go test -tags integration $pkgs
-        working-directory: app
-      - name: go vet -tags integration
-        run: go vet -tags integration ./...
-        working-directory: app
+      - run: ./scripts/ci/integration-test.sh
 
   readme-verify:
     name: readme-verify
@@ -647,30 +431,7 @@ jobs:
             ~/.cache/go-build
           key: go-${{ runner.os }}-${{ github.job }}-${{ hashFiles('go.work.sum', '**/go.sum') }}
           restore-keys: go-${{ runner.os }}-${{ github.job }}-
-      - name: Run README build commands
-        run: |
-          go build ./app/...
-          go build ./contracts/atomicfile/...
-          go build ./contracts/channel-protocol/...
-          go build ./contracts/event/...
-          go build ./contracts/state/...
-          go build ./plugins/claude/src/channel-server/...
-          go build ./plugins/github/src/...
-          go build ./plugins/legacy-migration/...
-          go build ./plugins/okf/src/...
-          go build ./plugins/slack/src/slack-adapter/...
-      - name: Run README test commands
-        run: |
-          go test ./app/...
-          go test ./contracts/atomicfile/...
-          go test ./contracts/channel-protocol/...
-          go test ./contracts/event/...
-          go test ./contracts/state/...
-          go test ./plugins/claude/src/channel-server/...
-          go test ./plugins/github/src/...
-          go test ./plugins/legacy-migration/...
-          go test ./plugins/okf/src/...
-          go test ./plugins/slack/src/slack-adapter/...
+      - run: ./scripts/ci/readme-verify.sh
 
   # The only job a branch-protection ruleset can require without going
   # BLOCKED forever on a path-filtered PR: matrix jobs above report nothing

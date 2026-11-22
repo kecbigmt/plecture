@@ -3,6 +3,9 @@ set -euo pipefail
 
 root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 runner="$root/scripts/run-plugin-selftests.sh"
+# The cases that leave REQUIRE_FOUND unset test the default, which a value
+# inherited from the caller would replace.
+unset REQUIRE_FOUND
 
 fixture="$(mktemp -d)"
 trap 'rm -rf "$fixture"' EXIT
