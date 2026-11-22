@@ -1,0 +1,51 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1080 520" width="1080" height="520" role="img" aria-labelledby="title desc">
+  <title id="title">GitHub App token command credential paths</title>
+  <desc id="desc">The changed session setup writes a guarded gh wrapper. For an allowed call, the changed guard invokes an operator host token command and passes its returned token to real gh through GH_TOKEN; denied calls stop before the command. The changed watcher and gh-api clients use the added tokencommand module to invoke the host command, then pass GH_TOKEN to gh for API requests. The watcher invokes the command again for one retry after HTTP 401. These paths do not write command-provided tokens to a plugin cache.</desc>
+  <defs>
+    <style>
+      svg { --bg:#ffffff; --fg:#1f2328; --muted:#59636e; --neutral:#8c959f; --neutral-bg:#f6f8fa; --added:#1a7f37; --added-bg:#dafbe1; --changed:#0969da; --changed-bg:#ddf4ff; }
+      @media (prefers-color-scheme: dark) { svg { --bg:#0d1117; --fg:#e6edf3; --muted:#9198a1; --neutral:#656c76; --neutral-bg:#151b23; --added:#3fb950; --added-bg:#0f2a1a; --changed:#4493f8; --changed-bg:#0c2441; } }
+      text { font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Helvetica,Arial,sans-serif; font-size:14px; fill:var(--fg); }
+      .bg { fill:var(--bg); } .title { font-size:20px; font-weight:600; } .lane { font-size:15px; font-weight:600; fill:var(--muted); }
+      .name { font-size:16px; font-weight:600; } .detail { font-size:12px; fill:var(--muted); } .tag { font-size:11px; font-weight:700; letter-spacing:.06em; }
+      .neutral { fill:var(--neutral-bg); stroke:var(--neutral); stroke-width:1.5; } .added { fill:var(--added-bg); stroke:var(--added); stroke-width:3; } .changed { fill:var(--changed-bg); stroke:var(--changed); stroke-width:2; }
+      .t-neutral { fill:var(--muted); } .t-added { fill:var(--added); } .t-changed { fill:var(--changed); }
+      .flow { fill:none; stroke:var(--fg); stroke-width:1.6; marker-end:url(#arrow); } .flow-added { fill:none; stroke:var(--added); stroke-width:2.5; marker-end:url(#arrow-added); }
+      .label { font-size:12px; } .divider { stroke:var(--neutral); stroke-width:1; stroke-dasharray:5 5; }
+    </style>
+    <marker id="arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path fill="var(--fg)" d="M0 0 L10 5 L0 10 Z"/></marker>
+    <marker id="arrow-added" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse"><path fill="var(--added)" d="M0 0 L10 5 L0 10 Z"/></marker>
+  </defs>
+  <rect class="bg" width="1080" height="520"/>
+  <text class="title" x="30" y="38">Installation token command</text>
+  <text class="detail" x="30" y="60">PR #836 · command output stays in memory and reaches gh through GH_TOKEN</text>
+  <text class="lane" x="30" y="95">Session guard</text>
+  <rect class="changed" x="30" y="115" width="192" height="85" rx="7"/>
+  <text class="tag t-changed" x="46" y="138">CHANGED</text><text class="name" x="46" y="162">gh_app_guard setup</text><text class="detail" x="46" y="181">task inputs</text>
+  <rect class="changed" x="282" y="115" width="205" height="85" rx="7"/>
+  <text class="tag t-changed" x="298" y="138">CHANGED</text><text class="name" x="298" y="162">gh-app-guard</text><text class="detail" x="298" y="181">deny before command</text>
+  <rect class="added" x="546" y="115" width="205" height="85" rx="7"/>
+  <text class="tag t-added" x="562" y="138">ADDED PATH</text><text class="name" x="562" y="162">Host token command</text><text class="detail" x="562" y="181">operator executable</text>
+  <rect class="neutral" x="813" y="115" width="236" height="85" rx="7"/>
+  <text class="tag t-neutral" x="829" y="138">UNCHANGED</text><text class="name" x="829" y="162">real gh</text><text class="detail" x="829" y="181">GitHub API client</text>
+  <line class="flow-added" x1="222" y1="157" x2="282" y2="157"/><text class="label t-added" x="227" y="143">argv JSON</text>
+  <line class="flow-added" x1="487" y1="157" x2="546" y2="157"/><text class="label t-added" x="495" y="143">exec</text>
+  <path class="flow-added" d="M648 200 V225 H384 V200"/><text class="label t-added" x="485" y="220">token stdout</text>
+  <path class="flow" d="M282 182 H252 V250 H931 V200"/><text class="label" x="768" y="244">GH_TOKEN environment</text>
+  <line class="divider" x1="30" y1="276" x2="1049" y2="276"/>
+  <text class="lane" x="30" y="312">Deployment watcher</text>
+  <rect class="changed" x="30" y="332" width="192" height="85" rx="7"/>
+  <text class="tag t-changed" x="46" y="355">CHANGED</text><text class="name" x="46" y="379">Service env file</text><text class="detail" x="46" y="398">command array</text>
+  <rect class="changed" x="282" y="332" width="205" height="85" rx="7"/>
+  <text class="tag t-changed" x="298" y="353">CHANGED</text><text class="name" x="298" y="374">Watcher / gh-api</text>
+  <rect class="added" x="298" y="383" width="173" height="23" rx="4"/><text class="tag t-added" x="307" y="399">tokencommand.Run</text>
+  <rect class="added" x="546" y="332" width="205" height="85" rx="7"/>
+  <text class="tag t-added" x="562" y="355">ADDED PATH</text><text class="name" x="562" y="379">Host token command</text><text class="detail" x="562" y="398">operator executable</text>
+  <rect class="neutral" x="813" y="332" width="236" height="85" rx="7"/>
+  <text class="tag t-neutral" x="829" y="355">UNCHANGED</text><text class="name" x="829" y="379">gh / GitHub API</text><text class="detail" x="829" y="398">authenticated request</text>
+  <line class="flow-added" x1="222" y1="374" x2="282" y2="374"/><text class="label t-added" x="227" y="360">argv JSON</text>
+  <line class="flow-added" x1="487" y1="374" x2="546" y2="374"/><text class="label t-added" x="495" y="360">exec</text>
+  <path class="flow-added" d="M648 417 V442 H384 V417"/><text class="label t-added" x="485" y="437">token stdout</text>
+  <path class="flow" d="M282 400 H252 V467 H931 V417"/><text class="label" x="736" y="461">GH_TOKEN / Authorization</text>
+  <text class="detail" x="30" y="500">Watcher: HTTP 401 triggers one fresh command call and one request retry.</text>
+</svg>
