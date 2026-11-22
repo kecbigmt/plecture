@@ -57,18 +57,30 @@ STEP_KEYS = {
     "timeout-minutes",
 }
 
-# A local run stands in for a pull_request event on the current branch.
-# Every github.* field an expression may read is listed here; a field not
-# listed has no meaningful local value.
-GITHUB_FIELDS = {
-    ("event_name",),
-    ("event", "pull_request", "base", "sha"),
-    ("event", "pull_request", "head", "sha"),
-    ("head_ref",),
-    ("ref",),
-}
 
-FUNCTIONS = {"contains": 2, "startsWith": 2, "fromJson": 1, "toJson": 1}
+def github_context(base_sha, head_sha, branch):
+    """A local run stands in for a pull_request event on the current
+    branch; a github.* field not returned here has no meaningful local
+    value, so an expression reading one is a finding."""
+    return {
+        "event_name": "pull_request",
+        "event": {"pull_request": {"base": {"sha": base_sha}, "head": {"sha": head_sha}}},
+        "head_ref": branch,
+        # A pull_request run's ref is its merge ref, which compares unequal
+        # to every branch ref; no such ref exists locally.
+        "ref": "",
+    }
+
+
+def leaf_paths(tree, prefix=()):
+    for key, value in tree.items():
+        if isinstance(value, dict):
+            yield from leaf_paths(value, prefix + (key,))
+        else:
+            yield prefix + (key,)
+
+
+GITHUB_FIELDS = set(leaf_paths(github_context("", "", "")))
 
 YQ_ANNOTATE = (
     '(.. | select(tag == "!!map")) |= (. + {'
@@ -235,8 +247,9 @@ def validate(node, scope):
         name, args = node[1], node[2]
         if name not in FUNCTIONS:
             raise ValueError(f"function {name}() is not one the runner evaluates")
-        if len(args) != FUNCTIONS[name]:
-            raise ValueError(f"{name}() takes {FUNCTIONS[name]} argument(s)")
+        arity = FUNCTIONS[name].__code__.co_argcount
+        if len(args) != arity:
+            raise ValueError(f"{name}() takes {arity} argument(s)")
         for arg in args:
             validate(arg, scope)
     elif kind == "ref":
@@ -324,6 +337,24 @@ def stringify(v):
     return v
 
 
+def fn_contains(search, item):
+    if isinstance(search, list):
+        return any(loose_equal(x, item) for x in search)
+    return stringify(item).lower() in stringify(search).lower()
+
+
+def fn_starts_with(text, prefix):
+    return stringify(text).lower().startswith(stringify(prefix).lower())
+
+
+FUNCTIONS = {
+    "contains": fn_contains,
+    "startsWith": fn_starts_with,
+    "fromJson": lambda text: json.loads(stringify(text)),
+    "toJson": lambda value: json.dumps(value, indent=2),
+}
+
+
 def evaluate(node, ctx):
     kind = node[0]
     if kind == "lit":
@@ -339,16 +370,7 @@ def evaluate(node, ctx):
         right = evaluate(node[3], ctx)
         return loose_equal(left, right) == (op == "==")
     if kind == "call":
-        name, args = node[1], [evaluate(a, ctx) for a in node[2]]
-        if name == "contains":
-            if isinstance(args[0], list):
-                return any(loose_equal(x, args[1]) for x in args[0])
-            return stringify(args[1]).lower() in stringify(args[0]).lower()
-        if name == "startsWith":
-            return stringify(args[0]).lower().startswith(stringify(args[1]).lower())
-        if name == "fromJson":
-            return json.loads(stringify(args[0]))
-        return json.dumps(args[0], indent=2)
+        return FUNCTIONS[node[1]](*[evaluate(a, ctx) for a in node[2]])
     value = ctx
     for key in node[1]:
         value = value.get(key) if isinstance(value, dict) else None
@@ -598,14 +620,7 @@ def read_outputs(path):
 
 def run(wf, base_ref):
     head = git("rev-parse", "HEAD")
-    github = {
-        "event_name": "pull_request",
-        "event": {"pull_request": {"base": {"sha": git("rev-parse", base_ref)}, "head": {"sha": head}}},
-        "head_ref": git("branch", "--show-current"),
-        # A pull_request run's ref is its merge ref, which compares unequal
-        # to every branch ref; no such ref exists locally.
-        "ref": "",
-    }
+    github = github_context(git("rev-parse", base_ref), head, git("branch", "--show-current"))
     workflow_env = {k: render(v, {"github": github}) for k, v in public(wf.doc.get("env") or {}).items()}
     results, root = {}, os.getcwd()
     for job_id in wf.order:
