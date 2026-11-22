@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Proves check-go-unused.sh against seeded defects in a fixture workspace:
 # a dead function fails and is named, an identifier only a tagged file uses
-# passes, and a staticcheck ignore that would hide dead code fails.
+# passes, and any suppression directive fails and is named.
 set -euo pipefail
 
 root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
@@ -70,7 +70,7 @@ package main
 
 func dead() {}
 EOF
-expect_fail_naming "a dead function fails and is named" "mod/dead.go:3:6: U1000" "U1000 takes no exception"
+expect_fail_naming "a dead function fails and is named" "mod/dead.go:3:6: U1000" "This check takes no exception"
 
 cat > "$fixture/mod/dead.go" <<'EOF'
 package main
@@ -95,7 +95,7 @@ package main
 //lint:ignore U1000 kept for later
 func onlyIntegrationUses() {}
 EOF
-expect_fail_naming "a staticcheck ignore over dead code fails" "mod/dead.go:3: staticcheck-directive"
+expect_fail_naming "a staticcheck ignore over dead code fails" "mod/dead.go:3: suppression directive"
 
 cat > "$fixture/mod/dead.go" <<'EOF'
 package main
@@ -110,7 +110,7 @@ func cleanup() {
 
 func init() { cleanup() }
 EOF
-expect_fail_naming "a slash-prefixed nolint over a function fails" "mod/dead.go:5: standalone-nolint"
+expect_fail_naming "a slash-prefixed nolint over a function fails" "mod/dead.go:5: suppression directive"
 
 cat > "$fixture/mod/dead.go" <<'EOF'
 package main
@@ -123,4 +123,4 @@ func cleanup() {
 
 func init() { cleanup() }
 EOF
-expect_fail_naming "a trailing errcheck exception in a spelling nolintlint never checks fails" "mod/dead.go:6: noncanonical-nolint"
+expect_fail_naming "a trailing slash-prefixed nolint fails" "mod/dead.go:6: suppression directive"

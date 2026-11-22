@@ -7,167 +7,49 @@ import (
 
 func TestCheck(t *testing.T) {
 	tests := []struct {
-		name string
-		src  string
-		want []Finding
+		name  string
+		src   string
+		lines []int
 	}{
 		{
-			name: "a trailing errcheck exception with a reason is accepted",
+			name: "a file without directives passes",
 			src: `package p
 
-func f() {
-	g() //nolint:errcheck // best-effort cleanup
-}
-`,
-		},
-		{
-			name: "a staticcheck line ignore is rejected",
-			src: `package p
-
-//lint:ignore U1000 kept for later
-func dead() {}
-`,
-			want: []Finding{{Line: 3, Rule: RuleStaticcheckDirective}},
-		},
-		{
-			name: "a staticcheck file ignore is rejected",
-			src: `//lint:file-ignore U1000 generated
-package p
-`,
-			want: []Finding{{Line: 1, Rule: RuleStaticcheckDirective}},
-		},
-		{
-			name: "a nolint above the package clause is rejected as file-wide",
-			src: `//nolint:errcheck // whole file
-package p
-`,
-			want: []Finding{{Line: 1, Rule: RuleStandaloneNolint}},
-		},
-		{
-			name: "a nolint on its own line above a declaration is rejected",
-			src: `package p
-
-//nolint:errcheck // whole function
+// f has an ordinary doc comment.
 func f() {
 	g()
 }
 `,
-			want: []Finding{{Line: 3, Rule: RuleStandaloneNolint}},
 		},
 		{
-			name: "a nolint on its own line inside a body is rejected",
-			src: `package p
-
-func f() {
-	//nolint:errcheck // next statement
-	g()
-}
-`,
-			want: []Finding{{Line: 4, Rule: RuleStandaloneNolint}},
+			name:  "a trailing nolint is rejected",
+			src:   "package p\n\nfunc f() {\n\tg() //nolint:errcheck // best-effort cleanup\n}\n",
+			lines: []int{4},
 		},
 		{
-			name: "a trailing nolint for another linter is rejected",
-			src: `package p
-
-func f() {
-	g() //nolint:gosec // reviewed
-}
-`,
-			want: []Finding{{Line: 4, Rule: RuleForeignNolint}},
+			name:  "a standalone nolint is rejected",
+			src:   "package p\n\n//nolint:errcheck // whole function\nfunc f() {}\n",
+			lines: []int{3},
 		},
 		{
-			name: "a trailing nolint that also names another linter is rejected",
-			src: `package p
-
-func f() {
-	g() //nolint:errcheck,unused // reviewed
-}
-`,
-			want: []Finding{{Line: 4, Rule: RuleForeignNolint}},
+			name:  "a nolint above the package clause is rejected",
+			src:   "//nolint // whole file\npackage p\n",
+			lines: []int{1},
 		},
 		{
-			name: "a trailing nolint naming no linter is rejected",
-			src: `package p
-
-func f() {
-	g() //nolint // everything
-}
-`,
-			want: []Finding{{Line: 4, Rule: RuleForeignNolint}},
+			name:  "a nolint with extra slashes or spaces is still a directive",
+			src:   "package p\n\n// /nolint:errcheck\nfunc f() {\n\tg() ///nolint:gosec\n}\n",
+			lines: []int{3, 5},
 		},
 		{
-			name: "a spaced nolint is still a directive",
-			src: `package p
-
-// nolint:errcheck // spaced
-func f() {}
-`,
-			want: []Finding{{Line: 3, Rule: RuleStandaloneNolint}},
+			name:  "a staticcheck line ignore is rejected",
+			src:   "package p\n\n//lint:ignore U1000 kept for later\nfunc dead() {}\n",
+			lines: []int{3},
 		},
 		{
-			name: "a slash-prefixed nolint on its own line is still a directive",
-			src: `package p
-
-// /nolint:errcheck // whole function
-func f() {
-	g()
-}
-`,
-			want: []Finding{{Line: 3, Rule: RuleStandaloneNolint}},
-		},
-		{
-			name: "a trailing slash-prefixed nolint for another linter is rejected",
-			src: `package p
-
-func f() {
-	g() ///nolint:gosec // reviewed
-}
-`,
-			want: []Finding{{Line: 4, Rule: RuleForeignNolint}},
-		},
-		{
-			name: "a trailing errcheck exception spelled other than //nolint:errcheck is rejected",
-			src: `package p
-
-func f() {
-	g() //nolint: ErrCheck // best-effort cleanup
-}
-`,
-			want: []Finding{{Line: 4, Rule: RuleNoncanonicalNolint}},
-		},
-		{
-			name: "a trailing slash-prefixed errcheck exception is rejected",
-			src: `package p
-
-func f() {
-	g() ///nolint:errcheck
-}
-`,
-			want: []Finding{{Line: 4, Rule: RuleNoncanonicalNolint}},
-		},
-		{
-			name: "a trailing space-prefixed errcheck exception is rejected",
-			src: `package p
-
-func f() {
-	g() // nolint:errcheck // best-effort cleanup
-}
-`,
-			want: []Finding{{Line: 4, Rule: RuleNoncanonicalNolint}},
-		},
-		{
-			name: "a trailing nolint:all is rejected",
-			src: `package p
-
-func f() {
-	g() //nolint:all // everything
-}
-`,
-			want: []Finding{{Line: 4, Rule: RuleForeignNolint}},
-		},
-		{
-			name: "a tab after the slashes is not a nolint directive",
-			src:  "package p\n\n//\tnolint:errcheck is prose here\nfunc f() {}\n",
+			name:  "a staticcheck file ignore is rejected",
+			src:   "//lint:file-ignore U1000 generated\npackage p\n",
+			lines: []int{1},
 		},
 		{
 			name: "directive text inside a string literal is not a directive",
@@ -175,11 +57,11 @@ func f() {
 		},
 		{
 			name: "prose that mentions nolint is not a directive",
-			src: `package p
-
-// A nolintable thing is fine; so is talk of //lint: in the middle.
-func f() {}
-`,
+			src:  "package p\n\n// A nolintable thing is fine; so is talk of //lint: in the middle.\nfunc f() {}\n",
+		},
+		{
+			name: "a tab after the slashes is not a directive",
+			src:  "package p\n\n//\tnolint:errcheck is prose here\nfunc f() {}\n",
 		},
 	}
 	for _, tt := range tests {
@@ -188,11 +70,12 @@ func f() {}
 			if err != nil {
 				t.Fatalf("Check: %v", err)
 			}
-			for i := range tt.want {
-				tt.want[i].Path = "p.go"
+			var want []Finding
+			for _, line := range tt.lines {
+				want = append(want, Finding{Path: "p.go", Line: line})
 			}
-			if !reflect.DeepEqual(got, tt.want) {
-				t.Fatalf("Check = %+v, want %+v", got, tt.want)
+			if !reflect.DeepEqual(got, want) {
+				t.Fatalf("Check = %+v, want %+v", got, want)
 			}
 		})
 	}

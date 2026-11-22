@@ -119,3 +119,23 @@ lint_tool() {
 go_workspace_modules() {
   go work edit -json go.work | jq -r '.Use[]?.DiskPath | ltrimstr("./")'
 }
+
+NO_EXCEPTION="This check takes no exception; if the finding cannot be fixed at its cause, stop and ask the owner."
+
+# check_go_directives fails on any Go suppression directive in a tracked
+# file: golangci-lint and staticcheck honor these silently, so a check that
+# takes no exception has to reject them itself.
+check_go_directives() {
+  local guard
+  guard="$(mktemp -d)/check-lint-directives"
+  (cd "$(dirname "${BASH_SOURCE[0]}")/../app" && go build -o "$guard" ./cmd/check-lint-directives)
+  local go_files
+  mapfile -t go_files < <(git ls-files -- '*.go')
+  if ! "$guard" "${go_files[@]}"; then
+    rm -rf "$(dirname "$guard")"
+    echo >&2
+    echo "$NO_EXCEPTION" >&2
+    return 1
+  fi
+  rm -rf "$(dirname "$guard")"
+}

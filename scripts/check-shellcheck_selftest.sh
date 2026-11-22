@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
 # Proves check-shellcheck.sh against seeded defects in a fixture repository:
 # a warning fails and is named in a `.sh` file and in an extension-less
-# script found by its shebang, and an exception passes only with a reason,
-# only on one command, and only while it still suppresses something.
+# script found by its shebang, and every suppression directive fails and is
+# named, while directive-shaped text that is not a directive passes.
 set -euo pipefail
 
 root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
@@ -61,7 +61,7 @@ script tool.sh <<'EOF'
 unused=1
 EOF
 expect_fail_naming "a warning in a .sh file fails and is named" \
-  "tool.sh:2:1: SC2034 (warning)" "https://www.shellcheck.net/wiki/SC2034"
+  "tool.sh:2:1: SC2034 (warning)" "https://www.shellcheck.net/wiki/SC2034" "This check takes no exception"
 
 script tool.sh <<'EOF'
 echo "$1"
@@ -76,34 +76,13 @@ echo start
 # shellcheck disable=SC2046 # each word is a separate argument on purpose
 echo $(ls)
 EOF
-expect_pass "an exception with a reason that suppresses a finding passes"
+expect_fail_naming "a suppression directive fails and names its line" "bin/tool:3: suppression directive"
 
 script bin/tool <<'EOF'
-echo start
-# shellcheck disable=SC2046
+echo start; echo "# shellcheck disable=SC1000"; # shellcheck disable=SC2046
 echo $(ls)
 EOF
-expect_fail_naming "an exception without a reason fails" "bin/tool:3: exception has no reason"
-
-script bin/tool <<'EOF'
-echo start
-# shellcheck disable=SC2046 # nothing left to excuse
-echo "$(ls)"
-EOF
-expect_fail_naming "an exception that suppresses nothing fails" "bin/tool:3: exception for SC2046 suppresses nothing"
-
-script bin/tool <<'EOF'
-# shellcheck disable=SC2046 # whole file
-echo $(ls)
-EOF
-expect_fail_naming "an exception before the first command fails as file-wide" "bin/tool:2: exception before the first command"
-
-script bin/tool <<'EOF'
-echo start
-# shellcheck disable=all # everything
-echo $(ls)
-EOF
-expect_fail_naming "an exception naming no specific code fails" "bin/tool:3: exception names all"
+expect_fail_naming "a directive after a command and a quoted look-alike is still found" "bin/tool:2: suppression directive"
 
 script bin/tool <<'EOF'
 echo start
@@ -111,105 +90,7 @@ cat <<'TEXT'
 # shellcheck disable=SC2046
 TEXT
 EOF
-expect_pass "directive-shaped text inside a heredoc is not taken for an exception"
+expect_pass "directive-shaped text inside a heredoc is not a directive"
 
-script bin/tool <<'EOF'
-echo start
-# shellcheck disable=SC2034 # values retained for debugging
-f() {
-  unused1=1
-  unused2=2
-}
-f
-EOF
-expect_fail_naming "an exception over a function body fails as broader than one line" \
-  "bin/tool:3: exception covers"
-
-script bin/tool <<'EOF'
-echo start
-# shellcheck disable=SC2034 # value retained for debugging
-unused=1
-EOF
-mkdir -p "$fixture/nested/bin"
-cat > "$fixture/nested/bin/lib.inc" <<'EOF'
-arr=(a b)
-printf '%s\n' "${arr[@]}"
-EOF
-script nested/bin/tool.sh <<'EOF'
-# shellcheck source=lib.inc
-. "$(dirname "$0")/lib.inc"
-# shellcheck disable=SC2128 # only the first item is wanted
-echo "$arr"
-EOF
-expect_pass "a live exception whose finding needs a sibling sourced file passes"
-
-script bin/tool <<'EOF'
-echo start
-# shellcheck disable=SC2046 # words split on purpose
-case "$1" in
-  a) echo $(ls) ;;
-  b) echo $(pwd) ;;
-esac
-EOF
-expect_fail_naming "an exception over a case block fails" "bin/tool:3: exception covers"
-
-script bin/tool <<'EOF'
-echo start
-# shellcheck disable=SC2034 # values retained for debugging
-f()
-{
-  unused1=1
-  unused2=2
-}
-f
-EOF
-expect_fail_naming "an exception over a function whose brace opens on the next line fails" "bin/tool:3: exception covers"
-
-script bin/tool <<'EOF'
-echo start; # shellcheck disable=SC2046
-f() {
-  echo $(ls)
-  echo $(pwd)
-}
-f
-EOF
-expect_fail_naming "a directive after a command on the same line is validated too" \
-  "bin/tool:2: exception has no reason" "bin/tool:2: exception covers"
-
-script bin/tool <<'EOF'
-echo start; echo "# shellcheck disable=SC1000"; # shellcheck disable=SC2046
-f() {
-  echo $(ls)
-  echo $(pwd)
-}
-f
-EOF
-expect_fail_naming "a quoted directive before the real one on the same line does not hide it" \
-  "bin/tool:2: exception has no reason" "bin/tool:2: exception covers"
-
-# The attribution backstop has no fixture that reaches it through the real
-# parser probe, so the probe is replaced to find nothing.
-script bin/tool <<'EOF'
-echo start
-# shellcheck disable=SC2046 # each word is a separate argument on purpose
-echo $(ls)
-EOF
-git -C "$fixture" add -A
-# shellcheck source=lint-tools.sh
-. "$root/scripts/lint-tools.sh"
-if (cd "$fixture" && python3 -c 'import sys
-sys.path.insert(0, sys.argv[1])
-import shellcheck_report as report
-report.parsed_directives = lambda *args: []
-sys.argv = ["shellcheck_report.py", sys.argv[2]]
-sys.exit(report.main())' "$root/scripts" "$(lint_tool shellcheck)") > "$log" 2>&1; then
-  echo "FAIL: a suppression no validated directive explains passed" >&2
-  cat "$log" >&2
-  exit 1
-fi
-if ! grep -qF "bin/tool:4: a finding here is hidden by a directive this check cannot validate" "$log"; then
-  echo "FAIL: the unexplained suppression is not named" >&2
-  cat "$log" >&2
-  exit 1
-fi
-echo "ok: a suppression no validated directive explains fails"
+printf 'disable=SC2046\n' > "$fixture/.shellcheckrc"
+expect_fail_naming "a tracked .shellcheckrc fails" ".shellcheckrc:1: shellcheck configuration file"

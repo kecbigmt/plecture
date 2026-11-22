@@ -20,6 +20,7 @@ root="${GO_ERRCHECK_CHECK_ROOT:-$(pwd)}"
 cd "$root"
 
 golangci_lint="$(lint_tool golangci-lint)"
+check_go_directives
 
 failed=0
 modules=0
@@ -37,9 +38,8 @@ done < <(go_workspace_modules)
 if [ "$failed" -ne 0 ]; then
   echo >&2
   echo "Discarded error (errcheck -blank) on a line this change adds: handle or" >&2
-  echo "return each error above. Only when discarding it is correct, end that one" >&2
-  echo "line with //nolint:errcheck // <reason>; an exception that no longer" >&2
-  echo "suppresses anything fails this check (nolintlint)." >&2
+  echo "return each error above." >&2
+  echo "$NO_EXCEPTION" >&2
   exit 1
 fi
 

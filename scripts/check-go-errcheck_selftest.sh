@@ -1,8 +1,7 @@
 #!/usr/bin/env bash
 # Proves check-go-errcheck.sh against seeded defects in a fixture workspace:
 # a discarded error that predates the base passes, one a commit adds fails
-# and is named, and an exception passes only with a reason and only while it
-# still suppresses something.
+# and is named, and a directive that would hide one fails and is named.
 set -euo pipefail
 
 root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
@@ -121,24 +120,5 @@ func cleanup() {
 	os.Remove("best-effort") //nolint:errcheck // the file may already be gone
 }
 EOF
-expect_pass "an exception with a reason that suppresses a finding passes"
-
-commit_new <<'EOF'
-package main
-
-import "os"
-
-func cleanup() {
-	os.Remove("no-reason") //nolint:errcheck
-}
-EOF
-expect_fail_naming "an exception without a reason fails" "mod/new.go:6:" "(nolintlint)"
-
-commit_new <<'EOF'
-package main
-
-func cleanup() {
-	println("nothing to excuse") //nolint:errcheck // stale
-}
-EOF
-expect_fail_naming "an exception that suppresses nothing fails" "mod/new.go:4:" "(nolintlint)"
+expect_fail_naming "a change adding a nolint over a discarded error fails and names the line" \
+  "mod/new.go:6: suppression directive" "This check takes no exception"

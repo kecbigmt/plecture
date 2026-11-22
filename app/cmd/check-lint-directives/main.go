@@ -1,4 +1,4 @@
-// Command check-lint-directives is scripts/check-go-unused.sh's exception
+// Command check-lint-directives is scripts/check-go-unused.sh's suppression
 // guard: see the lintdirectives package for what it rejects and why.
 package main
 

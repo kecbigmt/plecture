@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Proves check-actionlint.sh against seeded defects in a fixture repository:
-# an expression naming an undefined property fails and is named, and so
-# does a shellcheck warning inside a `run:` script.
+# an expression naming an undefined property fails and is named, and so do
+# a shellcheck warning and a suppression directive inside a `run:` script.
 set -euo pipefail
 
 root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
@@ -82,55 +82,12 @@ workflow <<'EOF'
           # shellcheck disable=SC2046 # each word is a separate argument on purpose
           echo $(ls)
 EOF
-expect_pass "a run-script exception with a reason that suppresses a finding passes"
-
-workflow <<'EOF'
-      - run: |
-          echo start
-          # shellcheck disable=SC2046
-          echo $(ls)
-EOF
-expect_fail_naming "a run-script exception without a reason fails" "exception has no reason"
-
-workflow <<'EOF'
-      - run: |
-          echo start
-          # shellcheck disable=SC2046 # nothing left to excuse
-          echo "clean"
-EOF
-expect_fail_naming "a run-script exception that suppresses nothing fails" "exception for SC2046 suppresses nothing"
-
-workflow <<'EOF'
-      - run: |
-          echo start
-          # shellcheck disable=SC2046 # words split on purpose
-          case "$GITHUB_REF" in
-            a) echo $(ls) ;;
-            b) echo $(pwd) ;;
-          esac
-EOF
-expect_fail_naming "a run-script exception over a case block fails" "exception covers"
-
-workflow <<'EOF'
-      - run: |
-          echo start; # shellcheck disable=SC2046
-          f() {
-            echo $(ls)
-            echo $(pwd)
-          }
-          f
-EOF
-expect_fail_naming "a run-script directive after a command on the same line is validated too" \
-  "exception has no reason" "exception covers"
+expect_fail_naming "a suppression directive in a run script fails" \
+  ".github/workflows/ci.yml:7:" "suppression directive" "This check takes no exception"
 
 workflow <<'EOF'
       - run: |
           echo start; echo "# shellcheck disable=SC1000"; # shellcheck disable=SC2046
-          f() {
-            echo $(ls)
-            echo $(pwd)
-          }
-          f
+          echo $(ls)
 EOF
-expect_fail_naming "a run-script quoted directive before the real one does not hide it" \
-  "exception has no reason" "exception covers"
+expect_fail_naming "a run-script directive after a quoted look-alike is still found" "suppression directive"

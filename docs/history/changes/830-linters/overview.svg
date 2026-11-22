@@ -1,6 +1,6 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 960 720" width="960" height="720" role="img" aria-labelledby="title desc">
   <title id="title">Change: four pinned linters in CI and check-all.sh</title>
-  <desc id="desc">The added CI lint job, whose result ci-ok now requires, and the changed check-all.sh both run four added check scripts: check-go-unused.sh (staticcheck U1000 under a build-tag matrix), check-go-errcheck.sh (golangci-lint on added lines only, given a base ref), check-shellcheck.sh (shellcheck at severity warning) and check-actionlint.sh (actionlint with the pinned shellcheck). check-go-unused.sh first passes every tracked Go file to the added lint-directive guard. check-go-errcheck.sh reads the added golangci-errcheck.yml config. check-shellcheck.sh hands the shellcheck binary to the added shellcheck_report.py, which validates exceptions; check-actionlint.sh gives actionlint the same script as its shellcheck command, so run-script exceptions meet the same rules. Every script asks the added lint-tools.sh for a pinned binary path; lint-tools.sh holds the versions and installs into a cache, verifying the shellcheck tarball's sha256.</desc>
+  <desc id="desc">The added CI lint job, whose result ci-ok now requires, and the changed check-all.sh both run four added check scripts: check-go-unused.sh (staticcheck U1000 under a build-tag matrix), check-go-errcheck.sh (golangci-lint on added lines only, given a base ref), check-shellcheck.sh (shellcheck at severity warning) and check-actionlint.sh (actionlint with the pinned shellcheck). Both Go checks first pass every tracked Go file to the added Go directive guard, which fails on any suppression directive. check-go-errcheck.sh reads the added golangci-errcheck.yml config, which enables errcheck only. check-shellcheck.sh hands the shellcheck binary to the added shellcheck_report.py, which fails on any suppression directive; check-actionlint.sh gives actionlint the same script as its shellcheck command, so a directive in a run script fails too. Every script asks the added lint-tools.sh for a pinned binary path; lint-tools.sh holds the versions and installs into a cache, verifying the shellcheck tarball's sha256.</desc>
   <defs>
     <style>
       svg {
@@ -100,23 +100,25 @@
   <!-- Helpers -->
   <rect class="added" x="660" y="150" width="270" height="70" rx="6"/>
   <text class="tag t-added" x="676" y="171">ADDED</text>
-  <text class="name" x="676" y="190">lint-directive guard</text>
+  <text class="name" x="676" y="190">Go directive guard</text>
   <text class="note" x="676" y="207">app/cmd/check-lint-directives</text>
 
   <rect class="added" x="660" y="240" width="270" height="70" rx="6"/>
   <text class="tag t-added" x="676" y="261">ADDED</text>
   <text class="name" x="676" y="280">golangci-errcheck.yml</text>
-  <text class="note" x="676" y="297">errcheck + nolintlint</text>
+  <text class="note" x="676" y="297">errcheck only</text>
 
   <rect class="added" x="660" y="330" width="270" height="70" rx="6"/>
   <text class="tag t-added" x="676" y="351">ADDED</text>
   <text class="name" x="676" y="370">shellcheck_report.py</text>
-  <text class="note" x="676" y="387">exception validator</text>
+  <text class="note" x="676" y="387">directive detector</text>
 
   <path class="flow-added" d="M550,185 H660"/>
   <text class="label t-added" text-anchor="middle" x="615" y="160"><tspan x="615" font-weight="600">ADDED</tspan><tspan x="615" dy="15">Go files</tspan></text>
   <path class="flow-added" d="M550,275 H660"/>
-  <text class="label t-added" text-anchor="middle" x="615" y="250"><tspan x="615" font-weight="600">ADDED</tspan><tspan x="615" dy="15">--config</tspan></text>
+  <path class="flow-added" d="M550,250 H645 V220"/>
+  <text class="label t-added" x="652" y="236">Go files</text>
+  <text class="label t-added" text-anchor="middle" x="615" y="292"><tspan x="615" font-weight="600">ADDED</tspan><tspan x="615" dy="15">--config</tspan></text>
   <path class="flow-added" d="M550,365 H660"/>
   <text class="label t-added" text-anchor="middle" x="615" y="340"><tspan x="615" font-weight="600">ADDED</tspan><tspan x="615" dy="15">binary path</tspan></text>
 
