@@ -1,0 +1,117 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 960 600" width="960" height="600" role="img" aria-labelledby="title desc">
+  <title id="title">Change: pull request body lint</title>
+  <desc id="desc">A GitHub pull request event, including a body edit, starts the added pr-body workflow, which writes the body passed through env to pr-body.md and runs the added check-pr-body.sh with the repository name. check-pr-body.sh builds and runs the added scripts/prbody Go module, which parses the body as GitHub-flavored Markdown and prints file:line findings. The changed check-all.sh fetches the branch's open pull request body through gh api and runs the same script; with no pull request it skips the step. The added check-pr-body_selftest.sh feeds seeded bodies to the same script. ci.yml and its ci-ok job are unchanged and do not include pr-body.</desc>
+  <defs>
+    <style>
+      svg {
+        --bg: #ffffff; --fg: #1f2328; --muted: #59636e;
+        --neutral: #8c959f; --neutral-bg: #f6f8fa;
+        --added: #1a7f37; --added-bg: #dafbe1;
+        --changed: #0969da; --changed-bg: #ddf4ff;
+        --removed: #cf222e; --removed-bg: #ffebe9;
+      }
+      @media (prefers-color-scheme: dark) {
+        svg {
+          --bg: #0d1117; --fg: #e6edf3; --muted: #9198a1;
+          --neutral: #656c76; --neutral-bg: #151b23;
+          --added: #3fb950; --added-bg: #0f2a1a;
+          --changed: #4493f8; --changed-bg: #0c2441;
+          --removed: #f85149; --removed-bg: #3a1416;
+        }
+      }
+      text { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Helvetica, Arial, sans-serif; font-size: 13px; fill: var(--fg); }
+      .bg { fill: var(--bg); }
+      .title { font-size: 18px; font-weight: 600; }
+      .name { font-weight: 600; }
+      .note { font-size: 12px; fill: var(--muted); }
+      .label { font-size: 12px; }
+      .tag { font-size: 11px; font-weight: 700; letter-spacing: 0.06em; }
+      .neutral { fill: var(--neutral-bg); stroke: var(--neutral); stroke-width: 1.5; }
+      .added { fill: var(--added-bg); stroke: var(--added); stroke-width: 3; }
+      .changed { fill: var(--changed-bg); stroke: var(--changed); stroke-width: 2; }
+      .removed { fill: var(--removed-bg); stroke: var(--removed); stroke-width: 1.5; stroke-dasharray: 8 4; }
+      .ghost { opacity: 0.65; }
+      .t-neutral { fill: var(--muted); }
+      .t-added { fill: var(--added); }
+      .t-changed { fill: var(--changed); }
+      .t-removed { fill: var(--removed); }
+      .flow { fill: none; stroke: var(--fg); stroke-width: 1.5; marker-end: url(#arrow); }
+      .flow-added { fill: none; stroke: var(--added); stroke-width: 3; marker-end: url(#arrow-added); }
+      .flow-removed { fill: none; stroke: var(--removed); stroke-width: 1.5; stroke-dasharray: 6 4; marker-end: url(#arrow-removed); }
+      .head { fill: var(--fg); }
+      .head-added { fill: var(--added); }
+      .head-removed { fill: var(--removed); }
+    </style>
+    <marker id="arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path class="head" d="M0,0 L10,5 L0,10 z"/>
+    </marker>
+    <marker id="arrow-added" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="4" markerHeight="4" orient="auto-start-reverse">
+      <path class="head-added" d="M0,0 L10,5 L0,10 z"/>
+    </marker>
+  </defs>
+
+  <rect class="bg" x="0" y="0" width="960" height="600"/>
+
+  <text class="title" x="24" y="38">Change: pull request body lint</text>
+  <text class="note" x="24" y="60">closing keyword and SHA-pinned overview images · PR #828 · head structure with the diff marked on it</text>
+
+  <rect class="neutral" x="32" y="110" width="190" height="70" rx="6"/>
+  <text class="tag t-neutral" x="48" y="132">UNCHANGED</text>
+  <text class="name" x="48" y="151">GitHub PR event</text>
+  <text class="note" x="48" y="168">includes body edits</text>
+
+  <rect class="added" x="362" y="110" width="236" height="70" rx="6"/>
+  <text class="tag t-added" x="378" y="132">ADDED</text>
+  <text class="name" x="378" y="151">pr-body workflow</text>
+  <text class="note" x="378" y="168">.github/workflows/pr-body.yml</text>
+
+  <rect class="neutral" x="738" y="110" width="190" height="70" rx="6"/>
+  <text class="tag t-neutral" x="754" y="132">UNCHANGED</text>
+  <text class="name" x="754" y="151">ci.yml · ci-ok</text>
+  <text class="note" x="754" y="168">does not need pr-body</text>
+
+  <rect class="changed" x="32" y="290" width="190" height="70" rx="6"/>
+  <text class="tag t-changed" x="48" y="312">CHANGED</text>
+  <text class="name" x="48" y="331">check-all.sh</text>
+  <text class="note" x="48" y="348">skips with no open PR</text>
+
+  <rect class="added" x="362" y="290" width="236" height="70" rx="6"/>
+  <text class="tag t-added" x="378" y="312">ADDED</text>
+  <text class="name" x="378" y="331">check-pr-body.sh</text>
+  <text class="note" x="378" y="348">--repo owner/name body-file</text>
+
+  <rect class="added" x="738" y="290" width="190" height="70" rx="6"/>
+  <text class="tag t-added" x="754" y="312">ADDED</text>
+  <text class="name" x="754" y="331">scripts/prbody</text>
+  <text class="note" x="754" y="348">Go module, GOWORK=off</text>
+
+  <rect class="added" x="362" y="440" width="236" height="70" rx="6"/>
+  <text class="tag t-added" x="378" y="462">ADDED</text>
+  <text class="name" x="378" y="481">check-pr-body_selftest.sh</text>
+  <text class="note" x="378" y="498">seeded defects</text>
+
+  <line class="flow" x1="222" y1="145" x2="362" y2="145"/>
+  <text class="label" text-anchor="middle" x="292" y="136">PR body via env</text>
+
+  <line class="flow-added" x1="480" y1="180" x2="480" y2="290"/>
+  <text class="label t-added" x="492" y="232"><tspan x="492" font-weight="600">ADDED</tspan><tspan x="492" dy="15">pr-body.md, --repo</tspan></text>
+
+  <line class="flow-added" x1="222" y1="325" x2="362" y2="325"/>
+  <text class="label t-added" text-anchor="middle" x="292" y="300"><tspan x="292" font-weight="600">ADDED</tspan><tspan x="292" dy="15">open PR body (gh api)</tspan></text>
+
+  <line class="flow-added" x1="598" y1="325" x2="738" y2="325"/>
+  <text class="label t-added" text-anchor="middle" x="668" y="300"><tspan x="668" font-weight="600">ADDED</tspan><tspan x="668" dy="15">go build, run</tspan></text>
+
+  <text class="note" x="754" y="384"><tspan x="754">parses GFM (goldmark,</tspan><tspan x="754" dy="15">x/net/html); prints</tspan><tspan x="754" dy="15">file:line: rule: fix</tspan></text>
+
+  <line class="flow-added" x1="480" y1="440" x2="480" y2="360"/>
+  <text class="label t-added" x="492" y="396"><tspan x="492" font-weight="600">ADDED</tspan><tspan x="492" dy="15">seeded bodies</tspan></text>
+
+  <rect class="added" x="32" y="547" width="28" height="16" rx="3"/>
+  <text class="label" x="70" y="559">ADDED · thick solid</text>
+  <rect class="changed" x="264" y="547" width="28" height="16" rx="3"/>
+  <text class="label" x="302" y="559">CHANGED · solid</text>
+  <rect class="neutral" x="496" y="547" width="28" height="16" rx="3"/>
+  <text class="label" x="534" y="559">UNCHANGED · grey</text>
+  <text class="note" x="496" y="585">each state is named in text; colour only repeats it</text>
+</svg>
