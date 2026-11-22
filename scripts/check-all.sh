@@ -50,4 +50,23 @@ step "scripts/check-instruction-orphans.sh" "$scripts_dir/check-instruction-orph
 step "scripts/check-agent-config.sh" "$scripts_dir/check-agent-config.sh"
 step "scripts/check-adr-lifecycle.sh origin/main HEAD" "$scripts_dir/check-adr-lifecycle.sh" origin/main HEAD
 
+# Before the first push there is no pull request, so CI has no body to check
+# either; a failed lookup with a remote present still fails, so an outage
+# cannot read as a pass.
+branch="$(git branch --show-current)"
+if ! command -v gh >/dev/null || ! git remote get-url origin >/dev/null 2>&1 || [ -z "$branch" ]; then
+  echo "==> scripts/check-pr-body.sh skipped: no gh, origin remote, or branch"
+else
+  repo="$(gh api 'repos/{owner}/{repo}' --jq .full_name)" || fail "scripts/check-pr-body.sh: repository lookup"
+  prs="$(gh api "repos/$repo/pulls?state=open&head=${repo%%/*}:$branch")" || fail "scripts/check-pr-body.sh: pull request lookup"
+  if [ "$(jq 'length' <<<"$prs")" -eq 0 ]; then
+    echo "==> scripts/check-pr-body.sh skipped: no open pull request for $branch"
+  else
+    body_dir="$(mktemp -d)"
+    trap 'rm -rf "$body_dir"' EXIT
+    jq -r '.[0].body // ""' <<<"$prs" >"$body_dir/pr-body.md"
+    step "scripts/check-pr-body.sh --repo $repo pr-body.md" "$scripts_dir/check-pr-body.sh" --repo "$repo" "$body_dir/pr-body.md"
+  fi
+fi
+
 echo "check-all.sh: all checks passed"

@@ -1,0 +1,40 @@
+name: PR body
+
+# Separate from ci.yml because a body edit must re-run this check: adding
+# `edited` there would re-run the whole build on every description change.
+on:
+  pull_request:
+    types: [opened, edited, reopened, synchronize]
+
+concurrency:
+  group: pr-body-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+env:
+  GO_VERSION: "1.26.10"
+
+jobs:
+  pr-body:
+    name: pr-body
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version: ${{ env.GO_VERSION }}
+          cache: false
+      - name: go vet and go test the checker
+        run: GOWORK=off go vet ./... && GOWORK=off go test ./...
+        working-directory: scripts/prbody
+      - name: Prove the checker catches seeded defects
+        run: ./scripts/check-pr-body_selftest.sh
+      # The body arrives through env, not inline interpolation, so a body
+      # cannot inject shell.
+      - name: Check the pull request body
+        env:
+          PR_BODY: ${{ github.event.pull_request.body }}
+          REPO: ${{ github.repository }}
+        run: |
+          printf '%s\n' "$PR_BODY" > "$RUNNER_TEMP/pr-body.md"
+          cd "$RUNNER_TEMP"
+          "$GITHUB_WORKSPACE/scripts/check-pr-body.sh" --repo "$REPO" pr-body.md
