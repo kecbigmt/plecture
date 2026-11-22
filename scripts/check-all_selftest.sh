@@ -1,13 +1,12 @@
 #!/usr/bin/env bash
-# Proves check-all.sh runs a workflow's required steps as CI would — job and
-# step conditions, matrices fed by job outputs, expression substitution,
-# exceptions — and stops naming the first failure. The fixture's own
-# ci.yml stands in for the real one, so the real repository's suites are
-# not re-run through it.
+# Proves check-all.sh's own behavior against a copy of it beside stubs that
+# record each call: that --list names exactly what a run executes, that
+# build-test runs once per module, that the base and branch reach the
+# scripts that compare commits, and that a failure stops the run. Which
+# scripts it must call is check-ci-scripts.sh's concern.
 set -euo pipefail
 
 root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-checker="$root/scripts/check-all.sh"
 
 fixture=""
 trap 'rm -rf "$fixture"' EXIT
@@ -16,87 +15,41 @@ repo="$fixture/repo"
 log="$fixture/out.log"
 export RECORD="$fixture/record"
 
-mkdir -p "$repo/.github/workflows" "$repo/mod-a" "$repo/mod-b" \
-  "$repo/.claude/skills" "$repo/.agents/skills"
-touch "$repo/mod-a/.keep" "$repo/mod-b/.keep"
-printf 'placeholder\n' >"$repo/CLAUDE.md"
-ln -s "CLAUDE.md" "$repo/AGENTS.md"
-
-cat >"$repo/.github/workflows/ci.yml" <<'EOF'
-name: CI
-on: pull_request
-env:
-  GREETING: hello
-jobs:
-  changes:
-    runs-on: ubuntu-latest
-    outputs:
-      modules: ${{ steps.decide.outputs.modules }}
-      web: ${{ steps.decide.outputs.web }}
-    steps:
-      - uses: actions/checkout@v4
-      - id: decide
-        run: |
-          echo 'modules=["mod-a","mod-b"]' >> "$GITHUB_OUTPUT"
-          echo "web=false" >> "$GITHUB_OUTPUT"
-  web:
-    needs: changes
-    if: needs.changes.outputs.web == 'true'
-    runs-on: ubuntu-latest
-    steps:
-      - run: echo "web ran" >> "$RECORD"
-  build:
-    name: build (${{ matrix.module }})
-    needs: changes
-    runs-on: ubuntu-latest
-    env:
-      AGGREGATE: ${{ startsWith(github.head_ref, 'integration/') }}
-    strategy:
-      matrix:
-        module: ${{ fromJson(needs.changes.outputs.modules) }}
-    steps:
-      - name: record
-        run: echo "build $(basename "$PWD") $GREETING ${{ github.event.pull_request.base.sha }}..${{ github.event.pull_request.head.sha }}" >> "$RECORD"
-        working-directory: ${{ matrix.module }}
-      - name: aggregate only
-        if: env.AGGREGATE == 'true'
-        run: echo "aggregate ran" >> "$RECORD"
-      # check-all-skip: while "sudo": installs system packages as root.
-      - name: root only
-        run: sudo false
-  lint:
-    runs-on: ubuntu-latest
-    steps:
-      - name: seeded check
-        run: test ! -e seeded-defect
-      - name: after the check
-        run: echo "after" >> "$RECORD"
-  unrequired:
-    runs-on: ubuntu-latest
-    steps:
-      - run: echo "unrequired ran" >> "$RECORD"
-  ci-ok:
-    if: always()
-    needs: [changes, web, build, lint]
-    runs-on: ubuntu-latest
-    steps:
-      - run: "true"
+mkdir -p "$repo/scripts/ci"
+cp "$root/scripts/check-all.sh" "$repo/scripts/"
+stub() {
+  cat >"$repo/scripts/$1" <<'EOF'
+#!/usr/bin/env bash
+name="scripts/${BASH_SOURCE[0]#*/scripts/}"
+echo "$name $* HEAD_REF=${HEAD_REF:-}" >>"$RECORD"
+[ "$name" != "${FAIL_SCRIPT:-}" ]
 EOF
+  chmod +x "$repo/scripts/$1"
+}
+for script in "$root"/scripts/ci/*.sh; do
+  stub "ci/$(basename "$script")"
+done
+stub check-agent-config.sh
+cat >"$repo/scripts/ci-changed-modules.sh" <<'EOF'
+#!/usr/bin/env bash
+[ "$FORCE_FULL_RUN" = true ] || exit 1
+echo 'BUILD_TEST_MATRIX=["mod-a","mod-b"]'
+EOF
+chmod +x "$repo/scripts/ci-changed-modules.sh"
 
 git -C "$repo" init -q -b main
-git -C "$repo" add -A
-git -C "$repo" -c user.email=test@example.com -c user.name=test commit -q -m base
-base_sha="$(git -C "$repo" rev-parse HEAD)"
-
 commit() {
   git -C "$repo" add -A
   git -C "$repo" -c user.email=test@example.com -c user.name=test commit -q -m "$1"
 }
+commit base
+base_sha="$(git -C "$repo" rev-parse HEAD)"
+git -C "$repo" update-ref refs/remotes/origin/main "$base_sha"
 
 run_check() {
   rm -f "$RECORD"
   touch "$RECORD"
-  CHECK_ALL_ROOT="$repo" "$checker" "$base_sha" >"$log" 2>&1
+  "$repo/scripts/check-all.sh" "$@" >"$log" 2>&1
 }
 
 die() {
@@ -110,63 +63,47 @@ die() {
 
 recorded() { grep -qxF "$1" "$RECORD"; }
 
-printf 'x\n' >"$repo/mod-a/change"
-commit "a change on top of the base"
-head_sha="$(git -C "$repo" rev-parse HEAD)"
-
-run_check || die "check-all.sh failed against a clean fixture"
+run_check "$base_sha" || die "check-all.sh failed with every script passing"
 grep -q "check-all.sh: all checks passed" "$log" || die "no success line"
 for module in mod-a mod-b; do
-  recorded "build $module hello $base_sha..$head_sha" ||
-    die "the matrix instance for $module did not run with the substituted base and head"
+  recorded "scripts/ci/build-test.sh $module HEAD_REF=" || die "build-test did not run for $module"
 done
-recorded "after" || die "a later step of a passing job did not run"
-recorded "web ran" && die "a job whose if is false ran"
-recorded "unrequired ran" && die "a job ci-ok does not require ran"
-recorded "aggregate ran" && die "a step whose if is false ran"
-grep -q "not run: build (mod-a) / root only: installs system packages as root." "$log" ||
-  die "an excepted step was not reported with its reason"
-grep -q "==> scripts/check-agent-config.sh" "$log" || die "the agent-config check did not run"
-echo "ok: check-all.sh runs exactly the steps the workflow requires, as CI evaluates them"
+recorded "scripts/ci/lint.sh $base_sha HEAD_REF=" || die "lint did not get the base it was given"
+recorded "scripts/ci/comment-density.sh $base_sha HEAD HEAD_REF=main" ||
+  die "comment-density did not get the base, the head, and the branch"
+grep -q "^scripts/ci/web-browser-acceptance-browser.sh " "$RECORD" && die "the browser half of web-browser-acceptance ran"
+recorded "scripts/check-agent-config.sh  HEAD_REF=" || die "the agent-config check did not run"
+ran="$(cut -d' ' -f1 "$RECORD")"
+echo "ok: check-all.sh runs each script once per call and every module through build-test"
+
+touch "$repo/uncommitted"
+run_check --list >/dev/null || die "--list failed with an uncommitted file"
+[ "$(cat "$log")" = "$ran" ] || die "--list does not name exactly the scripts a run executes, in order"
+[ -s "$RECORD" ] && die "--list ran a script"
+rm "$repo/uncommitted"
+echo "ok: --list names exactly what a run executes and runs nothing"
+
+run_check || die "check-all.sh failed with its default base"
+recorded "scripts/ci/lint.sh origin/main HEAD_REF=" || die "the default base is not origin/main"
+echo "ok: the default base is origin/main"
 
 git -C "$repo" checkout -q -b integration/x
 run_check || die "check-all.sh failed on an aggregate branch"
-recorded "aggregate ran" || die "a step whose if reads the head branch did not run on integration/x"
+recorded "scripts/ci/comment-density.sh origin/main HEAD HEAD_REF=integration/x" ||
+  die "comment-density did not get the aggregate branch's name"
 git -C "$repo" checkout -q main
-echo "ok: the head branch reaches step conditions"
+echo "ok: the branch name reaches comment-density"
 
 git -C "$repo" config status.showUntrackedFiles no
 touch "$repo/uncommitted"
 run_check && die "check-all.sh passed with an uncommitted file"
 grep -q "FAILED: uncommitted changes" "$log" || die "the uncommitted-change refusal was not named"
-[ -s "$RECORD" ] && die "a step ran despite uncommitted changes"
+[ -s "$RECORD" ] && die "a script ran despite uncommitted changes"
 rm "$repo/uncommitted"
 git -C "$repo" config --unset status.showUntrackedFiles
 echo "ok: check-all.sh refuses to run against uncommitted changes"
 
-# CI's pull_request base sha is the base branch's tip, not the merge-base,
-# so a main that advanced past the fork point widens CI's diff.
-git -C "$repo" checkout -q -b feature
-git -C "$repo" checkout -q main
-printf 'y\n' >"$repo/mod-b/main-change"
-commit "main advances past the fork point"
-main_tip="$(git -C "$repo" rev-parse HEAD)"
-git -C "$repo" update-ref refs/remotes/origin/main "$main_tip"
-git -C "$repo" checkout -q feature
-rm -f "$RECORD"
-touch "$RECORD"
-CHECK_ALL_ROOT="$repo" "$checker" >"$log" 2>&1 || die "check-all.sh failed with its default base"
-recorded "build mod-a hello $main_tip..$head_sha" ||
-  die "the default base was not origin/main's tip, the sha CI uses"
-git -C "$repo" checkout -q main
-git -C "$repo" reset -q --hard "$head_sha"
-echo "ok: the default base is origin/main's tip, as CI's base sha is"
-
-touch "$repo/seeded-defect"
-commit "seed a failing step"
-run_check && die "check-all.sh passed despite a failing step"
-grep -q "ci_steps: FAILED: lint / seeded check (.github/workflows/ci.yml:" "$log" ||
-  die "the failing step was not named with its workflow line"
-recorded "after" && die "a step after the failure ran"
-grep -q "check-agent-config.sh" "$log" && die "a later check-all step ran after the failure"
-echo "ok: check-all.sh stops at the first failing step and names it"
+FAIL_SCRIPT=scripts/ci/lint.sh run_check && die "check-all.sh passed despite a failing script"
+grep -q "check-all.sh: FAILED: scripts/ci/lint.sh" "$log" || die "the failing script was not named"
+recorded "scripts/check-agent-config.sh  HEAD_REF=" && die "a script after the failure ran"
+echo "ok: check-all.sh stops at the first failing script and names it"

@@ -1,20 +1,20 @@
 #!/usr/bin/env bash
-# The steps come from ci.yml itself, through scripts/ci_steps.py, rather
-# than from a list kept here: a hand-kept list let changes pass locally and
-# still fail a CI job it never ran.
+# Usage: check-all.sh [--list] [<base>]
+#
+# Runs the scripts/ci/ script of every job ci-ok requires, for every module
+# rather than a diff's selection. --list prints the scripts instead of
+# running them, which is how check-ci-scripts.sh learns what this runs.
 set -euo pipefail
 
-# CHECK_ALL_ROOT lets check-all_selftest.sh point the scanned/tested tree
-# at a small fixture while still invoking the real scripts below (resolved
-# from this script's own location, unaffected by the override) — the same
-# root-override convention every scripts/check-*.sh here already follows
-# for its own selftest.
 scripts_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-root="${CHECK_ALL_ROOT:-$(cd "$scripts_dir/.." && pwd)}"
-cd "$root"
+cd "$scripts_dir/.."
 
-# CI's pull_request base sha is the base branch's tip, not the merge-base:
-# once main moves on, the tip widens the diff and so the jobs CI selects.
+list=false
+if [ "${1:-}" = --list ]; then
+  list=true
+  shift
+fi
+# CI's pull_request base sha is the base branch's tip, not the merge-base.
 base_ref="${1:-origin/main}"
 
 fail() {
@@ -23,32 +23,60 @@ fail() {
 }
 
 step() {
-  local name="$1"
-  shift
-  echo "==> $name"
-  if ! "$@"; then
-    fail "$name"
+  local name="scripts/${1#"$scripts_dir"/}"
+  if [ "$list" = true ]; then
+    echo "$name"
+    return
   fi
+  echo "==> $name ${*:2}"
+  "$@" || fail "$name"
 }
 
-# CI checks out the committed head, and the diff-scoped steps compare
-# commits, so an uncommitted change would be tested by some steps and
-# invisible to others. The override keeps a status.showUntrackedFiles=no
-# setting from hiding an untracked file.
-if [ -n "$(git -c status.showUntrackedFiles=normal status --porcelain)" ]; then
-  git -c status.showUntrackedFiles=normal status --short >&2
-  fail "uncommitted changes; commit them so every step sees the head CI will run"
+if [ "$list" = false ]; then
+  # The scripts that compare commits see only what is committed, so an
+  # uncommitted change would be tested by some scripts and invisible to
+  # others. The override keeps a status.showUntrackedFiles=no setting from
+  # hiding an untracked file.
+  if [ -n "$(git -c status.showUntrackedFiles=normal status --porcelain)" ]; then
+    git -c status.showUntrackedFiles=normal status --short >&2
+    fail "uncommitted changes; commit them so every script sees the head CI will run"
+  fi
+  # CI installs pinned global tools (npm install -g); a throwaway prefix
+  # gives the same pinned versions without touching the developer's own.
+  npm_prefix="$(mktemp -d)"
+  trap 'rm -rf "$npm_prefix"' EXIT
+  export NPM_CONFIG_PREFIX="$npm_prefix"
+  export PATH="$npm_prefix/bin:$PATH"
 fi
 
-# CI installs pinned global tools (npm install -g); a throwaway prefix gives
-# the same pinned versions without touching the developer's own globals.
-npm_prefix="$(mktemp -d)"
-trap 'rm -rf "$npm_prefix"' EXIT
-export NPM_CONFIG_PREFIX="$npm_prefix"
-export PATH="$npm_prefix/bin:$PATH"
+modules="$(FORCE_FULL_RUN=true "$scripts_dir/ci-changed-modules.sh" </dev/null | sed -n 's/^BUILD_TEST_MATRIX=//p')"
+mapfile -t modules < <(jq -r '.[]' <<<"$modules")
 
-step ".github/workflows/ci.yml jobs required by ci-ok" \
-  python3 "$scripts_dir/ci_steps.py" run .github/workflows/ci.yml ci-ok "$base_ref"
-step "scripts/check-agent-config.sh" "$scripts_dir/check-agent-config.sh"
+step "$scripts_dir/ci/changes.sh"
+step "$scripts_dir/ci/gofmt.sh"
+step "$scripts_dir/ci/go-install.sh"
+step "$scripts_dir/ci/provider-boundary.sh"
+step "$scripts_dir/ci/comment-references.sh"
+HEAD_REF="$(git branch --show-current)" step "$scripts_dir/ci/comment-density.sh" "$base_ref" HEAD
+step "$scripts_dir/ci/instruction-orphans.sh"
+step "$scripts_dir/ci/lint.sh" "$base_ref"
+step "$scripts_dir/ci/check-all.sh" HEAD
+step "$scripts_dir/ci/gh-guard.sh"
+step "$scripts_dir/ci/web-api-contract.sh"
+step "$scripts_dir/ci/web-app-build.sh"
+# Not web-browser-acceptance-browser.sh, the job's browser half: its
+# playwright install --with-deps installs system packages as root, which a
+# check must not do to a developer's machine.
+step "$scripts_dir/ci/web-browser-acceptance.sh"
+step "$scripts_dir/ci/plugin-script-selftests.sh"
+step "$scripts_dir/ci/storage-contract.sh"
+for module in "${modules[@]}"; do
+  step "$scripts_dir/ci/build-test.sh" "$module"
+done
+step "$scripts_dir/ci/integration-test.sh"
+step "$scripts_dir/ci/readme-verify.sh"
+step "$scripts_dir/check-agent-config.sh"
 
-echo "check-all.sh: all checks passed"
+if [ "$list" = false ]; then
+  echo "check-all.sh: all checks passed"
+fi

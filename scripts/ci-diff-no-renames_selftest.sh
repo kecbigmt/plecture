@@ -7,15 +7,15 @@ set -euo pipefail
 
 root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 mapper="$root/scripts/ci-changed-modules.sh"
-workflow="$root/.github/workflows/ci.yml"
+changes="$root/scripts/ci/changes.sh"
 
 fail=0
 
-if ! grep -q 'git diff --no-renames --name-only' "$workflow"; then
-  echo "FAIL: ci.yml's PR diff no longer passes --no-renames to git diff" >&2
+if ! grep -q 'git diff --no-renames --name-only' "$changes"; then
+  echo "FAIL: scripts/ci/changes.sh's PR diff no longer passes --no-renames to git diff" >&2
   fail=1
 else
-  echo "ok: ci.yml's PR diff passes --no-renames to git diff"
+  echo "ok: scripts/ci/changes.sh's PR diff passes --no-renames to git diff"
 fi
 
 fixture="$(mktemp -d)"
