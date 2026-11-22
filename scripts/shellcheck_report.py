@@ -140,6 +140,7 @@ def main():
     for p in problems:
         print(p)
     if findings or problems:
+        sys.stdout.flush()
         print(
             "\nshellcheck (severity warning): fix each finding as its wiki page describes. "
             "Only when the fix is wrong for that one command, put "
