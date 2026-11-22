@@ -151,30 +151,6 @@ func attachGithubWorktree(t *testing.T, cfg *config.Config, wfID, workdirsRoot s
 	}
 }
 
-func useShippedGithubResources(t *testing.T, cfg *config.Config, wfID string) {
-	t.Helper()
-	copyShippedGithubResources(t, cfg.PluginDirs[0])
-	dropIssueResource(t, cfg)
-	setWorkflowResource(t, cfg, wfID, "official.github.issue")
-}
-
-func copyShippedGithubResources(t *testing.T, pluginDir string) {
-	t.Helper()
-	dir := filepath.Join(pluginDir, "config", "resources")
-	if err := os.MkdirAll(dir, 0o755); err != nil {
-		t.Fatal(err)
-	}
-	for _, name := range []string{"issue", "pull_request"} {
-		data, err := os.ReadFile(filepath.Join(repoRoot(t), "plugins", "github", "config", "resources", name+".toml"))
-		if err != nil {
-			t.Fatal(err)
-		}
-		if err := os.WriteFile(filepath.Join(dir, name+".toml"), data, 0o644); err != nil {
-			t.Fatal(err)
-		}
-	}
-}
-
 func shippedGithubWorktreeTOML(t *testing.T) string {
 	t.Helper()
 	data, err := os.ReadFile(filepath.Join(repoRoot(t), "plugins", "github", "config", "tasks", "worktree.toml"))

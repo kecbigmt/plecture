@@ -32,7 +32,7 @@ step() {
 }
 
 echo "==> gofmt -l"
-unformatted="$(gofmt -l $(find . -name '*.go' -not -path './app/internal/webui/*'))" || fail "gofmt -l"
+unformatted="$(find . -name '*.go' -not -path './app/internal/webui/*' -exec gofmt -l {} +)" || fail "gofmt -l"
 if [ -n "$unformatted" ]; then
   echo "$unformatted"
   fail "gofmt -l"
@@ -49,5 +49,9 @@ step "scripts/check-comment-density.sh $base_ref HEAD" "$scripts_dir/check-comme
 step "scripts/check-instruction-orphans.sh" "$scripts_dir/check-instruction-orphans.sh"
 step "scripts/check-agent-config.sh" "$scripts_dir/check-agent-config.sh"
 step "scripts/check-adr-lifecycle.sh origin/main HEAD" "$scripts_dir/check-adr-lifecycle.sh" origin/main HEAD
+step "scripts/check-go-unused.sh" "$scripts_dir/check-go-unused.sh"
+step "scripts/check-go-errcheck.sh $base_ref" "$scripts_dir/check-go-errcheck.sh" "$base_ref"
+step "scripts/check-shellcheck.sh" "$scripts_dir/check-shellcheck.sh"
+step "scripts/check-actionlint.sh" "$scripts_dir/check-actionlint.sh"
 
 echo "check-all.sh: all checks passed"

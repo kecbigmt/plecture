@@ -36,6 +36,15 @@ cat > "$fixture/contracts/state/state.go" <<'EOF'
 package state
 EOF
 
+cat > "$fixture/go.work" <<EOF
+go $go_version
+
+use (
+	./app
+	./contracts/state
+)
+EOF
+
 printf 'placeholder\n' > "$fixture/CLAUDE.md"
 ln -s "CLAUDE.md" "$fixture/AGENTS.md"
 
@@ -66,6 +75,11 @@ if ! grep -q "check-all.sh: all checks passed" /tmp/check-all-selftest-clean.log
 fi
 if ! grep -q "==> scripts/check-adr-lifecycle.sh origin/main HEAD" /tmp/check-all-selftest-clean.log; then
   echo "FAIL: check-all.sh did not use CI's ADR lifecycle base" >&2
+  cat /tmp/check-all-selftest-clean.log >&2
+  exit 1
+fi
+if ! grep -q "==> scripts/check-go-errcheck.sh $base_sha" /tmp/check-all-selftest-clean.log; then
+  echo "FAIL: check-all.sh did not scope errcheck to the base it was given" >&2
   cat /tmp/check-all-selftest-clean.log >&2
   exit 1
 fi

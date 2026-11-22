@@ -1,0 +1,16 @@
+version: "2"
+
+run:
+  relative-path-mode: gomod
+
+linters:
+  default: none
+  enable:
+    - errcheck
+  settings:
+    errcheck:
+      check-blank: true
+
+issues:
+  max-issues-per-linter: 0
+  max-same-issues: 0
