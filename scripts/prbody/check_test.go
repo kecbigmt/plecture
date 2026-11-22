@@ -126,6 +126,26 @@ func TestCheck_Allow(t *testing.T) {
 			nil,
 		},
 		{
+			"allow inside an html block suppresses the img on its line",
+			"Closes #1\n\n## Overview\n\n<p>\n<img src=\"https://example.com/o.svg\"> <!-- check-pr-body: allow overview-image-sha because the diagram is generated per run -->\n</p>\n",
+			nil,
+		},
+		{
+			"allow after markup in an html block suppresses a missing closing keyword",
+			"Part of #3.\n\n<p>Note</p> <!-- check-pr-body: allow closing-keyword because the issue stays open for the second PR -->\n",
+			nil,
+		},
+		{
+			"allow spanning lines is malformed",
+			"Part of #3.\n\n<!-- check-pr-body: allow closing-keyword\nbecause the issue stays open -->\n",
+			[]string{"closing-keyword", "malformed-allow"},
+		},
+		{
+			"inline allow spanning lines is malformed",
+			"Part of #3. <!-- check-pr-body: allow closing-keyword\nbecause the issue stays open -->\n",
+			[]string{"closing-keyword", "malformed-allow"},
+		},
+		{
 			"allow on another line does not suppress the image",
 			"Closes #1\n\n## Overview\n\n<!-- check-pr-body: allow overview-image-sha because the diagram is generated per run -->\n\n" + unpinned + "\n",
 			[]string{"stale-allow", "overview-image-sha"},

@@ -19,7 +19,6 @@ const (
 	ruleOverviewImage  = "overview-image-sha"
 )
 
-// Finding is one violation, at a 1-based line of the body.
 type Finding struct {
 	Line    int
 	Rule    string
@@ -34,11 +33,11 @@ var pinnedImage = regexp.MustCompile(`^https://raw\.githubusercontent\.com/([^/]
 
 var (
 	allowMarker = regexp.MustCompile(`^<!--\s*check-pr-body:`)
-	allowSyntax = regexp.MustCompile(`(?s)^<!--\s*check-pr-body:\s*allow\s+(\S+)\s+because\s+(\S.*?)\s*-->\s*$`)
+	allowSyntax = regexp.MustCompile(`^<!--[ \t]*check-pr-body:[ \t]*allow[ \t]+(\S+)[ \t]+because[ \t]+(\S.*?)[ \t]*-->$`)
 )
 
-// codeBreak replaces code spans and inline HTML in extracted text, so a
-// keyword outside one cannot join a reference inside it.
+// GitHub does not scan code spans or inline HTML for references, so each
+// becomes a break that a keyword outside it cannot match across.
 const codeBreak = "\x00"
 
 type allow struct {
@@ -55,8 +54,6 @@ type checker struct {
 	findings []Finding
 }
 
-// Check reports every rule violation in a pull request body for repo, given
-// as owner/name.
 func Check(body []byte, repo string) []Finding {
 	c := &checker{source: body, repo: repo, lines: lineStarts(body)}
 	md := goldmark.New(goldmark.WithExtensions(extension.GFM))
@@ -78,7 +75,10 @@ func Check(body []byte, repo string) []Finding {
 		}
 	}
 
-	sort.SliceStable(c.findings, func(i, j int) bool { return c.findings[i].Line < c.findings[j].Line })
+	sort.Slice(c.findings, func(i, j int) bool {
+		a, b := c.findings[i], c.findings[j]
+		return a.Line < b.Line || (a.Line == b.Line && a.Rule < b.Rule)
+	})
 	return c.findings
 }
 
@@ -86,8 +86,6 @@ func (c *checker) add(line int, rule, msg string) {
 	c.findings = append(c.findings, Finding{Line: line, Rule: rule, Message: msg})
 }
 
-// suppress reports whether an allow covers rule; a line of 0 means the rule
-// is about the whole body, so an allow anywhere covers it.
 func (c *checker) suppress(rule string, line int) bool {
 	for _, a := range c.allows {
 		if a.rule == rule && (line == 0 || a.line == line) {
@@ -103,26 +101,19 @@ func (c *checker) collectAllows(doc ast.Node) {
 		if !entering {
 			return ast.WalkContinue, nil
 		}
-		switch n := n.(type) {
-		case *ast.HTMLBlock:
-			if n.HTMLBlockType == ast.HTMLBlockType2 {
-				raw := blockText(n, c.source)
-				if n.HasClosure() {
-					raw += string(n.ClosureLine.Value(c.source))
+		raw, start, ok := htmlSource(n, c.source)
+		if ok {
+			eachHTMLToken(raw, start, func(tt html.TokenType, tokenRaw string, offset int) {
+				if tt == html.CommentToken {
+					c.parseAllow(tokenRaw, c.line(offset))
 				}
-				c.parseAllow(raw, c.line(n.Lines().At(0).Start))
-			}
-		case *ast.RawHTML:
-			if n.Segments.Len() > 0 {
-				c.parseAllow(string(n.Segments.Value(c.source)), c.line(n.Segments.At(0).Start))
-			}
+			})
 		}
 		return ast.WalkContinue, nil
 	})
 }
 
 func (c *checker) parseAllow(raw string, line int) {
-	raw = strings.TrimSpace(raw)
 	if !allowMarker.MatchString(raw) {
 		return
 	}
@@ -157,8 +148,6 @@ func (c *checker) hasClosingRef(doc ast.Node) bool {
 	return found
 }
 
-// inlineText is the rendered prose of a block: code spans and inline HTML
-// are what GitHub does not scan for references, so they become breaks.
 func inlineText(n ast.Node, source []byte) string {
 	var b strings.Builder
 	var visit func(ast.Node)
@@ -202,13 +191,9 @@ func (c *checker) checkOverviewImages(doc ast.Node) {
 			switch n := n.(type) {
 			case *ast.Image:
 				c.checkImage(string(n.Destination), c.line(n.Pos()))
-			case *ast.HTMLBlock:
-				if n.HTMLBlockType != ast.HTMLBlockType2 && n.Lines().Len() > 0 {
-					c.checkHTMLImages(blockText(n, c.source), n.Lines().At(0).Start)
-				}
-			case *ast.RawHTML:
-				if n.Segments.Len() > 0 {
-					c.checkHTMLImages(string(n.Segments.Value(c.source)), n.Segments.At(0).Start)
+			default:
+				if raw, start, ok := htmlSource(n, c.source); ok {
+					c.checkHTMLImages(raw, start)
 				}
 			}
 			return ast.WalkContinue, nil
@@ -217,6 +202,45 @@ func (c *checker) checkOverviewImages(doc ast.Node) {
 }
 
 func (c *checker) checkHTMLImages(raw string, start int) {
+	eachHTMLToken(raw, start, func(tt html.TokenType, tokenRaw string, offset int) {
+		if tt != html.StartTagToken && tt != html.SelfClosingTagToken {
+			return
+		}
+		z := html.NewTokenizer(strings.NewReader(tokenRaw))
+		z.Next()
+		tok := z.Token()
+		if tok.Data != "img" {
+			return
+		}
+		for _, a := range tok.Attr {
+			if a.Key == "src" {
+				c.checkImage(a.Val, c.line(offset))
+			}
+		}
+	})
+}
+
+func htmlSource(n ast.Node, source []byte) (string, int, bool) {
+	switch n := n.(type) {
+	case *ast.HTMLBlock:
+		if n.Lines().Len() == 0 {
+			return "", 0, false
+		}
+		raw := blockText(n, source)
+		if n.HasClosure() {
+			raw += string(n.ClosureLine.Value(source))
+		}
+		return raw, n.Lines().At(0).Start, true
+	case *ast.RawHTML:
+		if n.Segments.Len() == 0 {
+			return "", 0, false
+		}
+		return string(n.Segments.Value(source)), n.Segments.At(0).Start, true
+	}
+	return "", 0, false
+}
+
+func eachHTMLToken(raw string, start int, fn func(tt html.TokenType, tokenRaw string, offset int)) {
 	z := html.NewTokenizer(strings.NewReader(raw))
 	offset := start
 	for {
@@ -224,20 +248,9 @@ func (c *checker) checkHTMLImages(raw string, start int) {
 		if tt == html.ErrorToken {
 			return
 		}
-		tokenStart := offset
-		offset += len(z.Raw())
-		if tt != html.StartTagToken && tt != html.SelfClosingTagToken {
-			continue
-		}
-		tok := z.Token()
-		if tok.Data != "img" {
-			continue
-		}
-		for _, a := range tok.Attr {
-			if a.Key == "src" {
-				c.checkImage(a.Val, c.line(tokenStart))
-			}
-		}
+		tokenRaw := string(z.Raw())
+		fn(tt, tokenRaw, offset)
+		offset += len(tokenRaw)
 	}
 }
 
