@@ -86,6 +86,13 @@ expect_fail_naming "a directive after a command and a quoted look-alike is still
 
 script bin/tool <<'EOF'
 echo start
+# shellcheck source=disable=foo disable=SC2034
+unused=1
+EOF
+expect_fail_naming "a disable key after a look-alike inside another key's value is still found" "bin/tool:3: suppression directive"
+
+script bin/tool <<'EOF'
+echo start
 cat <<'TEXT'
 # shellcheck disable=SC2046
 TEXT

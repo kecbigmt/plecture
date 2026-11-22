@@ -17,6 +17,16 @@ if [ ! -d .github/workflows ]; then
   exit 0
 fi
 
+# actionlint loads this file on its own, and its ignore patterns would hide
+# findings from a check that takes no exception.
+for config in .github/actionlint.yaml .github/actionlint.yml; do
+  if [ -e "$config" ]; then
+    echo "$config:1: actionlint configuration file: delete it and fix the findings it hides" >&2
+    echo "$NO_EXCEPTION" >&2
+    exit 1
+  fi
+done
+
 actionlint="$(lint_tool actionlint)"
 shellcheck="$(lint_tool shellcheck)"
 # -pyflakes= turns off the Python integration actionlint enables whenever a

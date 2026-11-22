@@ -90,18 +90,16 @@ class Shellcheck:
 
 
 def disable_keys(line):
-    """Returns the column of each directive-shaped `disable=` key on the line.
+    """Returns the column of every `disable=` after a directive-shaped prefix.
 
-    Every occurrence counts, not only the first: one inside a quoted string
-    can precede a real directive on the same line.
+    Every occurrence counts, not only the first: a look-alike inside a quoted
+    string or inside another key's value can precede the real key.
     """
-    keys = []
+    keys = set()
     for m in DIRECTIVE.finditer(line):
         body = line[m.end():].partition("#")[0]
-        offset = body.find("disable=")
-        if offset >= 0:
-            keys.append(m.end() + offset)
-    return keys
+        keys.update(m.end() + k.start() for k in re.finditer("disable=", body))
+    return sorted(keys)
 
 
 def directive_lines(sc, lines):

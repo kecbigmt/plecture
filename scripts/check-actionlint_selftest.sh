@@ -91,3 +91,17 @@ workflow <<'EOF'
           echo $(ls)
 EOF
 expect_fail_naming "a run-script directive after a quoted look-alike is still found" "suppression directive"
+
+workflow <<'EOF'
+      - run: |
+          echo start
+          # shellcheck source=disable=foo disable=SC2034
+          unused=1
+EOF
+expect_fail_naming "a run-script disable key after a look-alike in another value is still found" "suppression directive"
+
+workflow <<'EOF'
+      - run: echo "${{ matrix.module }}"
+EOF
+printf 'paths:\n  .github/workflows/ci.yml:\n    ignore:\n      - .*\n' > "$fixture/.github/actionlint.yaml"
+expect_fail_naming "an actionlint configuration file fails" ".github/actionlint.yaml:1: actionlint configuration file"
