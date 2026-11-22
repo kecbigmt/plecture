@@ -43,7 +43,8 @@ Hyphens are excluded because an effect id is also a workflow node id when a node
 omits `id`, and a node id must be a safe dotted path segment.
 
 A chain `id` and a `done_when` judge leaf `id` are local to the task that
-declares them, not definition ids, and match `^[A-Za-z0-9_-]+$`. A local id is
+declares them, not definition ids. Both are required and match
+`^[A-Za-z0-9_-]+$`. A local id is
 never a reference segment or a node id, so it may contain the hyphen a
 definition id excludes.
 
@@ -255,7 +256,8 @@ executable name. See [`actions.md`](actions.md).
 - A definition table missing `kind`, or carrying an unknown `kind`, is a load
   error.
 - A definition id must match `^[A-Za-z_][A-Za-z0-9_]*$`.
-- A chain id and a judge leaf id match `^[A-Za-z0-9_-]+$`.
+- Every chain and every judge leaf declares an `id` matching
+  `^[A-Za-z0-9_-]+$`.
 - A definition and every table below it are declared in one file.
 - Two definitions with the same id in one layer are a load error, whatever
   their kinds.
