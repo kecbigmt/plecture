@@ -144,6 +144,24 @@ rm "$repo/uncommitted"
 git -C "$repo" config --unset status.showUntrackedFiles
 echo "ok: check-all.sh refuses to run against uncommitted changes"
 
+# CI's pull_request base sha is the base branch's tip, not the merge-base,
+# so a main that advanced past the fork point widens CI's diff.
+git -C "$repo" checkout -q -b feature
+git -C "$repo" checkout -q main
+printf 'y\n' >"$repo/mod-b/main-change"
+commit "main advances past the fork point"
+main_tip="$(git -C "$repo" rev-parse HEAD)"
+git -C "$repo" update-ref refs/remotes/origin/main "$main_tip"
+git -C "$repo" checkout -q feature
+rm -f "$RECORD"
+touch "$RECORD"
+CHECK_ALL_ROOT="$repo" "$checker" >"$log" 2>&1 || die "check-all.sh failed with its default base"
+recorded "build mod-a hello $main_tip..$head_sha" ||
+  die "the default base was not origin/main's tip, the sha CI uses"
+git -C "$repo" checkout -q main
+git -C "$repo" reset -q --hard "$head_sha"
+echo "ok: the default base is origin/main's tip, as CI's base sha is"
+
 touch "$repo/seeded-defect"
 commit "seed a failing step"
 run_check && die "check-all.sh passed despite a failing step"

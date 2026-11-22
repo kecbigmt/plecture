@@ -279,7 +279,7 @@ def validate_ref(path, scope):
         if len(rest) != 3 or rest[1] != "outputs":
             raise ValueError(f"{dotted} is not a steps.<id>.outputs.<name> reference")
         if rest[0] not in scope.step_ids:
-            raise ValueError(f"{dotted} names no earlier step id of this job")
+            raise ValueError(f"{dotted} names no earlier run step this runner executes")
     else:
         raise ValueError(f"the {root} context is not one the runner evaluates")
 
@@ -518,7 +518,9 @@ class Workflow:
         ids = []
         for index, step in enumerate(job.get("steps") or []):
             consumed.update(self.check_step(job_id, index, step, scope, ids))
-            if "id" in step:
+            # Only a run step this runner executes writes GITHUB_OUTPUT; an
+            # action's or a skipped step's outputs would read as empty here.
+            if "id" in step and "run" in step and (job_id, index) not in self.skips:
                 ids.append(step["id"])
         outputs = job.get("outputs") or {}
         for key, value in public(outputs).items():

@@ -13,10 +13,9 @@ scripts_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 root="${CHECK_ALL_ROOT:-$(cd "$scripts_dir/.." && pwd)}"
 cd "$root"
 
-base_ref="${1:-}"
-if [ -z "$base_ref" ]; then
-  base_ref="$(git merge-base HEAD origin/main)"
-fi
+# CI's pull_request base sha is the base branch's tip, not the merge-base:
+# once main moves on, the tip widens the diff and so the jobs CI selects.
+base_ref="${1:-origin/main}"
 
 fail() {
   echo "check-all.sh: FAILED: $1" >&2

@@ -285,6 +285,42 @@ jobs:
       - run: "true"
 EOF
 
+expect_fail_at "an output of an action step, which the runner never populates" 8 <<'EOF'
+on: pull_request
+jobs:
+  a:
+    runs-on: ubuntu-latest
+    steps:
+      - id: setup
+        uses: actions/setup-go@v5
+      - if: steps.setup.outputs.cache-hit != 'true'
+        run: ./slow-path.sh
+  ci-ok:
+    needs: [a]
+    runs-on: ubuntu-latest
+    steps:
+      - run: "true"
+EOF
+
+expect_fail_at "an output of an excepted step, which the runner never populates" 10 <<'EOF'
+on: pull_request
+jobs:
+  a:
+    runs-on: ubuntu-latest
+    steps:
+      # check-all-skip: while "sudo": installs system packages as root.
+      - id: install
+        run: sudo ./install.sh >> "$GITHUB_OUTPUT"
+      - name: uses the skipped step's output
+        if: steps.install.outputs.ok == 'true'
+        run: ./test.sh
+  ci-ok:
+    needs: [a]
+    runs-on: ubuntu-latest
+    steps:
+      - run: "true"
+EOF
+
 expect_fail_at "a required job that does not exist" 4 <<'EOF'
 on: pull_request
 jobs:
