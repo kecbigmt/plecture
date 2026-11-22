@@ -81,12 +81,11 @@ values like pr_state) — resources created by setup stay immutable.
 An explicit value set here takes precedence over resource-derived resolution
 (a dynamic output with from_resource_status = true): a later refresh only
 overwrites a key it actually fetched a value for, so it never clobbers a key
-its resource observation found nothing for. This is how a cross-repository
-pull request gets wired to a chain's pr_url input — a work session tracked
-by an issue in one repository can record the PR opened in another by calling
-this command, since core resource observation only ever inspects the tracked
-resource itself and never searches a second repository on the work
-session's behalf.
+its resource observation found nothing for. This is how a session records a
+fact its resource's observation cannot reach — such as a related resource
+living somewhere the observer never looks — for a chain input to read, since
+core resource observation only ever inspects the tracked resource itself and
+never searches elsewhere on the session's behalf.
 
 Note: validation is against the target's CURRENT outputs schema. If a def drifts
 after instantiation (a key made immutable or dropped from properties, or a new

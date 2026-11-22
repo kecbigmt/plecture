@@ -43,7 +43,7 @@ Reporting reads what was last observed, and says when that was. Pass
 --refresh to observe each resource before reporting, so the facts shown are
 the ones current at the moment of the call.
 
-No provider-specific field exists here — a PR's review decision or checks
+No provider-specific field exists here — a resource's review or check
 status appears under "work" only when the observer the task document declares
 publishes it. "plect ls" still carries the workflow's own display status
 line.`,
