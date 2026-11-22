@@ -1,6 +1,6 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 960 720" width="960" height="720" role="img" aria-labelledby="title desc">
   <title id="title">Change: four pinned linters in CI and check-all.sh</title>
-  <desc id="desc">The added CI lint job, whose result ci-ok now requires, and the changed check-all.sh both run four added check scripts: check-go-unused.sh (staticcheck U1000 under a build-tag matrix), check-go-errcheck.sh (golangci-lint on added lines only, given a base ref), check-shellcheck.sh (shellcheck at severity warning) and check-actionlint.sh (actionlint with the pinned shellcheck). check-go-unused.sh first passes every tracked Go file to the added lint-directive guard. check-go-errcheck.sh reads the added golangci-errcheck.yml config. check-shellcheck.sh hands the shellcheck binary to the added shellcheck_report.py, which validates exceptions. Every script asks the added lint-tools.sh for a pinned binary path; lint-tools.sh holds the versions and installs into a cache, verifying the shellcheck tarball's sha256.</desc>
+  <desc id="desc">The added CI lint job, whose result ci-ok now requires, and the changed check-all.sh both run four added check scripts: check-go-unused.sh (staticcheck U1000 under a build-tag matrix), check-go-errcheck.sh (golangci-lint on added lines only, given a base ref), check-shellcheck.sh (shellcheck at severity warning) and check-actionlint.sh (actionlint with the pinned shellcheck). check-go-unused.sh first passes every tracked Go file to the added lint-directive guard. check-go-errcheck.sh reads the added golangci-errcheck.yml config. check-shellcheck.sh hands the shellcheck binary to the added shellcheck_report.py, which validates exceptions; check-actionlint.sh gives actionlint the same script as its shellcheck command, so run-script exceptions meet the same rules. Every script asks the added lint-tools.sh for a pinned binary path; lint-tools.sh holds the versions and installs into a cache, verifying the shellcheck tarball's sha256.</desc>
   <defs>
     <style>
       svg {
@@ -119,6 +119,9 @@
   <text class="label t-added" text-anchor="middle" x="615" y="250"><tspan x="615" font-weight="600">ADDED</tspan><tspan x="615" dy="15">--config</tspan></text>
   <path class="flow-added" d="M550,365 H660"/>
   <text class="label t-added" text-anchor="middle" x="615" y="340"><tspan x="615" font-weight="600">ADDED</tspan><tspan x="615" dy="15">binary path</tspan></text>
+
+  <path class="flow-added" d="M550,455 H795 V400"/>
+  <text class="label t-added" x="807" y="440"><tspan x="807" font-weight="600">ADDED</tspan><tspan x="807" dy="15">-shellcheck command</tspan></text>
 
   <!-- Pins -->
   <rect class="added" x="270" y="570" width="650" height="64" rx="6"/>

@@ -75,3 +75,27 @@ workflow <<'EOF'
       - run: echo $(ls)
 EOF
 expect_fail_naming "a shellcheck warning in a run script fails" ".github/workflows/ci.yml:7:" "SC2046"
+
+workflow <<'EOF'
+      - run: |
+          echo start
+          # shellcheck disable=SC2046 # each word is a separate argument on purpose
+          echo $(ls)
+EOF
+expect_pass "a run-script exception with a reason that suppresses a finding passes"
+
+workflow <<'EOF'
+      - run: |
+          echo start
+          # shellcheck disable=SC2046
+          echo $(ls)
+EOF
+expect_fail_naming "a run-script exception without a reason fails" "exception has no reason"
+
+workflow <<'EOF'
+      - run: |
+          echo start
+          # shellcheck disable=SC2046 # nothing left to excuse
+          echo "clean"
+EOF
+expect_fail_naming "a run-script exception that suppresses nothing fails" "exception for SC2046 suppresses nothing"

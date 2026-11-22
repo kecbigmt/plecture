@@ -112,3 +112,33 @@ cat <<'TEXT'
 TEXT
 EOF
 expect_pass "directive-shaped text inside a heredoc is not taken for an exception"
+
+script bin/tool <<'EOF'
+echo start
+# shellcheck disable=SC2034 # values retained for debugging
+f() {
+  unused1=1
+  unused2=2
+}
+f
+EOF
+expect_fail_naming "an exception over a function body fails as broader than one line" \
+  "bin/tool:3: exception covers a function, block or continued command"
+
+script bin/tool <<'EOF'
+echo start
+# shellcheck disable=SC2034 # value retained for debugging
+unused=1
+EOF
+mkdir -p "$fixture/nested/bin"
+cat > "$fixture/nested/bin/lib.inc" <<'EOF'
+arr=(a b)
+printf '%s\n' "${arr[@]}"
+EOF
+script nested/bin/tool.sh <<'EOF'
+# shellcheck source=lib.inc
+. "$(dirname "$0")/lib.inc"
+# shellcheck disable=SC2128 # only the first item is wanted
+echo "$arr"
+EOF
+expect_pass "a live exception whose finding needs a sibling sourced file passes"
