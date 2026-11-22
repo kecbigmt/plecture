@@ -5,6 +5,7 @@ set -euo pipefail
 
 here="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 lib="${FAULT_LIB:-$here/lib.sh}"
+# shellcheck source=lib.sh
 . "$lib"
 
 container=stub session=fault/one+fault_recovery sid=sid-1 recovery_wait=2

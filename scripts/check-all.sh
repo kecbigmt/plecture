@@ -32,7 +32,7 @@ step() {
 }
 
 echo "==> gofmt -l"
-unformatted="$(gofmt -l $(find . -name '*.go' -not -path './app/internal/webui/*'))" || fail "gofmt -l"
+unformatted="$(find . -name '*.go' -not -path './app/internal/webui/*' -exec gofmt -l {} +)" || fail "gofmt -l"
 if [ -n "$unformatted" ]; then
   echo "$unformatted"
   fail "gofmt -l"

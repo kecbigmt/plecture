@@ -1,3 +1,4 @@
+# shellcheck shell=bash
 # gh-guard-lib.sh: the merge/close denial check shared by the auth-agnostic
 # `gh-guard` wrapper and `gh-app-guard`'s composite auth+guard wrapper. One
 # implementation, sourced in-process by whichever wrapper is on PATH — never

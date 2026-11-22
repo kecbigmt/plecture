@@ -481,12 +481,13 @@ EOF
 chmod +x "$race_bin_dir/plect"
 
 : > "$tmp/calls"
+stop_path="$bin_dir:$PATH"
 PLECT_SESSION_NAME="owner/repo-1" \
 PLECT_CALLS="$tmp/calls" \
 XDG_STATE_HOME="$tmp/state" \
 PATH="$race_bin_dir:$PATH" \
 RACE_SUBJECT="$subject" \
-RACE_STOP_PATH="$bin_dir:$PATH" \
+RACE_STOP_PATH="$stop_path" \
 "$subject" message_display <<<'{"hook_event_name":"MessageDisplay","message_id":"msg-race","turn_id":"turn-race","index":0,"final":true,"delta":"raced"}'
 [ "$(grep -c -- '--type plect.message ' "$tmp/calls")" -eq 1 ] || {
   printf 'message_display racing with a concurrent Stop published more than one plect.message: %s\n' "$(cat "$tmp/calls")" >&2
