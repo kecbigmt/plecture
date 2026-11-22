@@ -19,6 +19,7 @@ import sys
 SETUP_ACTION = re.compile(r"^actions/(checkout|setup-[a-z]+|cache)@")
 JOB_SCRIPT = re.compile(r"^(?:\./)?(scripts/ci/[A-Za-z0-9_.-]+\.sh)$")
 SHELL_OPERATOR = set("();<>|&")
+EXPRESSION = re.compile(r"\$\{\{.*?\}\}")
 # check-all.sh does not run the browser half of web-browser-acceptance, for
 # the reason it states where it leaves the call out.
 OMITTED = "scripts/ci/web-browser-acceptance-browser.sh"
@@ -70,7 +71,9 @@ class Check:
         if proc.returncode != 0:
             self.add(self.workflow, 0, f"yq could not decode the workflow: {proc.stderr.strip()}")
             return {}
-        jobs = (json.loads(proc.stdout) or {}).get("jobs") or {}
+        doc = json.loads(proc.stdout) or {}
+        jobs = doc.get("jobs") or {}
+        self.check_defaults("the workflow", doc)
         if self.aggregator not in jobs:
             self.add(self.workflow, 0, f"no job {self.aggregator!r}: the aggregator names the jobs this check covers")
             return {}
@@ -99,6 +102,7 @@ class Check:
         if "uses" in job:
             self.at(keyline(job, "uses"), f"job {job_id}: calls a reusable workflow, whose steps check-all.sh cannot see; inline them as setup actions and scripts/ci calls")
             return
+        self.check_defaults(f"job {job_id}", job)
         ran_script = False
         for step in job.get("steps") or []:
             if "uses" in step:
@@ -112,6 +116,10 @@ class Check:
                 script = self.check_run(job_id, step)
                 if script:
                     calls.setdefault(script, (job_id, keyline(step, "run")))
+
+    def check_defaults(self, owner, node):
+        if "run" in (node.get("defaults") or {}):
+            self.at(keyline(node, "defaults"), f"{owner}: defaults.run changes how run steps run, which check-all.sh's calls would not; let the scripts choose their directory and shell")
 
     def check_run(self, job_id, step):
         line = keyline(step, "run")
@@ -134,6 +142,10 @@ class Check:
         if not match or any(set(word) <= SHELL_OPERATOR or "`" in word for word in words):
             self.at(line, f"job {job_id}: the run step `{text}` is not a single scripts/ci/*.sh call; move its commands into the job's scripts/ci script")
             return None
+        for word in words[1:]:
+            if "$" in EXPRESSION.sub("", word) or "`" in word:
+                self.at(line, f"job {job_id}: the argument `{word}` is shell syntax, which the runner and check-all.sh expand differently; pass a literal or a ${{{{ }}}} expression and let the script compute the rest")
+                return None
         script = match.group(1)
         try:
             open(script).close()

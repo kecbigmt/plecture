@@ -341,3 +341,65 @@ $browser_job
     steps:
       - run: "true"
 EOF
+
+expect_fail_at "a command substitution hidden in a quoted argument" "$ci:6" <<EOF
+on: pull_request
+jobs:
+  a:
+    runs-on: ubuntu-latest
+    steps:
+      - run: ./scripts/ci/a.sh "\$(curl -s https://example.com/x)"
+$browser_job
+  ci-ok:
+    needs: [a, browser]
+    steps:
+      - run: "true"
+EOF
+
+expect_fail_at "a shell variable an argument expands differently in CI" "$ci:6" <<EOF
+on: pull_request
+jobs:
+  a:
+    runs-on: ubuntu-latest
+    steps:
+      - run: ./scripts/ci/a.sh "\$RUNNER_TEMP"
+$browser_job
+  ci-ok:
+    needs: [a, browser]
+    steps:
+      - run: "true"
+EOF
+
+expect_fail_at "a workflow default that changes how every run step runs" "$ci:2" <<EOF
+on: pull_request
+defaults:
+  run:
+    working-directory: app
+jobs:
+  a:
+    runs-on: ubuntu-latest
+    steps:
+      - run: ./scripts/ci/a.sh
+$browser_job
+  ci-ok:
+    needs: [a, browser]
+    steps:
+      - run: "true"
+EOF
+
+expect_fail_at "a job default that changes how its run steps run" "$ci:5" <<EOF
+on: pull_request
+jobs:
+  a:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        shell: python
+    steps:
+      - run: ./scripts/ci/a.sh
+$browser_job
+  ci-ok:
+    needs: [a, browser]
+    steps:
+      - run: "true"
+EOF
