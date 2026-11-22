@@ -15,9 +15,11 @@ check_go_directives
 
 out="$(mktemp)"
 trap 'rm -f "$out"' EXIT
-matrix='default:
-integration: -tags=integration
-browser: -tags=browser'
+matrix=""
+mapfile -t build_configs < <(go_build_configs)
+for tags in "${build_configs[@]}"; do
+  matrix+="${tags:-default}: -tags=$tags"$'\n'
+done
 
 failed=0
 modules=0

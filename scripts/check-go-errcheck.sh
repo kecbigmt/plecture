@@ -22,20 +22,36 @@ cd "$root"
 golangci_lint="$(lint_tool golangci-lint)"
 check_go_directives
 
-failed=0
+out="$(mktemp -d)"
+trap 'rm -rf "$out"' EXIT
+
+# golangci-lint analyzes one build configuration per run, so each is run in
+# turn and a site every configuration compiles is reported once.
+mapfile -t build_configs < <(go_build_configs)
 modules=0
 while IFS= read -r module; do
   modules=$((modules + 1))
-  if ! (cd "$module" && "$golangci_lint" run \
-    --config "$scripts_dir/golangci-errcheck.yml" \
-    --new-from-merge-base "$base_ref" \
-    --path-prefix "$module" \
-    ./...); then
-    failed=1
-  fi
+  for tags in "${build_configs[@]}"; do
+    status=0
+    (cd "$module" && "$golangci_lint" run \
+      --config "$scripts_dir/golangci-errcheck.yml" \
+      --build-tags "$tags" \
+      --new-from-merge-base "$base_ref" \
+      --output.json.path stdout \
+      ./...) > "$out/run.json" 2> "$out/run.err" || status=$?
+    if [ "$status" -gt 1 ]; then
+      echo "$module (tags: ${tags:-none}): golangci-lint failed with status $status:" >&2
+      cat "$out/run.err" >&2
+      exit 1
+    fi
+    jq -rn --arg module "$module" \
+      'input | .Issues[]? | "\($module)/\(.Pos.Filename):\(.Pos.Line):\(.Pos.Column): \(.Text) (\(.FromLinter))"' \
+      "$out/run.json" >> "$out/findings"
+  done
 done < <(go_workspace_modules)
 
-if [ "$failed" -ne 0 ]; then
+if [ -s "$out/findings" ]; then
+  sort -u -t: -k1,1 -k2,2n -k3,3n "$out/findings"
   echo >&2
   echo "Discarded error (errcheck -blank) on a line this change adds: handle or" >&2
   echo "return each error above." >&2

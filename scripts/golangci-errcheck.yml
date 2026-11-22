@@ -1,9 +1,7 @@
 version: "2"
 
 run:
-  build-tags:
-    - integration
-    - browser
+  relative-path-mode: gomod
 
 linters:
   default: none

@@ -122,3 +122,59 @@ func cleanup() {
 EOF
 expect_fail_naming "a change adding a nolint over a discarded error fails and names the line" \
   "mod/new.go:6: suppression directive" "This check takes no exception"
+
+# expect_line_starting asserts a finding line starts with exactly this path,
+# so a doubled or missing module prefix is caught.
+expect_line_starting() {
+  local name="$1" want="$2"
+  if run_check; then
+    echo "FAIL: $name: checker passed" >&2
+    cat "$log" >&2
+    exit 1
+  fi
+  if ! awk -v w="$want" 'index($0, w) == 1 { found = 1 } END { exit !found }' "$log"; then
+    echo "FAIL: $name: no line starts with '$want'" >&2
+    cat "$log" >&2
+    exit 1
+  fi
+  echo "ok: $name"
+}
+
+git_fixture reset -q --hard "$base"
+mkdir -p "$fixture/nested/mod2"
+cat > "$fixture/nested/mod2/go.mod" <<EOF
+module example.com/mod2
+
+go $go_version
+EOF
+cat > "$fixture/go.work" <<EOF
+go $go_version
+
+use (
+	./mod
+	./nested/mod2
+)
+EOF
+cat > "$fixture/nested/mod2/new.go" <<'EOF'
+package mod2
+
+import "os"
+
+func Cleanup() { os.Remove("nested") }
+EOF
+git_fixture add -A
+git_fixture commit -q -m nested
+expect_line_starting "a finding in a nested module names its path from the repository root" "nested/mod2/new.go:5:"
+
+commit_new <<'EOF'
+//go:build !browser
+
+package main
+
+import "os"
+
+func cleanup() {
+	os.Remove("default-only")
+}
+EOF
+expect_fail_naming "a change adding a discarded error in a file the browser tag excludes fails" "mod/new.go:8:"

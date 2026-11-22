@@ -120,6 +120,13 @@ go_workspace_modules() {
   go work edit -json go.work | jq -r '.Use[]?.DiskPath | ltrimstr("./")'
 }
 
+# go_build_configs prints the Go build configurations every Go check covers,
+# one build-tag list per line: a file guarded by a tag, or by its negation,
+# is analyzed in at least one.
+go_build_configs() {
+  printf '%s\n' "" integration browser
+}
+
 NO_EXCEPTION="This check takes no exception; if the finding cannot be fixed at its cause, stop and ask the owner."
 
 # check_go_directives fails on any Go suppression directive in a tracked
