@@ -101,6 +101,14 @@ EOF
 expect_fail_naming "a run-script disable key after a look-alike in another value is still found" "suppression directive"
 
 workflow <<'EOF'
+      - run: |
+          echo start
+          # shellcheck source=foo#bar disable=SC2034
+          unused=1
+EOF
+expect_fail_naming "a run-script disable key after a # in another value is still found" "suppression directive"
+
+workflow <<'EOF'
       - run: echo "${{ matrix.module }}"
 EOF
 printf 'paths:\n  .github/workflows/ci.yml:\n    ignore:\n      - .*\n' > "$fixture/.github/actionlint.yaml"

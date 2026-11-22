@@ -93,6 +93,13 @@ expect_fail_naming "a disable key after a look-alike inside another key's value 
 
 script bin/tool <<'EOF'
 echo start
+# shellcheck source=foo#bar disable=SC2034
+unused=1
+EOF
+expect_fail_naming "a disable key after a # inside another key's value is still found" "bin/tool:3: suppression directive"
+
+script bin/tool <<'EOF'
+echo start
 cat <<'TEXT'
 # shellcheck disable=SC2046
 TEXT
