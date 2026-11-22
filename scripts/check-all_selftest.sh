@@ -78,6 +78,11 @@ if ! grep -q "==> scripts/check-adr-lifecycle.sh origin/main HEAD" /tmp/check-al
   cat /tmp/check-all-selftest-clean.log >&2
   exit 1
 fi
+if ! grep -q "==> scripts/check-migration-order.sh origin/main HEAD" /tmp/check-all-selftest-clean.log; then
+  echo "FAIL: check-all.sh did not use CI's migration order base" >&2
+  cat /tmp/check-all-selftest-clean.log >&2
+  exit 1
+fi
 if ! grep -q "==> scripts/check-go-errcheck.sh $base_sha" /tmp/check-all-selftest-clean.log; then
   echo "FAIL: check-all.sh did not scope errcheck to the base it was given" >&2
   cat /tmp/check-all-selftest-clean.log >&2
