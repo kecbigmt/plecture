@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"encoding/json"
 	"fmt"
+	"io"
 	"log/slog"
 	"net/http"
 	"net/http/httptest"
@@ -748,6 +749,44 @@ func TestPoller_TokenFuncFailureFailsFetchWithoutCallingGh(t *testing.T) {
 	}
 	if !bytes.Contains(logs.Bytes(), []byte("github app token mint failed")) {
 		t.Errorf("expected a warning about the failed mint, got log output: %q", logs.String())
+	}
+}
+
+func TestPoller_RetriesUnauthorizedOnceWithFreshToken(t *testing.T) {
+	store := NewStore(t.TempDir())
+	binDir := t.TempDir()
+	logPath := filepath.Join(t.TempDir(), "tokens")
+	gh := fakeBin(t, binDir, "gh", `echo "$GH_TOKEN" >> `+logPath+`
+if [ "$GH_TOKEN" = first ]; then printf 'HTTP/1.1 401 Unauthorized\n\n'; exit 1; fi
+printf 'HTTP/1.1 200 OK\n\n{"state":"open"}'`)
+	var calls int
+	p := &Poller{Store: store, Logger: slog.New(slog.NewTextHandler(io.Discard, nil)), GhBin: gh, Guard: ratebudget.NewGuard(t.TempDir()), RetryUnauthorized: true, TokenFunc: func() (string, error) {
+		calls++
+		if calls == 1 {
+			return "first", nil
+		}
+		return "second", nil
+	}}
+	got, ok := p.ghAPI("", "repos/org/repo/issues/1")
+	if !ok || !bytes.Contains(got, []byte(`"state":"open"`)) || calls != 2 {
+		t.Fatalf("response %q, ok %v, token calls %d", got, ok, calls)
+	}
+	contents, err := os.ReadFile(logPath)
+	if err != nil || string(contents) != "first\nsecond\n" {
+		t.Fatalf("gh tokens %q, error %v", contents, err)
+	}
+}
+
+func TestPoller_StopsAfterOneUnauthorizedRetry(t *testing.T) {
+	binDir := t.TempDir()
+	gh := fakeBin(t, binDir, "gh", `printf 'HTTP/1.1 401 Unauthorized\n\n'; exit 1`)
+	var calls int
+	p := &Poller{Store: NewStore(t.TempDir()), Logger: slog.New(slog.NewTextHandler(io.Discard, nil)), GhBin: gh, Guard: ratebudget.NewGuard(t.TempDir()), RetryUnauthorized: true, TokenFunc: func() (string, error) {
+		calls++
+		return "secret-token", nil
+	}}
+	if _, ok := p.ghAPI("", "repos/org/repo/issues/1"); ok || calls != 2 {
+		t.Fatalf("ok %v, token calls %d", ok, calls)
 	}
 }
 

@@ -14,6 +14,7 @@ output = "dir"
 path   = "gh"
 
 [[gh_app_guard]]
+name = "private-key"
 inputs = { app_id = "123456", installation_id = "987654", private_key_path = "/etc/plect/gh-app.pem" }
 # Same rationale as gh_guard: the wrapper file it writes is the effect's real
 # product, and its content is what actually pins the auth+deny composition
@@ -22,6 +23,16 @@ inputs = { app_id = "123456", installation_id = "987654", private_key_path = "/e
 [[gh_app_guard.artifacts]]
 output = "dir"
 path   = "gh"
+
+[[gh_app_guard]]
+name = "token-command"
+inputs = { token_command = ["/usr/local/bin/installation-token", "get"] }
+[[gh_app_guard.artifacts]]
+output = "dir"
+path   = "gh"
+[[gh_app_guard.artifacts]]
+output = "dir"
+path   = "token-command.json"
 
 [[worktree]]
 name   = "policy-set-at-creation"

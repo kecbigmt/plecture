@@ -5,6 +5,8 @@ import (
 	"crypto/rsa"
 	"crypto/x509"
 	"encoding/pem"
+	"io"
+	"log/slog"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -12,6 +14,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/kecbigmt/plecture/plugins/github/src/internal/ratebudget"
 	"github.com/kecbigmt/plecture/plugins/github/src/internal/watcher"
 )
 
@@ -57,12 +60,57 @@ func TestAppAuthFromEnv_UnsetIsNoAppAuth(t *testing.T) {
 	}
 }
 
+func TestAppAuthFromEnv_PrivateKeyWithoutAppIDFails(t *testing.T) {
+	t.Setenv(envPrivateKeyPath, "/host/key")
+	_, err := appAuthFromEnv(t.TempDir())
+	if err == nil || !strings.Contains(err.Error(), envAppID) || !strings.Contains(err.Error(), envPrivateKeyPath) {
+		t.Fatalf("error = %v", err)
+	}
+}
+
 func TestAppAuthFromEnv_AppIDWithoutPrivateKeyPathFailsLoud(t *testing.T) {
 	t.Setenv(envAppID, "123456")
 	t.Setenv(envInstallationID, "789012")
 	_, err := appAuthFromEnv(t.TempDir())
 	if err == nil {
 		t.Fatal("want an error when the App id is set but the private key path is not")
+	}
+}
+
+func TestAppAuthFromEnv_TokenCommandIsExclusive(t *testing.T) {
+	for _, tc := range []struct {
+		name, key, command string
+		valid              bool
+	}{
+		{"command", "", `["/host/token","get"]`, true},
+		{"both", "/private/key", `["/host/token"]`, false},
+		{"neither", "", "", false},
+		{"invalid JSON", "", `"/host/token"`, false},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Setenv(envAppID, "123456")
+			t.Setenv(envInstallationID, "789012")
+			t.Setenv(envPrivateKeyPath, tc.key)
+			t.Setenv(envTokenCommand, tc.command)
+			_, err := appAuthFromEnv(t.TempDir())
+			if (err == nil) != tc.valid {
+				t.Fatalf("error = %v", err)
+			}
+			if err != nil && (!strings.Contains(err.Error(), envPrivateKeyPath) || !strings.Contains(err.Error(), envTokenCommand)) {
+				t.Fatalf("error = %v", err)
+			}
+		})
+	}
+}
+
+func TestAppAuthFromEnv_CommandNeedsNoAppIdentifiers(t *testing.T) {
+	t.Setenv(envAppID, "")
+	t.Setenv(envInstallationID, "")
+	t.Setenv(envOwner, "")
+	t.Setenv(envRepo, "")
+	t.Setenv(envTokenCommand, `["/host/token"]`)
+	if _, err := appAuthFromEnv(t.TempDir()); err != nil {
+		t.Fatal(err)
 	}
 }
 
@@ -187,6 +235,46 @@ func TestConfigureAppAuth_ValidConfigWiresTokenFunc(t *testing.T) {
 	}
 	if got != "ghs_serve" {
 		t.Errorf("token = %q, want ghs_serve", got)
+	}
+}
+
+func TestConfigureAppAuth_CommandRefreshesAfterUnauthorized(t *testing.T) {
+	dir := t.TempDir()
+	command := filepath.Join(dir, "token helper")
+	count := filepath.Join(dir, "count")
+	seen := filepath.Join(dir, "seen")
+	gh := filepath.Join(dir, "gh")
+	if err := os.WriteFile(command, []byte("#!/bin/sh\necho called >> '"+count+"'\nif [ \"$(wc -l < '"+count+"')\" -lt 3 ]; then echo first; else echo second; fi\n"), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(gh, []byte("#!/bin/sh\necho \"$GH_TOKEN\" >> '"+seen+"'\nif [ \"$GH_TOKEN\" = first ]; then printf 'HTTP/1.1 401 Unauthorized\\n\\n'; exit 1; fi\nprintf 'HTTP/1.1 200 OK\\n\\n{\"state\":\"open\",\"merged\":false,\"sha\":\"deadbeef\"}'\n"), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv(envAppID, "123456")
+	t.Setenv(envInstallationID, "789012")
+	t.Setenv(envTokenCommand, `["`+command+`"]`)
+	store := watcher.NewProtocolStore(t.TempDir(), t.TempDir())
+	if err := store.Replace([]watcher.MembershipRow{{Session: "org/repo-1", Source: "test", Resource: watcher.MembershipResource{ID: "pr-1", Type: "github.pull_request", Locator: "https://github.com/org/repo/pull/1"}}}); err != nil {
+		t.Fatal(err)
+	}
+	poller := &watcher.Poller{Store: store, Logger: slog.New(slog.NewTextHandler(io.Discard, nil)), GhBin: gh, Guard: ratebudget.NewGuard(t.TempDir())}
+	cacheDir := t.TempDir()
+	if err := configureAppAuth(poller, cacheDir); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := os.Stat(count); err != nil {
+		t.Fatalf("command did not validate at startup: %v", err)
+	}
+	poller.Tick()
+	if _, err := os.Stat(count); err != nil {
+		t.Fatalf("command was not called: %v", err)
+	}
+	data, err := os.ReadFile(seen)
+	if err != nil || !strings.HasPrefix(string(data), "first\nsecond\n") {
+		t.Fatalf("gh tokens %q, error %v", data, err)
+	}
+	if _, err := os.Stat(filepath.Join(cacheDir, ".app-token-cache.json")); !os.IsNotExist(err) {
+		t.Fatalf("command token cache: %v", err)
 	}
 }
 
