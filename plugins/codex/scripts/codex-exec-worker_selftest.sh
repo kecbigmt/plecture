@@ -370,8 +370,7 @@ export CODEX_PUBLISH_MESSAGE=true
 # resumed turn carry each one as a single `-c` argument, quotes and spaces
 # intact; given none, a turn's argv carries no `-c` at all.
 last_argv() {
-  local -n out="$1"
-  mapfile -d '' out < "$STUB_ARGV_NUL"
+  mapfile -d '' "$1" < "$STUB_ARGV_NUL"
 }
 has_pair() {
   local flag="$1" value="$2"; shift 2

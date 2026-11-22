@@ -24,8 +24,8 @@ import (
 type HealthReport struct {
 	SessionName string `json:"session_name"`
 	Healthy     bool   `json:"healthy"`
-	// Declared reports whether any produced run-scoped task instance declares
-	// an alive probe at all — distinguishes "ran and passed" from "nothing to
+	// Declared reports whether any produced current-plan node declares an
+	// alive probe at all — distinguishes "ran and passed" from "nothing to
 	// evaluate" (State() surfaces the latter as HealthUndeclared).
 	Declared bool `json:"declared"`
 	// ActivityDue reports whether unmet run-scoped work exists that this
@@ -132,17 +132,11 @@ func (r HealthReport) State() domain.HealthState {
 	return domain.HealthStalled
 }
 
-// EvaluateHealth composes health over every run-scoped node the session's
-// frozen workflow currently declares — not only the produced subset. A
-// produced node runs its declared `[health]` probes; a failed or missing
-// node is a structural failure, reported unhealthy with a reason naming the
-// node. This composition is only evaluated for a session with at least one
-// produced run-scoped task: a session with none (already `plect down`, or a
-// purely session-scoped resource) has no health verdict at all — L2 only
-// detects a process/runtime/subscription that died while it was supposed to
-// be up, not a session that was deliberately brought down. The first
-// failing probe, whether an alive probe or a structural failure, wins;
-// Reason names the failing node.
+// EvaluateHealth composes alive over every current-plan node of both scopes,
+// and activity over run-scoped nodes only; a failed or missing node is a
+// structural failure named in Reason. A session with no produced run-scoped
+// node has no verdict at all, because L2 detects a runtime that died while it
+// was supposed to be up, not a session that was deliberately brought down.
 func EvaluateHealth(cfg *config.Config, store *state.Store, name string) (HealthReport, error) {
 	s, err := store.GetE(name)
 	if err != nil {
@@ -183,16 +177,15 @@ func EvaluateHealth(cfg *config.Config, store *state.Store, name string) (Health
 	return report, nil
 }
 
-// currentPlanRunScopedNodeIDs returns every run-scoped node the session's
-// frozen workflow currently declares, sorted for a deterministic
-// first-failure report. A node the workflow no longer declares is absent
-// from this list regardless of what session.Nodes still holds for it, which
-// is what makes a stale node entry inert to health.
-func currentPlanRunScopedNodeIDs(nodes map[string]string, defs map[string]config.TaskDefinition) []string {
+// currentPlanNodeIDs returns every node the session's frozen workflow
+// currently declares, sorted for a deterministic first-failure report. A
+// node the workflow no longer declares is absent from this list regardless
+// of what session.Nodes still holds for it, which is what makes a stale node
+// entry inert to health.
+func currentPlanNodeIDs(nodes map[string]string, defs map[string]config.TaskDefinition) []string {
 	var ids []string
 	for id, address := range nodes {
-		def, ok := defs[address]
-		if !ok || def.Scope != config.TaskScopeRun {
+		if _, ok := defs[address]; !ok {
 			continue
 		}
 		ids = append(ids, id)
@@ -324,8 +317,7 @@ func evaluateHealthFor(name string, gateOpen, repairObservationEnabled bool, tas
 	// that was deliberately brought down, reads as no verdict rather than
 	// unhealthy.
 	if gateOpen {
-		currentPlan := currentPlanRunScopedNodeIDs(nodes, defs)
-		for _, nodeID := range currentPlan {
+		for _, nodeID := range currentPlanNodeIDs(nodes, defs) {
 			st := tasks[nodeID]
 			switch {
 			case st == nil:
@@ -388,7 +380,7 @@ func evaluateHealthFor(name string, gateOpen, repairObservationEnabled bool, tas
 						}
 					}
 				}
-				if target.Activity == nil {
+				if target.Activity == nil || def.Scope != config.TaskScopeRun {
 					continue
 				}
 				sig, sigErr := task.RunActivityProbe(context.Background(), target.probe(target.Activity), vars)

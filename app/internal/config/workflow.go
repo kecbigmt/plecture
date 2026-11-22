@@ -2,9 +2,7 @@ package config
 
 import (
 	"fmt"
-	"os"
 	"path/filepath"
-	"sort"
 	"strings"
 	"time"
 
@@ -649,28 +647,4 @@ func (c *Config) definitionRoots(projectRoot string) ([]layerDir, error) {
 		dirs = append(dirs, project)
 	}
 	return dirs, nil
-}
-
-// listTOMLFiles returns sorted *.toml entries in dir. A missing dir returns an
-// empty list (not an error) so missing repo/global directories are normal.
-func listTOMLFiles(dir string) ([]string, error) {
-	entries, err := os.ReadDir(dir)
-	if err != nil {
-		if os.IsNotExist(err) {
-			return nil, nil
-		}
-		return nil, err
-	}
-	var files []string
-	for _, e := range entries {
-		if e.IsDir() {
-			continue
-		}
-		if filepath.Ext(e.Name()) != ".toml" {
-			continue
-		}
-		files = append(files, filepath.Join(dir, e.Name()))
-	}
-	sort.Strings(files)
-	return files, nil
 }

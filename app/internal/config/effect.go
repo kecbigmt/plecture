@@ -2,7 +2,6 @@ package config
 
 import (
 	"fmt"
-	"sort"
 
 	"github.com/kecbigmt/plecture/app/internal/lang"
 )
@@ -225,15 +224,4 @@ func actionIn(body map[string]any, field, path, tablePath string) (*lang.Action,
 		return nil, nil
 	}
 	return lang.ParseAction(raw, lang.Position{File: path, Path: tablePath + "." + field})
-}
-
-// sortedBodyKeys names a declaration's fields in a stable order, so a
-// diagnostic listing several of them reads the same on every run.
-func sortedBodyKeys(body map[string]any) []string {
-	keys := make([]string, 0, len(body))
-	for key := range body {
-		keys = append(keys, key)
-	}
-	sort.Strings(keys)
-	return keys
 }

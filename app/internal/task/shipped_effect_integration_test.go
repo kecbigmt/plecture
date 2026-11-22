@@ -934,19 +934,6 @@ func spyPlugin(t *testing.T, source string, argvLog string, answer func(name str
 
 func shellQuoteForTest(v string) string { return "'" + strings.ReplaceAll(v, "'", `'\''`) + "'" }
 
-// stubHostPlect keeps an ambient `plect` off PATH, so this corpus's record
-// never depends on whether the host has one installed and can't reach its
-// real `~/.local/share/plect` state.
-func stubHostPlect(t *testing.T) {
-	t.Helper()
-	dir := t.TempDir()
-	path := filepath.Join(dir, "plect")
-	if err := os.WriteFile(path, []byte("#!/usr/bin/env sh\nexit 0\n"), 0o755); err != nil {
-		t.Fatal(err)
-	}
-	t.Setenv("PATH", dir+string(os.PathListSeparator)+os.Getenv("PATH"))
-}
-
 // recordedCalls reads the spy log into one line per invocation, with any path
 // inside the plugin recorded relative to it so the record carries no
 // checkout or temp-directory path.

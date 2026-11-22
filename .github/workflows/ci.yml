@@ -89,7 +89,7 @@ jobs:
           cache: false
       - name: Check gofmt
         run: |
-          unformatted=$(gofmt -l $(find . -name '*.go' -not -path './app/internal/webui/*'))
+          unformatted=$(find . -name '*.go' -not -path './app/internal/webui/*' -exec gofmt -l {} +)
           if [ -n "$unformatted" ]; then
             echo "The following files are not gofmt'd:"
             echo "$unformatted"
@@ -120,8 +120,8 @@ jobs:
           path: |
             ~/go/pkg/mod
             ~/.cache/go-build
-          key: go-${{ runner.os }}-${{ github.job }}-${{ matrix.module }}-${{ hashFiles('go.work.sum', '**/go.sum') }}
-          restore-keys: go-${{ runner.os }}-${{ github.job }}-${{ matrix.module }}-
+          key: go-${{ runner.os }}-${{ github.job }}-${{ hashFiles('go.work.sum', '**/go.sum') }}
+          restore-keys: go-${{ runner.os }}-${{ github.job }}-
       - name: go build ./app/... from a fresh checkout, no Node installed
         run: go build ./...
         working-directory: app
@@ -201,6 +201,53 @@ jobs:
       - name: Check every task instruction sidecar is referenced
         run: ./scripts/check-instruction-orphans.sh
 
+  # The linter versions are pinned in scripts/lint-tools.sh, which is part
+  # of the cache key, so a version bump never restores a stale install.
+  # errcheck is scoped to the lines a PR adds, so like comment-density it
+  # runs only where a PR base exists.
+  lint:
+    name: lint
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-go@v5
+        with:
+          go-version: ${{ env.GO_VERSION }}
+          cache: false
+      - uses: actions/cache@v4
+        with:
+          path: |
+            ~/go/pkg/mod
+            ~/.cache/go-build
+            ~/.cache/golangci-lint
+            ~/.cache/plecture/lint-tools
+          key: go-${{ runner.os }}-${{ github.job }}-${{ hashFiles('go.work.sum', '**/go.sum', 'scripts/lint-tools.sh') }}
+          restore-keys: go-${{ runner.os }}-${{ github.job }}-
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+      - name: Prove the shellcheck install refuses a tarball off its pinned checksum
+        run: ./scripts/lint-tools_selftest.sh
+      - name: Prove the dead-code check catches seeded dead code and exceptions
+        run: ./scripts/check-go-unused_selftest.sh
+      - name: Prove the errcheck check catches a seeded discarded error and bad exceptions
+        run: ./scripts/check-go-errcheck_selftest.sh
+      - name: Prove the shellcheck check catches seeded warnings and bad exceptions
+        run: ./scripts/check-shellcheck_selftest.sh
+      - name: Prove the actionlint check catches seeded workflow errors
+        run: ./scripts/check-actionlint_selftest.sh
+      - name: Check for dead Go code (staticcheck U1000)
+        run: ./scripts/check-go-unused.sh
+      - name: Check the PR's added lines for discarded Go errors (errcheck -blank)
+        if: github.event_name == 'pull_request'
+        run: ./scripts/check-go-errcheck.sh "${{ github.event.pull_request.base.sha }}"
+      - name: Check shell scripts (shellcheck)
+        run: ./scripts/check-shellcheck.sh
+      - name: Check workflows (actionlint)
+        run: ./scripts/check-actionlint.sh
+
   # This proves check-all.sh's own sequencing/failure-naming against a
   # fixture; the individual checks it wraps are exercised for real by the
   # jobs above, so re-running check-all.sh itself against this repository
@@ -226,8 +273,8 @@ jobs:
           path: |
             ~/go/pkg/mod
             ~/.cache/go-build
-          key: go-${{ runner.os }}-${{ github.job }}-${{ matrix.module }}-${{ hashFiles('go.work.sum', '**/go.sum') }}
-          restore-keys: go-${{ runner.os }}-${{ github.job }}-${{ matrix.module }}-
+          key: go-${{ runner.os }}-${{ github.job }}-${{ hashFiles('go.work.sum', '**/go.sum') }}
+          restore-keys: go-${{ runner.os }}-${{ github.job }}-
       - uses: actions/setup-python@v5
         with:
           python-version: ${{ env.PYTHON_VERSION }}
@@ -309,8 +356,8 @@ jobs:
           path: |
             ~/go/pkg/mod
             ~/.cache/go-build
-          key: go-${{ runner.os }}-${{ github.job }}-${{ matrix.module }}-${{ hashFiles('go.work.sum', '**/go.sum') }}
-          restore-keys: go-${{ runner.os }}-${{ github.job }}-${{ matrix.module }}-
+          key: go-${{ runner.os }}-${{ github.job }}-${{ hashFiles('go.work.sum', '**/go.sum') }}
+          restore-keys: go-${{ runner.os }}-${{ github.job }}-
       - name: Regenerate Go types and check for drift
         run: |
           go tool oapi-codegen -config oapi-codegen.yaml ../../../web/api/generated/openapi.yaml
@@ -444,8 +491,8 @@ jobs:
           path: |
             ~/go/pkg/mod
             ~/.cache/go-build
-          key: go-${{ runner.os }}-${{ github.job }}-${{ matrix.module }}-${{ hashFiles('go.work.sum', '**/go.sum') }}
-          restore-keys: go-${{ runner.os }}-${{ github.job }}-${{ matrix.module }}-
+          key: go-${{ runner.os }}-${{ github.job }}-${{ hashFiles('go.work.sum', '**/go.sum') }}
+          restore-keys: go-${{ runner.os }}-${{ github.job }}-
       - name: manifest
         run: go test -count=1 ./db -run '^TestMigrationsMatchTheirManifest$|^TestManifest_'
         working-directory: app
@@ -490,8 +537,8 @@ jobs:
           path: |
             ~/go/pkg/mod
             ~/Library/Caches/go-build
-          key: go-${{ runner.os }}-${{ github.job }}-${{ matrix.module }}-${{ hashFiles('go.work.sum', '**/go.sum') }}
-          restore-keys: go-${{ runner.os }}-${{ github.job }}-${{ matrix.module }}-
+          key: go-${{ runner.os }}-${{ github.job }}-${{ hashFiles('go.work.sum', '**/go.sum') }}
+          restore-keys: go-${{ runner.os }}-${{ github.job }}-
       # release.yml's darwin-arm64 build job runs this same `go test ./...`
       # against the app module before packaging.
       - name: go test
@@ -551,8 +598,8 @@ jobs:
           path: |
             ~/go/pkg/mod
             ~/.cache/go-build
-          key: go-${{ runner.os }}-${{ github.job }}-${{ matrix.module }}-${{ hashFiles('go.work.sum', '**/go.sum') }}
-          restore-keys: go-${{ runner.os }}-${{ github.job }}-${{ matrix.module }}-
+          key: go-${{ runner.os }}-${{ github.job }}-${{ hashFiles('go.work.sum', '**/go.sum') }}
+          restore-keys: go-${{ runner.os }}-${{ github.job }}-
       # The integration-tagged tests (app/internal/service, app/internal/webui)
       # spin up real git repos and worktrees and, for the shipped
       # worktree-effect cases, build the plect/github-worktree/
@@ -598,8 +645,8 @@ jobs:
           path: |
             ~/go/pkg/mod
             ~/.cache/go-build
-          key: go-${{ runner.os }}-${{ github.job }}-${{ matrix.module }}-${{ hashFiles('go.work.sum', '**/go.sum') }}
-          restore-keys: go-${{ runner.os }}-${{ github.job }}-${{ matrix.module }}-
+          key: go-${{ runner.os }}-${{ github.job }}-${{ hashFiles('go.work.sum', '**/go.sum') }}
+          restore-keys: go-${{ runner.os }}-${{ github.job }}-
       - name: Run README build commands
         run: |
           go build ./app/...
@@ -643,6 +690,7 @@ jobs:
       - comment-references
       - comment-density
       - instruction-orphans
+      - lint
       - check-all
       - gh-guard
       - web-api-contract

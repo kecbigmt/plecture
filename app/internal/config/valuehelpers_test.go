@@ -8,7 +8,3 @@ import "github.com/kecbigmt/plecture/app/internal/lang"
 func literalValue(v string) *lang.Value { return &lang.Value{Form: lang.FormLiteral, Literal: v} }
 
 func fromValue(path string) *lang.Value { return &lang.Value{Form: lang.FormFrom, From: path} }
-
-func fromValueOr(path, fallback string) *lang.Value {
-	return &lang.Value{Form: lang.FormFrom, From: path, Default: fallback, HasDefault: true}
-}

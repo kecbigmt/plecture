@@ -53,16 +53,3 @@ func TestDiscoverLayer_NoChainsDirLoads(t *testing.T) {
 		t.Fatalf("LoadTaskDefinitions: %v", err)
 	}
 }
-
-// effectPreamble is the definition table every chain row declares its
-// `[[work.chains]]` under.
-const effectPreamble = `
-[work]
-kind  = "effect"
-scope = "run"
-
-[work.setup]
-type   = "shell"
-script = "true"
-
-`
