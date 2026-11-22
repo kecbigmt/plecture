@@ -21,6 +21,7 @@ const (
 	RuleStaticcheckDirective Rule = "staticcheck-directive"
 	RuleStandaloneNolint     Rule = "standalone-nolint"
 	RuleForeignNolint        Rule = "foreign-nolint"
+	RuleNoncanonicalNolint   Rule = "noncanonical-nolint"
 )
 
 func (r Rule) Fix() string {
@@ -29,6 +30,8 @@ func (r Rule) Fix() string {
 		return "U1000 takes no exception: delete the unused code, or add the build configuration that uses it to the matrix in scripts/check-go-unused.sh"
 	case RuleStandaloneNolint:
 		return "a //nolint on its own line excuses the whole declaration or file below it: move it to the end of the one line it excuses, as //nolint:errcheck // <reason>"
+	case RuleNoncanonicalNolint:
+		return "golangci-lint honors this spelling but nolintlint never checks it for a reason or staleness: write it exactly as //nolint:errcheck // <reason>"
 	case RuleForeignNolint:
 		return "errcheck is the only linter golangci-lint runs here, so a //nolint for any other linter, or for none, is never reported stale: name errcheck alone, or remove the directive"
 	}
@@ -94,10 +97,16 @@ func classify(comment string, trailsCode bool) (Rule, bool) {
 	if !namesOnlyErrcheck(text) {
 		return RuleForeignNolint, true
 	}
+	if !canonicalNolint.MatchString(comment) {
+		return RuleNoncanonicalNolint, true
+	}
 	return "", false
 }
 
-var nolintPattern = regexp.MustCompile(`^nolint( |:|$)`)
+var (
+	nolintPattern   = regexp.MustCompile(`^nolint( |:|$)`)
+	canonicalNolint = regexp.MustCompile(`^//nolint:errcheck( |$)`)
+)
 
 func namesOnlyErrcheck(text string) bool {
 	list, ok := strings.CutPrefix(text, "nolint:")

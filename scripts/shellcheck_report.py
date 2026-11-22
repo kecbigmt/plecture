@@ -28,7 +28,7 @@ ARGS = [
     "--format=json1",
 ]
 SHEBANG = re.compile(r"^#!\s*\S*/(?:env\s+(?:-\S+\s+)*)?(?:ba|da|k)?sh(?:\s|$)")
-DIRECTIVE = re.compile(r"#[ \t]*shellcheck\s+(?P<body>.*)$")
+DIRECTIVE = re.compile(r"#[ \t]*shellcheck\s")
 CODE = re.compile(r"^SC\d{4}$")
 EXCEPTION_SYNTAX = "# shellcheck disable=SCxxxx # <reason>"
 
@@ -89,25 +89,31 @@ class Shellcheck:
         return [(f"SC{c['code']}", c["line"]) for c in self.comments(lines)]
 
 
-def disabled_codes(line):
-    """Returns (codes, reason, start) for a disable directive, or None.
+def candidates_in(line):
+    """Yields (codes, reason, start, key) for each directive-shaped disable.
 
-    A candidate may follow a command on the same line, as shellcheck honors
-    one after `;`; whether it is a directive at all is left to shellcheck's
-    own parser (see parsed_directive_lines).
+    Every occurrence counts, not only the first: one inside a quoted string
+    can precede the real directive on the same line. Whether an occurrence
+    is a directive at all is left to shellcheck's own parser (see
+    parsed_directives).
     """
-    m = DIRECTIVE.search(line)
-    if not m:
-        return None
-    body, _, reason = m.group("body").partition("#")
-    codes = []
-    for item in body.split():
-        key, _, value = item.partition("=")
-        if key == "disable":
-            codes.extend(c for c in value.split(",") if c)
-    if not codes:
-        return None
-    return codes, reason.strip(), m.start()
+    for m in DIRECTIVE.finditer(line):
+        body, _, reason = line[m.end():].partition("#")
+        codes, key = [], None
+        offset = m.end()
+        for item in body.split(" "):
+            name, _, value = item.strip().partition("=")
+            if name == "disable":
+                key = key if key is not None else line.index("disable=", offset)
+                codes.extend(c for c in value.split(",") if c)
+            offset += len(item) + 1
+        if codes:
+            yield codes, reason.strip(), m.start(), key
+
+
+def with_key(line, key, word):
+    """Respells the directive key at line[key:] in place, keeping every column."""
+    return line[:key] + word + line[key + len(word):]
 
 
 def replace_directive(line, start, directive):
@@ -121,15 +127,44 @@ def precedes_first_command(lines, index, start):
     )
 
 
-def parsed_directive_lines(sc, lines, candidates):
-    """Returns the candidate indexes shellcheck parses as directives."""
+def parsed_directives(sc, lines, candidates):
+    """Returns the (index, candidate) pairs shellcheck parses as directives.
+
+    Respelling `disable` as the unknown key `disablx` keeps every quote and
+    column in place, and shellcheck reports SC1107 only where it parsed a
+    directive.
+    """
     unknown = "SC1107"
-    probe = list(lines)
-    for index, (_, _, start) in candidates.items():
-        probe[index] = replace_directive(lines[index], start, "# shellcheck plecture-probe=1")
     before = {line for code, line in sc.findings(lines) if code == unknown}
-    after = {line for code, line in sc.findings(probe) if code == unknown}
-    return {index for index in candidates if index + 1 in after - before}
+    parsed = []
+    for round_ in range(max(len(c) for c in candidates.values())):
+        probe = list(lines)
+        probed = {}
+        for index, found in candidates.items():
+            if round_ < len(found):
+                probe[index] = with_key(lines[index], found[round_][3], "disablx")
+                probed[index] = found[round_]
+        after = {line for code, line in sc.findings(probe) if code == unknown}
+        parsed += [(i, c) for i, c in probed.items() if i + 1 in after - before]
+    return sorted(parsed, key=lambda p: (p[0], p[1][2]))
+
+
+def unattributed_lines(sc, lines, candidates, parsed):
+    """Returns lines of findings some directive hides that none of parsed explains."""
+
+    def counts(respelled):
+        probe = list(lines)
+        for index, key in respelled:
+            probe[index] = with_key(probe[index], key, "disablx")
+        found = {}
+        for finding in sc.findings(probe):
+            if finding[0] != "SC1107":
+                found[finding] = found.get(finding, 0) + 1
+        return found
+
+    explained = counts([(i, c[3]) for i, c in parsed])
+    everything = counts([(i, c[3]) for i, found in candidates.items() for c in found])
+    return sorted({line for (code, line), n in everything.items() if n > explained.get((code, line), 0)})
 
 
 def live_codes(sc, lines, index, start, codes):
@@ -183,12 +218,13 @@ def covers_more_than_one_line(sc, lines, index, start):
 
 def exception_problems(sc, lines):
     """Returns (line, code, message) for each rejected exception in lines."""
-    candidates = {i: p for i, p in enumerate(map(disabled_codes, lines)) if p}
+    candidates = {i: list(candidates_in(line)) for i, line in enumerate(lines)}
+    candidates = {i: found for i, found in candidates.items() if found}
     if not candidates:
         return []
     problems = []
-    for index in sorted(parsed_directive_lines(sc, lines, candidates)):
-        codes, reason, start = candidates[index]
+    parsed = parsed_directives(sc, lines, candidates)
+    for index, (codes, reason, start, _) in parsed:
         specific = [c for c in codes if CODE.match(c)]
         code = int(specific[0][2:]) if specific else 0
 
@@ -214,6 +250,10 @@ def exception_problems(sc, lines):
         stale = sorted(set(specific) - live_codes(sc, lines, index, start, specific))
         if stale:
             problem(f"exception for {', '.join(stale)} suppresses nothing; remove it")
+    for line in unattributed_lines(sc, lines, candidates, parsed):
+        problems.append(
+            (line, 0, f"a finding here is hidden by a directive this check cannot validate; write it as {EXCEPTION_SYNTAX}")
+        )
     return problems
 
 

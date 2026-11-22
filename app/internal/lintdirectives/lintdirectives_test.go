@@ -126,13 +126,34 @@ func f() {
 			want: []Finding{{Line: 4, Rule: RuleForeignNolint}},
 		},
 		{
-			name: "a trailing errcheck exception is accepted however its names are spaced or cased",
+			name: "a trailing errcheck exception spelled other than //nolint:errcheck is rejected",
 			src: `package p
 
 func f() {
 	g() //nolint: ErrCheck // best-effort cleanup
 }
 `,
+			want: []Finding{{Line: 4, Rule: RuleNoncanonicalNolint}},
+		},
+		{
+			name: "a trailing slash-prefixed errcheck exception is rejected",
+			src: `package p
+
+func f() {
+	g() ///nolint:errcheck
+}
+`,
+			want: []Finding{{Line: 4, Rule: RuleNoncanonicalNolint}},
+		},
+		{
+			name: "a trailing space-prefixed errcheck exception is rejected",
+			src: `package p
+
+func f() {
+	g() // nolint:errcheck // best-effort cleanup
+}
+`,
+			want: []Finding{{Line: 4, Rule: RuleNoncanonicalNolint}},
 		},
 		{
 			name: "a trailing nolint:all is rejected",

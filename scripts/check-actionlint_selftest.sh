@@ -122,3 +122,15 @@ workflow <<'EOF'
 EOF
 expect_fail_naming "a run-script directive after a command on the same line is validated too" \
   "exception has no reason" "exception covers"
+
+workflow <<'EOF'
+      - run: |
+          echo start; echo "# shellcheck disable=SC1000"; # shellcheck disable=SC2046
+          f() {
+            echo $(ls)
+            echo $(pwd)
+          }
+          f
+EOF
+expect_fail_naming "a run-script quoted directive before the real one does not hide it" \
+  "exception has no reason" "exception covers"

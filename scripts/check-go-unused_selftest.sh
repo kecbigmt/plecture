@@ -111,3 +111,16 @@ func cleanup() {
 func init() { cleanup() }
 EOF
 expect_fail_naming "a slash-prefixed nolint over a function fails" "mod/dead.go:5: standalone-nolint"
+
+cat > "$fixture/mod/dead.go" <<'EOF'
+package main
+
+import "os"
+
+func cleanup() {
+	os.Remove("one") ///nolint:errcheck
+}
+
+func init() { cleanup() }
+EOF
+expect_fail_naming "a trailing errcheck exception in a spelling nolintlint never checks fails" "mod/dead.go:6: noncanonical-nolint"

@@ -175,3 +175,41 @@ f
 EOF
 expect_fail_naming "a directive after a command on the same line is validated too" \
   "bin/tool:2: exception has no reason" "bin/tool:2: exception covers"
+
+script bin/tool <<'EOF'
+echo start; echo "# shellcheck disable=SC1000"; # shellcheck disable=SC2046
+f() {
+  echo $(ls)
+  echo $(pwd)
+}
+f
+EOF
+expect_fail_naming "a quoted directive before the real one on the same line does not hide it" \
+  "bin/tool:2: exception has no reason" "bin/tool:2: exception covers"
+
+# The attribution backstop has no fixture that reaches it through the real
+# parser probe, so the probe is replaced to find nothing.
+script bin/tool <<'EOF'
+echo start
+# shellcheck disable=SC2046 # each word is a separate argument on purpose
+echo $(ls)
+EOF
+git -C "$fixture" add -A
+# shellcheck source=lint-tools.sh
+. "$root/scripts/lint-tools.sh"
+if (cd "$fixture" && python3 -c 'import sys
+sys.path.insert(0, sys.argv[1])
+import shellcheck_report as report
+report.parsed_directives = lambda *args: []
+sys.argv = ["shellcheck_report.py", sys.argv[2]]
+sys.exit(report.main())' "$root/scripts" "$(lint_tool shellcheck)") > "$log" 2>&1; then
+  echo "FAIL: a suppression no validated directive explains passed" >&2
+  cat "$log" >&2
+  exit 1
+fi
+if ! grep -qF "bin/tool:4: a finding here is hidden by a directive this check cannot validate" "$log"; then
+  echo "FAIL: the unexplained suppression is not named" >&2
+  cat "$log" >&2
+  exit 1
+fi
+echo "ok: a suppression no validated directive explains fails"
