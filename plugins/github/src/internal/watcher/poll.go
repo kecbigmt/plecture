@@ -437,7 +437,7 @@ func (p *Poller) ghAPI(cacheKey, apiPath string, jqArgs ...string) ([]byte, bool
 		if p.TokenFunc != nil {
 			token, err := p.TokenFunc()
 			if err != nil {
-				p.Logger.Warn("github app token mint failed", "path", apiPath, "error", err)
+				p.Logger.Warn("github app token retrieval failed", "path", apiPath, "error", err)
 				return nil, false
 			}
 			cmd.Env = append(os.Environ(), "GH_TOKEN="+token)

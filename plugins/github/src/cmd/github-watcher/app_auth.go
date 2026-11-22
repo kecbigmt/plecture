@@ -116,8 +116,7 @@ func appAuthTokenFunc(dataDir string) (func() (string, error), error) {
 	return cfg.tokenFunc()
 }
 
-// Key-path auth mints once before polling so a rejected mint fails startup.
-// Command auth calls its source only for requests, including a 401 retry.
+// Both auth modes obtain one token before polling so a broken source fails startup.
 func configureAppAuth(poller *watcher.Poller, dataDir string) error {
 	cfg, err := appAuthFromEnv(dataDir)
 	if err != nil {

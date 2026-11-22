@@ -302,10 +302,11 @@ failure output is safe to surface as-is.
 
 `official.github.worktree` can use the same App identity for raw git network
 I/O and for fetching pull request/issue metadata (head branch, title,
-state). A session sets the same task-level inputs `gh_app_guard` accepts:
-`app_id`, optional `installation_id`, optional `owner`/`repo`, and
-`private_key_path`. Setup reads those values from `session.inputs` and runs
-git with process-local config that clears ambient credential helpers, installs
+state). A session supplies `app_id`, `private_key_path`, and optionally
+`installation_id` or `owner`/`repo` as task-level inputs. Unlike
+`gh_app_guard`, worktree does not accept `token_command`; its process must be
+able to read the private key. Setup reads those values from `session.inputs`
+and runs git with process-local config that clears ambient credential helpers, installs
 a scoped `https://github.com` helper backed by `gh-app-token credential`, and
 rewrites GitHub SSH remote URLs to HTTPS for that git process. The metadata
 fetch authenticates the same way, but directly over HTTP rather than through
@@ -319,6 +320,13 @@ each minting or reusing independently if the other's call never happens (a
 metadata-only run before any git operation, or vice versa). With those inputs
 absent, worktree acquisition uses the host's ordinary git credential
 configuration and gh-api client unchanged.
+
+If the private key is kept away from the session user, worktree cannot use
+its App auth path. Omitting its App inputs makes git use ambient host
+credentials and makes metadata use ambient `gh auth`, unless the selected
+`github-watcher gh-api` has separate App auth. A command-only App deployment
+therefore needs another credential source for worktree until worktree supports
+`token_command`.
 
 ```bash
 plect up https://github.com/acme/widgets/issues/42 --inputs '{
@@ -398,7 +406,7 @@ below to that same App identity, and never wires `gh_guard`:
 | Call site | Wire this | Not this |
 |---|---|---|
 | Session `gh` calls (agent runtime) | `gh_app_guard`, composed as the runtime's `path_prepend` input | `gh_guard` — operator-auth only, see above |
-| `official.github.worktree` git operations and metadata fetch | The same `app_id`/`private_key_path` (etc.) session inputs, passed at `plect up` time | Leaving those inputs unset: git operations fall back to the host's ambient git credentials, and the metadata fetch falls back to ambient `gh auth` (or the watcher's own App auth, if that's separately configured) |
+| `official.github.worktree` git operations and metadata fetch | `app_id` and `private_key_path` (plus optional installation or repository inputs), passed at `plect up` time; the worktree process must be able to read the key | `token_command` is unsupported. Without worktree App inputs, git falls back to ambient host credentials and metadata to ambient `gh auth` (or the watcher's App auth, if configured) |
 | `github-watcher serve` and its `gh-api` helper (resident, cross-session) | The `GITHUB_WATCHER_APP_*` deployment env vars | Ambient `gh auth login` on the host running `plect serve` |
 
 With all three wired, no `gh auth login` needs to run anywhere in the

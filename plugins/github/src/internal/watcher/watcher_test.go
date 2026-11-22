@@ -739,16 +739,16 @@ func TestPoller_TokenFuncFailureFailsFetchWithoutCallingGh(t *testing.T) {
 		GhBin:  gh,
 		Guard:  ratebudget.NewGuard(t.TempDir()),
 		TokenFunc: func() (string, error) {
-			return "", fmt.Errorf("mint installation token: unauthorized")
+			return "", fmt.Errorf("obtain installation token: unavailable")
 		},
 	}
 	p.Tick()
 
 	if _, err := os.Stat(callLog); !os.IsNotExist(err) {
-		t.Fatalf("gh must not be invoked when the token mint fails, stat err=%v", err)
+		t.Fatalf("gh must not be invoked when the token source fails, stat err=%v", err)
 	}
-	if !bytes.Contains(logs.Bytes(), []byte("github app token mint failed")) {
-		t.Errorf("expected a warning about the failed mint, got log output: %q", logs.String())
+	if !bytes.Contains(logs.Bytes(), []byte("github app token retrieval failed")) {
+		t.Errorf("expected a warning about the failed token source, got log output: %q", logs.String())
 	}
 }
 
