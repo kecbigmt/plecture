@@ -89,7 +89,7 @@ jobs:
           cache: false
       - name: Check gofmt
         run: |
-          unformatted=$(gofmt -l $(find . -name '*.go' -not -path './app/internal/webui/*'))
+          unformatted=$(find . -name '*.go' -not -path './app/internal/webui/*' -exec gofmt -l {} +)
           if [ -n "$unformatted" ]; then
             echo "The following files are not gofmt'd:"
             echo "$unformatted"
@@ -120,8 +120,8 @@ jobs:
           path: |
             ~/go/pkg/mod
             ~/.cache/go-build
-          key: go-${{ runner.os }}-${{ github.job }}-${{ matrix.module }}-${{ hashFiles('go.work.sum', '**/go.sum') }}
-          restore-keys: go-${{ runner.os }}-${{ github.job }}-${{ matrix.module }}-
+          key: go-${{ runner.os }}-${{ github.job }}-${{ hashFiles('go.work.sum', '**/go.sum') }}
+          restore-keys: go-${{ runner.os }}-${{ github.job }}-
       - name: go build ./app/... from a fresh checkout, no Node installed
         run: go build ./...
         working-directory: app
@@ -226,8 +226,8 @@ jobs:
           path: |
             ~/go/pkg/mod
             ~/.cache/go-build
-          key: go-${{ runner.os }}-${{ github.job }}-${{ matrix.module }}-${{ hashFiles('go.work.sum', '**/go.sum') }}
-          restore-keys: go-${{ runner.os }}-${{ github.job }}-${{ matrix.module }}-
+          key: go-${{ runner.os }}-${{ github.job }}-${{ hashFiles('go.work.sum', '**/go.sum') }}
+          restore-keys: go-${{ runner.os }}-${{ github.job }}-
       - uses: actions/setup-python@v5
         with:
           python-version: ${{ env.PYTHON_VERSION }}
@@ -309,8 +309,8 @@ jobs:
           path: |
             ~/go/pkg/mod
             ~/.cache/go-build
-          key: go-${{ runner.os }}-${{ github.job }}-${{ matrix.module }}-${{ hashFiles('go.work.sum', '**/go.sum') }}
-          restore-keys: go-${{ runner.os }}-${{ github.job }}-${{ matrix.module }}-
+          key: go-${{ runner.os }}-${{ github.job }}-${{ hashFiles('go.work.sum', '**/go.sum') }}
+          restore-keys: go-${{ runner.os }}-${{ github.job }}-
       - name: Regenerate Go types and check for drift
         run: |
           go tool oapi-codegen -config oapi-codegen.yaml ../../../web/api/generated/openapi.yaml
@@ -442,8 +442,8 @@ jobs:
           path: |
             ~/go/pkg/mod
             ~/.cache/go-build
-          key: go-${{ runner.os }}-${{ github.job }}-${{ matrix.module }}-${{ hashFiles('go.work.sum', '**/go.sum') }}
-          restore-keys: go-${{ runner.os }}-${{ github.job }}-${{ matrix.module }}-
+          key: go-${{ runner.os }}-${{ github.job }}-${{ hashFiles('go.work.sum', '**/go.sum') }}
+          restore-keys: go-${{ runner.os }}-${{ github.job }}-
       - name: manifest
         run: go test -count=1 ./db -run '^TestMigrationsMatchTheirManifest$|^TestManifest_'
         working-directory: app
@@ -481,8 +481,8 @@ jobs:
           path: |
             ~/go/pkg/mod
             ~/Library/Caches/go-build
-          key: go-${{ runner.os }}-${{ github.job }}-${{ matrix.module }}-${{ hashFiles('go.work.sum', '**/go.sum') }}
-          restore-keys: go-${{ runner.os }}-${{ github.job }}-${{ matrix.module }}-
+          key: go-${{ runner.os }}-${{ github.job }}-${{ hashFiles('go.work.sum', '**/go.sum') }}
+          restore-keys: go-${{ runner.os }}-${{ github.job }}-
       # release.yml's darwin-arm64 build job runs this same `go test ./...`
       # against the app module before packaging.
       - name: go test
@@ -542,8 +542,8 @@ jobs:
           path: |
             ~/go/pkg/mod
             ~/.cache/go-build
-          key: go-${{ runner.os }}-${{ github.job }}-${{ matrix.module }}-${{ hashFiles('go.work.sum', '**/go.sum') }}
-          restore-keys: go-${{ runner.os }}-${{ github.job }}-${{ matrix.module }}-
+          key: go-${{ runner.os }}-${{ github.job }}-${{ hashFiles('go.work.sum', '**/go.sum') }}
+          restore-keys: go-${{ runner.os }}-${{ github.job }}-
       # The integration-tagged tests (app/internal/service, app/internal/webui)
       # spin up real git repos and worktrees and, for the shipped
       # worktree-effect cases, build the plect/github-worktree/
@@ -589,8 +589,8 @@ jobs:
           path: |
             ~/go/pkg/mod
             ~/.cache/go-build
-          key: go-${{ runner.os }}-${{ github.job }}-${{ matrix.module }}-${{ hashFiles('go.work.sum', '**/go.sum') }}
-          restore-keys: go-${{ runner.os }}-${{ github.job }}-${{ matrix.module }}-
+          key: go-${{ runner.os }}-${{ github.job }}-${{ hashFiles('go.work.sum', '**/go.sum') }}
+          restore-keys: go-${{ runner.os }}-${{ github.job }}-
       - name: Run README build commands
         run: |
           go build ./app/...
