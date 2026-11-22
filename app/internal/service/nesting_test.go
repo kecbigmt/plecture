@@ -174,23 +174,6 @@ func TestEvaluateHealth_NestedProbeRunsWithTheEnclosingBindEnv(t *testing.T) {
 	}
 }
 
-// gateSchema binds the inner task's two outputs and gives the composed task
-// a contract to declare conditions against.
-const gateSchema = `
-[outputs.bind]
-pid = { from = "inner.outputs.pid" }
-state = { from = "inner.outputs.state" }
-
-[outputs_schema]
-type = "object"
-
-[outputs_schema.properties.pid]
-type = "string"
-
-[outputs_schema.properties.state]
-type = "string"
-`
-
 // TestCapture_NestedTerminalRendersAgainstTheDeclaringLayer covers the last
 // surface that must read a layer's own contract: the verbs belong to the
 // layer that declared them and name that layer's keys, which the composed

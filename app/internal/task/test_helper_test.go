@@ -7,7 +7,6 @@ import (
 	"github.com/kecbigmt/plecture/app/internal/config"
 	"github.com/kecbigmt/plecture/app/internal/effect"
 	"github.com/kecbigmt/plecture/app/internal/lang"
-	"github.com/kecbigmt/plecture/app/internal/plugins"
 )
 
 // taskStub is a terse spec for one effect declaration used by buildPlan.
@@ -111,10 +110,6 @@ func tryBuildPlan(defs []taskStub, nodes []nodeStub) (*Plan, error) {
 	}
 	wf := config.WorkflowFile{ID: "test", Nodes: wfNodes}
 	return CompileWorkflow(wf, defMap)
-}
-
-func mustMount(id, dir string, executables ...plugins.Executable) plugins.Mounted {
-	return plugins.Mounted{ID: id, Dir: dir, Manifest: plugins.Manifest{Executables: executables}}
 }
 
 // shellStub is one shell action carrying a literal script, or nil for a
@@ -226,23 +221,9 @@ func objectSchema(props map[string]any, required ...string) map[string]any {
 	return schema
 }
 
-// providerExec builds a provider hook whose subject is the hook's lifecycle
-// rather than its value forms: one literal script, with the values it needs
-// as positional arguments.
-func providerExec(script string, args ...*lang.Value) *lang.Action {
-	argv := []*lang.Value{
-		{Form: lang.FormLiteral, Literal: "-c"},
-		{Form: lang.FormLiteral, Literal: script},
-		{Form: lang.FormLiteral, Literal: "provider"},
-	}
-	return &lang.Action{Type: lang.ActionExec, Command: "sh", Args: append(argv, args...)}
-}
-
 func literalValue(v string) *lang.Value { return &lang.Value{Form: lang.FormLiteral, Literal: v} }
 
 func fromValue(path string) *lang.Value { return &lang.Value{Form: lang.FormFrom, From: path} }
-
-func exprValue(src string) *lang.Value { return &lang.Value{Form: lang.FormExpr, Expr: src} }
 
 func fromValueOr(path, fallback string) *lang.Value {
 	return &lang.Value{Form: lang.FormFrom, From: path, Default: fallback, HasDefault: true}

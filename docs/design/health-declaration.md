@@ -188,14 +188,17 @@ is expected.
 
 ## Composition across instances
 
-A session's health is composed over every run-scoped node its current plan
-declares — the frozen workflow's node set, not only the produced subset:
+A session's health is composed over every node its current plan declares,
+in both scopes — the frozen workflow's node set, not only the produced or the
+run-scoped subset:
 
 - **`alive` composes by AND over the current plan.** Liveness is a chain of
-  necessary resources. A produced node runs its declared probe in the
-  ordinary way; a failing probe, a failed node, or a node with no task state
-  at all (missing) makes the session unhealthy, reported with the failing or
-  absent node named. A cleaned node is neither failed nor missing and
+  necessary resources, and a session-scoped node such as a working directory
+  is as necessary as a run-scoped one. A produced node runs its declared
+  probe in the ordinary way; a failing probe, a failed node, or a node with
+  no task state at all (missing) makes the session unhealthy, reported with
+  the failing or absent node named. A failed node whose `alive` is a `noop`
+  has no probe to run, so its failure reaches the report this way alone. A cleaned node is neither failed nor missing and
   contributes nothing — a session brought down deliberately is not unhealthy
   for it. A node the current plan no longer declares (a stale task entry)
   likewise contributes nothing, whatever its own task state says.
@@ -209,7 +212,9 @@ declares — the frozen workflow's node set, not only the produced subset:
 This composition is evaluated only for a session with at least one produced
 run-scoped node. A session with none — either it was never brought up, or its
 current-plan run-scoped nodes are all cleaned after a deliberate teardown —
-has no health verdict.
+has no health verdict, whatever its session-scoped nodes report. A lost
+session-scoped node of such a session is found by the next `plect up`, which
+verifies `alive` before reusing a produced node.
 
 An instance declaring no `[health]` contributes nothing to either composition:
 it is vacuous in the AND and casts no vote in the OR. So does one whose
