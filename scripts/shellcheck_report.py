@@ -25,7 +25,8 @@ ARGS = [
     "--severity=warning",
     "--format=json1",
 ]
-SHEBANG = re.compile(r"^#!\s*\S*/(?:env\s+(?:-\S+\s+)*)?(?:ba|da|k)?sh(?:\s|$)")
+SHELL_EXTENSIONS = (".sh", ".bash", ".dash", ".ksh")
+UNSUPPORTED_SHELL = {1008, 1071}
 DIRECTIVE = re.compile(r"#[ \t]*shellcheck\s")
 SUPPRESSION = "suppression directive: delete it and fix the finding it hides"
 NO_EXCEPTION = "This check takes no exception; if the finding cannot be fixed at its cause, stop and ask the owner."
@@ -36,19 +37,29 @@ def tracked_files():
     return sorted(p for p in out.split("\0") if p)
 
 
-def shell_scripts(paths):
-    scripts = []
+def shell_scripts(binary, paths):
+    """Returns the tracked files shellcheck analyzes as shell scripts.
+
+    Any file with a shebang is a candidate, and shellcheck itself rules out
+    the ones whose interpreter it does not support (SC1008, SC1071), so the
+    set of shells never depends on a list kept here.
+    """
+    by_extension, by_shebang = [], []
     for path in paths:
         if os.path.islink(path) or not os.path.isfile(path):
             continue
-        if path.endswith((".sh", ".bash")):
-            scripts.append(path)
+        if path.endswith(SHELL_EXTENSIONS):
+            by_extension.append(path)
             continue
         with open(path, "rb") as f:
-            first = f.readline(256)
-        if SHEBANG.match(first.decode("utf-8", "replace")):
-            scripts.append(path)
-    return scripts
+            if f.read(2) == b"#!":
+                by_shebang.append(path)
+    unsupported = set()
+    if by_shebang:
+        for c in run_shellcheck(binary, [*ARGS, *by_shebang]):
+            if c["code"] in UNSUPPORTED_SHELL and c["line"] == 1:
+                unsupported.add(c["file"])
+    return sorted(by_extension + [p for p in by_shebang if p not in unsupported])
 
 
 def run_shellcheck(binary, args, stdin=None):
@@ -155,7 +166,7 @@ def main():
     tracked = tracked_files()
     problems = [f"{p}:1: shellcheck configuration file: {SUPPRESSION}" for p in tracked
                 if os.path.basename(p) == ".shellcheckrc"]
-    scripts = shell_scripts(tracked)
+    scripts = shell_scripts(binary, tracked)
     findings = run_shellcheck(binary, [*ARGS, *scripts]) if scripts else []
     for c in findings:
         print(

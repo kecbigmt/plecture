@@ -72,6 +72,18 @@ EOF
 expect_fail_naming "a warning in an extension-less script is found by its shebang" "bin/tool:2:6: SC2046"
 
 script bin/tool <<'EOF'
+echo "$1"
+EOF
+printf '#!/bin/busybox sh\necho $(ls)\n' > "$fixture/bin/busybox-tool"
+expect_fail_naming "a busybox script is found by its shebang" "bin/busybox-tool:2:6: SC2046"
+printf '#!/bin/ash\necho "$1"\n' > "$fixture/bin/busybox-tool"
+expect_fail_naming "an ash script is found by its shebang" "bin/busybox-tool:1:1: SC2187"
+rm "$fixture/bin/busybox-tool"
+printf '#!/usr/bin/env python3\nprint($(1))\n' > "$fixture/bin/py-tool"
+expect_pass "a script in a shell shellcheck does not support is left alone"
+rm "$fixture/bin/py-tool"
+
+script bin/tool <<'EOF'
 echo start
 # shellcheck disable=SC2046 # each word is a separate argument on purpose
 echo $(ls)
