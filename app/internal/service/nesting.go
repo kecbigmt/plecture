@@ -120,16 +120,6 @@ func probeTargets(instance string, def config.TaskDefinition, st *contract.TaskS
 	return targets
 }
 
-// instanceOutputs is the output contract a consumer evaluates against: the
-// composed public contract for a nested task, the task's own outputs
-// otherwise.
-func instanceOutputs(st *contract.TaskState, comp *instanceComposition) map[string]any {
-	if comp == nil {
-		return st.Outputs
-	}
-	return comp.Views[0]
-}
-
 // terminalLayerEnv is the process environment the terminal-declaring layer's
 // operation commands run with: what the layers outside it inject. Empty for a
 // plain task and for a chain whose outermost layer declares the endpoint.
