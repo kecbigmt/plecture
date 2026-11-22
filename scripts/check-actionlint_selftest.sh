@@ -110,3 +110,15 @@ workflow <<'EOF'
           esac
 EOF
 expect_fail_naming "a run-script exception over a case block fails" "exception covers"
+
+workflow <<'EOF'
+      - run: |
+          echo start; # shellcheck disable=SC2046
+          f() {
+            echo $(ls)
+            echo $(pwd)
+          }
+          f
+EOF
+expect_fail_naming "a run-script directive after a command on the same line is validated too" \
+  "exception has no reason" "exception covers"

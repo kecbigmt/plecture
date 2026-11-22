@@ -11,11 +11,10 @@ import (
 	"fmt"
 	"go/scanner"
 	"go/token"
+	"regexp"
 	"strings"
 )
 
-// Rule names one way a directive escapes per-line, staleness-checked
-// exceptions.
 type Rule string
 
 const (
@@ -24,7 +23,6 @@ const (
 	RuleForeignNolint        Rule = "foreign-nolint"
 )
 
-// Fix states the root-cause fix for a finding of this rule.
 func (r Rule) Fix() string {
 	switch r {
 	case RuleStaticcheckDirective:
@@ -37,7 +35,6 @@ func (r Rule) Fix() string {
 	return ""
 }
 
-// Finding is one rejected directive.
 type Finding struct {
 	Path string
 	Line int
@@ -80,37 +77,36 @@ func Check(path string, src []byte) ([]Finding, error) {
 	return findings, nil
 }
 
+// classify parses exactly as the linters do (staticcheck's exact //lint:
+// prefix, golangci-lint's stripping of every leading slash and space): any
+// narrower parse lets an honored directive escape this guard.
 func classify(comment string, trailsCode bool) (Rule, bool) {
-	body, ok := strings.CutPrefix(comment, "//")
-	if !ok {
-		return "", false
-	}
-	if strings.HasPrefix(body, "lint:") {
+	if strings.HasPrefix(comment, "//lint:") {
 		return RuleStaticcheckDirective, true
 	}
-	rest, ok := strings.CutPrefix(strings.TrimLeft(body, " \t"), "nolint")
-	if !ok || (rest != "" && rest[0] != ':' && rest[0] != ' ' && rest[0] != '\t') {
+	text := strings.TrimLeft(comment, "/ ")
+	if !nolintPattern.MatchString(text) {
 		return "", false
 	}
 	if !trailsCode {
 		return RuleStandaloneNolint, true
 	}
-	if !namesOnlyErrcheck(rest) {
+	if !namesOnlyErrcheck(text) {
 		return RuleForeignNolint, true
 	}
 	return "", false
 }
 
-func namesOnlyErrcheck(rest string) bool {
-	list, ok := strings.CutPrefix(rest, ":")
+var nolintPattern = regexp.MustCompile(`^nolint( |:|$)`)
+
+func namesOnlyErrcheck(text string) bool {
+	list, ok := strings.CutPrefix(text, "nolint:")
 	if !ok {
 		return false
 	}
-	if i := strings.IndexAny(list, " \t"); i >= 0 {
-		list = list[:i]
-	}
+	list, _, _ = strings.Cut(list, "//")
 	for _, name := range strings.Split(list, ",") {
-		if name != "errcheck" {
+		if strings.ToLower(strings.TrimSpace(name)) != "errcheck" {
 			return false
 		}
 	}

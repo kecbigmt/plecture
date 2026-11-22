@@ -164,3 +164,14 @@ f()
 f
 EOF
 expect_fail_naming "an exception over a function whose brace opens on the next line fails" "bin/tool:3: exception covers"
+
+script bin/tool <<'EOF'
+echo start; # shellcheck disable=SC2046
+f() {
+  echo $(ls)
+  echo $(pwd)
+}
+f
+EOF
+expect_fail_naming "a directive after a command on the same line is validated too" \
+  "bin/tool:2: exception has no reason" "bin/tool:2: exception covers"

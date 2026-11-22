@@ -96,3 +96,18 @@ package main
 func onlyIntegrationUses() {}
 EOF
 expect_fail_naming "a staticcheck ignore over dead code fails" "mod/dead.go:3: staticcheck-directive"
+
+cat > "$fixture/mod/dead.go" <<'EOF'
+package main
+
+import "os"
+
+// /nolint:errcheck
+func cleanup() {
+	os.Remove("one")
+	os.Remove("two")
+}
+
+func init() { cleanup() }
+EOF
+expect_fail_naming "a slash-prefixed nolint over a function fails" "mod/dead.go:5: standalone-nolint"

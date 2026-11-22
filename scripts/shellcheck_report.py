@@ -28,7 +28,7 @@ ARGS = [
     "--format=json1",
 ]
 SHEBANG = re.compile(r"^#!\s*\S*/(?:env\s+(?:-\S+\s+)*)?(?:ba|da|k)?sh(?:\s|$)")
-DIRECTIVE = re.compile(r"^\s*#\s*shellcheck\s+(?P<body>.*)$")
+DIRECTIVE = re.compile(r"#[ \t]*shellcheck\s+(?P<body>.*)$")
 CODE = re.compile(r"^SC\d{4}$")
 EXCEPTION_SYNTAX = "# shellcheck disable=SCxxxx # <reason>"
 
@@ -90,8 +90,13 @@ class Shellcheck:
 
 
 def disabled_codes(line):
-    """Returns (codes, reason) for a disable directive, or None."""
-    m = DIRECTIVE.match(line)
+    """Returns (codes, reason, start) for a disable directive, or None.
+
+    A candidate may follow a command on the same line, as shellcheck honors
+    one after `;`; whether it is a directive at all is left to shellcheck's
+    own parser (see parsed_directive_lines).
+    """
+    m = DIRECTIVE.search(line)
     if not m:
         return None
     body, _, reason = m.group("body").partition("#")
@@ -102,29 +107,32 @@ def disabled_codes(line):
             codes.extend(c for c in value.split(",") if c)
     if not codes:
         return None
-    return codes, reason.strip()
+    return codes, reason.strip(), m.start()
 
 
-def precedes_first_command(lines, index):
-    return all(not l.strip() or l.lstrip().startswith("#") for l in lines[:index])
+def replace_directive(line, start, directive):
+    """Swaps the directive at line[start:] for another, keeping the code before it."""
+    return f"{line[:start]}{directive}\n"
+
+
+def precedes_first_command(lines, index, start):
+    return not lines[index][:start].strip() and all(
+        not l.strip() or l.lstrip().startswith("#") for l in lines[:index]
+    )
 
 
 def parsed_directive_lines(sc, lines, candidates):
     """Returns the candidate indexes shellcheck parses as directives."""
     unknown = "SC1107"
     probe = list(lines)
-    for index in candidates:
-        probe[index] = f"{indent_of(lines[index])}# shellcheck plecture-probe=1\n"
+    for index, (_, _, start) in candidates.items():
+        probe[index] = replace_directive(lines[index], start, "# shellcheck plecture-probe=1")
     before = {line for code, line in sc.findings(lines) if code == unknown}
     after = {line for code, line in sc.findings(probe) if code == unknown}
     return {index for index in candidates if index + 1 in after - before}
 
 
-def indent_of(line):
-    return line[: len(line) - len(line.lstrip())]
-
-
-def live_codes(sc, lines, index, codes):
+def live_codes(sc, lines, index, start, codes):
     """Returns the codes the directive at lines[index] still suppresses."""
 
     def count(body):
@@ -134,7 +142,7 @@ def live_codes(sc, lines, index, codes):
         return found
 
     neutralized = list(lines)
-    neutralized[index] = "#\n"
+    neutralized[index] = replace_directive(lines[index], start, "#")
     before, after = count(lines), count(neutralized)
     return {c for c in codes if after.get(c, 0) > before.get(c, 0)}
 
@@ -143,7 +151,7 @@ CANARY_CODE = "SC2046"
 CANARY = "echo $(true)\n"
 
 
-def covers_more_than_one_line(sc, lines, index):
+def covers_more_than_one_line(sc, lines, index, start):
     """Reports whether the directive at lines[index] may reach past one line.
 
     A canary finding is placed on the line after the directive's command
@@ -167,8 +175,8 @@ def covers_more_than_one_line(sc, lines, index):
         probe.insert(command + 1, CANARY)
         return (CANARY_CODE, command + 2) in sc.findings(probe)
 
-    confined = canary_reported("#\n") and canary_reported(
-        f"{indent_of(lines[index])}# shellcheck disable={CANARY_CODE}\n"
+    confined = canary_reported(replace_directive(lines[index], start, "#")) and canary_reported(
+        replace_directive(lines[index], start, f"# shellcheck disable={CANARY_CODE}")
     )
     return not confined
 
@@ -180,7 +188,7 @@ def exception_problems(sc, lines):
         return []
     problems = []
     for index in sorted(parsed_directive_lines(sc, lines, candidates)):
-        codes, reason = candidates[index]
+        codes, reason, start = candidates[index]
         specific = [c for c in codes if CODE.match(c)]
         code = int(specific[0][2:]) if specific else 0
 
@@ -192,18 +200,18 @@ def exception_problems(sc, lines):
         unspecific = [c for c in codes if not CODE.match(c)]
         if unspecific:
             problem(f"exception names {', '.join(unspecific)}, not specific SCxxxx codes")
-        if precedes_first_command(lines, index):
+        if precedes_first_command(lines, index, start):
             problem(
                 "exception before the first command covers the whole file; "
                 "move it to the line before the one command it excuses"
             )
             continue
-        if covers_more_than_one_line(sc, lines, index):
+        if covers_more_than_one_line(sc, lines, index, start):
             problem(
                 "exception covers more than the one line after it (a function, block, case, "
                 "continued or heredoc command); move it right above the single line it excuses"
             )
-        stale = sorted(set(specific) - live_codes(sc, lines, index, specific))
+        stale = sorted(set(specific) - live_codes(sc, lines, index, start, specific))
         if stale:
             problem(f"exception for {', '.join(stale)} suppresses nothing; remove it")
     return problems

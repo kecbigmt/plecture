@@ -105,6 +105,50 @@ func f() {}
 			want: []Finding{{Line: 3, Rule: RuleStandaloneNolint}},
 		},
 		{
+			name: "a slash-prefixed nolint on its own line is still a directive",
+			src: `package p
+
+// /nolint:errcheck // whole function
+func f() {
+	g()
+}
+`,
+			want: []Finding{{Line: 3, Rule: RuleStandaloneNolint}},
+		},
+		{
+			name: "a trailing slash-prefixed nolint for another linter is rejected",
+			src: `package p
+
+func f() {
+	g() ///nolint:gosec // reviewed
+}
+`,
+			want: []Finding{{Line: 4, Rule: RuleForeignNolint}},
+		},
+		{
+			name: "a trailing errcheck exception is accepted however its names are spaced or cased",
+			src: `package p
+
+func f() {
+	g() //nolint: ErrCheck // best-effort cleanup
+}
+`,
+		},
+		{
+			name: "a trailing nolint:all is rejected",
+			src: `package p
+
+func f() {
+	g() //nolint:all // everything
+}
+`,
+			want: []Finding{{Line: 4, Rule: RuleForeignNolint}},
+		},
+		{
+			name: "a tab after the slashes is not a nolint directive",
+			src:  "package p\n\n//\tnolint:errcheck is prose here\nfunc f() {}\n",
+		},
+		{
 			name: "directive text inside a string literal is not a directive",
 			src:  "package p\n\nconst s = `\n//nolint:errcheck\n//lint:ignore U1000 x\n`\n",
 		},
