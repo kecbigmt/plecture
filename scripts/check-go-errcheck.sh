@@ -14,7 +14,7 @@ fi
 base_ref="$1"
 
 scripts_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-root="${GO_ERRCHECK_CHECK_ROOT:-$(cd "$scripts_dir/.." && pwd)}"
+root="${GO_ERRCHECK_CHECK_ROOT:-$(pwd)}"
 # shellcheck source=lint-tools.sh
 . "$scripts_dir/lint-tools.sh"
 cd "$root"

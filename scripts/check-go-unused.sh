@@ -6,7 +6,7 @@
 set -euo pipefail
 
 scripts_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-root="${GO_UNUSED_CHECK_ROOT:-$(cd "$scripts_dir/.." && pwd)}"
+root="${GO_UNUSED_CHECK_ROOT:-$(pwd)}"
 # shellcheck source=lint-tools.sh
 . "$scripts_dir/lint-tools.sh"
 cd "$root"
