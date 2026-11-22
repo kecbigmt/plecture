@@ -585,9 +585,8 @@ func TestEvaluateHealth_SessionScopedActivityProbeCastsNoVote(t *testing.T) {
 	}
 }
 
-// The session-scoped node's loss is only ever noticed by a later `up`, which
-// invalidates it and cleans its run-scoped dependent before its setup fails,
-// leaving an independent run-scoped node as the only produced one.
+// The independent guard is what keeps the session up after the aborted up;
+// without a produced run-scoped node there would be no verdict to check.
 func TestEvaluateHealth_AbortedUpAtSessionScopedNodeIsUnhealthyAndRepairable(t *testing.T) {
 	if _, err := exec.LookPath("bash"); err != nil {
 		t.Skip("bash not available")
