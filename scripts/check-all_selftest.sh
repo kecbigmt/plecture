@@ -135,11 +135,13 @@ recorded "aggregate ran" || die "a step whose if reads the head branch did not r
 git -C "$repo" checkout -q main
 echo "ok: the head branch reaches step conditions"
 
+git -C "$repo" config status.showUntrackedFiles no
 touch "$repo/uncommitted"
 run_check && die "check-all.sh passed with an uncommitted file"
 grep -q "FAILED: uncommitted changes" "$log" || die "the uncommitted-change refusal was not named"
 [ -s "$RECORD" ] && die "a step ran despite uncommitted changes"
 rm "$repo/uncommitted"
+git -C "$repo" config --unset status.showUntrackedFiles
 echo "ok: check-all.sh refuses to run against uncommitted changes"
 
 touch "$repo/seeded-defect"

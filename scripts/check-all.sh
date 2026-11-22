@@ -34,9 +34,10 @@ step() {
 
 # CI checks out the committed head, and the diff-scoped steps compare
 # commits, so an uncommitted change would be tested by some steps and
-# invisible to others.
-if [ -n "$(git status --porcelain)" ]; then
-  git status --short >&2
+# invisible to others. The override keeps a status.showUntrackedFiles=no
+# setting from hiding an untracked file.
+if [ -n "$(git -c status.showUntrackedFiles=normal status --porcelain)" ]; then
+  git -c status.showUntrackedFiles=normal status --short >&2
   fail "uncommitted changes; commit them so every step sees the head CI will run"
 fi
 
