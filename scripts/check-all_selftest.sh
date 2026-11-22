@@ -1,108 +1,152 @@
 #!/usr/bin/env bash
-# Exercises check-all.sh's own sequencing and failure-naming, not the
-# sub-checks' logic (each already has its own *_selftest.sh): a small
-# synthetic fixture, scanned via CHECK_ALL_ROOT, keeps this fast instead of
-# re-running the real repository's own go vet/go test through it.
+# Proves check-all.sh runs a workflow's required steps as CI would — job and
+# step conditions, matrices fed by job outputs, expression substitution,
+# exceptions — and stops naming the first failure. The fixture's own
+# ci.yml stands in for the real one, so the real repository's suites are
+# not re-run through it.
 set -euo pipefail
 
 root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 checker="$root/scripts/check-all.sh"
-go_version="$(go env GOVERSION | sed 's/^go//')"
 
 fixture=""
 trap 'rm -rf "$fixture"' EXIT
 fixture="$(mktemp -d)"
+repo="$fixture/repo"
+log="$fixture/out.log"
+export RECORD="$fixture/record"
 
-mkdir -p "$fixture/app" "$fixture/contracts/state" \
-  "$fixture/.claude/skills" "$fixture/.agents/skills"
+mkdir -p "$repo/.github/workflows" "$repo/mod-a" "$repo/mod-b" \
+  "$repo/.claude/skills" "$repo/.agents/skills"
+touch "$repo/mod-a/.keep" "$repo/mod-b/.keep"
+printf 'placeholder\n' >"$repo/CLAUDE.md"
+ln -s "CLAUDE.md" "$repo/AGENTS.md"
 
-cat > "$fixture/app/go.mod" <<EOF
-module app
-
-go $go_version
+cat >"$repo/.github/workflows/ci.yml" <<'EOF'
+name: CI
+on: pull_request
+env:
+  GREETING: hello
+jobs:
+  changes:
+    runs-on: ubuntu-latest
+    outputs:
+      modules: ${{ steps.decide.outputs.modules }}
+      web: ${{ steps.decide.outputs.web }}
+    steps:
+      - uses: actions/checkout@v4
+      - id: decide
+        run: |
+          echo 'modules=["mod-a","mod-b"]' >> "$GITHUB_OUTPUT"
+          echo "web=false" >> "$GITHUB_OUTPUT"
+  web:
+    needs: changes
+    if: needs.changes.outputs.web == 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - run: echo "web ran" >> "$RECORD"
+  build:
+    name: build (${{ matrix.module }})
+    needs: changes
+    runs-on: ubuntu-latest
+    env:
+      AGGREGATE: ${{ startsWith(github.head_ref, 'integration/') }}
+    strategy:
+      matrix:
+        module: ${{ fromJson(needs.changes.outputs.modules) }}
+    steps:
+      - name: record
+        run: echo "build $(basename "$PWD") $GREETING ${{ github.event.pull_request.base.sha }}..${{ github.event.pull_request.head.sha }}" >> "$RECORD"
+        working-directory: ${{ matrix.module }}
+      - name: aggregate only
+        if: env.AGGREGATE == 'true'
+        run: echo "aggregate ran" >> "$RECORD"
+      # check-all-skip: while "sudo": installs system packages as root.
+      - name: root only
+        run: sudo false
+  lint:
+    runs-on: ubuntu-latest
+    steps:
+      - name: seeded check
+        run: test ! -e seeded-defect
+      - name: after the check
+        run: echo "after" >> "$RECORD"
+  unrequired:
+    runs-on: ubuntu-latest
+    steps:
+      - run: echo "unrequired ran" >> "$RECORD"
+  ci-ok:
+    if: always()
+    needs: [changes, web, build, lint]
+    runs-on: ubuntu-latest
+    steps:
+      - run: "true"
 EOF
-cat > "$fixture/app/main.go" <<'EOF'
-package main
 
-func main() {}
-EOF
+git -C "$repo" init -q -b main
+git -C "$repo" add -A
+git -C "$repo" -c user.email=test@example.com -c user.name=test commit -q -m base
+base_sha="$(git -C "$repo" rev-parse HEAD)"
 
-cat > "$fixture/contracts/state/go.mod" <<EOF
-module contracts/state
-
-go $go_version
-EOF
-cat > "$fixture/contracts/state/state.go" <<'EOF'
-package state
-EOF
-
-printf 'placeholder\n' > "$fixture/CLAUDE.md"
-ln -s "CLAUDE.md" "$fixture/AGENTS.md"
-
-(
-  cd "$fixture"
-  git init -q
-  git config user.email test@example.com
-  git config user.name test
-  git add -A
-  git commit -q -m base
-)
-base_sha="$(git -C "$fixture" rev-parse HEAD)"
-git -C "$fixture" update-ref refs/remotes/origin/main "$base_sha"
-
-run_check() {
-  CHECK_ALL_ROOT="$fixture" "$checker" "$base_sha"
+commit() {
+  git -C "$repo" add -A
+  git -C "$repo" -c user.email=test@example.com -c user.name=test commit -q -m "$1"
 }
 
-if ! run_check >/tmp/check-all-selftest-clean.log 2>&1; then
-  echo "FAIL: check-all.sh failed against a clean fixture" >&2
-  cat /tmp/check-all-selftest-clean.log >&2
-  exit 1
-fi
-if ! grep -q "check-all.sh: all checks passed" /tmp/check-all-selftest-clean.log; then
-  echo "FAIL: check-all.sh did not report success on a clean fixture" >&2
-  cat /tmp/check-all-selftest-clean.log >&2
-  exit 1
-fi
-if ! grep -q "==> scripts/check-adr-lifecycle.sh origin/main HEAD" /tmp/check-all-selftest-clean.log; then
-  echo "FAIL: check-all.sh did not use CI's ADR lifecycle base" >&2
-  cat /tmp/check-all-selftest-clean.log >&2
-  exit 1
-fi
-echo "ok: check-all.sh exits 0 and reports success on a clean fixture"
+run_check() {
+  rm -f "$RECORD"
+  touch "$RECORD"
+  CHECK_ALL_ROOT="$repo" "$checker" "$base_sha" >"$log" 2>&1
+}
 
-# Seed a comment-density violation (block-length above the checker's
-# threshold of 8) in a real commit, so check-comment-density.sh's
-# base/head diff actually sees it.
-cat >>"$fixture/app/main.go" <<'EOF'
+die() {
+  echo "FAIL: $1" >&2
+  echo "--- output" >&2
+  cat "$log" >&2
+  echo "--- record" >&2
+  cat "$RECORD" >&2
+  exit 1
+}
 
-// comment line 1 of a seeded density violation
-// comment line 2 of a seeded density violation
-// comment line 3 of a seeded density violation
-// comment line 4 of a seeded density violation
-// comment line 5 of a seeded density violation
-// comment line 6 of a seeded density violation
-// comment line 7 of a seeded density violation
-// comment line 8 of a seeded density violation
-// comment line 9 of a seeded density violation
-func seededDensityViolation() int { return 0 }
-EOF
-git -C "$fixture" -c user.email=test@example.com -c user.name=test \
-  commit -q -am "seed a comment-density violation for check-all_selftest.sh"
+recorded() { grep -qxF "$1" "$RECORD"; }
 
-if run_check >/tmp/check-all-selftest-dirty.log 2>&1; then
-  echo "FAIL: check-all.sh passed despite a seeded comment-density violation" >&2
-  cat /tmp/check-all-selftest-dirty.log >&2
-  exit 1
-fi
-if ! grep -q "FAILED: scripts/check-comment-density.sh" /tmp/check-all-selftest-dirty.log; then
-  echo "FAIL: check-all.sh did not name check-comment-density.sh as the failing step" >&2
-  cat /tmp/check-all-selftest-dirty.log >&2
-  exit 1
-fi
-if grep -q "check-instruction-orphans.sh" /tmp/check-all-selftest-dirty.log; then
-  echo "FAIL: check-all.sh ran a later step after the comment-density failure" >&2
-  cat /tmp/check-all-selftest-dirty.log >&2
-  exit 1
-fi
-echo "ok: check-all.sh stops at the first failing check and names it"
+printf 'x\n' >"$repo/mod-a/change"
+commit "a change on top of the base"
+head_sha="$(git -C "$repo" rev-parse HEAD)"
+
+run_check || die "check-all.sh failed against a clean fixture"
+grep -q "check-all.sh: all checks passed" "$log" || die "no success line"
+for module in mod-a mod-b; do
+  recorded "build $module hello $base_sha..$head_sha" ||
+    die "the matrix instance for $module did not run with the substituted base and head"
+done
+recorded "after" || die "a later step of a passing job did not run"
+recorded "web ran" && die "a job whose if is false ran"
+recorded "unrequired ran" && die "a job ci-ok does not require ran"
+recorded "aggregate ran" && die "a step whose if is false ran"
+grep -q "not run: build (mod-a) / root only: installs system packages as root." "$log" ||
+  die "an excepted step was not reported with its reason"
+grep -q "==> scripts/check-agent-config.sh" "$log" || die "the agent-config check did not run"
+echo "ok: check-all.sh runs exactly the steps the workflow requires, as CI evaluates them"
+
+git -C "$repo" checkout -q -b integration/x
+run_check || die "check-all.sh failed on an aggregate branch"
+recorded "aggregate ran" || die "a step whose if reads the head branch did not run on integration/x"
+git -C "$repo" checkout -q main
+echo "ok: the head branch reaches step conditions"
+
+touch "$repo/uncommitted"
+run_check && die "check-all.sh passed with an uncommitted file"
+grep -q "FAILED: uncommitted changes" "$log" || die "the uncommitted-change refusal was not named"
+[ -s "$RECORD" ] && die "a step ran despite uncommitted changes"
+rm "$repo/uncommitted"
+echo "ok: check-all.sh refuses to run against uncommitted changes"
+
+touch "$repo/seeded-defect"
+commit "seed a failing step"
+run_check && die "check-all.sh passed despite a failing step"
+grep -q "ci_steps: FAILED: lint / seeded check (.github/workflows/ci.yml:" "$log" ||
+  die "the failing step was not named with its workflow line"
+recorded "after" && die "a step after the failure ran"
+grep -q "check-agent-config.sh" "$log" && die "a later check-all step ran after the failure"
+echo "ok: check-all.sh stops at the first failing step and names it"

@@ -201,10 +201,9 @@ jobs:
       - name: Check every task instruction sidecar is referenced
         run: ./scripts/check-instruction-orphans.sh
 
-  # This proves check-all.sh's own sequencing/failure-naming against a
-  # fixture; the individual checks it wraps are exercised for real by the
-  # jobs above, so re-running check-all.sh itself against this repository
-  # here would only duplicate their coverage.
+  # This proves check-all.sh's own step execution against a fixture; the
+  # steps it runs against this repository are this file's jobs, so
+  # re-running it here would only run them twice.
   #
   # The ADR lifecycle check lives here rather than in its own job: its
   # whole-repo links and scope heading run on every event, and its
@@ -231,8 +230,12 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: ${{ env.PYTHON_VERSION }}
-      - name: Prove check-all.sh sequences its steps and stops naming the first failure
+      - name: Prove check-all.sh runs the required steps as CI evaluates them and stops naming the first failure
         run: ./scripts/check-all_selftest.sh
+      - name: Prove the CI parity checker catches seeded defects
+        run: ./scripts/check-ci-parity_selftest.sh
+      - name: Check check-all.sh can run every step ci-ok requires
+        run: ./scripts/check-ci-parity.sh
       - name: Prove the ADR lifecycle checker catches seeded violations
         run: ./scripts/check-adr-lifecycle_selftest.sh
       - name: Check ADR supersession links, immutability, and scope
@@ -394,9 +397,11 @@ jobs:
         with:
           go-version: ${{ env.GO_VERSION }}
           cache: false
+      # check-all-skip: while "--with-deps": it installs system packages as root, which check-all.sh must not do to a developer's machine.
       - name: Install the pinned Playwright driver + Chromium
         run: go run github.com/mxschmitt/playwright-go/cmd/playwright@v0.6201.1 install --with-deps chromium
         working-directory: app
+      # check-all-skip: while "-tags browser": it drives the Chromium that only the install step above provides.
       - name: go test -tags browser ./internal/webui/...
         run: go test -tags browser ./internal/webui/...
         working-directory: app

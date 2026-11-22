@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
-# It only invokes the existing scripts: duplicating any one check's logic
-# here would let this and CI drift apart.
+# The steps come from ci.yml itself, through scripts/ci_steps.py, rather
+# than from a list kept here: a hand-kept list let changes pass locally and
+# still fail a CI job it never ran.
 set -euo pipefail
 
 # CHECK_ALL_ROOT lets check-all_selftest.sh point the scanned/tested tree
@@ -31,23 +32,23 @@ step() {
   fi
 }
 
-echo "==> gofmt -l"
-unformatted="$(gofmt -l $(find . -name '*.go' -not -path './app/internal/webui/*'))" || fail "gofmt -l"
-if [ -n "$unformatted" ]; then
-  echo "$unformatted"
-  fail "gofmt -l"
+# CI checks out the committed head, and the diff-scoped steps compare
+# commits, so an uncommitted change would be tested by some steps and
+# invisible to others.
+if [ -n "$(git status --porcelain)" ]; then
+  git status --short >&2
+  fail "uncommitted changes; commit them so every step sees the head CI will run"
 fi
 
-step "go vet ./app/..." bash -c 'cd app && go vet ./...'
-step "go test ./app/..." bash -c 'cd app && go test ./...'
-step "contracts/state go test ./..." bash -c 'cd contracts/state && go test ./...'
+# CI installs pinned global tools (npm install -g); a throwaway prefix gives
+# the same pinned versions without touching the developer's own globals.
+npm_prefix="$(mktemp -d)"
+trap 'rm -rf "$npm_prefix"' EXIT
+export NPM_CONFIG_PREFIX="$npm_prefix"
+export PATH="$npm_prefix/bin:$PATH"
 
-step "scripts/check-provider-boundary.sh" "$scripts_dir/check-provider-boundary.sh"
-step "scripts/check-sqlite-driver-boundary.sh" "$scripts_dir/check-sqlite-driver-boundary.sh"
-step "scripts/check-comment-references.sh" "$scripts_dir/check-comment-references.sh"
-step "scripts/check-comment-density.sh $base_ref HEAD" "$scripts_dir/check-comment-density.sh" "$base_ref" HEAD
-step "scripts/check-instruction-orphans.sh" "$scripts_dir/check-instruction-orphans.sh"
+step ".github/workflows/ci.yml jobs required by ci-ok" \
+  python3 "$scripts_dir/ci_steps.py" run .github/workflows/ci.yml ci-ok "$base_ref"
 step "scripts/check-agent-config.sh" "$scripts_dir/check-agent-config.sh"
-step "scripts/check-adr-lifecycle.sh origin/main HEAD" "$scripts_dir/check-adr-lifecycle.sh" origin/main HEAD
 
 echo "check-all.sh: all checks passed"
