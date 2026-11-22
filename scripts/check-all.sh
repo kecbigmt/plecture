@@ -69,7 +69,7 @@ step "$scripts_dir/ci/web-app-build.sh"
 # check must not do to a developer's machine.
 step "$scripts_dir/ci/web-browser-acceptance.sh"
 step "$scripts_dir/ci/plugin-script-selftests.sh"
-step "$scripts_dir/ci/storage-contract.sh"
+step "$scripts_dir/ci/storage-contract.sh" origin/main HEAD
 for module in "${modules[@]}"; do
   step "$scripts_dir/ci/build-test.sh" "$module"
 done

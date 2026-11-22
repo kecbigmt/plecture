@@ -1,4 +1,6 @@
 #!/usr/bin/env bash
+# Given a base branch tip and head, checks migration order for a pull
+# request; a push has no diff to scope and runs only the selftest.
 set -euo pipefail
 cd "$(dirname "${BASH_SOURCE[0]}")/../../app"
 
@@ -10,3 +12,9 @@ git diff --exit-code -- internal/persistence/sqlcgen/ || {
   exit 1
 }
 go test -count=1 -tags integration ./internal/persistence -run '^TestMigrate_UpgradesEveryReleasedSchema$'
+
+cd ..
+./scripts/check-migration-order_selftest.sh
+if [ -n "${1:-}" ]; then
+  ./scripts/check-migration-order.sh "$1" "$2"
+fi

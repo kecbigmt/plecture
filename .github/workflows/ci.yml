@@ -327,6 +327,8 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
       - uses: actions/setup-go@v5
         with:
           go-version: ${{ env.GO_VERSION }}
@@ -338,7 +340,7 @@ jobs:
             ~/.cache/go-build
           key: go-${{ runner.os }}-${{ github.job }}-${{ hashFiles('go.work.sum', '**/go.sum') }}
           restore-keys: go-${{ runner.os }}-${{ github.job }}-
-      - run: ./scripts/ci/storage-contract.sh
+      - run: ./scripts/ci/storage-contract.sh "${{ github.event.pull_request.base.sha }}" "${{ github.event.pull_request.head.sha }}"
 
   # Every past darwin-only breakage was first seen in release.yml's
   # darwin-arm64 job, because this workflow otherwise runs go test on Linux
