@@ -287,11 +287,13 @@ resolution for every downstream `go install`.
 ### Before every push
 
 Commit, then run `scripts/check-all.sh` and fix anything it reports before
-pushing. It reads `.github/workflows/ci.yml` and runs every step of every
-job `ci-ok` requires, with the job selection, matrices, and conditions CI
-evaluates for the branch's diff; it needs `yq` and refuses to run with
-uncommitted changes. A push that fails a check CI would fail costs a full
-review round.
+pushing. Every job `ci-ok` requires keeps its commands in
+`scripts/ci/<job>.sh`, which both the job and `check-all.sh` call, so
+`check-all.sh` runs what CI runs, for every module; a new check goes into
+its job's script, not into the workflow. `check-all.sh` refuses to run with
+uncommitted changes, and the one CI command it skips, the browser half of
+`web-browser-acceptance`, says why where it is left out. A push that fails
+a check CI would fail costs a full review round.
 
 Branches named `integration/*` or `release/*` are aggregate branches merged
 to `main`; CI's `comment-density` job scores a PR whose head is one commit
