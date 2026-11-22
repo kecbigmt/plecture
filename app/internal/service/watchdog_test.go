@@ -434,17 +434,123 @@ func TestEvaluateHealth_StaleProducedNodeAloneReadsDownWithNoVerdict(t *testing.
 	}
 }
 
-// A failed session-scoped node already blocks create/repair elsewhere, which
-// is why this report does not also need to cover it.
-func TestEvaluateHealth_FailedSessionScopedNodeDoesNotAffectRunScopedHealthReport(t *testing.T) {
+func TestEvaluateHealth_SessionScopedNodesComposeIntoHealth(t *testing.T) {
+	tests := []struct {
+		name          string
+		guardAlive    string
+		guard         *contract.TaskState
+		pane          *contract.TaskState
+		wantState     domain.HealthState
+		wantReason    []string
+		wantRepair    bool
+		wantNoVerdict bool
+	}{
+		{
+			name:       "produced session node whose alive fails",
+			guardAlive: "false",
+			guard:      &contract.TaskState{Scope: contract.TaskScopeSession, TaskID: "guard", Status: contract.TaskStatusProduced},
+			pane:       &contract.TaskState{Scope: contract.TaskScopeRun, TaskID: "pane", Status: contract.TaskStatusProduced},
+			wantState:  domain.HealthUnhealthy,
+			wantReason: []string{"guard"},
+			wantRepair: true,
+		},
+		{
+			name:       "failed session node",
+			guardAlive: "true",
+			guard:      &contract.TaskState{Scope: contract.TaskScopeSession, TaskID: "guard", Status: contract.TaskStatusFailed, Error: "guard missing"},
+			pane:       &contract.TaskState{Scope: contract.TaskScopeRun, TaskID: "pane", Status: contract.TaskStatusProduced},
+			wantState:  domain.HealthUnhealthy,
+			wantReason: []string{"guard", "guard missing"},
+			wantRepair: true,
+		},
+		{
+			name:       "failed session node whose alive is a noop",
+			guardAlive: "__noop__",
+			guard:      &contract.TaskState{Scope: contract.TaskScopeSession, TaskID: "guard", Status: contract.TaskStatusFailed, Error: "thread post failed"},
+			pane:       &contract.TaskState{Scope: contract.TaskScopeRun, TaskID: "pane", Status: contract.TaskStatusProduced},
+			wantState:  domain.HealthUnhealthy,
+			wantReason: []string{"guard", "thread post failed"},
+			wantRepair: true,
+		},
+		{
+			name:       "session node with no record",
+			guardAlive: "true",
+			pane:       &contract.TaskState{Scope: contract.TaskScopeRun, TaskID: "pane", Status: contract.TaskStatusProduced},
+			wantState:  domain.HealthUnhealthy,
+			wantReason: []string{"guard", "missing from the current plan"},
+			wantRepair: true,
+		},
+		{
+			name:       "produced session node whose alive is a noop",
+			guardAlive: "__noop__",
+			guard:      &contract.TaskState{Scope: contract.TaskScopeSession, TaskID: "guard", Status: contract.TaskStatusProduced},
+			pane:       &contract.TaskState{Scope: contract.TaskScopeRun, TaskID: "pane", Status: contract.TaskStatusProduced},
+			wantState:  domain.HealthHealthy,
+		},
+		{
+			name:          "down session with a dead session node",
+			guardAlive:    "false",
+			guard:         &contract.TaskState{Scope: contract.TaskScopeSession, TaskID: "guard", Status: contract.TaskStatusProduced},
+			pane:          &contract.TaskState{Scope: contract.TaskScopeRun, TaskID: "pane", Status: contract.TaskStatusCleaned},
+			wantNoVerdict: true,
+		},
+		{
+			name:          "failed session node before any run node was produced",
+			guardAlive:    "true",
+			guard:         &contract.TaskState{Scope: contract.TaskScopeSession, TaskID: "guard", Status: contract.TaskStatusFailed, Error: "guard missing"},
+			wantNoVerdict: true,
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			store := testStore(t)
+			cfg := writeWorkflowFixture(t, "default", []taskFixture{
+				{id: "guard", scope: contract.TaskScopeSession, alive: tt.guardAlive},
+				{id: "pane", scope: contract.TaskScopeRun, alive: "true"},
+			}, []nodeFixture{{id: "guard"}, {id: "pane"}})
+			nodes := map[string]*contract.TaskState{}
+			if tt.guard != nil {
+				nodes["guard"] = tt.guard
+			}
+			if tt.pane != nil {
+				nodes["pane"] = tt.pane
+			}
+			seedSessionWithNodes(t, store, "owner/repo-1", "owner/repo", 1, "default", nodes)
+
+			report, err := EvaluateHealth(cfg, store, "owner/repo-1")
+			if err != nil {
+				t.Fatalf("EvaluateHealth: %v", err)
+			}
+			if tt.wantNoVerdict {
+				if report.State() == domain.HealthUnhealthy || report.Declared {
+					t.Fatalf("report = %+v, state = %q, want no verdict", report, report.State())
+				}
+				return
+			}
+			if report.State() != tt.wantState {
+				t.Fatalf("report = %+v, state = %q, want %q", report, report.State(), tt.wantState)
+			}
+			for _, want := range tt.wantReason {
+				if !strings.Contains(report.Reason, want) {
+					t.Fatalf("reason = %q, want it to contain %q", report.Reason, want)
+				}
+			}
+			if report.Repairable != tt.wantRepair {
+				t.Fatalf("report = %+v, want repairable %t", report, tt.wantRepair)
+			}
+		})
+	}
+}
+
+func TestEvaluateHealth_StaleSessionScopedEntryContributesNothing(t *testing.T) {
 	store := testStore(t)
 	cfg := writeWorkflowFixture(t, "default", []taskFixture{
-		{id: "guard", scope: contract.TaskScopeSession, alive: "false"},
 		{id: "pane", scope: contract.TaskScopeRun, alive: "true"},
-	}, []nodeFixture{{id: "guard"}, {id: "pane"}})
+		{id: "old_guard", scope: contract.TaskScopeSession, alive: "false"},
+	}, []nodeFixture{{id: "pane"}}) // "old_guard" keeps a definition but no node uses it anymore.
 	seedSessionWithNodes(t, store, "owner/repo-1", "owner/repo", 1, "default", map[string]*contract.TaskState{
-		"guard": {Scope: contract.TaskScopeSession, TaskID: "guard", Status: contract.TaskStatusFailed, Error: "guard missing"},
-		"pane":  {Scope: contract.TaskScopeRun, TaskID: "pane", Status: contract.TaskStatusProduced},
+		"pane":      {Scope: contract.TaskScopeRun, TaskID: "pane", Status: contract.TaskStatusProduced},
+		"old_guard": {Scope: contract.TaskScopeSession, TaskID: "old_guard", Status: contract.TaskStatusFailed, Error: "gone"},
 	})
 
 	report, err := EvaluateHealth(cfg, store, "owner/repo-1")
@@ -452,7 +558,147 @@ func TestEvaluateHealth_FailedSessionScopedNodeDoesNotAffectRunScopedHealthRepor
 		t.Fatalf("EvaluateHealth: %v", err)
 	}
 	if report.State() != domain.HealthHealthy {
-		t.Fatalf("report = %+v, state = %q, want healthy (a failed session-scoped node is out of scope for this report)", report, report.State())
+		t.Fatalf("report = %+v, state = %q, want healthy (a node no longer in the plan must not count)", report, report.State())
+	}
+}
+
+func TestEvaluateHealth_SessionScopedActivityProbeCastsNoVote(t *testing.T) {
+	store := testStore(t)
+	cfg := writeWorkflowFixture(t, "default", []taskFixture{
+		{id: "guard", scope: contract.TaskScopeSession, alive: "true", activity: activityFingerprintCmd(t, "fp-1")},
+		{id: "pane", scope: contract.TaskScopeRun, alive: "true"},
+	}, []nodeFixture{{id: "guard"}, {id: "pane"}})
+	seedSessionWithNodes(t, store, "owner/repo-1", "owner/repo", 1, "default", map[string]*contract.TaskState{
+		"guard": {Scope: contract.TaskScopeSession, TaskID: "guard", Status: contract.TaskStatusProduced},
+		"pane":  {Scope: contract.TaskScopeRun, TaskID: "pane", Status: contract.TaskStatusProduced},
+	})
+
+	report, err := EvaluateHealth(cfg, store, "owner/repo-1")
+	if err != nil {
+		t.Fatalf("EvaluateHealth: %v", err)
+	}
+	if report.ActivityDeclared || report.ActivityFingerprint != "" || len(report.ProbeErrors) != 0 {
+		t.Fatalf("report = %+v, want the session-scoped activity probe ignored", report)
+	}
+	if report.State() != domain.HealthHealthy {
+		t.Fatalf("report = %+v, state = %q, want healthy", report, report.State())
+	}
+}
+
+// The session-scoped node's loss is only ever noticed by a later `up`, which
+// invalidates it and cleans its run-scoped dependent before its setup fails,
+// leaving an independent run-scoped node as the only produced one.
+func TestEvaluateHealth_AbortedUpAtSessionScopedNodeIsUnhealthyAndRepairable(t *testing.T) {
+	if _, err := exec.LookPath("bash"); err != nil {
+		t.Skip("bash not available")
+	}
+	store := testStore(t)
+	scratch := t.TempDir()
+	worktree := filepath.Join(scratch, "worktree")
+	source := filepath.Join(scratch, "source")
+	if err := os.Mkdir(source, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	cfg := writeWorkflowFixture(t, "default",
+		[]taskFixture{
+			{
+				id:    "worktree",
+				scope: contract.TaskScopeSession,
+				setup: fmt.Sprintf(`test -d %q && mkdir -p %q && jq -nc --arg dir %q '{dir:$dir}'`, source, worktree, worktree),
+				alive: `test -d "{{.Self.dir}}"`,
+			},
+			{id: "agent", scope: contract.TaskScopeRun, setup: `printf '{"saw":"%s"}' '{{.Nodes.worktree.outputs.dir}}'`, alive: "true"},
+			{id: "guard", scope: contract.TaskScopeRun, setup: "echo '{}'", alive: "true"},
+		},
+		[]nodeFixture{
+			{id: "worktree"},
+			{id: "agent", inputs: map[string]*lang.Value{"path_prepend": fromValue("nodes.worktree.outputs.dir")}},
+			{id: "guard"},
+		},
+	)
+	seedSessionWithNodes(t, store, "owner/repo-1", "owner/repo", 1, "default", nil)
+	if _, err := Up(cfg, store, UpParams{Identifier: "owner/repo-1"}); err != nil {
+		t.Fatalf("first Up: %v", err)
+	}
+	if err := os.RemoveAll(worktree); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.RemoveAll(source); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := Up(cfg, store, UpParams{Identifier: "owner/repo-1"}); err == nil {
+		t.Fatal("second Up succeeded, want it to fail at the worktree node")
+	}
+	sess := store.Get("owner/repo-1")
+	if got := sess.Nodes["worktree"]; got == nil || got.Status != contract.TaskStatusFailed {
+		t.Fatalf("worktree = %+v, want failed", got)
+	}
+	if sessionRunState(cfg, sess) != domain.RunUp {
+		t.Fatalf("run = %q, want up (guard is still produced)", sessionRunState(cfg, sess))
+	}
+
+	report, err := EvaluateHealth(cfg, store, "owner/repo-1")
+	if err != nil {
+		t.Fatalf("EvaluateHealth: %v", err)
+	}
+	if report.State() != domain.HealthUnhealthy || !report.Repairable || !strings.Contains(report.Reason, "worktree") {
+		t.Fatalf("report = %+v, state = %q, want unhealthy and repairable naming worktree", report, report.State())
+	}
+}
+
+func TestHealthcheckSession_DeadSessionScopedNodeStartsAutoRepair(t *testing.T) {
+	if _, err := exec.LookPath("bash"); err != nil {
+		t.Skip("bash not available")
+	}
+	store := testStore(t)
+	cfg := writeWorkflowFixture(t, "default",
+		[]taskFixture{
+			{
+				id:    "worktree",
+				scope: contract.TaskScopeSession,
+				setup: `DIR=$(mktemp -d); jq -nc --arg dir "$DIR" '{dir:$dir}'`,
+				alive: `test -d "{{.Self.dir}}"`,
+			},
+			{id: "pane", scope: contract.TaskScopeRun, setup: "echo '{}'", alive: "true"},
+		},
+		[]nodeFixture{{id: "worktree"}, {id: "pane"}},
+	)
+	path := filepath.Join(cfg.BaseDir, "workflows", "default.toml")
+	workflow, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(path, append(workflow, []byte("\n[default.health]\nauto_repair_attempts = 2\n")...), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	name := "owner/repo-1"
+	seedSessionWithNodes(t, store, name, "owner/repo", 1, "default", map[string]*contract.TaskState{
+		"worktree": {Scope: contract.TaskScopeSession, Status: contract.TaskStatusProduced, Outputs: map[string]any{"dir": filepath.Join(t.TempDir(), "gone")}},
+		"pane":     {Scope: contract.TaskScopeRun, Status: contract.TaskStatusProduced, Outputs: map[string]any{}},
+	})
+	if err := store.Update(name, func(s *domain.Session) error {
+		s.Status = contract.SessionStatusUp
+		return nil
+	}); err != nil {
+		t.Fatal(err)
+	}
+
+	report, err := HealthcheckSession(cfg, store, HealthcheckParams{SessionName: name})
+	if err != nil {
+		t.Fatalf("HealthcheckSession: %v", err)
+	}
+	attempted, err := RepairSession(cfg, store, name, report, NewRepairGate())
+	if err != nil || !attempted {
+		t.Fatalf("RepairSession = (%t, %v), want an attempted repair", attempted, err)
+	}
+	events, _, _, err := eventlog.NewStore(store.Dir()).List(name, 0, event.Filter{Types: []string{event.TypeSessionRepair}})
+	if err != nil || len(events) == 0 || events[0].Metadata["result"] != "started" ||
+		events[0].Metadata["trigger"] != "health" || events[0].Metadata["attempt"] != "1" {
+		t.Fatalf("repair events = %+v, %v; want a first health-triggered attempt", events, err)
+	}
+	dir, _ := store.Get(name).Nodes["worktree"].Outputs["dir"].(string)
+	if _, statErr := os.Stat(dir); dir == "" || statErr != nil {
+		t.Fatalf("worktree after repair = %+v, want a rebuilt directory", store.Get(name).Nodes["worktree"])
 	}
 }
 
