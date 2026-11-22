@@ -77,7 +77,9 @@ func TestApp_JSONUsesFreshCommandTokenPerRequest(t *testing.T) {
 	var seen []string
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		seen = append(seen, r.Header.Get("Authorization"))
-		_, _ = w.Write([]byte(`{}`))
+		if _, err := w.Write([]byte(`{}`)); err != nil {
+			t.Errorf("write response: %v", err)
+		}
 	}))
 	defer srv.Close()
 	dir := t.TempDir()
@@ -103,7 +105,9 @@ func TestApp_JSONUsesFreshCommandTokenPerRequest(t *testing.T) {
 func TestApp_JSONCommandModeDoesNotEchoTokenFromAPIError(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusUnauthorized)
-		_, _ = w.Write([]byte(`{"message":"secret-token rejected"}`))
+		if _, err := w.Write([]byte(`{"message":"secret-token rejected"}`)); err != nil {
+			t.Errorf("write response: %v", err)
+		}
 	}))
 	defer srv.Close()
 	command := filepath.Join(t.TempDir(), "token")
