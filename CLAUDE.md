@@ -286,10 +286,12 @@ resolution for every downstream `go install`.
 
 ### Before every push
 
-Run `scripts/check-all.sh` and fix anything it reports before pushing. It
-runs `gofmt`, `go vet`, `go test`, and every `scripts/check-*.sh` CI runs,
-in the same order and with the same arguments CI uses. A push that fails a
-check CI would fail costs a full review round.
+Commit, then run `scripts/check-all.sh` and fix anything it reports before
+pushing. It reads `.github/workflows/ci.yml` and runs every step of every
+job `ci-ok` requires, with the job selection, matrices, and conditions CI
+evaluates for the branch's diff; it needs `yq` and refuses to run with
+uncommitted changes. A push that fails a check CI would fail costs a full
+review round.
 
 Branches named `integration/*` or `release/*` are aggregate branches merged
 to `main`; CI's `comment-density` job scores a PR whose head is one commit
