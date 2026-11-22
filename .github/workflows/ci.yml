@@ -433,6 +433,8 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
       - uses: actions/setup-go@v5
         with:
           go-version: ${{ env.GO_VERSION }}
@@ -461,6 +463,13 @@ jobs:
       - name: upgrade
         run: go test -count=1 -tags integration ./internal/persistence -run '^TestMigrate_UpgradesEveryReleasedSchema$'
         working-directory: app
+      - name: migration order selftest
+        run: ./scripts/check-migration-order_selftest.sh
+      # A push to main has no change to scope to: the PR that merged it was
+      # checked against its base branch's tip.
+      - name: migration order
+        if: github.event_name == 'pull_request'
+        run: ./scripts/check-migration-order.sh "${{ github.event.pull_request.base.sha }}" "${{ github.event.pull_request.head.sha }}"
 
   # Every past darwin-only breakage was first seen in release.yml's
   # darwin-arm64 job, because this workflow otherwise runs go test on Linux

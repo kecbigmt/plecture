@@ -69,6 +69,11 @@ if ! grep -q "==> scripts/check-adr-lifecycle.sh origin/main HEAD" /tmp/check-al
   cat /tmp/check-all-selftest-clean.log >&2
   exit 1
 fi
+if ! grep -q "==> scripts/check-migration-order.sh origin/main HEAD" /tmp/check-all-selftest-clean.log; then
+  echo "FAIL: check-all.sh did not use CI's migration order base" >&2
+  cat /tmp/check-all-selftest-clean.log >&2
+  exit 1
+fi
 echo "ok: check-all.sh exits 0 and reports success on a clean fixture"
 
 # Seed a comment-density violation (block-length above the checker's
