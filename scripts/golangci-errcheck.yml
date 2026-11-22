@@ -1,0 +1,23 @@
+version: "2"
+
+run:
+  build-tags:
+    - integration
+    - browser
+
+linters:
+  default: none
+  enable:
+    - errcheck
+    - nolintlint
+  settings:
+    errcheck:
+      check-blank: true
+    nolintlint:
+      require-explanation: true
+      require-specific: true
+      allow-unused: false
+
+issues:
+  max-issues-per-linter: 0
+  max-same-issues: 0
