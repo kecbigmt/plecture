@@ -2,7 +2,7 @@
 
 The language's unit of meaning is the definition block. Files are packaging.
 
-Splitting definition blocks across any number of `.toml` files, and
+Distributing whole definition blocks across any number of `.toml` files, and
 concatenating those files into one TOML document in path-sorted traversal
 order, are semantically equivalent — except for file-relative path fields,
 which stay relative to the file containing the definition table.
@@ -41,6 +41,11 @@ An id is a TOML bare-key segment matching `^[A-Za-z_][A-Za-z0-9_]*$`. Quoted
 keys are not ids. Dots are excluded because dots separate address segments.
 Hyphens are excluded because an effect id is also a workflow node id when a node
 omits `id`, and a node id must be a safe dotted path segment.
+
+A chain `id` and a `done_when` judge leaf `id` are local to the task that
+declares them, not definition ids, and match `^[A-Za-z0-9_-]+$`. A local id is
+never a reference segment or a node id, so it may contain the hyphen a
+definition id excludes.
 
 An id names a responsibility, not a product name repeated for qualification: a
 Claude Code plugin's launch effect is `[runtime]`, so its catalog-qualified
@@ -104,7 +109,7 @@ and `plect.lock`. They are not definition files. A project definition root
 reserves `.plect/project.toml`; it contains exactly the required marker:
 
 ```toml
-schema_version = 3
+schema_version = 2
 ```
 
 No fields other than `schema_version` are valid there, and it never contributes
@@ -114,10 +119,10 @@ definition layer only. The global configuration dialect remains the
 A missing marker version or a version the binary does not know is a load error
 under the same dialect comparison rules as `config.toml`.
 
-Cross-file array-of-table entries append in traversal order while preserving
-in-file order. Cross-file duplicate definition ids in one layer are load
-errors, as are table collisions below a definition table that TOML would
-reject in one concatenated document.
+A definition lives in one file: its top-level table and every table nested
+below it are declared in the same document. A table below a definition id that
+another file declares is a load error, an array-of-tables entry included, and
+so is a definition id declared in two files of one layer.
 
 Invocation selects an optional project definition layer before workflow setup:
 the nearest ancestor with `.plect/project.toml` is its project root. Only that
@@ -250,6 +255,8 @@ executable name. See [`actions.md`](actions.md).
 - A definition table missing `kind`, or carrying an unknown `kind`, is a load
   error.
 - A definition id must match `^[A-Za-z_][A-Za-z0-9_]*$`.
+- A chain id and a judge leaf id match `^[A-Za-z0-9_-]+$`.
+- A definition and every table below it are declared in one file.
 - Two definitions with the same id in one layer are a load error, whatever
   their kinds.
 - A stored reference uses either the relative or the catalog-qualified form.
