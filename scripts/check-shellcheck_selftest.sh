@@ -123,7 +123,7 @@ f() {
 f
 EOF
 expect_fail_naming "an exception over a function body fails as broader than one line" \
-  "bin/tool:3: exception covers a function, block or continued command"
+  "bin/tool:3: exception covers"
 
 script bin/tool <<'EOF'
 echo start
@@ -142,3 +142,25 @@ script nested/bin/tool.sh <<'EOF'
 echo "$arr"
 EOF
 expect_pass "a live exception whose finding needs a sibling sourced file passes"
+
+script bin/tool <<'EOF'
+echo start
+# shellcheck disable=SC2046 # words split on purpose
+case "$1" in
+  a) echo $(ls) ;;
+  b) echo $(pwd) ;;
+esac
+EOF
+expect_fail_naming "an exception over a case block fails" "bin/tool:3: exception covers"
+
+script bin/tool <<'EOF'
+echo start
+# shellcheck disable=SC2034 # values retained for debugging
+f()
+{
+  unused1=1
+  unused2=2
+}
+f
+EOF
+expect_fail_naming "an exception over a function whose brace opens on the next line fails" "bin/tool:3: exception covers"

@@ -144,13 +144,15 @@ CANARY = "echo $(true)\n"
 
 
 def covers_more_than_one_line(sc, lines, index):
-    """Reports whether the directive at lines[index] reaches past one line.
+    """Reports whether the directive at lines[index] may reach past one line.
 
     A canary finding is placed on the line after the directive's command
-    line: if a directive at the same spot suppresses it, the command is a
-    function, block or continued line. A canary that is no command at all
-    (inside a heredoc) proves nothing, so it is checked without the
-    directive first.
+    line. The directive is confined to one line only when the canary is
+    reported without the directive and still reported with a directive at
+    the same spot. Inserting the canary inside a function, block, case list,
+    continued line or heredoc either hides it or breaks the parse, and both
+    count as reaching further: an unparsable probe proves nothing, so it
+    must not pass.
     """
     command = next(
         (i for i in range(index + 1, len(lines)) if lines[i].strip() and not lines[i].lstrip().startswith("#")),
@@ -165,9 +167,10 @@ def covers_more_than_one_line(sc, lines, index):
         probe.insert(command + 1, CANARY)
         return (CANARY_CODE, command + 2) in sc.findings(probe)
 
-    return canary_reported("#\n") and not canary_reported(
+    confined = canary_reported("#\n") and canary_reported(
         f"{indent_of(lines[index])}# shellcheck disable={CANARY_CODE}\n"
     )
+    return not confined
 
 
 def exception_problems(sc, lines):
@@ -197,8 +200,8 @@ def exception_problems(sc, lines):
             continue
         if covers_more_than_one_line(sc, lines, index):
             problem(
-                "exception covers a function, block or continued command spanning several lines; "
-                "move it to the line before the one line it excuses"
+                "exception covers more than the one line after it (a function, block, case, "
+                "continued or heredoc command); move it right above the single line it excuses"
             )
         stale = sorted(set(specific) - live_codes(sc, lines, index, specific))
         if stale:

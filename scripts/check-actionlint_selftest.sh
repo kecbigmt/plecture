@@ -99,3 +99,14 @@ workflow <<'EOF'
           echo "clean"
 EOF
 expect_fail_naming "a run-script exception that suppresses nothing fails" "exception for SC2046 suppresses nothing"
+
+workflow <<'EOF'
+      - run: |
+          echo start
+          # shellcheck disable=SC2046 # words split on purpose
+          case "$GITHUB_REF" in
+            a) echo $(ls) ;;
+            b) echo $(pwd) ;;
+          esac
+EOF
+expect_fail_naming "a run-script exception over a case block fails" "exception covers"
