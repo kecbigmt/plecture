@@ -66,8 +66,8 @@ func validateQueryInputPaths(value any, schema map[string]any, pos Position) err
 				}
 			}
 		}
-		for key, child := range node {
-			if err := validateQueryInputPaths(child, schema, childPos(pos, key)); err != nil {
+		for _, key := range sortedKeys(node) {
+			if err := validateQueryInputPaths(node[key], schema, childPos(pos, key)); err != nil {
 				return err
 			}
 		}
@@ -129,7 +129,7 @@ func validateQueryItemSchema(def *Definition, schema map[string]any, pos Positio
 			"a query item's `resource` property is a string")
 	}
 	state := declaredState(def.Body)
-	for key := range properties {
+	for _, key := range sortedKeys(properties) {
 		if key != "resource" && state[key] {
 			return newDiag(CodeFromPath, LayerSemantic, childPos(pos, "item_schema.properties."+key),
 				fmt.Sprintf("query item property %q duplicates a state_schema fact; observe is the state authority", key))
@@ -376,8 +376,8 @@ func (v Validation) validatePopulationSessionContracts(entry map[string]any, obs
 	itemSchema := query["item_schema"].(map[string]any)
 	properties, _ := itemSchema["properties"].(map[string]any)
 	inputs, _ := session["inputs"].(map[string]any)
-	for key, raw := range inputs {
-		value, err := ParseValue(raw, ClassData, childPos(at, "session.inputs."+key))
+	for _, key := range sortedKeys(inputs) {
+		value, err := ParseValue(inputs[key], ClassData, childPos(at, "session.inputs."+key))
 		if err != nil || value.Form != FormFrom {
 			continue
 		}

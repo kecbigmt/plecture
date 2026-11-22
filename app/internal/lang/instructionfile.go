@@ -49,7 +49,7 @@ func resolveTaskInstructions(def *Definition, root string) error {
 // one of `text` and `file` must be present — zero is as ambiguous as two,
 // since neither says what this element's text is.
 func resolveInstructionElement(el map[string]any, pos Position, declaringFile, root string) (string, error) {
-	for k := range el {
+	for _, k := range sortedKeys(el) {
 		if k != "text" && k != "file" {
 			return "", newDiag(CodeFieldUnknown, LayerStructural, childPos(pos, k),
 				fmt.Sprintf("%q is not part of an instructions element", k))

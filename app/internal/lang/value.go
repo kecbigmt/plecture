@@ -240,8 +240,8 @@ func parseJSONOperand(raw any, pos Position) (*JSONOperand, error) {
 			return &JSONOperand{Leaf: leaf}, nil
 		}
 		obj := make(map[string]*JSONOperand, len(v))
-		for key, field := range v {
-			child, err := parseJSONOperand(field, childPos(pos, key))
+		for _, key := range sortedKeys(v) {
+			child, err := parseJSONOperand(v[key], childPos(pos, key))
 			if err != nil {
 				return nil, err
 			}
@@ -274,8 +274,8 @@ func checkNoTaggedValues(raw any, pos Position) error {
 					fmt.Sprintf("a contract document declares types, not values, so the tagged value %s does not belong here", quotedKeys(v)))
 			}
 		}
-		for key, field := range v {
-			if err := checkNoTaggedValues(field, childPos(pos, key)); err != nil {
+		for _, key := range sortedKeys(v) {
+			if err := checkNoTaggedValues(v[key], childPos(pos, key)); err != nil {
 				return err
 			}
 		}
@@ -294,7 +294,7 @@ func onlyKeys(tbl map[string]any, pos Position, allowed ...string) error {
 	for _, k := range allowed {
 		ok[k] = true
 	}
-	for k := range tbl {
+	for _, k := range sortedKeys(tbl) {
 		if !ok[k] {
 			return newDiag(CodeValueTagUnknown, LayerStructural, pos,
 				fmt.Sprintf("%q is not part of the { %s } form", k, strings.Join(allowed, ", ")))

@@ -106,8 +106,8 @@ func ParseDefinitionDocument(path string, src []byte) ([]*Definition, error) {
 		return nil, fmt.Errorf("%s: no top-level definition table", path)
 	}
 	defs := make([]*Definition, 0, len(raw))
-	for id, v := range raw {
-		tbl, ok := v.(map[string]any)
+	for _, id := range sortedKeys(raw) {
+		tbl, ok := raw[id].(map[string]any)
 		if !ok {
 			return nil, newDiag(CodeKindMissing, LayerStructural, Position{File: path, Path: id},
 				fmt.Sprintf("%q is not a definition table", id))

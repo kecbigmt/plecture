@@ -227,8 +227,8 @@ func parseShellAction(tbl map[string]any, pos Position) (*Action, error) {
 			return nil, newDiag(CodeFieldType, LayerStructural, childPos(pos, "bind"), "bind is a table")
 		}
 		a.Bind = make(map[string]*Value, len(bind))
-		for name, raw := range bind {
-			v, err := ParseValue(raw, ClassBinding, childPos(childPos(pos, "bind"), name))
+		for _, name := range sortedKeys(bind) {
+			v, err := ParseValue(bind[name], ClassBinding, childPos(childPos(pos, "bind"), name))
 			if err != nil {
 				return nil, err
 			}
@@ -253,7 +253,7 @@ func rejectUnknownFields(tbl map[string]any, pos Position, allowed ...string) er
 	for _, field := range allowed {
 		ok[field] = true
 	}
-	for field := range tbl {
+	for _, field := range sortedKeys(tbl) {
 		if !ok[field] {
 			return newDiag(CodeFieldUnknown, LayerStructural, childPos(pos, field),
 				fmt.Sprintf("%q is not part of this surface", field))

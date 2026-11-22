@@ -173,7 +173,8 @@ func channelInputSchema(raw any) (map[string]ChannelInputSpec, error) {
 		return nil, fmt.Errorf("`input_schema` is a table of parameter specs")
 	}
 	out := make(map[string]ChannelInputSpec, len(table))
-	for key, entry := range table {
+	for _, key := range sortedKeys(table) {
+		entry := table[key]
 		if !channelInputName.MatchString(key) {
 			return nil, fmt.Errorf("input_schema %q: a parameter name matches %s", key, channelInputName)
 		}
@@ -261,13 +262,13 @@ func ValidateWorkflowChannels(wf WorkflowFile, defs map[string]ChannelDefinition
 			}
 			inbox = ch.Name
 		}
-		for key := range ch.Inputs {
+		for _, key := range sortedKeys(ch.Inputs) {
 			if _, declared := def.InputSchema[key]; !declared {
 				return fmt.Errorf("event.channel %q: input %q is not declared in channel %q input_schema", ch.Name, key, ch.Uses)
 			}
 		}
-		for key, spec := range def.InputSchema {
-			if spec.Required {
+		for _, key := range sortedKeys(def.InputSchema) {
+			if def.InputSchema[key].Required {
 				if _, set := ch.Inputs[key]; !set {
 					return fmt.Errorf("event.channel %q: required input %q (channel %q) is not set", ch.Name, key, ch.Uses)
 				}
