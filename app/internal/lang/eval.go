@@ -157,7 +157,7 @@ func (e Eval) Shell(dir string, a *Action, operands []string) (*Execution, error
 		}
 	}
 	bound := make(map[string]string, len(a.Bind))
-	for _, name := range sortedBindKeys(a.Bind) {
+	for _, name := range sortedKeys(a.Bind) {
 		value, absent, err := e.Argument(a.Bind[name])
 		if err != nil {
 			return nil, fmt.Errorf("bind.%s: %w", name, err)

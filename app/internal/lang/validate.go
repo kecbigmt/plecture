@@ -634,7 +634,7 @@ func (v Validation) checkOperand(op *JSONOperand, s *Surface, pos Position) erro
 	case op.Leaf != nil:
 		return v.checkValue(op.Leaf, s, pos)
 	case op.Object != nil:
-		for _, key := range sortedOperandKeys(op.Object) {
+		for _, key := range sortedKeys(op.Object) {
 			if err := v.checkOperand(op.Object[key], s, childPos(pos, key)); err != nil {
 				return err
 			}
@@ -647,14 +647,6 @@ func (v Validation) checkOperand(op *JSONOperand, s *Surface, pos Position) erro
 		}
 	}
 	return nil
-}
-
-func sortedOperandKeys(obj map[string]*JSONOperand) []string {
-	keys := make(map[string]any, len(obj))
-	for k := range obj {
-		keys[k] = nil
-	}
-	return sortedKeys(keys)
 }
 
 func table(raw any, pos Position) (map[string]any, error) {

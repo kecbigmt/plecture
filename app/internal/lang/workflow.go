@@ -267,7 +267,7 @@ func NodeReads(inputs, outputs map[string]*Value) []string {
 			}
 		})
 	}
-	for _, key := range sortedValueKeys(inputs) {
+	for _, key := range sortedKeys(inputs) {
 		valueReads(inputs[key], add)
 	}
 	return out
@@ -278,7 +278,7 @@ func NodeReads(inputs, outputs map[string]*Value) []string {
 func PublicOutputReads(inputs map[string]*Value) []string {
 	var out []string
 	seen := map[string]bool{}
-	for _, key := range sortedValueKeys(inputs) {
+	for _, key := range sortedKeys(inputs) {
 		valueReads(inputs[key], func(path string) {
 			if read, ok := publicOutputKey(path); ok && !seen[read] {
 				seen[read] = true
@@ -316,7 +316,7 @@ func operandReads(op *JSONOperand, add func(string)) {
 	case op.Leaf != nil:
 		valueReads(op.Leaf, add)
 	case op.Object != nil:
-		for _, key := range sortedOperandKeys(op.Object) {
+		for _, key := range sortedKeys(op.Object) {
 			operandReads(op.Object[key], add)
 		}
 	default:
@@ -346,14 +346,6 @@ func publicOutputKey(path string) (string, bool) {
 	}
 	key, _, _ := strings.Cut(rest, ".")
 	return key, true
-}
-
-func sortedValueKeys(values map[string]*Value) []string {
-	keys := make(map[string]any, len(values))
-	for key := range values {
-		keys[key] = nil
-	}
-	return sortedKeys(keys)
 }
 
 // checkWorkflowGraph rejects a cycle in the dependency graph the node wiring

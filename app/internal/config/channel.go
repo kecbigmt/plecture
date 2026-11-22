@@ -4,7 +4,6 @@ import (
 	"fmt"
 	"regexp"
 	"slices"
-	"sort"
 	"strings"
 
 	"github.com/kecbigmt/plecture/app/internal/lang"
@@ -184,7 +183,7 @@ func channelInputSchema(raw any) (map[string]ChannelInputSpec, error) {
 		}
 		var parsed ChannelInputSpec
 		var declaredType bool
-		for _, field := range sortedSpecKeys(spec) {
+		for _, field := range sortedKeys(spec) {
 			value := spec[field]
 			var ok bool
 			switch field {
@@ -231,17 +230,6 @@ func specFieldType(field string) string {
 		return "a boolean"
 	}
 	return "a string"
-}
-
-// sortedSpecKeys walks a parameter spec in a fixed order, so a spec breaking
-// more than one rule reports the same error on every run.
-func sortedSpecKeys(spec map[string]any) []string {
-	keys := make([]string, 0, len(spec))
-	for key := range spec {
-		keys = append(keys, key)
-	}
-	sort.Strings(keys)
-	return keys
 }
 
 // ValidateWorkflowChannels checks each [[event.channel]] resolves and its inputs

@@ -262,17 +262,6 @@ func rejectUnknownFields(tbl map[string]any, pos Position, allowed ...string) er
 	return nil
 }
 
-// sortedBindKeys orders a bind table's keys, so a walk over an action's
-// values reports the same diagnostic on every run and a generated binding
-// file has stable contents.
-func sortedBindKeys(bind map[string]*Value) []string {
-	keys := make(map[string]any, len(bind))
-	for k := range bind {
-		keys[k] = nil
-	}
-	return sortedKeys(keys)
-}
-
 // values returns every value this action carries, so one walk can validate
 // argv, stdin, and bindings alike.
 func (a *Action) values() []*Value {
@@ -284,7 +273,7 @@ func (a *Action) values() []*Value {
 	if a.Stdin != nil {
 		out = append(out, a.Stdin)
 	}
-	for _, name := range sortedBindKeys(a.Bind) {
+	for _, name := range sortedKeys(a.Bind) {
 		out = append(out, a.Bind[name])
 	}
 	return out

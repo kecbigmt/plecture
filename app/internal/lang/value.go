@@ -2,6 +2,8 @@ package lang
 
 import (
 	"fmt"
+	"maps"
+	"slices"
 	"sort"
 	"strings"
 )
@@ -310,14 +312,9 @@ func tagString(tbl map[string]any, key string, pos Position) (string, error) {
 }
 
 // sortedKeys orders a table's keys so a walk over it reports the same
-// diagnostic on every run.
-func sortedKeys(tbl map[string]any) []string {
-	keys := make([]string, 0, len(tbl))
-	for k := range tbl {
-		keys = append(keys, k)
-	}
-	sort.Strings(keys)
-	return keys
+// diagnostic on every run, and a file rendered from it has stable contents.
+func sortedKeys[V any](tbl map[string]V) []string {
+	return slices.Sorted(maps.Keys(tbl))
 }
 
 func quotedKeys(tbl map[string]any) string {
@@ -361,7 +358,7 @@ func operandLeaves(op *JSONOperand) []*Value {
 		return ValueLeaves(op.Leaf)
 	case op.Object != nil:
 		var out []*Value
-		for _, key := range sortedOperandKeys(op.Object) {
+		for _, key := range sortedKeys(op.Object) {
 			out = append(out, operandLeaves(op.Object[key])...)
 		}
 		return out
