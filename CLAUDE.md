@@ -390,10 +390,22 @@ enables for both Claude Code (`.claude/settings.json`) and Codex
   using the skill's review checklist, and reports a mismatch as a finding.
 - **When a diagram is required.**
   - Every new or substantially revised ADR gets a decision diagram.
-  - A PR that changes behaviour, structure, or a contract across more than
-    one file gets a change diagram.
-  - A one-file fix, a pin bump, a docs-only PR, or a test-only PR gets
-    none.
+  - A PR gets a change diagram when its reader must assemble relationships
+    or a flow. That means one of:
+    - interaction or data flow between components changes;
+    - a new component or boundary appears;
+    - a state or lifecycle transition changes.
+  - Otherwise there is no diagram, whatever the file count. Examples:
+    - docs corrections, including schema or fixture edits that only follow
+      the docs;
+    - deletions and renames;
+    - added config values;
+    - pin bumps;
+    - test-only changes;
+    - a localized fix.
+  - When unsure, do not draw. A reviewer who finds a diagram necessary asks
+    for one as a finding. A reviewer does not report a missing diagram on a
+    PR that none of the three change-diagram cases covers.
 - **Format.** SVG files committed to this repository. No Mermaid, and no
   externally hosted images or pages.
 - **Where diagrams are saved.**
