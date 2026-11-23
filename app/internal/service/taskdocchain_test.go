@@ -352,3 +352,47 @@ func TestCheckSession_ChainResourceThatCannotBeCarriedIsAFault(t *testing.T) {
 		t.Errorf("warning = %v, want it to name what a resource has to be", sp.Warnings)
 	}
 }
+
+// An expression fact alone is a whole trigger: the chain fires exactly while
+// the expression holds against the live roots.
+func TestCheckSession_ChainWithOnlyAnExpressionFactFiresWhileItHolds(t *testing.T) {
+	document := `[pursue]
+kind              = "task"
+description       = "A document whose chain triggers on an expression alone"
+resource          = "issue_pr"
+instructions      = [{ text = "Pursue the work at {{ resource.id }}." }]
+
+[[pursue.chains]]
+id       = "review"
+workflow = "wf"
+
+[pursue.chains.when]
+all = [{ expr = "resource.state.revision == 'sha2'" }]
+`
+	for _, tc := range []struct {
+		revision string
+		fired    bool
+	}{
+		{revision: "sha2", fired: true},
+		{revision: "sha1", fired: false},
+	} {
+		t.Run(tc.revision, func(t *testing.T) {
+			store := testStore(t)
+			revision := filepath.Join(t.TempDir(), "revision")
+			if err := os.WriteFile(revision, []byte(tc.revision), 0o644); err != nil {
+				t.Fatal(err)
+			}
+			cfg := writeObservedRevisionFixture(t, revision, document)
+			seedSession(t, store, "org/repo-1", "org/repo", 1, "wf", nil)
+			setUpDocumentInstance(t, cfg, store, "pursue")
+
+			sp := chainSpawnFor(t, cfg, store, "review")
+			if sp.Fired != tc.fired {
+				t.Fatalf("Fired = %v at revision %s, want %v: %+v", sp.Fired, tc.revision, tc.fired, sp)
+			}
+			if !tc.fired && sp.BlockedReason != chainBlockedWhenUnmet {
+				t.Errorf("blocked reason: got %q, want %q", sp.BlockedReason, chainBlockedWhenUnmet)
+			}
+		})
+	}
+}
