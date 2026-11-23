@@ -35,6 +35,14 @@ type ChannelServer struct {
 	mu      sync.Mutex
 	pending map[string]time.Time
 	now     func() time.Time
+
+	// The socket listener starts before Claude Code has finished the MCP
+	// handshake, and mcp-go silently skips a client that has not initialized,
+	// so a message accepted in that window would otherwise vanish while its
+	// sender counts it as delivered.
+	readyMu sync.Mutex
+	ready   bool
+	held    []protocol.MessagePayload
 }
 
 // NewChannelServer creates the MCP server with channel capabilities and tools.
@@ -62,6 +70,7 @@ func NewChannelServer(sender MessageSender) *ChannelServer {
 
 	// Register permission request notification handler
 	s.mcpServer.AddNotificationHandler("notifications/claude/channel/permission_request", s.handlePermissionRequest)
+	s.mcpServer.AddNotificationHandler("notifications/initialized", s.handleInitialized)
 
 	return s
 }
@@ -86,6 +95,26 @@ func (s *ChannelServer) MCPServer() *server.MCPServer {
 // content deliveries carry no Source, and a fabricated/replayed id is not a
 // live nonce.
 func (s *ChannelServer) OnMessage(msg protocol.MessagePayload) {
+	s.readyMu.Lock()
+	defer s.readyMu.Unlock()
+	if !s.ready {
+		s.held = append(s.held, msg)
+		return
+	}
+	s.forward(msg)
+}
+
+func (s *ChannelServer) handleInitialized(context.Context, mcp.JSONRPCNotification) {
+	s.readyMu.Lock()
+	defer s.readyMu.Unlock()
+	s.ready = true
+	for _, msg := range s.held {
+		s.forward(msg)
+	}
+	s.held = nil
+}
+
+func (s *ChannelServer) forward(msg protocol.MessagePayload) {
 	if requestID, behavior, ok := s.permissionVerdict(msg); ok {
 		s.mcpServer.SendNotificationToAllClients("notifications/claude/channel/permission", map[string]any{
 			"request_id": requestID,
