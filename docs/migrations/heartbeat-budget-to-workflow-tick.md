@@ -47,7 +47,16 @@ instead. Copy any repo overlay (`.plect/`) and any locally authored plugin's
 ## Procedure
 
 1. Install the upgraded `plect`, and update each catalog to a revision whose
-   shipped tasks no longer declare `budget`:
+   shipped tasks no longer declare `budget`. A Git-sourced catalog takes an
+   explicit revision: the release tag of the upgraded `plect`, or any later
+   commit, since every such revision contains the budget removal:
+
+   ```bash
+   plect catalog update <alias> --revision <release-tag-or-commit>
+   ```
+
+   A path-sourced catalog takes no revision; update the checkout it points at
+   first, then re-resolve it:
 
    ```bash
    plect catalog update <alias>
