@@ -57,10 +57,7 @@ type sessionDispatcher struct {
 	// dispatcher build (see resolveTerminalOwner). Nil means the workflow
 	// declares none; a channel that consumes no terminal verb is unaffected
 	// either way.
-	terminal *terminalOwner
-	// runtimeNodes is resolveRuntimeNodes' answer at dispatcher build, and
-	// publicOutputs the workflow's output bindings a channel input can reach
-	// a runtime node through.
+	terminal      *terminalOwner
 	runtimeNodes  map[string]bool
 	publicOutputs map[string]*lang.Value
 	currentConfig func() *config.Config
@@ -419,10 +416,8 @@ func (d *sessionDispatcher) handOver(s *domain.Session, evs []event.Event, seqs 
 	return true
 }
 
-// recordDelivery runs before the attempt rather than after it: a runtime
-// that starts its turn while the attempt is still returning writes its first
-// status before a later record could exist, and that record would then accuse
-// a session that already answered.
+// recordDelivery runs before the attempt: a record written after it could
+// land behind the first status of a turn the delivery already started.
 func (d *sessionDispatcher) recordDelivery(s *domain.Session, ev event.Event) bool {
 	rec := domain.UnansweredDelivery{EventID: ev.ID, EventType: ev.Type, DeliveredAt: time.Now()}
 	if err := d.state.RecordUnansweredDelivery(d.session, rec, domain.RunStartedAt(s)); err != nil {
