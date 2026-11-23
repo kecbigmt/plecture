@@ -33,8 +33,6 @@ var kindFields = map[Kind]map[string]bool{
 // because the author's declaration was valid until the provider was removed.
 var retiredWorkflowFields = fieldSet("workspace_provider", "workspace_provider_inputs")
 
-// HeartbeatBudgetMigrationGuide is where a host learns to move a task's
-// convergence bound onto the workflows that run it.
 const HeartbeatBudgetMigrationGuide = "docs/migrations/heartbeat-budget-to-workflow-tick.md"
 
 func fieldSet(names ...string) map[string]bool {

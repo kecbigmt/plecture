@@ -527,9 +527,6 @@ func setWorkflowResource(t *testing.T, cfg *config.Config, wfID, resource string
 	}
 }
 
-// setWorkflowHeartbeatBudget declares wfID's `[tick]` with a heartbeat and,
-// for a positive budget, the heartbeat_budget beside it; zero leaves the wait
-// unbounded the way an author does, by omitting the key.
 func setWorkflowHeartbeatBudget(t *testing.T, cfg *config.Config, wfID string, budget int) {
 	t.Helper()
 	path := filepath.Join(cfg.BaseDir, "workflows", wfID+".toml")
