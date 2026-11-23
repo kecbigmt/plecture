@@ -6,9 +6,11 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
+	"io"
 	"maps"
 	"net/url"
 	"path/filepath"
+	"reflect"
 	"slices"
 	"strings"
 	"sync"
@@ -162,10 +164,96 @@ func DecodeWorkflowRevision(body []byte, digest string) (WorkflowRevision, error
 		return WorkflowRevision{}, fmt.Errorf("workflow revision digest mismatch")
 	}
 	var revision WorkflowRevision
-	if err := json.Unmarshal(body, &revision); err != nil {
+	decoder := json.NewDecoder(bytes.NewReader(body))
+	decoder.UseNumber()
+	if err := decoder.Decode(&revision); err != nil {
+		return WorkflowRevision{}, fmt.Errorf("decode workflow revision: %w", err)
+	}
+	if _, err := decoder.Token(); err != io.EOF {
+		return WorkflowRevision{}, fmt.Errorf("decode workflow revision: data after the revision object")
+	}
+	if err := restoreNumbers(reflect.ValueOf(&revision).Elem()); err != nil {
 		return WorkflowRevision{}, fmt.Errorf("decode workflow revision: %w", err)
 	}
 	return revision, nil
+}
+
+// restoreNumbers gives every untyped number the type the configuration
+// decoder would: an integer is int64, so a value above 2^53 keeps its exact
+// value and the re-encoded body keeps its digest. A whole-valued float encodes
+// exactly like an integer, so it comes back as int64; telling the two apart
+// would mean changing the canonical encoding and with it every stored digest.
+func restoreNumbers(v reflect.Value) error {
+	switch v.Kind() {
+	case reflect.Pointer:
+		if !v.IsNil() {
+			return restoreNumbers(v.Elem())
+		}
+	case reflect.Struct:
+		for i := range v.NumField() {
+			if !v.Type().Field(i).IsExported() {
+				continue
+			}
+			if err := restoreNumbers(v.Field(i)); err != nil {
+				return err
+			}
+		}
+	case reflect.Slice, reflect.Array:
+		for i := range v.Len() {
+			if err := restoreNumbers(v.Index(i)); err != nil {
+				return err
+			}
+		}
+	case reflect.Map:
+		iter := v.MapRange()
+		for iter.Next() {
+			elem := reflect.New(v.Type().Elem()).Elem()
+			elem.Set(iter.Value())
+			if err := restoreNumbers(elem); err != nil {
+				return err
+			}
+			v.SetMapIndex(iter.Key(), elem)
+		}
+	case reflect.Interface:
+		if v.IsNil() {
+			return nil
+		}
+		restored, err := restoreNumber(v.Elem().Interface())
+		if err != nil {
+			return err
+		}
+		v.Set(reflect.ValueOf(restored))
+	}
+	return nil
+}
+
+func restoreNumber(value any) (any, error) {
+	switch x := value.(type) {
+	case json.Number:
+		// Negative zero is a float that parses as an integer, and an int64 would
+		// drop its sign.
+		if n, err := x.Int64(); err == nil && !strings.HasPrefix(string(x), "-0") {
+			return n, nil
+		}
+		return x.Float64()
+	case map[string]any:
+		for key, item := range x {
+			restored, err := restoreNumber(item)
+			if err != nil {
+				return nil, err
+			}
+			x[key] = restored
+		}
+	case []any:
+		for i, item := range x {
+			restored, err := restoreNumber(item)
+			if err != nil {
+				return nil, err
+			}
+			x[i] = restored
+		}
+	}
+	return value, nil
 }
 
 type decodedRevisionCache struct {

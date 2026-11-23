@@ -1,7 +1,13 @@
 package config
 
 import (
+	"crypto/sha256"
+	"encoding/hex"
+	"fmt"
+	"math"
 	"path/filepath"
+	"reflect"
+	"slices"
 	"strings"
 	"testing"
 	"time"
@@ -248,5 +254,86 @@ func TestSessionWorkflowAndRunScopeUseStoredRevision(t *testing.T) {
 	}
 	if !cfg.RunScopeUp(session) {
 		t.Fatal("stored run-scoped node was ignored")
+	}
+}
+
+func TestWorkflowRevisionRoundTripPreservesNumbers(t *testing.T) {
+	base := t.TempDir()
+	writeFile(t, filepath.Join(base, "tasks", "effect.toml"), "[effect]\nkind = \"effect\"\nscope = \"run\"\n")
+	writeFile(t, filepath.Join(base, "workflows", "work.toml"), `[work]
+kind = "workflow"
+resource = "issue"
+[[work.nodes]]
+id = "one"
+uses = "effect"
+[work.nodes.inputs]
+big = 9007199254740993
+small = 3
+negative = -9007199254740993
+fraction = 1.5
+zero = -0.0
+list = [9007199254740993, 2.5, -0.0]
+`)
+	revision, err := (&Config{BaseDir: base}).CaptureWorkflowRevision("", "work")
+	if err != nil {
+		t.Fatal(err)
+	}
+	body, digest, err := revision.CanonicalBody()
+	if err != nil {
+		t.Fatal(err)
+	}
+	decoded, err := DecodeWorkflowRevision(body, digest)
+	if err != nil {
+		t.Fatal(err)
+	}
+	inputs := decoded.Workflow.Nodes[0].Inputs
+	for _, tc := range []struct {
+		name string
+		want any
+	}{
+		{"big", int64(9007199254740993)},
+		{"small", int64(3)},
+		{"negative", int64(-9007199254740993)},
+		{"fraction", 1.5},
+		{"zero", math.Copysign(0, -1)},
+		{"list", []any{int64(9007199254740993), 2.5, math.Copysign(0, -1)}},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			// Equality ignores the sign of zero, so the formatted value checks it.
+			got := inputs[tc.name].Literal
+			if !reflect.DeepEqual(got, tc.want) || fmt.Sprintf("%#v", got) != fmt.Sprintf("%#v", tc.want) {
+				t.Fatalf("input %s = %#v, want %#v", tc.name, got, tc.want)
+			}
+		})
+	}
+	_, again, err := decoded.CanonicalBody()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if again != digest {
+		t.Fatalf("read-back digest %s differs from frozen digest %s", again, digest)
+	}
+}
+
+func TestDecodeWorkflowRevisionRejectsMalformedBody(t *testing.T) {
+	body, _, err := WorkflowRevision{Workflow: WorkflowFile{ID: "work"}}.CanonicalBody()
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, tc := range []struct {
+		name string
+		body []byte
+	}{
+		{"trailing data", append(slices.Clone(body), []byte(" {}")...)},
+		{"truncated object", body[:len(body)-1]},
+		{"wrong field type", []byte(`{"workflow":{"Nodes":3}}`)},
+		{"number beyond float64", []byte(`{"workflow":{"Nodes":[{"Inputs":{"x":{"Literal":1e400}}}]}}`)},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			sum := sha256.Sum256(tc.body)
+			if _, err := DecodeWorkflowRevision(tc.body, hex.EncodeToString(sum[:])); err == nil {
+				t.Fatalf("revision body %q decoded", tc.body)
+			}
+		})
 	}
 }
