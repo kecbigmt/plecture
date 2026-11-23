@@ -207,6 +207,13 @@ func (d *Diagnostic) Error() string {
 	return fmt.Sprintf("%s: %s: %s", d.Pos, d.Code, d.Reason)
 }
 
+// NewDiagnostic is newDiag for a loader outside this package that enforces a
+// rule this package registers a code for, so the code and its documented
+// layer stay checked in one place.
+func NewDiagnostic(code Code, layer Layer, pos Position, reason string) *Diagnostic {
+	return newDiag(code, layer, pos, reason)
+}
+
 // newDiag constructs a Diagnostic, panicking if layer is not one
 // docs/language/README.md documents for code — a programmer error (a typo
 // at a construction site), never a data-dependent condition.

@@ -3,6 +3,8 @@ package config
 import (
 	"fmt"
 	"sort"
+
+	"github.com/kecbigmt/plecture/app/internal/lang"
 )
 
 // nestingIndex is the namespace `inner` resolves against: every loaded effect,
@@ -27,20 +29,24 @@ func (ix nestingIndex) resolve(ref string) (TaskDefinition, error) {
 	return TaskDefinition{}, fmt.Errorf("inner names unknown effect %q%s", ref, hint)
 }
 
-// nestingChain walks inward from def, returning the chain next-inner first.
-func (ix nestingIndex) nestingChain(def TaskDefinition) ([]TaskDefinition, error) {
+// nestingChain walks inward from the effect at address, returning the chain
+// next-inner first. A cycle is a revisited address, never a revisited file:
+// one file may declare a whole acyclic chain.
+func (ix nestingIndex) nestingChain(address string) ([]TaskDefinition, error) {
 	var chain []TaskDefinition
-	seen := map[string]bool{def.SourcePath: true}
-	cur := def
+	seen := map[string]bool{address: true}
+	cur := ix.byAddress[address]
 	for cur.IsNested() {
 		next, err := ix.resolve(cur.Inner)
 		if err != nil {
 			return nil, err
 		}
-		if seen[next.SourcePath] {
-			return nil, fmt.Errorf("inner %q forms a nesting cycle", cur.Inner)
+		if seen[cur.Inner] {
+			return nil, lang.NewDiagnostic(lang.CodeNestingCycle, lang.LayerSemantic,
+				lang.Position{File: cur.SourcePath, Path: cur.ID + ".inner.uses"},
+				fmt.Sprintf("inner %q forms a nesting cycle", cur.Inner))
 		}
-		seen[next.SourcePath] = true
+		seen[cur.Inner] = true
 		chain = append(chain, next)
 		cur = next
 	}
@@ -61,12 +67,12 @@ func resolveNestedDefinitions(defs map[string]TaskDefinition, missingPlugin func
 		if !def.IsNested() {
 			continue
 		}
-		chain, err := ix.nestingChain(def)
+		chain, err := ix.nestingChain(address)
 		if err != nil {
-			return fmt.Errorf("task %s: %w", def.SourcePath, err)
+			return fmt.Errorf("effect %q: %w", address, err)
 		}
 		if err := validateNesting(append([]TaskDefinition{def}, chain...)); err != nil {
-			return fmt.Errorf("task %s: %w", def.SourcePath, err)
+			return fmt.Errorf("effect %q in %s: %w", address, def.SourcePath, err)
 		}
 		// Only the outermost definition carries the chain: it is already
 		// flattened, so re-stamping each inner layer would store the same
