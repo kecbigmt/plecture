@@ -14,7 +14,7 @@ var kindFields = map[Kind]map[string]bool{
 		"locals_schema", "locals_schema_file", "outputs", "outputs_schema",
 		"outputs_schema_file", "scope", "setup", "terminal"),
 	KindTask: fieldSet(
-		"budget", "chains", "description", "done_when", "extends", "inputs_schema",
+		"chains", "description", "done_when", "extends", "inputs_schema",
 		"inputs_schema_file", "instructions",
 		"resource", "state_schema", "state_schema_file"),
 	KindChannel: fieldSet(
@@ -33,6 +33,10 @@ var kindFields = map[Kind]map[string]bool{
 // because the author's declaration was valid until the provider was removed.
 var retiredWorkflowFields = fieldSet("workspace_provider", "workspace_provider_inputs")
 
+// HeartbeatBudgetMigrationGuide is where a host learns to move a task's
+// convergence bound onto the workflows that run it.
+const HeartbeatBudgetMigrationGuide = "docs/migrations/heartbeat-budget-to-workflow-tick.md"
+
 func fieldSet(names ...string) map[string]bool {
 	set := make(map[string]bool, len(names))
 	for _, name := range names {
@@ -50,6 +54,10 @@ func checkKindSurface(def *Definition, pos Position) error {
 		if def.Kind == KindWorkflow && retiredWorkflowFields[field] {
 			return newDiag(CodeFieldUnknown, LayerStructural, childPos(pos, field),
 				fmt.Sprintf("%q is retired: a workflow assembles its environment from nodes and declares `workdir`; see %s", field, WorkspaceProviderMigrationGuide))
+		}
+		if def.Kind == KindTask && field == "budget" {
+			return newDiag(CodeFieldUnknown, LayerStructural, childPos(pos, field),
+				fmt.Sprintf("a task no longer declares %q: the heartbeat budget is the workflow's `[tick] heartbeat_budget`; see %s", field, HeartbeatBudgetMigrationGuide))
 		}
 		if !fields[field] {
 			return newDiag(CodeFieldUnknown, LayerStructural, childPos(pos, field),

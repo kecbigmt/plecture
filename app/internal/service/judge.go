@@ -238,9 +238,6 @@ func effectiveDoneWhen(base *config.DoneWhen, st *contract.TaskState) (*config.D
 	merged.All = make([]config.DoneWhenLeaf, 0, len(base.All)+len(extra.All))
 	merged.All = append(merged.All, base.All...)
 	merged.All = append(merged.All, extra.All...)
-	if merged.Budget == nil {
-		merged.Budget = extra.Budget
-	}
 	return &merged, nil
 }
 

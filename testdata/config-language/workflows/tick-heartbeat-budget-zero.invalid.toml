@@ -1,0 +1,10 @@
+# plect-fixture: result=invalid layer=structural diagnostic=PLECTURE-CFG-FIELD-TYPE entry=definitions
+# reason: an unbounded wait is declared by omitting the budget, so a zero budget is a misdeclaration rather than a second spelling of unbounded.
+
+[issue_worker]
+kind     = "workflow"
+resource = "issue"
+
+[issue_worker.tick]
+heartbeat        = "15m"
+heartbeat_budget = 0

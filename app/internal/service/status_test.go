@@ -32,6 +32,7 @@ all = [
 revision = "{{.Work.outputs.revision}}"
 `)},
 		[]nodeFixture{{id: "work"}})
+	setWorkflowHeartbeatBudget(t, cfg, "wf", 3)
 	writeWorkflowFile(t, cfg, "codex", "")
 	seedReviewWork(t, store, "owner/repo-1", map[string]any{"checks_status": "SUCCESS", "revision": "sha1"})
 
@@ -55,8 +56,8 @@ revision = "{{.Work.outputs.revision}}"
 	if len(w.JudgeCommands) == 0 {
 		t.Error("expected judge commands for review_required")
 	}
-	if w.HeartbeatBudget == 0 {
-		t.Error("expected heartbeat budget to be reported")
+	if w.HeartbeatBudget != 3 {
+		t.Errorf("HeartbeatBudget = %d, want the workflow tick's 3", w.HeartbeatBudget)
 	}
 	if len(w.Chains) != 1 || w.Chains[0].ChainID != "review" {
 		t.Fatalf("Chains = %+v, want one entry for chain \"review\"", w.Chains)

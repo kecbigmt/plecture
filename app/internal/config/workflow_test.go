@@ -591,6 +591,40 @@ backoff_reset = ["nope"]
 	}
 }
 
+func TestLoadWorkflows_TickHeartbeatBudget(t *testing.T) {
+	tests := []struct {
+		name     string
+		table    string
+		want     int
+		wantFail bool
+	}{
+		{name: "declared", table: "heartbeat = \"15m\"\nheartbeat_budget = 3\n", want: 3},
+		{name: "omitted is unbounded", table: "heartbeat = \"15m\"\n", want: 0},
+		{name: "zero is refused", table: "heartbeat = \"15m\"\nheartbeat_budget = 0\n", wantFail: true},
+		{name: "negative is refused", table: "heartbeat = \"15m\"\nheartbeat_budget = -1\n", wantFail: true},
+		{name: "a string is refused", table: "heartbeat = \"15m\"\nheartbeat_budget = \"3\"\n", wantFail: true},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			baseDir := t.TempDir()
+			writeFile(t, filepath.Join(baseDir, "workflows", "w.toml"), "[w]\nkind = \"workflow\"\nresource = \"issue\"\n[w.tick]\n"+tt.table)
+			got, err := (&Config{BaseDir: baseDir}).LoadWorkflows("")
+			if tt.wantFail {
+				if err == nil || !strings.Contains(err.Error(), "heartbeat_budget") {
+					t.Fatalf("LoadWorkflows error = %v, want one naming heartbeat_budget", err)
+				}
+				return
+			}
+			if err != nil {
+				t.Fatalf("LoadWorkflows: %v", err)
+			}
+			if got["w"].Tick.HeartbeatBudget != tt.want {
+				t.Errorf("HeartbeatBudget = %d, want %d", got["w"].Tick.HeartbeatBudget, tt.want)
+			}
+		})
+	}
+}
+
 func TestLoadWorkflows_HealthRepairAttempts(t *testing.T) {
 	tests := []struct {
 		name     string

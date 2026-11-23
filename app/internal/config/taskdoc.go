@@ -40,11 +40,7 @@ type TaskDocument struct {
 	StateSchema     map[string]any
 	StateSchemaFile string
 	DoneWhen        *DoneWhen
-	// Budget bounds convergence. Omitting it leaves completion unbounded,
-	// which is what a standing goal needs: continuing to exist is not
-	// exhaustion.
-	Budget map[string]any
-	Chains []DocumentChain
+	Chains          []DocumentChain
 	// Instruction is the declaration's `instructions` array elements, resolved
 	// (inline text, or a named sidecar's content) and joined by a blank line.
 	// Its `{{ <path> }}` projections are part of the language, validated at
@@ -191,7 +187,6 @@ func taskDocumentFrom(def *lang.Definition, path string, fromPlugin bool) (TaskD
 	}{
 		{"inputs_schema", &d.InputsSchema},
 		{"state_schema", &d.StateSchema},
-		{"budget", &d.Budget},
 	} {
 		if raw, ok := def.Body[field.key]; ok {
 			table, ok := raw.(map[string]any)
@@ -206,12 +201,6 @@ func taskDocumentFrom(def *lang.Definition, path string, fromPlugin bool) (TaskD
 		return d, err
 	}
 	d.DoneWhen = doneWhen
-	// A document declares its budget beside its completion predicate, because
-	// what it bounds is convergence, not one predicate's shape; the runtime
-	// accounts for patience per predicate, so the two are joined here.
-	if d.DoneWhen != nil && len(d.Budget) > 0 {
-		d.DoneWhen.Budget = d.Budget
-	}
 	if err := d.DoneWhen.Validate(); err != nil {
 		return d, err
 	}

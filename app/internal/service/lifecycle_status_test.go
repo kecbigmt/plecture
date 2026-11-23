@@ -113,7 +113,7 @@ func TestUp_NudgesPendingWaitOnceWhenRuntimeStarts(t *testing.T) {
 	store := testStore(t)
 	name := "work-1"
 	cfg := writeWorkflowFixture(t, "default", []taskFixture{
-		{id: "work", scope: "session", extra: "[done_when]\nheartbeat_budget = 3\nall = [{ expr = \"self.state.verdict_revision == 'r1'\" }]\n"},
+		{id: "work", scope: "session", extra: "[done_when]\nall = [{ expr = \"self.state.verdict_revision == 'r1'\" }]\n"},
 		{id: "runtime", scope: "run", setup: "echo '{}'"},
 	}, []nodeFixture{{id: "runtime"}})
 	seedSession(t, store, name, "acct", 1, "default", map[string]*contract.TaskState{

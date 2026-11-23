@@ -89,7 +89,7 @@ func composeTaskDocument(layers []TaskDocument) TaskDocument {
 	composed.Instruction = strings.Join(texts, "\n\n")
 	composed.Chains = chains
 	if len(leaves) > 0 {
-		composed.DoneWhen = &DoneWhen{All: leaves, Budget: composed.Budget}
+		composed.DoneWhen = &DoneWhen{All: leaves}
 	}
 	composed.InputsSchema = mergeSchemaField(layers, func(d TaskDocument) map[string]any { return d.InputsSchema })
 	composed.StateSchema = mergeSchemaField(layers, func(d TaskDocument) map[string]any { return d.StateSchema })

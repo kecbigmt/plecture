@@ -101,7 +101,7 @@ func TestTickSession_RecoveryRekicksUnchangedWorkWithoutConsumingHeartbeat(t *te
 func TestTickSession_RecoveryNudgesPendingWaitWithoutConsumingHeartbeat(t *testing.T) {
 	store := testStore(t)
 	cfg := writeWorkflowFixture(t, "default", []taskFixture{
-		{id: "work", scope: "session", extra: "[done_when]\nheartbeat_budget = 3\nall = [{ expr = \"self.state.verdict_revision == 'r1'\" }]\n"},
+		{id: "work", scope: "session", extra: "[done_when]\nall = [{ expr = \"self.state.verdict_revision == 'r1'\" }]\n"},
 	}, nil)
 	name := "owner/repo-1"
 	seedSession(t, store, name, "owner/repo", 1, "default", map[string]*contract.TaskState{

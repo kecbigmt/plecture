@@ -1,0 +1,16 @@
+# plect-fixture: result=invalid layer=structural diagnostic=PLECTURE-CFG-FIELD-UNKNOWN entry=definitions
+# reason: a task no longer bounds its own convergence; how long a deployment waits before calling a human is the workflow's tick, so a task budget is refused rather than silently ignored.
+
+[work]
+kind         = "task"
+description  = "Implement a fix or feature for an issue and create a PR"
+resource     = "issue_pr"
+instructions = [{ text = "Resolve the issue at {{ resource.id }}." }]
+
+[work.done_when]
+all = [
+  { judge = "acceptance criteria are satisfied, with a concrete reason", id = "ac-met" },
+]
+
+[work.budget]
+heartbeat_budget = 3

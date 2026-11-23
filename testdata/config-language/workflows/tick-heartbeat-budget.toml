@@ -1,0 +1,11 @@
+# plect-fixture: result=valid entry=definitions
+# reason: the heartbeat budget sits beside the heartbeat it counts, so the same number always means the same wait in that deployment.
+
+[issue_worker]
+kind     = "workflow"
+resource = "issue"
+
+[issue_worker.tick]
+on               = ["resource.*"]
+heartbeat        = "15m"
+heartbeat_budget = 3

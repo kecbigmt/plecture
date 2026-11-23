@@ -333,7 +333,7 @@ func TestRepairSession_NudgesPendingWaitAfterRuntimeRepair(t *testing.T) {
 		s.Status = contract.SessionStatusUp
 		s.Tasks = map[string]*contract.TaskState{
 			"work": {Scope: contract.TaskScopeSession, TaskID: "runner", Status: contract.TaskStatusProduced,
-				ExtraDoneWhen: json.RawMessage(`{"all":[{"expr":"self.state.verdict_revision == 'r1'"}],"heartbeat_budget":3}`),
+				ExtraDoneWhen: json.RawMessage(`{"all":[{"expr":"self.state.verdict_revision == 'r1'"}]}`),
 				DoneWhen:      &contract.DoneWhenState{HeartbeatTicks: 103, LastAction: "wait"}},
 		}
 		return nil

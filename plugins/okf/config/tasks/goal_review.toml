@@ -30,7 +30,3 @@ all = [
   { check = "resource.state.goal_parse_status", in = ["SUCCESS"] },
   { expr = "self.state.verdict_revision == resource.state.revision" },
 ]
-
-[goal_review.budget]
-heartbeat_budget = 3
-on_exhaust       = "escalate"

@@ -327,7 +327,7 @@ func (v Validation) validateWorkflow(def *Definition, pos Position) error {
 		field  string
 		fields []string
 	}{
-		{"tick", []string{"on", "heartbeat", "max_heartbeat", "backoff_reset"}},
+		{"tick", []string{"on", "heartbeat", "max_heartbeat", "backoff_reset", "heartbeat_budget"}},
 		{"healthcheck", []string{"period", "stall_threshold", "renotify_every"}},
 		{"health", []string{"auto_repair_attempts", "resume_instruction"}},
 		{"session", []string{"sleep_after_idle"}},
@@ -347,6 +347,12 @@ func (v Validation) validateWorkflow(def *Definition, pos Position) error {
 		if clock.field == "health" {
 			if _, ok := tbl["auto_repair_attempts"]; !ok {
 				return newDiag(CodeFieldRequired, LayerStructural, childPos(at, "auto_repair_attempts"), "workflow [health] declares `auto_repair_attempts`")
+			}
+		}
+		if raw, ok := tbl["heartbeat_budget"]; ok && clock.field == "tick" {
+			if n, ok := raw.(int64); !ok || n < 1 {
+				return newDiag(CodeFieldType, LayerStructural, childPos(at, "heartbeat_budget"),
+					"heartbeat_budget is a positive integer; omit it for an unbounded wait")
 			}
 		}
 		if clock.field == "session" {
@@ -413,6 +419,11 @@ func (v Validation) completionPredicate(body map[string]any, field string, pos P
 	tbl, err := table(raw, childPos(pos, field))
 	if err != nil {
 		return err
+	}
+	if field == "done_when" {
+		if err := rejectUnknownFields(tbl, childPos(pos, field), "all"); err != nil {
+			return err
+		}
 	}
 	leaves, err := tableArray(tbl, "all", childPos(pos, field))
 	if err != nil {
