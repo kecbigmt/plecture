@@ -20,7 +20,6 @@ import (
 
 	"github.com/kecbigmt/plecture/plugins/github/src/internal/ghapi"
 	"github.com/kecbigmt/plecture/plugins/github/src/internal/github"
-	"github.com/kecbigmt/plecture/plugins/github/src/internal/tokencommand"
 	"github.com/kecbigmt/plecture/plugins/github/src/internal/workspace"
 )
 
@@ -78,6 +77,7 @@ type SetupOptions struct {
 	// TokenCommand ignores AppID, InstallationID, Owner, and Repo, since the
 	// command already names its installation.
 	TokenCommand []string
+	AppBaseURL   string
 	// Manager lets tests observe acquisition without a real repository.
 	Manager WorktreeManager
 	// GHClient fetches title/state metadata. Defaults to ghapi.Direct(); a
@@ -103,13 +103,6 @@ func Setup(ctx context.Context, opts SetupOptions) (map[string]any, error) {
 	if err != nil {
 		return nil, err
 	}
-	// The tolerated issue-metadata fetch, and a git that never needs
-	// credentials, would otherwise hide a broken command.
-	if len(opts.TokenCommand) != 0 {
-		if _, err := tokencommand.Run(opts.TokenCommand); err != nil {
-			return nil, fmt.Errorf("app git auth: %w", err)
-		}
-	}
 	client := selectGHClient(appClient, opts.GHClient)
 
 	var baseBranch, title, state string
@@ -121,7 +114,10 @@ func Setup(ctx context.Context, opts SetupOptions) (map[string]any, error) {
 		baseBranch, title, state = meta.HeadRef, meta.Title, meta.State
 	} else {
 		baseBranch = github.ExpandIssueBranch(opts.IssueBranchTemplate, parsed.Owner, parsed.Repo, parsed.Number)
-		meta := github.FetchIssueMeta(ctx, client, parsed.OwnerRepo, parsed.Number)
+		meta, err := github.FetchIssueMeta(ctx, client, parsed.OwnerRepo, parsed.Number)
+		if err != nil {
+			return nil, err
+		}
 		title, state = meta.Title, meta.State
 	}
 
@@ -177,9 +173,9 @@ func Setup(ctx context.Context, opts SetupOptions) (map[string]any, error) {
 }
 
 // appAuth builds a git credential helper and a metadata GHClient from one
-// set of inputs, pointed at the same on-disk token cache so whichever runs
-// first mints the installation token and the other reuses it. A nil
-// GHClient means the inputs opted out.
+// set of inputs. On the key path both point at the same on-disk token cache
+// so whichever runs first mints the installation token and the other reuses
+// it. A nil GHClient means the inputs opted out.
 func appAuth(opts SetupOptions, parsed *github.ParsedURL) (workspace.GitAuthConfig, github.GHClient, error) {
 	if len(opts.TokenCommand) != 0 {
 		return commandAuth(opts)
@@ -225,6 +221,7 @@ func appAuth(opts SetupOptions, parsed *github.ParsedURL) (workspace.GitAuthConf
 		Repo:           repo,
 		PrivateKeyPath: opts.PrivateKeyPath,
 		CachePath:      cachePath,
+		BaseURL:        opts.AppBaseURL,
 	}
 	return workspace.GitAuthConfig{CredentialHelper: helper}, client, nil
 }
@@ -238,7 +235,7 @@ func commandAuth(opts SetupOptions) (workspace.GitAuthConfig, github.GHClient, e
 		return workspace.GitAuthConfig{}, nil, fmt.Errorf("app git auth: encode token_command: %w", err)
 	}
 	helper := []string{appTokenBin(opts), "credential", "--token-command", string(commandJSON)}
-	return workspace.GitAuthConfig{CredentialHelper: helper}, &ghapi.App{TokenCommand: opts.TokenCommand}, nil
+	return workspace.GitAuthConfig{CredentialHelper: helper}, &ghapi.App{TokenCommand: opts.TokenCommand, BaseURL: opts.AppBaseURL}, nil
 }
 
 func appTokenBin(opts SetupOptions) string {

@@ -2,6 +2,8 @@ package github
 
 import (
 	"context"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 
@@ -45,7 +47,10 @@ func TestFetchIssueMeta_ParsesTitleAndState(t *testing.T) {
 	client := ghapi.Direct()
 	client.Runner = &fakeRunner{stdout: []byte(`{"title":"Fix crash","state":"CLOSED"}`)}
 
-	meta := FetchIssueMeta(context.Background(), client, "acme/widgets", 7)
+	meta, err := FetchIssueMeta(context.Background(), client, "acme/widgets", 7)
+	if err != nil {
+		t.Fatalf("FetchIssueMeta: %v", err)
+	}
 	if meta.Title != "Fix crash" || meta.State != "closed" {
 		t.Errorf("meta = %+v", meta)
 	}
@@ -58,7 +63,10 @@ func TestFetchIssueMeta_FetchFailureIsTolerated(t *testing.T) {
 	client := ghapi.Direct()
 	client.Runner = &fakeRunner{stderr: []byte("HTTP 404"), err: context.DeadlineExceeded}
 
-	meta := FetchIssueMeta(context.Background(), client, "acme/widgets", 999)
+	meta, err := FetchIssueMeta(context.Background(), client, "acme/widgets", 999)
+	if err != nil {
+		t.Fatalf("FetchIssueMeta: %v, want the fetch failure tolerated", err)
+	}
 	if meta.Title != "" || meta.State != "" {
 		t.Errorf("meta = %+v, want zero value on fetch failure", meta)
 	}
@@ -68,9 +76,27 @@ func TestFetchIssueMeta_MalformedJSONIsTolerated(t *testing.T) {
 	client := ghapi.Direct()
 	client.Runner = &fakeRunner{stdout: []byte("not json")}
 
-	meta := FetchIssueMeta(context.Background(), client, "acme/widgets", 7)
+	meta, err := FetchIssueMeta(context.Background(), client, "acme/widgets", 7)
+	if err != nil {
+		t.Fatalf("FetchIssueMeta: %v, want the unparsable response tolerated", err)
+	}
 	if meta.Title != "" || meta.State != "" {
 		t.Errorf("meta = %+v, want zero value on unparsable response", meta)
+	}
+}
+
+// A failed token command is a broken credential source, not a missing issue,
+// so tolerating it would let setup go on as if authentication worked.
+func TestFetchIssueMeta_TokenCommandFailureIsNotTolerated(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "installation-token")
+	if err := os.WriteFile(path, []byte("#!/bin/sh\nexit 3\n"), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	client := &ghapi.App{TokenCommand: []string{path}, BaseURL: "http://127.0.0.1:0"}
+
+	_, err := FetchIssueMeta(context.Background(), client, "acme/widgets", 7)
+	if err == nil || !strings.Contains(err.Error(), path) || !strings.Contains(err.Error(), "exit status 3") {
+		t.Fatalf("error = %v, want the token command failure", err)
 	}
 }
 

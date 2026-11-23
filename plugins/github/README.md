@@ -323,12 +323,13 @@ configuration and gh-api client unchanged.
 If the private key is kept away from the session user, supply `token_command`
 instead of `private_key_path`, with the same rules as `gh_app_guard`: an
 argument array run without a shell, printing one nonempty token line, with no
-token cache in the plugin. Setup runs the command once before anything else,
-so a failing command fails setup with an error naming the command and its exit
-status, never its output, and git and metadata never fall back to ambient
-credentials. Afterwards the git credential helper (`gh-app-token credential
---token-command`) and the metadata fetch each run the command for every token
-they need. `private_key_path` and `token_command` are mutually exclusive.
+token cache in the plugin. The metadata fetch and the git credential helper
+(`gh-app-token credential --token-command`) each run the command for every
+token they need. A failing command fails setup with an error naming the
+command and its exit status, never its output, even on the issue path, where
+other metadata failures are tolerated; git and metadata never fall back to
+ambient credentials. `private_key_path` and `token_command` are mutually
+exclusive.
 
 ```bash
 plect up https://github.com/acme/widgets/issues/42 --inputs '{

@@ -25,6 +25,22 @@ func fakeTokenCommand(t *testing.T, script string) []string {
 	return []string{path, "get"}
 }
 
+// fakeGitHubAPI answers every metadata request with body under status and
+// records each Authorization header it receives.
+func fakeGitHubAPI(t *testing.T, status int, body string) (*httptest.Server, *[]string) {
+	t.Helper()
+	var authorizations []string
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		authorizations = append(authorizations, r.Header.Get("Authorization"))
+		w.WriteHeader(status)
+		if _, err := w.Write([]byte(body)); err != nil {
+			t.Error(err)
+		}
+	}))
+	t.Cleanup(srv.Close)
+	return srv, &authorizations
+}
+
 type recordingGHClient struct{ calls int }
 
 func (c *recordingGHClient) JSON(context.Context, ...string) ([]byte, error) {
@@ -64,20 +80,13 @@ func TestAppAuth_TokenCommandDrivesBothGitAndMetadataWithoutAKey(t *testing.T) {
 	if app.PrivateKeyPath != "" || app.CachePath != "" {
 		t.Errorf("client = %+v, want no key path and no token cache", app)
 	}
-	var authorization string
-	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		authorization = r.Header.Get("Authorization")
-		if _, err := w.Write([]byte(`{"head":{"ref":"feat/login"},"title":"Add login","state":"open"}`)); err != nil {
-			t.Error(err)
-		}
-	}))
-	defer srv.Close()
+	srv, authorizations := fakeGitHubAPI(t, http.StatusOK, `{"head":{"ref":"feat/login"},"title":"Add login","state":"open"}`)
 	app.BaseURL = srv.URL
 	if _, err := github.FetchPullMeta(context.Background(), app, parsed.OwnerRepo, parsed.Number); err != nil {
 		t.Fatalf("FetchPullMeta: %v", err)
 	}
-	if authorization != "Bearer ghs_from_command" {
-		t.Errorf("Authorization = %q, want the command's token", authorization)
+	if want := []string{"Bearer ghs_from_command"}; !reflect.DeepEqual(*authorizations, want) {
+		t.Errorf("Authorization headers = %q, want %q", *authorizations, want)
 	}
 }
 
@@ -105,11 +114,13 @@ func TestSetup_BrokenTokenCommandFailsSetupWithoutFallingBackToAmbientCredential
 		t.Run(tc.name, func(t *testing.T) {
 			mgr := &fakeManager{}
 			ambient := &recordingGHClient{}
+			srv, authorizations := fakeGitHubAPI(t, http.StatusOK, `{"title":"Fix crash","state":"open"}`)
 			command := fakeTokenCommand(t, tc.script)
 			_, err := Setup(context.Background(), SetupOptions{
 				ResourceID:   "https://github.com/acme/widgets/issues/42",
 				SessionName:  "acme/widgets-42",
 				TokenCommand: command,
+				AppBaseURL:   srv.URL,
 				Manager:      mgr,
 				GHClient:     ambient,
 			})
@@ -122,8 +133,8 @@ func TestSetup_BrokenTokenCommandFailsSetupWithoutFallingBackToAmbientCredential
 			if len(mgr.adds) != 0 {
 				t.Errorf("git ran after the token command failed: %v", mgr.adds)
 			}
-			if ambient.calls != 0 {
-				t.Errorf("metadata fell back to the ambient client %d time(s)", ambient.calls)
+			if ambient.calls != 0 || len(*authorizations) != 0 {
+				t.Errorf("metadata fell back: ambient client called %d time(s), API requests %q", ambient.calls, *authorizations)
 			}
 		})
 	}
@@ -140,10 +151,12 @@ func TestSetup_TokenCommandNeverReachesOutputsOrTheCredentialHelper(t *testing.T
 	if err != nil {
 		t.Fatalf("appAuth: %v", err)
 	}
+	srv, _ := fakeGitHubAPI(t, http.StatusOK, `{"title":"Fix crash","state":"open"}`)
 	outputs, err := Setup(context.Background(), SetupOptions{
 		ResourceID:   "https://github.com/acme/widgets/issues/42",
 		SessionName:  "acme/widgets-42",
 		TokenCommand: command,
+		AppBaseURL:   srv.URL,
 		Manager:      &fakeManager{},
 	})
 	if err != nil {
@@ -160,5 +173,26 @@ func TestSetup_TokenCommandNeverReachesOutputsOrTheCredentialHelper(t *testing.T
 		if strings.Contains(text, "ghs_secret_value") {
 			t.Errorf("%s carries the token: %s", name, text)
 		}
+	}
+}
+
+func TestSetup_TokenCommandKeepsToleratingAMissingIssue(t *testing.T) {
+	mgr := &fakeManager{}
+	srv, authorizations := fakeGitHubAPI(t, http.StatusNotFound, `{"message":"Not Found"}`)
+	outputs, err := Setup(context.Background(), SetupOptions{
+		ResourceID:   "https://github.com/acme/widgets/issues/42",
+		SessionName:  "acme/widgets-42",
+		TokenCommand: fakeTokenCommand(t, `printf 'ghs_from_command\n'`),
+		AppBaseURL:   srv.URL,
+		Manager:      mgr,
+	})
+	if err != nil {
+		t.Fatalf("Setup: %v, want a missing issue tolerated", err)
+	}
+	if want := []string{"Bearer ghs_from_command"}; !reflect.DeepEqual(*authorizations, want) {
+		t.Errorf("Authorization headers = %q, want %q", *authorizations, want)
+	}
+	if _, ok := outputs["title"]; ok || len(mgr.adds) != 1 {
+		t.Errorf("outputs = %v, adds = %v, want no title and one acquisition", outputs, mgr.adds)
 	}
 }
