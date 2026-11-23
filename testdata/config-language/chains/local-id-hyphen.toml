@@ -1,0 +1,23 @@
+# plect-fixture: result=valid entry=definitions
+# reason: a chain id is a local id, never a reference segment or a node id, so it may contain a hyphen.
+
+[pursue_goal]
+kind              = "task"
+description       = "Pursue one goal until an independent reviewer confirms it"
+resource          = "goal"
+instructions      = [{ text = "Pursue the goal at {{ resource.id }} until its checklist is satisfied." }]
+
+[pursue_goal.done_when]
+all = [
+  { judge = "goal is achieved according to the goal file and event evidence", id = "goal-met" },
+]
+
+[[pursue_goal.chains]]
+id       = "goal-review"
+workflow = "goal_reviewer"
+
+[pursue_goal.chains.when]
+all = [{ judge_pending = "goal-met" }]
+
+[pursue_goal.chains.inputs]
+task = "goal_review"

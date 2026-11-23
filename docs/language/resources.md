@@ -78,7 +78,10 @@ optional appearance context. It does not duplicate observation state.
 
 ## Validation rules
 
-- `match`, `name`, `observe`, and `state_schema` are required.
+- `match`, `name`, and `observe` are required.
+- `state_schema` is optional. A resource without one declares no state key, so
+  a task that reads any `resource.state.*` key of it fails to load
+  (`PLECTURE-CFG-FROM-PATH`).
 - A `name` projection names only captures declared by `match`.
 - `name` derives a value matching the session-name rule
   `[A-Za-z0-9][A-Za-z0-9/_+-]*`; any other value is an error where it is

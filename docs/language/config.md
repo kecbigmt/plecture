@@ -19,7 +19,7 @@ document.
 ## config.toml
 
 ```toml
-schema_version = 3
+schema_version = 2
 
 max_up_children     = 12
 resource_allowlist  = ["^https://github\\.com/kecbigmt/"]
@@ -156,7 +156,7 @@ An alias is user-local: it is what makes a catalog-qualified reference
 resolvable on this machine, and it is why a plugin author can never write one.
 
 ```toml
-schema_version = 3
+schema_version = 2
 
 [[catalogs]]
 alias   = "official"

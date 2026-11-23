@@ -228,7 +228,7 @@ For every intended project configuration, choose one project root, consolidate
 only that root's intended `.plect/` definitions, and add this marker:
 
 ```toml
-schema_version = 3
+schema_version = 2
 ```
 
 It contains no definitions or other fields and declares only the selected
