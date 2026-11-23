@@ -213,14 +213,18 @@ call about to be denied never costs a mint.
 
 The GitHub `worktree` effect has a separate App-auth path for raw git
 network operations. Sessions opt in by supplying the same task-level App
-inputs `gh_app_guard` accepts: `app_id`, optional `installation_id`, optional
-`owner`/`repo`, and `private_key_path`. The setup hook reads those values from
+inputs `gh_app_guard` accepts, in one of two alternatives: `app_id`, optional
+`installation_id`, optional `owner`/`repo`, and `private_key_path`; or
+`token_command` alone. The setup hook reads those values from
 `session.inputs`. Setup invokes git with process-local configuration: ambient
 credential helpers are cleared for that process, `https://github.com` receives
 a helper backed by `gh-app-token credential`, and GitHub SSH remotes are
 rewritten to HTTPS for that process. The helper returns a GitHub App
-installation token as the HTTPS password, using the same cache locking and
-expiry-skew behavior as the CLI wrapper.
+installation token as the HTTPS password. With `private_key_path`, it mints
+that token with the same cache locking and expiry-skew behavior as the CLI
+wrapper. With `token_command`, it runs the command, an argument array executed
+without a shell that prints one token line, for every token it needs, and the
+plugin keeps no token cache.
 
 ```toml
 [work.inputs_schema.properties]
@@ -229,6 +233,7 @@ installation_id = { type = "string", pattern = "^[0-9]+$" }
 owner = { type = "string", pattern = "^[A-Za-z0-9-]+$" }
 repo = { type = "string", pattern = "^[A-Za-z0-9._-]+$" }
 private_key_path = { type = "string", pattern = "^[A-Za-z0-9_./:-]+$" }
+token_command = { type = "array", minItems = 1, items = { type = "string", minLength = 1 } }
 ```
 
 ```bash
@@ -244,7 +249,11 @@ and the `worktree` effect also validates the runtime values it consumes:
 `app_id` and `installation_id` are decimal strings, `owner` is a GitHub login
 string, `repo` is a GitHub repository-name string, and `private_key_path` is a
 path string restricted to alphanumeric characters plus `_`, `.`, `/`, `:`, and
-`-`. `app_id` and `private_key_path` are all-or-nothing at runtime; omitting
-both leaves the ambient git credential path in force. If `owner` or `repo` is
-supplied, both are supplied together; omitting both makes setup use the
-resource owner/repo for installation lookup.
+`-`. `token_command` is a nonempty array of nonempty single-line strings, and
+it is mutually exclusive with `private_key_path`. With `token_command`, setup
+ignores `app_id`, `installation_id`, `owner`, and `repo`, and a failing command
+fails setup without falling back to ambient credentials. Otherwise `app_id`
+and `private_key_path` are all-or-nothing at runtime; omitting both leaves the
+ambient git credential path in force. If `owner` or `repo` is supplied, both
+are supplied together; omitting both makes setup use the resource owner/repo
+for installation lookup.

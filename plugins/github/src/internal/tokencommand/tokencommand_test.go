@@ -1,6 +1,7 @@
 package tokencommand
 
 import (
+	"errors"
 	"os"
 	"path/filepath"
 	"strings"
@@ -29,6 +30,10 @@ func TestRun(t *testing.T) {
 			if tc.failure {
 				if err == nil || !strings.Contains(err.Error(), path) || !strings.Contains(err.Error(), tc.want) || strings.Contains(err.Error(), "secret-token") {
 					t.Fatalf("result length %d, error %v", len(got), err)
+				}
+				var commandErr *Error
+				if !errors.As(err, &commandErr) {
+					t.Errorf("error %T is not a *tokencommand.Error", err)
 				}
 				return
 			}

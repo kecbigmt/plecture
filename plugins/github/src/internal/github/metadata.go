@@ -3,8 +3,11 @@ package github
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"strings"
+
+	"github.com/kecbigmt/plecture/plugins/github/src/internal/tokencommand"
 )
 
 // GHClient is the gh-api call surface metadata fetching needs. *ghapi.Client
@@ -53,18 +56,24 @@ type IssueMeta struct {
 // FetchIssueMeta fetches an issue's title and state. A fetch failure — the
 // issue doesn't exist yet, or the API is unreachable — is tolerated as a
 // zero IssueMeta rather than an error: branch work can start before the
-// issue exists, matching production's degrade-and-continue behavior.
-func FetchIssueMeta(ctx context.Context, client GHClient, ownerRepo string, number int) IssueMeta {
+// issue exists, matching production's degrade-and-continue behavior. A
+// failed token command is not tolerated, since it is a broken credential
+// source rather than an absent issue.
+func FetchIssueMeta(ctx context.Context, client GHClient, ownerRepo string, number int) (IssueMeta, error) {
 	raw, err := client.JSON(ctx, fmt.Sprintf("repos/%s/issues/%d", ownerRepo, number))
+	var commandErr *tokencommand.Error
+	if errors.As(err, &commandErr) {
+		return IssueMeta{}, err
+	}
 	if err != nil {
-		return IssueMeta{}
+		return IssueMeta{}, nil
 	}
 	var meta struct {
 		Title string `json:"title"`
 		State string `json:"state"`
 	}
 	if err := json.Unmarshal(raw, &meta); err != nil {
-		return IssueMeta{}
+		return IssueMeta{}, nil
 	}
-	return IssueMeta{Title: meta.Title, State: strings.ToLower(meta.State)}
+	return IssueMeta{Title: meta.Title, State: strings.ToLower(meta.State)}, nil
 }

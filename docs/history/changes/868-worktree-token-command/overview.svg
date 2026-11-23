@@ -1,0 +1,134 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 960 680" width="960" height="680" role="img" aria-labelledby="title desc">
+  <title id="title">Change: worktree effect accepts token_command</title>
+  <desc id="desc">Head structure of the GitHub worktree effect's App auth with the diff marked. The shipped task documents, changed, accept a token_command session input. The worktree effect, changed, passes it to github-worktree setup as an added --token-command JSON argument. Setup, changed, hands git a credential helper argv through process-local -c config and fetches PR or issue metadata through FetchIssueMeta or FetchPullMeta. FetchIssueMeta, changed, still tolerates a missing issue but re-raises a failed token command. The metadata fetch calls the unchanged ghapi.App client built with the command, which runs the command over an added path for each request and sends the token as a Bearer header to the GitHub API. Git asks gh-app-token credential, changed to accept --token-command, for credentials; gh-app-token runs the command over an added path for each git authentication. No token cache sits on any path.</desc>
+  <defs>
+    <style>
+      svg {
+        --bg: #ffffff; --fg: #1f2328; --muted: #59636e;
+        --neutral: #8c959f; --neutral-bg: #f6f8fa;
+        --added: #1a7f37; --added-bg: #dafbe1;
+        --changed: #0969da; --changed-bg: #ddf4ff;
+      }
+      @media (prefers-color-scheme: dark) {
+        svg {
+          --bg: #0d1117; --fg: #e6edf3; --muted: #9198a1;
+          --neutral: #656c76; --neutral-bg: #151b23;
+          --added: #3fb950; --added-bg: #0f2a1a;
+          --changed: #4493f8; --changed-bg: #0c2441;
+        }
+      }
+      text { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Helvetica, Arial, sans-serif; font-size: 13px; fill: var(--fg); }
+      .bg { fill: var(--bg); }
+      .title { font-size: 18px; font-weight: 600; }
+      .name { font-weight: 600; }
+      .note { font-size: 12px; fill: var(--muted); }
+      .label { font-size: 12px; }
+      .tag { font-size: 11px; font-weight: 700; letter-spacing: 0.06em; }
+      .neutral { fill: var(--neutral-bg); stroke: var(--neutral); stroke-width: 1.5; }
+      .external { fill: var(--neutral-bg); stroke: var(--neutral); stroke-width: 1.5; stroke-dasharray: 2 3; }
+      .changed { fill: var(--changed-bg); stroke: var(--changed); stroke-width: 2; }
+      .t-neutral { fill: var(--muted); }
+      .t-added { fill: var(--added); }
+      .t-changed { fill: var(--changed); }
+      .flow { fill: none; stroke: var(--fg); stroke-width: 1.5; marker-end: url(#arrow); }
+      .flow-added { fill: none; stroke: var(--added); stroke-width: 3; marker-end: url(#arrow-added); }
+      .head { fill: var(--fg); }
+      .head-added { fill: var(--added); }
+    </style>
+    <marker id="arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path class="head" d="M0,0 L10,5 L0,10 z"/>
+    </marker>
+    <marker id="arrow-added" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="4" markerHeight="4" orient="auto-start-reverse">
+      <path class="head-added" d="M0,0 L10,5 L0,10 z"/>
+    </marker>
+  </defs>
+
+  <rect class="bg" x="0" y="0" width="960" height="680"/>
+
+  <text class="title" x="24" y="38">Change: worktree effect accepts token_command</text>
+  <text class="note" x="24" y="60">PR #868 · github plugin · head structure with the diff marked on it · no path holds a token cache</text>
+
+  <rect class="changed" x="32" y="80" width="250" height="66" rx="6"/>
+  <text class="tag t-changed" x="48" y="101">CHANGED</text>
+  <text class="name" x="48" y="119">task documents</text>
+  <text class="note" x="48" y="136">work · review · respond · investigate</text>
+
+  <rect class="changed" x="32" y="200" width="200" height="66" rx="6"/>
+  <text class="tag t-changed" x="48" y="221">CHANGED</text>
+  <text class="name" x="48" y="239">worktree effect</text>
+  <text class="note" x="48" y="256">worktree.toml setup argv</text>
+
+  <rect class="changed" x="362" y="200" width="236" height="66" rx="6"/>
+  <text class="tag t-changed" x="378" y="221">CHANGED</text>
+  <text class="name" x="378" y="239">github-worktree setup</text>
+  <text class="note" x="378" y="256">commandAuth · App{TokenCommand}</text>
+
+  <rect class="neutral" x="32" y="360" width="200" height="66" rx="6"/>
+  <text class="tag t-neutral" x="48" y="381">UNCHANGED</text>
+  <text class="name" x="48" y="399">git</text>
+  <text class="note" x="48" y="416">HTTPS to github.com</text>
+
+  <rect class="external" x="362" y="360" width="236" height="66" rx="6"/>
+  <text class="tag t-neutral" x="378" y="381">EXTERNAL</text>
+  <text class="name" x="378" y="399">token command</text>
+  <text class="note" x="378" y="416">operator's argv · one token line</text>
+
+  <rect class="neutral" x="728" y="360" width="200" height="66" rx="6"/>
+  <text class="tag t-neutral" x="744" y="381">UNCHANGED</text>
+  <text class="name" x="744" y="399">ghapi.App</text>
+  <text class="note" x="744" y="416">metadata client</text>
+
+  <rect class="changed" x="32" y="510" width="200" height="66" rx="6"/>
+  <text class="tag t-changed" x="48" y="531">CHANGED</text>
+  <text class="name" x="48" y="549">gh-app-token credential</text>
+  <text class="note" x="48" y="566">--token-command mode</text>
+
+  <rect class="external" x="728" y="510" width="200" height="66" rx="6"/>
+  <text class="tag t-neutral" x="744" y="531">EXTERNAL</text>
+  <text class="name" x="744" y="549">GitHub REST API</text>
+  <text class="note" x="744" y="566">PR / issue metadata</text>
+
+  <line class="flow-added" x1="132" y1="146" x2="132" y2="200"/>
+  <text class="label t-added" x="144" y="168"><tspan x="144" font-weight="600">ADDED</tspan><tspan x="144" dy="15">session.inputs.token_command</tspan></text>
+
+  <line class="flow-added" x1="232" y1="233" x2="362" y2="233"/>
+  <text class="label t-added" text-anchor="middle" x="297" y="252"><tspan x="297" font-weight="600">ADDED</tspan><tspan x="297" dy="15">--token-command</tspan><tspan x="297" dy="15">JSON argv</tspan></text>
+
+  <line class="flow" x1="400" y1="266" x2="232" y2="368"/>
+  <text class="label" text-anchor="end" x="400" y="316"><tspan x="400">-c credential</tspan><tspan x="400" dy="15">helper argv</tspan></text>
+
+
+  <rect class="changed" x="728" y="200" width="200" height="66" rx="6"/>
+  <text class="tag t-changed" x="744" y="221">CHANGED</text>
+  <text class="name" x="744" y="239">FetchIssueMeta</text>
+  <text class="note" x="744" y="256">re-raises command failure</text>
+
+  <line class="flow" x1="598" y1="233" x2="728" y2="233"/>
+  <text class="label" text-anchor="middle" x="663" y="224">metadata fetch</text>
+
+  <line class="flow" x1="828" y1="266" x2="828" y2="360"/>
+  <text class="label" x="840" y="317">JSON call</text>
+
+  <line class="flow" x1="132" y1="426" x2="132" y2="510"/>
+  <text class="label" x="144" y="472">credential get</text>
+
+  <path class="flow-added" d="M232,543 H480 V426"/>
+  <text class="label t-added" x="300" y="508"><tspan x="300" font-weight="600">ADDED</tspan><tspan x="300" dy="15">run per git auth</tspan></text>
+
+  <line class="flow-added" x1="728" y1="393" x2="598" y2="393"/>
+  <text class="label t-added" text-anchor="middle" x="663" y="440"><tspan x="663" font-weight="600">ADDED</tspan><tspan x="663" dy="15">run per request</tspan></text>
+
+  <line class="flow" x1="828" y1="426" x2="828" y2="510"/>
+  <text class="label" x="840" y="472"><tspan x="840">Authorization:</tspan><tspan x="840" dy="15">Bearer token</tspan></text>
+
+  <rect class="changed" x="32" y="612" width="28" height="16" rx="3"/>
+  <text class="label" x="70" y="624">CHANGED · solid blue</text>
+  <rect class="neutral" x="264" y="612" width="28" height="16" rx="3"/>
+  <text class="label" x="302" y="624">UNCHANGED · grey</text>
+  <rect class="external" x="496" y="612" width="28" height="16" rx="3"/>
+  <text class="label" x="534" y="624">EXTERNAL · dotted grey</text>
+  <line class="flow-added" x1="728" y1="620" x2="760" y2="620"/>
+  <text class="label" x="770" y="624">ADDED path · thick green</text>
+  <line class="flow" x1="32" y1="656" x2="58" y2="656"/>
+  <text class="label" x="70" y="660">unchanged path, labelled with what crosses it</text>
+</svg>

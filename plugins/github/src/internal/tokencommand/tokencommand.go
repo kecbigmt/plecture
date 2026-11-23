@@ -26,6 +26,12 @@ func (o *limitedOutput) Write(p []byte) (int, error) {
 	return len(p), nil
 }
 
+// Error is a failed credential source; a caller that tolerates other GitHub
+// API failures must still surface it.
+type Error struct{ text string }
+
+func (e *Error) Error() string { return e.text }
+
 func Parse(raw string) ([]string, error) {
 	var args []string
 	if err := json.Unmarshal([]byte(raw), &args); err != nil || len(args) == 0 {
@@ -41,18 +47,18 @@ func Parse(raw string) ([]string, error) {
 
 func Run(args []string) (string, error) {
 	if len(args) == 0 {
-		return "", fmt.Errorf("token command is empty")
+		return "", &Error{"token command is empty"}
 	}
 	cmd := exec.Command(args[0], args[1:]...)
 	var out limitedOutput
 	cmd.Stdout = &out
 	if err := cmd.Run(); err != nil {
-		return "", fmt.Errorf("token command %q: %s", args[0], status(err))
+		return "", &Error{fmt.Sprintf("token command %q: %s", args[0], status(err))}
 	}
 	token := strings.TrimSuffix(out.buf.String(), "\n")
 	token = strings.TrimSuffix(token, "\r")
 	if out.tooLarge || token == "" || strings.ContainsAny(token, "\r\n\x00") {
-		return "", fmt.Errorf("token command %q: invalid output (exit status 0)", args[0])
+		return "", &Error{fmt.Sprintf("token command %q: invalid output (exit status 0)", args[0])}
 	}
 	return token, nil
 }

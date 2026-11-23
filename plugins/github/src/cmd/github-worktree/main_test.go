@@ -72,3 +72,32 @@ func TestCleanup_DeletesTheMergedBranchOnlyWhenTheRecordedPolicySaysSo(t *testin
 		})
 	}
 }
+
+func TestParseTokenCommand(t *testing.T) {
+	tests := []struct {
+		name    string
+		raw     string
+		want    []string
+		wantErr bool
+	}{
+		{name: "unset", raw: ""},
+		{name: "the effect's empty default", raw: "[]"},
+		{name: "argument array", raw: `["/usr/local/bin/installation-token","get"]`, want: []string{"/usr/local/bin/installation-token", "get"}},
+		{name: "not an array", raw: `"/usr/local/bin/installation-token get"`, wantErr: true},
+		{name: "empty argument", raw: `["/usr/local/bin/installation-token",""]`, wantErr: true},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got, err := parseTokenCommand(tt.raw)
+			if (err != nil) != tt.wantErr {
+				t.Fatalf("error = %v, wantErr %v", err, tt.wantErr)
+			}
+			if err != nil && !strings.Contains(err.Error(), "--token-command") {
+				t.Errorf("error = %v, want it to name --token-command", err)
+			}
+			if strings.Join(got, "\x00") != strings.Join(tt.want, "\x00") || (got == nil) != (tt.want == nil) {
+				t.Errorf("parseTokenCommand(%q) = %q, want %q", tt.raw, got, tt.want)
+			}
+		})
+	}
+}

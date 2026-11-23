@@ -42,6 +42,8 @@ args = [
   { from = "session.inputs.repo", default = "" },
   "--private-key-path",
   { from = "session.inputs.private_key_path", default = "" },
+  "--token-command",
+  { json = { from = "session.inputs.token_command", default = [] } },
 ]
 
 [worktree.cleanup]
