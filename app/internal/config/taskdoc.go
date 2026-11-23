@@ -130,10 +130,8 @@ func (c *Config) LoadTaskDocuments(projectRoot string) (map[string]TaskDocument,
 	return out, nil
 }
 
-// definitionError names the definition a language diagnostic is about by its
-// kind as well as its id, because one id may name a definition of each kind.
 func definitionError(def *lang.Definition, err error) error {
-	return fmt.Errorf("%s %q: %w", def.Kind, def.ID, err)
+	return fmt.Errorf("%s: %w", def.Label(), err)
 }
 
 // taskDocumentFromDefinition checks one discovered task document against the

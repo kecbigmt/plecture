@@ -673,3 +673,29 @@ all = [{ check = "resource.state.nope", eq = "x" }]
 		t.Errorf("error = %v, want it to name task \"review\"", err)
 	}
 }
+
+// Discovery reads a task's instructions before any per-kind validation, so
+// its diagnostics need the same kind-and-id prefix.
+func TestLoadTaskDocuments_DiscoveryDiagnosticNamesTheDefinitionKind(t *testing.T) {
+	base := t.TempDir()
+	project := t.TempDir()
+	markProject(t, project)
+	writeFile(t, filepath.Join(base, "resources", "issue_pr.toml"), minimalObserver)
+	writeFile(t, filepath.Join(base, "tasks", "review.toml"), `
+[review]
+kind              = "task"
+description       = "Review a resource"
+resource          = "issue_pr"
+instructions      = [{ text = "Review", file = "review.md" }]
+`)
+	writeFile(t, filepath.Join(project, ".plect", "workflows", "review.toml"),
+		"[review]\nkind = \"workflow\"\nresource = \"issue_pr\"\n\n[[review.nodes]]\nuses = \"noop\"\n")
+	cfg := &Config{BaseDir: base, TrustedProjectRoots: []string{project}}
+	_, err := cfg.LoadTaskDocuments(project)
+	if err == nil || !strings.Contains(err.Error(), "PLECTURE-CFG-TASK-INSTRUCTION-ELEMENT") {
+		t.Fatalf("LoadTaskDocuments = %v, want PLECTURE-CFG-TASK-INSTRUCTION-ELEMENT", err)
+	}
+	if !strings.Contains(err.Error(), `task "review"`) {
+		t.Errorf("error = %v, want it to name task \"review\"", err)
+	}
+}

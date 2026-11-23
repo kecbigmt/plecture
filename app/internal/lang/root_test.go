@@ -3,6 +3,7 @@ package lang
 import (
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 )
 
@@ -83,6 +84,31 @@ resource = "issue"
 `)
 	_, err := DiscoverRoot(dir, nil)
 	assertDiagnostic(t, err, CodeIDDuplicate, LayerSemantic)
+}
+
+func TestDiscoverRootDiagnosticsNameTheDefinitionKind(t *testing.T) {
+	t.Run("duplicate id names both definitions", func(t *testing.T) {
+		dir := t.TempDir()
+		mustWrite(t, dir, "a.toml", "[review]\nkind = \"effect\"\n")
+		mustWrite(t, dir, "b.toml", "[review]\nkind = \"workflow\"\nresource = \"issue\"\n")
+		_, err := DiscoverRoot(dir, nil)
+		assertDiagnostic(t, err, CodeIDDuplicate, LayerSemantic)
+		for _, want := range []string{`workflow "review"`, `effect "review"`} {
+			if !strings.Contains(err.Error(), want) {
+				t.Errorf("error = %v, want it to name %s", err, want)
+			}
+		}
+	})
+	t.Run("instruction element names the task", func(t *testing.T) {
+		dir := t.TempDir()
+		mustWrite(t, dir, "tasks/review.toml",
+			"[review]\nkind = \"task\"\ninstructions = [{ text = \"Review\", file = \"review.md\" }]\n")
+		_, err := DiscoverRoot(dir, nil)
+		assertDiagnostic(t, err, CodeTaskInstructionElement, LayerStructural)
+		if !strings.Contains(err.Error(), `task "review"`) {
+			t.Errorf("error = %v, want it to name task \"review\"", err)
+		}
+	})
 }
 
 func defNames(defs []*Definition) []string {

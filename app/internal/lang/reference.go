@@ -171,7 +171,7 @@ func aliasRequired(ref string) *Diagnostic {
 
 func kindMismatch(ref string, found *Definition, want Kind, site string) *Diagnostic {
 	return newDiag(CodeKindMismatch, LayerSemantic, Position{Path: site},
-		fmt.Sprintf("%s expects a definition of kind %q; %q names %s %q", site, want, ref, found.Kind, found.ID))
+		fmt.Sprintf("%s expects a definition of kind %q; %q names %s", site, want, ref, found.Label()))
 }
 
 // staticRef reads a field expected to hold a plain reference string. A
