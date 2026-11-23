@@ -2,6 +2,8 @@ package lang
 
 import (
 	"fmt"
+	"maps"
+	"slices"
 	"sort"
 	"strings"
 )
@@ -238,8 +240,8 @@ func parseJSONOperand(raw any, pos Position) (*JSONOperand, error) {
 			return &JSONOperand{Leaf: leaf}, nil
 		}
 		obj := make(map[string]*JSONOperand, len(v))
-		for key, field := range v {
-			child, err := parseJSONOperand(field, childPos(pos, key))
+		for _, key := range sortedKeys(v) {
+			child, err := parseJSONOperand(v[key], childPos(pos, key))
 			if err != nil {
 				return nil, err
 			}
@@ -272,8 +274,8 @@ func checkNoTaggedValues(raw any, pos Position) error {
 					fmt.Sprintf("a contract document declares types, not values, so the tagged value %s does not belong here", quotedKeys(v)))
 			}
 		}
-		for key, field := range v {
-			if err := checkNoTaggedValues(field, childPos(pos, key)); err != nil {
+		for _, key := range sortedKeys(v) {
+			if err := checkNoTaggedValues(v[key], childPos(pos, key)); err != nil {
 				return err
 			}
 		}
@@ -292,7 +294,7 @@ func onlyKeys(tbl map[string]any, pos Position, allowed ...string) error {
 	for _, k := range allowed {
 		ok[k] = true
 	}
-	for k := range tbl {
+	for _, k := range sortedKeys(tbl) {
 		if !ok[k] {
 			return newDiag(CodeValueTagUnknown, LayerStructural, pos,
 				fmt.Sprintf("%q is not part of the { %s } form", k, strings.Join(allowed, ", ")))
@@ -310,14 +312,9 @@ func tagString(tbl map[string]any, key string, pos Position) (string, error) {
 }
 
 // sortedKeys orders a table's keys so a walk over it reports the same
-// diagnostic on every run.
-func sortedKeys(tbl map[string]any) []string {
-	keys := make([]string, 0, len(tbl))
-	for k := range tbl {
-		keys = append(keys, k)
-	}
-	sort.Strings(keys)
-	return keys
+// diagnostic on every run, and a file rendered from it has stable contents.
+func sortedKeys[V any](tbl map[string]V) []string {
+	return slices.Sorted(maps.Keys(tbl))
 }
 
 func quotedKeys(tbl map[string]any) string {
@@ -361,7 +358,7 @@ func operandLeaves(op *JSONOperand) []*Value {
 		return ValueLeaves(op.Leaf)
 	case op.Object != nil:
 		var out []*Value
-		for _, key := range sortedOperandKeys(op.Object) {
+		for _, key := range sortedKeys(op.Object) {
 			out = append(out, operandLeaves(op.Object[key])...)
 		}
 		return out

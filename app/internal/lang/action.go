@@ -227,8 +227,8 @@ func parseShellAction(tbl map[string]any, pos Position) (*Action, error) {
 			return nil, newDiag(CodeFieldType, LayerStructural, childPos(pos, "bind"), "bind is a table")
 		}
 		a.Bind = make(map[string]*Value, len(bind))
-		for name, raw := range bind {
-			v, err := ParseValue(raw, ClassBinding, childPos(childPos(pos, "bind"), name))
+		for _, name := range sortedKeys(bind) {
+			v, err := ParseValue(bind[name], ClassBinding, childPos(childPos(pos, "bind"), name))
 			if err != nil {
 				return nil, err
 			}
@@ -253,24 +253,13 @@ func rejectUnknownFields(tbl map[string]any, pos Position, allowed ...string) er
 	for _, field := range allowed {
 		ok[field] = true
 	}
-	for field := range tbl {
+	for _, field := range sortedKeys(tbl) {
 		if !ok[field] {
 			return newDiag(CodeFieldUnknown, LayerStructural, childPos(pos, field),
 				fmt.Sprintf("%q is not part of this surface", field))
 		}
 	}
 	return nil
-}
-
-// sortedBindKeys orders a bind table's keys, so a walk over an action's
-// values reports the same diagnostic on every run and a generated binding
-// file has stable contents.
-func sortedBindKeys(bind map[string]*Value) []string {
-	keys := make(map[string]any, len(bind))
-	for k := range bind {
-		keys[k] = nil
-	}
-	return sortedKeys(keys)
 }
 
 // values returns every value this action carries, so one walk can validate
@@ -284,7 +273,7 @@ func (a *Action) values() []*Value {
 	if a.Stdin != nil {
 		out = append(out, a.Stdin)
 	}
-	for _, name := range sortedBindKeys(a.Bind) {
+	for _, name := range sortedKeys(a.Bind) {
 		out = append(out, a.Bind[name])
 	}
 	return out

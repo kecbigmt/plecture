@@ -4,7 +4,6 @@ import (
 	"fmt"
 	"regexp"
 	"slices"
-	"sort"
 	"strings"
 
 	"github.com/kecbigmt/plecture/app/internal/lang"
@@ -174,7 +173,8 @@ func channelInputSchema(raw any) (map[string]ChannelInputSpec, error) {
 		return nil, fmt.Errorf("`input_schema` is a table of parameter specs")
 	}
 	out := make(map[string]ChannelInputSpec, len(table))
-	for key, entry := range table {
+	for _, key := range sortedKeys(table) {
+		entry := table[key]
 		if !channelInputName.MatchString(key) {
 			return nil, fmt.Errorf("input_schema %q: a parameter name matches %s", key, channelInputName)
 		}
@@ -184,7 +184,7 @@ func channelInputSchema(raw any) (map[string]ChannelInputSpec, error) {
 		}
 		var parsed ChannelInputSpec
 		var declaredType bool
-		for _, field := range sortedSpecKeys(spec) {
+		for _, field := range sortedKeys(spec) {
 			value := spec[field]
 			var ok bool
 			switch field {
@@ -233,17 +233,6 @@ func specFieldType(field string) string {
 	return "a string"
 }
 
-// sortedSpecKeys walks a parameter spec in a fixed order, so a spec breaking
-// more than one rule reports the same error on every run.
-func sortedSpecKeys(spec map[string]any) []string {
-	keys := make([]string, 0, len(spec))
-	for key := range spec {
-		keys = append(keys, key)
-	}
-	sort.Strings(keys)
-	return keys
-}
-
 // ValidateWorkflowChannels checks each [[event.channel]] resolves and its inputs
 // satisfy the definition's input_schema. Inputs are still template strings here,
 // so a value referencing a missing node output surfaces at delivery, not now.
@@ -273,13 +262,13 @@ func ValidateWorkflowChannels(wf WorkflowFile, defs map[string]ChannelDefinition
 			}
 			inbox = ch.Name
 		}
-		for key := range ch.Inputs {
+		for _, key := range sortedKeys(ch.Inputs) {
 			if _, declared := def.InputSchema[key]; !declared {
 				return fmt.Errorf("event.channel %q: input %q is not declared in channel %q input_schema", ch.Name, key, ch.Uses)
 			}
 		}
-		for key, spec := range def.InputSchema {
-			if spec.Required {
+		for _, key := range sortedKeys(def.InputSchema) {
+			if def.InputSchema[key].Required {
 				if _, set := ch.Inputs[key]; !set {
 					return fmt.Errorf("event.channel %q: required input %q (channel %q) is not set", ch.Name, key, ch.Uses)
 				}

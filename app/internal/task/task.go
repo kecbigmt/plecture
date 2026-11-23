@@ -383,8 +383,8 @@ func deriveDependsOn(nodes []Resolved, outputs map[string]*lang.Value) error {
 	for i := range nodes {
 		byID[nodes[i].NodeID] = &nodes[i]
 	}
-	for key, binding := range outputs {
-		for _, ref := range lang.NodeReads(map[string]*lang.Value{key: binding}, nil) {
+	for _, key := range sortedValueKeys(outputs) {
+		for _, ref := range lang.NodeReads(map[string]*lang.Value{key: outputs[key]}, nil) {
 			if _, ok := byID[ref]; !ok {
 				return fmt.Errorf("public output %q reads unknown node %q", key, ref)
 			}

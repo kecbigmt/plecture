@@ -81,7 +81,7 @@ func operandPaths(op *JSONOperand, s *Surface) []string {
 		return valuePaths(op.Leaf, s)
 	case op.Object != nil:
 		var paths []string
-		for _, key := range sortedOperandKeys(op.Object) {
+		for _, key := range sortedKeys(op.Object) {
 			paths = append(paths, operandPaths(op.Object[key], s)...)
 		}
 		return paths

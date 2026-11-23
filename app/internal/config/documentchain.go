@@ -176,8 +176,8 @@ func parseChainInputs(entry map[string]any, file, path string, index int) (map[s
 		return nil, fmt.Errorf("chains[%d]: `inputs` is a table", index)
 	}
 	out := make(map[string]*lang.Value, len(tbl))
-	for key, value := range tbl {
-		parsed, err := lang.ParseValue(value, lang.ClassData, lang.Position{File: file, Path: path + "." + key})
+	for _, key := range sortedKeys(tbl) {
+		parsed, err := lang.ParseValue(tbl[key], lang.ClassData, lang.Position{File: file, Path: path + "." + key})
 		if err != nil {
 			return nil, err
 		}

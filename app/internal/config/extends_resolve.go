@@ -2,7 +2,8 @@ package config
 
 import (
 	"fmt"
-	"sort"
+	"maps"
+	"slices"
 	"strings"
 
 	"github.com/kecbigmt/plecture/app/internal/lang"
@@ -22,12 +23,7 @@ func composeExtendedTaskDocuments(docs map[string]TaskDocument, registry *lang.R
 		original[address] = doc
 		byDef[doc.Definition] = address
 	}
-	addresses := make([]string, 0, len(docs))
-	for address := range docs {
-		addresses = append(addresses, address)
-	}
-	sort.Strings(addresses)
-	for _, address := range addresses {
+	for _, address := range inFileOrder(docs, func(d TaskDocument) string { return d.SourcePath }) {
 		doc := original[address]
 		if doc.Extends == "" {
 			continue
@@ -170,11 +166,6 @@ func mergeSchemaProperties(layers []TaskDocument, field func(TaskDocument) map[s
 	return properties
 }
 
-func sortedKeys(m map[string]any) []string {
-	keys := make([]string, 0, len(m))
-	for k := range m {
-		keys = append(keys, k)
-	}
-	sort.Strings(keys)
-	return keys
+func sortedKeys[V any](m map[string]V) []string {
+	return slices.Sorted(maps.Keys(m))
 }

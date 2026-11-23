@@ -91,7 +91,7 @@ func wrapperSource(bindingPath, scriptPath string) string {
 
 func bindingAssignments(a *Action, bound map[string]string) (string, error) {
 	var b strings.Builder
-	for _, name := range sortedBindKeys(a.Bind) {
+	for _, name := range sortedKeys(a.Bind) {
 		if !shellName.MatchString(name) {
 			return "", fmt.Errorf("bind key %q is not a shell variable name", name)
 		}

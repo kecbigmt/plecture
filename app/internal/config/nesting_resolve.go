@@ -57,12 +57,7 @@ func (ix nestingIndex) nestingChain(address string) ([]TaskDefinition, error) {
 // loaded definitions, stamping the resolved chain onto each outer effect.
 func resolveNestedDefinitions(defs map[string]TaskDefinition, missingPlugin func(string) string) error {
 	ix := nestingIndex{byAddress: defs, missingPlugin: missingPlugin}
-	addresses := make([]string, 0, len(defs))
-	for address := range defs {
-		addresses = append(addresses, address)
-	}
-	sort.Strings(addresses)
-	for _, address := range addresses {
+	for _, address := range inFileOrder(defs, func(d TaskDefinition) string { return d.SourcePath }) {
 		def := defs[address]
 		if !def.IsNested() {
 			continue
