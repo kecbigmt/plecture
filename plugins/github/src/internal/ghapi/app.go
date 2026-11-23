@@ -10,22 +10,22 @@ import (
 
 	"github.com/kecbigmt/plecture/plugins/github/src/internal/apptoken"
 	"github.com/kecbigmt/plecture/plugins/github/src/internal/githubapp"
+	"github.com/kecbigmt/plecture/plugins/github/src/internal/tokencommand"
 )
 
 // defaultAppSkew matches gh-app-token's own default skew.
 const defaultAppSkew = 5 * time.Minute
 
 // App implements GHClient over HTTP directly instead of shelling out to gh:
-// procexec.Runner has no per-call environment override, and this is the
-// only call site that would need one. Point CachePath at the same value the
-// git credential helper uses (see worktree.appAuth) to share one
-// installation token instead of minting two.
+// procexec.Runner has no per-call environment override. Key-path callers
+// can point CachePath at the git credential helper's cache to share a token.
 type App struct {
 	AppID          string
 	InstallationID string // optional; resolved from Owner/Repo when empty
 	Owner          string
 	Repo           string
 	PrivateKeyPath string
+	TokenCommand   []string
 	CachePath      string
 	BaseURL        string        // defaults to githubapp.DefaultBaseURL
 	Skew           time.Duration // defaults to defaultAppSkew
@@ -40,15 +40,25 @@ func (a *App) JSON(ctx context.Context, args ...string) ([]byte, error) {
 		return nil, fmt.Errorf("github app client supports exactly one REST path argument, got %d", len(args))
 	}
 
-	key, err := githubapp.LoadPrivateKey(a.PrivateKeyPath)
-	if err != nil {
-		return nil, err
-	}
 	client := a.httpClient()
 	baseURL := a.baseURL()
-	token, err := githubapp.Token(apptoken.NewCache(a.CachePath), a.skew(), client, baseURL, a.AppID, key, a.InstallationID, a.Owner, a.Repo)
-	if err != nil {
-		return nil, err
+	var token string
+	if len(a.TokenCommand) != 0 {
+		var err error
+		token, err = tokencommand.Run(a.TokenCommand)
+		if err != nil {
+			return nil, err
+		}
+	} else {
+		key, err := githubapp.LoadPrivateKey(a.PrivateKeyPath)
+		if err != nil {
+			return nil, err
+		}
+		var mintErr error
+		token, mintErr = githubapp.Token(apptoken.NewCache(a.CachePath), a.skew(), client, baseURL, a.AppID, key, a.InstallationID, a.Owner, a.Repo)
+		if mintErr != nil {
+			return nil, mintErr
+		}
 	}
 
 	url := strings.TrimRight(baseURL, "/") + "/" + strings.TrimLeft(args[0], "/")
@@ -73,6 +83,9 @@ func (a *App) JSON(ctx context.Context, args ...string) ([]byte, error) {
 		return nil, fmt.Errorf("github api %s: response exceeds %d bytes", args[0], maxResponseBytes)
 	}
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
+		if len(a.TokenCommand) != 0 {
+			return nil, fmt.Errorf("github api %s: HTTP %d", args[0], resp.StatusCode)
+		}
 		return nil, fmt.Errorf("github api %s: %s", args[0], githubapp.APIErrorMessage(resp.StatusCode, body))
 	}
 	return body, nil

@@ -248,22 +248,23 @@ delete_branch         = true
 
 `gh_app_guard` is an alternative to `gh_guard` for a session that must
 authenticate as a shared GitHub App installation instead of the operator's
-own `gh auth login`: the wrapper it produces mints an installation access
+own `gh auth login`. With `private_key_path`, the wrapper mints an installation access
 token (App JWT → `POST /app/installations/{id}/access_tokens`), caches it
 with an expiry skew so a long-running session doesn't have to re-mint on
 every call, and refreshes it once that skew window is entered — with file
 locking around the cache so two `gh` invocations racing an expired cache
 mint exactly once. Merge/close stays denied under the App identity too,
-checked before minting so a call about to be denied never costs a mint.
+checked before the credential source runs.
 
 Inputs, operator-provisioned — none of these belong in committed config:
 
 | Input | Meaning |
 |---|---|
-| `app_id` | The GitHub App's id. |
-| `installation_id` | The installation id, if known. |
-| `owner`, `repo` | Alternative to `installation_id`: the wrapper resolves the installation id for this repository on first mint. |
+| `app_id` | The GitHub App's id, required with `private_key_path`. |
+| `installation_id` | The installation id, if known; used with `private_key_path`. |
+| `owner`, `repo` | Alternative to `installation_id` in key-path mode: the wrapper resolves the installation id for this repository on first mint. |
 | `private_key_path` | Path to the App's PEM private key. Operator-provisioned, outside any repo, mode 0600 — this plugin never writes the key itself, only reads the path it's given. |
+| `token_command` | Host command and arguments as an array; an alternative to `private_key_path`. |
 
 ```toml
 [[nodes]]
@@ -276,6 +277,22 @@ installation_id   = "789012"
 private_key_path  = "/etc/plect/gh-app.pem"
 ```
 
+To keep the App private key outside the session user, give `gh_app_guard` a
+host command as an argument array in `token_command` and omit
+`private_key_path`:
+
+```toml
+[nodes.gh_app_guard.inputs]
+token_command = ["/usr/local/bin/installation-token", "get", "--installation", "789012"]
+```
+
+The command runs without a shell once for each allowed `gh` call. It must
+print exactly one nonempty token line. Failure, empty output, or multiple
+lines fail the call; diagnostics name the command and exit status but omit its
+output. Merge and close are denied before the command runs. The plugin does
+not cache or write command-provided tokens to disk; reuse belongs to the
+command. `private_key_path` and `token_command` are mutually exclusive.
+
 The only on-disk copy of the minted token's plaintext is the cache file
 inside the wrapper's own reported directory (`.token-cache.json`, mode
 0600), removed on session cleanup along with the rest of that directory.
@@ -285,10 +302,11 @@ failure output is safe to surface as-is.
 
 `official.github.worktree` can use the same App identity for raw git network
 I/O and for fetching pull request/issue metadata (head branch, title,
-state). A session sets the same task-level inputs `gh_app_guard` accepts:
-`app_id`, optional `installation_id`, optional `owner`/`repo`, and
-`private_key_path`. Setup reads those values from `session.inputs` and runs
-git with process-local config that clears ambient credential helpers, installs
+state). A session supplies `app_id`, `private_key_path`, and optionally
+`installation_id` or `owner`/`repo` as task-level inputs. Unlike
+`gh_app_guard`, worktree does not accept `token_command`; its process must be
+able to read the private key. Setup reads those values from `session.inputs`
+and runs git with process-local config that clears ambient credential helpers, installs
 a scoped `https://github.com` helper backed by `gh-app-token credential`, and
 rewrites GitHub SSH remote URLs to HTTPS for that git process. The metadata
 fetch authenticates the same way, but directly over HTTP rather than through
@@ -302,6 +320,13 @@ each minting or reusing independently if the other's call never happens (a
 metadata-only run before any git operation, or vice versa). With those inputs
 absent, worktree acquisition uses the host's ordinary git credential
 configuration and gh-api client unchanged.
+
+If the private key is kept away from the session user, worktree cannot use
+its App auth path. Omitting its App inputs makes git use ambient host
+credentials and makes metadata use ambient `gh auth`, unless the selected
+`github-watcher gh-api` has separate App auth. A command-only App deployment
+therefore needs another credential source for worktree until worktree supports
+`token_command`.
 
 ```bash
 plect up https://github.com/acme/widgets/issues/42 --inputs '{
@@ -319,23 +344,37 @@ not a per-session task in a plan, so there is no per-call installation
 context to select a token by — this is deliberately one App id/installation
 per deployment, set via environment rather than `gh_app_guard`'s per-session
 task inputs. `github-watcher gh-api`, the cross-process helper the workspace
-`worktree` effect and resource observation call into, shares the same auth (same env,
-same token cache), so both the poll loop and config-layer `gh api` calls
+`worktree` effect and resource observation call into, shares the same auth
+environment, so both the poll loop and config-layer `gh api` calls
 authenticate as the one installation. Set these on the `github-watcher serve`
 process (and anywhere `gh-api` runs standalone):
 
 | Env var | Meaning |
 |---|---|
-| `GITHUB_WATCHER_APP_ID` | The GitHub App's id. Unset means no App auth at all — ambient `gh auth` behavior is unchanged. |
-| `GITHUB_WATCHER_APP_INSTALLATION_ID` | The installation id, if known. |
-| `GITHUB_WATCHER_APP_OWNER`, `GITHUB_WATCHER_APP_REPO` | Alternative to `GITHUB_WATCHER_APP_INSTALLATION_ID`: resolves the installation id for this repository on first mint. |
-| `GITHUB_WATCHER_APP_PRIVATE_KEY_PATH` | Path to the App's PEM private key. Required once `GITHUB_WATCHER_APP_ID` is set. |
+| `GITHUB_WATCHER_APP_ID` | The GitHub App's id, required with `GITHUB_WATCHER_APP_PRIVATE_KEY_PATH`. |
+| `GITHUB_WATCHER_APP_INSTALLATION_ID` | The installation id, if known; used with key-path auth. |
+| `GITHUB_WATCHER_APP_OWNER`, `GITHUB_WATCHER_APP_REPO` | Alternative to `GITHUB_WATCHER_APP_INSTALLATION_ID` in key-path mode. |
+| `GITHUB_WATCHER_APP_PRIVATE_KEY_PATH` | Path to the App's PEM private key. Exactly one of this and `GITHUB_WATCHER_APP_TOKEN_COMMAND` is required when App auth is configured. |
+| `GITHUB_WATCHER_APP_TOKEN_COMMAND` | JSON array of the host command and arguments, supplied in the service env file. Alternative to `GITHUB_WATCHER_APP_PRIVATE_KEY_PATH`. |
 | `GITHUB_WATCHER_APP_BASE_URL` | GitHub API base URL override (default `api.github.com`). |
-| `PLECT_CACHE_DIR` | Plugin cache directory supplied by plect to every executable. The watcher, `gh-api`, and observation helpers share the token cache and rate budget there. |
+| `PLECT_CACHE_DIR` | Plugin cache directory supplied by plect to every executable. The watcher, `gh-api`, and observation helpers share the rate budget there; key-path auth also stores its token cache there. |
 
-A deployment configured this way fails loud: `serve` mints once at startup
+With key-path auth, `serve` mints once at startup
 and exits non-zero if the private key is unreadable or the mint is rejected,
 instead of staying process-healthy while every subsequent fetch dies quietly.
+For command-based auth, an env file can contain:
+
+```text
+GITHUB_WATCHER_APP_TOKEN_COMMAND=["/usr/local/bin/installation-token","get","--installation","789012"]
+```
+
+The watcher validates the command once at startup, calls it for each API request, and retries once with a
+fresh command result after HTTP 401. Its `gh-api` helper calls the command
+once per `gh` call; `github-issue-pr query-pulls` also calls it once per API
+request when it uses the same deployment environment. Command output stays in
+process memory; the plugin does
+not cache it. A failing or malformed command result fails that request with
+a diagnostic that omits the token text.
 Multi-installation watcher auth (a per-session or per-repository identity)
 stays out of scope until a concrete consumer needs it.
 
@@ -367,7 +406,7 @@ below to that same App identity, and never wires `gh_guard`:
 | Call site | Wire this | Not this |
 |---|---|---|
 | Session `gh` calls (agent runtime) | `gh_app_guard`, composed as the runtime's `path_prepend` input | `gh_guard` — operator-auth only, see above |
-| `official.github.worktree` git operations and metadata fetch | The same `app_id`/`private_key_path` (etc.) session inputs, passed at `plect up` time | Leaving those inputs unset: git operations fall back to the host's ambient git credentials, and the metadata fetch falls back to ambient `gh auth` (or the watcher's own App auth, if that's separately configured) |
+| `official.github.worktree` git operations and metadata fetch | `app_id` and `private_key_path` (plus optional installation or repository inputs), passed at `plect up` time; the worktree process must be able to read the key | `token_command` is unsupported. Without worktree App inputs, git falls back to ambient host credentials and metadata to ambient `gh auth` (or the watcher's App auth, if configured) |
 | `github-watcher serve` and its `gh-api` helper (resident, cross-session) | The `GITHUB_WATCHER_APP_*` deployment env vars | Ambient `gh auth login` on the host running `plect serve` |
 
 With all three wired, no `gh auth login` needs to run anywhere in the

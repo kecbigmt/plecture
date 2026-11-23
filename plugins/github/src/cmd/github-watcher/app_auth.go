@@ -9,6 +9,7 @@ import (
 
 	"github.com/kecbigmt/plecture/plugins/github/src/internal/apptoken"
 	"github.com/kecbigmt/plecture/plugins/github/src/internal/githubapp"
+	"github.com/kecbigmt/plecture/plugins/github/src/internal/tokencommand"
 	"github.com/kecbigmt/plecture/plugins/github/src/internal/watcher"
 )
 
@@ -27,6 +28,7 @@ const (
 	envOwner          = "GITHUB_WATCHER_APP_OWNER"
 	envRepo           = "GITHUB_WATCHER_APP_REPO"
 	envPrivateKeyPath = "GITHUB_WATCHER_APP_PRIVATE_KEY_PATH"
+	envTokenCommand   = "GITHUB_WATCHER_APP_TOKEN_COMMAND"
 	envBaseURL        = "GITHUB_WATCHER_APP_BASE_URL"
 )
 
@@ -34,6 +36,7 @@ const (
 // still fail on a bad key or installation (see tokenFunc).
 type appAuthConfig struct {
 	appID, installationID, owner, repo, privateKeyPath, baseURL, cachePath string
+	tokenCommand                                                           []string
 }
 
 // appAuthFromEnv fails loud on a partial App-auth configuration (an id with
@@ -41,17 +44,29 @@ type appAuthConfig struct {
 // error to the first mint attempt.
 func appAuthFromEnv(dataDir string) (*appAuthConfig, error) {
 	appID := os.Getenv(envAppID)
-	if appID == "" {
+	privateKeyPath := os.Getenv(envPrivateKeyPath)
+	commandJSON := os.Getenv(envTokenCommand)
+	if appID == "" && privateKeyPath == "" && commandJSON == "" {
 		return nil, nil
 	}
-	privateKeyPath := os.Getenv(envPrivateKeyPath)
-	if privateKeyPath == "" {
-		return nil, fmt.Errorf("%s is set but %s is not", envAppID, envPrivateKeyPath)
+	if (privateKeyPath == "") == (commandJSON == "") {
+		return nil, fmt.Errorf("exactly one of %s and %s is required", envPrivateKeyPath, envTokenCommand)
+	}
+	var command []string
+	if commandJSON != "" {
+		var err error
+		command, err = tokencommand.Parse(commandJSON)
+		if err != nil {
+			return nil, fmt.Errorf("%s (alternative: %s): %w", envTokenCommand, envPrivateKeyPath, err)
+		}
+	}
+	if privateKeyPath != "" && appID == "" {
+		return nil, fmt.Errorf("%s requires %s", envPrivateKeyPath, envAppID)
 	}
 	installationID := os.Getenv(envInstallationID)
 	owner := os.Getenv(envOwner)
 	repo := os.Getenv(envRepo)
-	if installationID == "" && (owner == "" || repo == "") {
+	if privateKeyPath != "" && installationID == "" && (owner == "" || repo == "") {
 		return nil, fmt.Errorf("%s is set but none of %s, or both %s and %s, are set", envAppID, envInstallationID, envOwner, envRepo)
 	}
 	baseURL := os.Getenv(envBaseURL)
@@ -65,14 +80,17 @@ func appAuthFromEnv(dataDir string) (*appAuthConfig, error) {
 		owner:          owner,
 		repo:           repo,
 		privateKeyPath: privateKeyPath,
+		tokenCommand:   command,
 		baseURL:        baseURL,
 		cachePath:      cachePath,
 	}, nil
 }
 
-// tokenFunc loads the private key eagerly so an unreadable key fails here
-// once, not on the first mint attempt buried inside a poll tick.
+// Key-path auth loads the key eagerly so an unreadable key fails at setup.
 func (c *appAuthConfig) tokenFunc() (func() (string, error), error) {
+	if len(c.tokenCommand) != 0 {
+		return func() (string, error) { return tokencommand.Run(c.tokenCommand) }, nil
+	}
 	key, err := githubapp.LoadPrivateKey(c.privateKeyPath)
 	if err != nil {
 		return nil, err
@@ -98,10 +116,7 @@ func appAuthTokenFunc(dataDir string) (func() (string, error), error) {
 	return cfg.tokenFunc()
 }
 
-// configureAppAuth mints once, synchronously, before serve starts polling:
-// an unreadable key or a rejected mint fails startup here, surfacing as a
-// restart-policy crash loop instead of a daemon that stays process-healthy
-// while every subsequent fetch dies silently.
+// Both auth modes obtain one token before polling so a broken source fails startup.
 func configureAppAuth(poller *watcher.Poller, dataDir string) error {
 	cfg, err := appAuthFromEnv(dataDir)
 	if err != nil {
@@ -115,8 +130,9 @@ func configureAppAuth(poller *watcher.Poller, dataDir string) error {
 		return err
 	}
 	if _, err := tokenFn(); err != nil {
-		return fmt.Errorf("mint installation token: %w", err)
+		return fmt.Errorf("obtain installation token: %w", err)
 	}
 	poller.TokenFunc = tokenFn
+	poller.RetryUnauthorized = len(cfg.tokenCommand) != 0
 	return nil
 }

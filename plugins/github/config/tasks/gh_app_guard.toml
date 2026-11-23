@@ -2,38 +2,34 @@
 kind  = "effect"
 scope = "run"
 
-# Produces a directory an agent-runtime effect's generic PATH-prepend input
-# composes, exactly like gh_guard.toml — see that file's own comment and
-# docs/design/plugin-boundary-contracts.md's GitHub CLI Guard section for
-# the composition contract. Where gh_guard denies merge/close under the
-# operator's own `gh auth`, gh_app_guard additionally authenticates as a
-# GitHub App installation: the generated wrapper mints (and caches)
-# installation tokens itself, so it is a substitute for gh_guard, not a
-# layer on top of it — a session composes one or the other, never both.
-#
-# Run-scoped, not session-scoped: the reported directory lives under the
-# current runtime's TMPDIR and is only ever valid while that runtime's PATH
-# points at it. A container replacement discards it, and a session-scoped
-# node would never be revisited to re-create it — every resume path that
-# re-creates the runtime (the thing that actually needs the wrapper) also
-# re-runs this node, and the token cache it seeds is short-lived anyway.
-#
-# The private key never crosses into this wrapper's generated file content;
-# only its *path* does (an operator-provisioned file the operator is
-# responsible for keeping outside any repo, mode 0600 — see the README's
-# App auth section). The token cache this produces (`.token-cache.json`
-# inside the reported dir) is the one place a token's plaintext is ever
-# written to disk, and it inherits that same 0600 mode from
-# internal/apptoken's own write path.
+# The wrapper is run-scoped because its directory lives in the runtime's
+# TMPDIR and must be recreated when that runtime is replaced.
 [gh_app_guard.setup]
 type   = "shell"
 script = '''
-if [ -z "$installation_id" ] && { [ -z "$owner" ] || [ -z "$repo" ]; }; then
+token_command=${token_command:-}
+if { [ -n "$private_key_path" ] && [ -n "$token_command" ]; } || { [ -z "$private_key_path" ] && [ -z "$token_command" ]; }; then
+  echo "gh_app_guard: exactly one of private_key_path and token_command is required" >&2
+  exit 1
+fi
+if [ -n "$token_command" ] && ! printf '%s' "$token_command" | jq -e 'type == "array" and length > 0 and all(.[]; type == "string" and length > 0 and (test("[\\r\\n]") | not))' >/dev/null 2>&1; then
+  echo "gh_app_guard: token_command must be a nonempty JSON argument array (alternative: private_key_path)" >&2
+  exit 1
+fi
+if [ -z "$token_command" ] && [ -z "$app_id" ]; then
+  echo "gh_app_guard: app_id is required with private_key_path" >&2
+  exit 1
+fi
+if [ -z "$token_command" ] && [ -z "$installation_id" ] && { [ -z "$owner" ] || [ -z "$repo" ]; }; then
   echo "gh_app_guard: either installation_id, or both owner and repo, is required" >&2
   exit 1
 fi
 REAL_GH=$(command -v gh) || { echo "gh_app_guard: no gh on PATH to guard" >&2; exit 1; }
 DIR=$(mktemp -d "${TMPDIR:-/tmp}/plect-gh-app-guard.XXXXXX")
+if [ -n "$token_command" ]; then
+  printf '%s' "$token_command" > "$DIR/token-command.json" || exit 1
+  chmod 600 "$DIR/token-command.json" || exit 1
+fi
 cat > "$DIR/gh" <<WRAPPER
 #!/usr/bin/env bash
 export GH_GUARD_REAL_GH='$REAL_GH'
@@ -44,6 +40,11 @@ export GH_APP_GUARD_OWNER='$owner'
 export GH_APP_GUARD_REPO='$repo'
 export GH_APP_GUARD_PRIVATE_KEY_PATH='$private_key_path'
 export GH_APP_GUARD_CACHE_PATH='$DIR/.token-cache.json'
+WRAPPER
+if [ -n "$token_command" ]; then
+  printf "export GH_APP_GUARD_TOKEN_COMMAND_FILE='%s/token-command.json'\n" "$DIR" >> "$DIR/gh"
+fi
+cat >> "$DIR/gh" <<WRAPPER
 exec '$app_guard_bin' "\$@"
 WRAPPER
 chmod +x "$DIR/gh"
@@ -53,11 +54,12 @@ jq -nc --arg dir "$DIR" '{dir:$dir}'
 [gh_app_guard.setup.bind]
 app_guard_bin     = { bin = "gh-app-guard" }
 token_bin         = { bin = "gh-app-token" }
-app_id            = { from = "inputs.app_id" }
+app_id            = { from = "inputs.app_id", default = "" }
 installation_id   = { from = "inputs.installation_id", default = "" }
 owner             = { from = "inputs.owner", default = "" }
 repo              = { from = "inputs.repo", default = "" }
-private_key_path  = { from = "inputs.private_key_path" }
+private_key_path  = { from = "inputs.private_key_path", default = "" }
+token_command     = { json = { from = "inputs.token_command", optional = true } }
 
 [gh_app_guard.health.alive]
 type   = "shell"
@@ -78,7 +80,6 @@ dir = { from = "self.outputs.dir", optional = true }
 
 [gh_app_guard.inputs_schema]
 type     = "object"
-required = ["app_id", "private_key_path"]
 
 [gh_app_guard.inputs_schema.properties]
 # GitHub App ids and installation ids are decimal integers in every GitHub
@@ -91,6 +92,7 @@ installation_id  = { type = "string", pattern = "^[0-9]+$" }
 owner            = { type = "string", pattern = "^[A-Za-z0-9-]+$" }
 repo             = { type = "string", pattern = "^[A-Za-z0-9._-]+$" }
 private_key_path = { type = "string", pattern = "^[A-Za-z0-9_./:-]+$" }
+token_command    = { type = "array", minItems = 1, items = { type = "string", minLength = 1 } }
 
 [gh_app_guard.outputs_schema]
 type     = "object"

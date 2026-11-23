@@ -73,6 +73,54 @@ func TestApp_JSONFetchesResourceAuthenticatedAsTheInstallation(t *testing.T) {
 	}
 }
 
+func TestApp_JSONUsesFreshCommandTokenPerRequest(t *testing.T) {
+	var seen []string
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		seen = append(seen, r.Header.Get("Authorization"))
+		if _, err := w.Write([]byte(`{}`)); err != nil {
+			t.Errorf("write response: %v", err)
+		}
+	}))
+	defer srv.Close()
+	dir := t.TempDir()
+	command := filepath.Join(dir, "token helper")
+	count := filepath.Join(dir, "count")
+	if err := os.WriteFile(command, []byte("#!/bin/sh\nif [ -f '"+count+"' ]; then echo second; else touch '"+count+"'; echo first; fi\n"), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	app := &App{TokenCommand: []string{command}, BaseURL: srv.URL, CachePath: filepath.Join(dir, "cache.json")}
+	for i := 0; i < 2; i++ {
+		if _, err := app.JSON(context.Background(), "repos/acme/widgets/pulls/1"); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if len(seen) != 2 || seen[0] != "Bearer first" || seen[1] != "Bearer second" {
+		t.Fatalf("auth headers %q", seen)
+	}
+	if _, err := os.Stat(app.CachePath); !os.IsNotExist(err) {
+		t.Fatalf("cache file: %v", err)
+	}
+}
+
+func TestApp_JSONCommandModeDoesNotEchoTokenFromAPIError(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusUnauthorized)
+		if _, err := w.Write([]byte(`{"message":"secret-token rejected"}`)); err != nil {
+			t.Errorf("write response: %v", err)
+		}
+	}))
+	defer srv.Close()
+	command := filepath.Join(t.TempDir(), "token")
+	if err := os.WriteFile(command, []byte("#!/bin/sh\necho secret-token\n"), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	app := &App{TokenCommand: []string{command}, BaseURL: srv.URL}
+	_, err := app.JSON(context.Background(), "repos/acme/widgets/pulls/1")
+	if err == nil || !strings.Contains(err.Error(), "401") || strings.Contains(err.Error(), "secret-token") {
+		t.Fatalf("error = %v", err)
+	}
+}
+
 func TestApp_JSONResolvesInstallationIDFromOwnerRepo(t *testing.T) {
 	srv, _ := fakeGitHubAPI(t, "ghs_from_owner_repo", "repos/acme/widgets/issues/9", `{"title":"x","state":"open"}`)
 	defer srv.Close()

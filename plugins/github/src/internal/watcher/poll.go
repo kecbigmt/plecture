@@ -105,10 +105,11 @@ type Poller struct {
 	// responses to it, so a burst hit by one poll tick backs off every other
 	// plect surface sharing the same token, not just this process.
 	Guard *ratebudget.Guard
-	// TokenFunc, when set, mints/reuses a GitHub App token exported to each
+	// TokenFunc, when set, obtains a GitHub App token exported to each
 	// gh invocation as GH_TOKEN. Nil keeps gh on this process's inherited
 	// environment (ambient `gh auth`), unchanged.
-	TokenFunc func() (string, error)
+	TokenFunc         func() (string, error)
+	RetryUnauthorized bool
 }
 
 func (p *Poller) gh() string {
@@ -423,23 +424,33 @@ func (p *Poller) ghAPI(cacheKey, apiPath string, jqArgs ...string) ([]byte, bool
 	if hasCache && etag != "" {
 		args = append(args, "-H", "If-None-Match: "+etag)
 	}
-	cmd := exec.Command(p.gh(), args...)
-	if p.TokenFunc != nil {
-		token, err := p.TokenFunc()
-		if err != nil {
-			p.Logger.Warn("github app token mint failed", "path", apiPath, "error", err)
-			return nil, false
-		}
-		cmd.Env = append(os.Environ(), "GH_TOKEN="+token)
-	}
-
 	// gh exits non-zero for more than "couldn't run at all": a --jq filter
 	// applied to a 304's empty body fails too (that's the expected shape of
 	// a cache hit, not an error), so a non-nil runErr alone is not evidence
 	// of a real failure. ParseHTTPResponse below, not this exit code, is
 	// what decides that — it works off the header block gh always writes
 	// before any --jq processing runs.
-	out, runErr := cmd.Output()
+	var out []byte
+	var runErr error
+	for attempt := 0; attempt < 2; attempt++ {
+		cmd := exec.Command(p.gh(), args...)
+		if p.TokenFunc != nil {
+			token, err := p.TokenFunc()
+			if err != nil {
+				p.Logger.Warn("github app token retrieval failed", "path", apiPath, "error", err)
+				return nil, false
+			}
+			cmd.Env = append(os.Environ(), "GH_TOKEN="+token)
+		}
+		out, runErr = cmd.Output()
+		if !p.RetryUnauthorized || attempt != 0 {
+			break
+		}
+		resp, ok := ratebudget.ParseHTTPResponse(out)
+		if !ok || resp.Status != http.StatusUnauthorized {
+			break
+		}
+	}
 	resp, ok := ratebudget.ParseHTTPResponse(out)
 	if !ok {
 		// Nothing parsable came back at all: gh itself couldn't run (binary

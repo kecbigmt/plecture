@@ -1,4 +1,4 @@
-== gh_app_guard / setup
+== gh_app_guard:private-key / setup
 call[0]: "mktemp" "-d" "<state>/plect-gh-app-guard.XXXXXX"
 outputs: {"dir":"<state>/plect-gh-app-guard"}
 artifact dir/gh:
@@ -13,10 +13,34 @@ export GH_APP_GUARD_PRIVATE_KEY_PATH='/etc/plect/gh-app.pem'
 export GH_APP_GUARD_CACHE_PATH='<state>/plect-gh-app-guard/.token-cache.json'
 exec '<plugin>/scripts/gh-app-guard' "$@"
 
-== gh_app_guard / health.alive
+== gh_app_guard:private-key / health.alive
 alive
 
-== gh_app_guard / cleanup
+== gh_app_guard:private-key / cleanup
+cleaned
+
+== gh_app_guard:token-command / setup
+call[0]: "mktemp" "-d" "<state>/plect-gh-app-guard.XXXXXX"
+outputs: {"dir":"<state>/plect-gh-app-guard"}
+artifact dir/gh:
+#!/usr/bin/env bash
+export GH_GUARD_REAL_GH='<spy>/gh'
+export GH_APP_GUARD_TOKEN_BIN='<plugin>/bin/gh-app-token'
+export GH_APP_GUARD_APP_ID=''
+export GH_APP_GUARD_INSTALLATION_ID=''
+export GH_APP_GUARD_OWNER=''
+export GH_APP_GUARD_REPO=''
+export GH_APP_GUARD_PRIVATE_KEY_PATH=''
+export GH_APP_GUARD_CACHE_PATH='<state>/plect-gh-app-guard/.token-cache.json'
+export GH_APP_GUARD_TOKEN_COMMAND_FILE='<state>/plect-gh-app-guard/token-command.json'
+exec '<plugin>/scripts/gh-app-guard' "$@"
+artifact dir/token-command.json:
+["/usr/local/bin/installation-token","get"]
+
+== gh_app_guard:token-command / health.alive
+alive
+
+== gh_app_guard:token-command / cleanup
 cleaned
 
 == gh_guard / setup

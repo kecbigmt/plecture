@@ -1,12 +1,12 @@
 #!/usr/bin/env bash
-# gh app-token+guard shim: mints/refreshes a GitHub App installation access
+# gh app-token+guard shim: obtains a GitHub App installation access
 # token and denies merge/close, both in this one wrapper — one process hop
 # between a session's `gh` and the real gh, with auth and deny ordering
 # explicit right here, instead of two nested shims where the ordering (and
 # which hop set GH_TOKEN) would be implicit in how they happen to chain.
 #
-# Deny is checked before minting: a call about to be denied never gets a
-# token minted for it, so a forgotten "don't merge" instruction costs
+# Deny is checked before token retrieval: a call about to be denied never
+# invokes a credential source, so a forgotten "don't merge" instruction costs
 # nothing beyond the deny check itself.
 #
 # GH_GUARD_REAL_GH must be the real gh's absolute path, resolved by the
@@ -17,9 +17,6 @@ set -euo pipefail
 
 : "${GH_GUARD_REAL_GH:?gh-app-guard: GH_GUARD_REAL_GH must point at the real gh binary}"
 : "${GH_APP_GUARD_TOKEN_BIN:?gh-app-guard: GH_APP_GUARD_TOKEN_BIN must point at the gh-app-token helper}"
-: "${GH_APP_GUARD_APP_ID:?gh-app-guard: GH_APP_GUARD_APP_ID must be set}"
-: "${GH_APP_GUARD_PRIVATE_KEY_PATH:?gh-app-guard: GH_APP_GUARD_PRIVATE_KEY_PATH must be set}"
-: "${GH_APP_GUARD_CACHE_PATH:?gh-app-guard: GH_APP_GUARD_CACHE_PATH must be set}"
 
 if [ "$(readlink -f "$GH_GUARD_REAL_GH")" = "$(readlink -f "$0")" ]; then
   echo "gh-app-guard: GH_GUARD_REAL_GH=$GH_GUARD_REAL_GH resolves back to this shim; refusing to recurse" >&2
@@ -39,21 +36,39 @@ if gh_guard_check_denied "$@"; then
   gh_guard_deny
 fi
 
-token_args=(print
-  --app-id "$GH_APP_GUARD_APP_ID"
-  --private-key-path "$GH_APP_GUARD_PRIVATE_KEY_PATH"
-  --cache-path "$GH_APP_GUARD_CACHE_PATH")
-[ -n "${GH_APP_GUARD_INSTALLATION_ID:-}" ] && token_args+=(--installation-id "$GH_APP_GUARD_INSTALLATION_ID")
-[ -n "${GH_APP_GUARD_OWNER:-}" ] && token_args+=(--owner "$GH_APP_GUARD_OWNER")
-[ -n "${GH_APP_GUARD_REPO:-}" ] && token_args+=(--repo "$GH_APP_GUARD_REPO")
-[ -n "${GH_APP_GUARD_BASE_URL:-}" ] && token_args+=(--base-url "$GH_APP_GUARD_BASE_URL")
-
-# gh-app-token's own stderr is already redacted (it never folds key or
-# token bytes into an error string — see plugins/github/src/internal/
-# githubapp); this wrapper does not need a second redaction pass, only to
-# let that stderr through unmodified, which happens automatically since it
-# is not captured here.
-token=$("$GH_APP_GUARD_TOKEN_BIN" "${token_args[@]}")
+if [ -z "${GH_APP_GUARD_PRIVATE_KEY_PATH:-}" ] && [ -f "${GH_APP_GUARD_TOKEN_COMMAND_FILE:-}" ]; then
+  if ! jq -e 'type == "array" and length > 0 and all(.[]; type == "string" and length > 0 and (test("[\\r\\n]") | not))' "$GH_APP_GUARD_TOKEN_COMMAND_FILE" >/dev/null 2>&1; then
+    echo "gh-app-guard: invalid token command (exit status 0)" >&2
+    exit 1
+  fi
+  mapfile -t token_args < <(jq -r '.[]' "$GH_APP_GUARD_TOKEN_COMMAND_FILE")
+  if token=$("${token_args[@]}" 2>/dev/null | head -c 8193; status=${PIPESTATUS[0]}; printf '\034'; exit "$status"); then
+    token=${token%$'\034'}
+    token=${token%$'\n'}
+    token=${token%$'\r'}
+    if [ -z "$token" ] || [ "${#token}" -gt 8192 ] || [[ "$token" == *$'\n'* || "$token" == *$'\r'* ]]; then
+      printf 'gh-app-guard: token command %s: invalid output (exit status 0)\n' "${token_args[0]}" >&2
+      exit 1
+    fi
+  else
+    status=$?
+    printf 'gh-app-guard: token command %s: exit status %s\n' "${token_args[0]}" "$status" >&2
+    exit 1
+  fi
+else
+  : "${GH_APP_GUARD_APP_ID:?gh-app-guard: GH_APP_GUARD_APP_ID must be set}"
+  : "${GH_APP_GUARD_PRIVATE_KEY_PATH:?gh-app-guard: GH_APP_GUARD_PRIVATE_KEY_PATH must be set}"
+  : "${GH_APP_GUARD_CACHE_PATH:?gh-app-guard: GH_APP_GUARD_CACHE_PATH must be set}"
+  token_args=(print
+    --app-id "$GH_APP_GUARD_APP_ID"
+    --private-key-path "$GH_APP_GUARD_PRIVATE_KEY_PATH"
+    --cache-path "$GH_APP_GUARD_CACHE_PATH")
+  [ -n "${GH_APP_GUARD_INSTALLATION_ID:-}" ] && token_args+=(--installation-id "$GH_APP_GUARD_INSTALLATION_ID")
+  [ -n "${GH_APP_GUARD_OWNER:-}" ] && token_args+=(--owner "$GH_APP_GUARD_OWNER")
+  [ -n "${GH_APP_GUARD_REPO:-}" ] && token_args+=(--repo "$GH_APP_GUARD_REPO")
+  [ -n "${GH_APP_GUARD_BASE_URL:-}" ] && token_args+=(--base-url "$GH_APP_GUARD_BASE_URL")
+  token=$("$GH_APP_GUARD_TOKEN_BIN" "${token_args[@]}")
+fi
 
 if [ -n "$GH_GUARD_STDIN_CAPTURE" ]; then
   # See gh-guard's own EXIT-trap comment: the buffered body is reopened on a

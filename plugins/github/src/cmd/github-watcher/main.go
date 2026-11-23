@@ -46,12 +46,13 @@ func usage() {
 serve and gh-api both authenticate as a single GitHub App installation
 instead of the operator's own "gh auth login" when GITHUB_WATCHER_APP_ID is
 set (fails startup/the call loudly if the rest of the App auth env is
-missing or the mint fails); unset, both use ambient "gh auth" unchanged:
+missing or token retrieval fails); with no credential source, both use ambient "gh auth" unchanged:
   GITHUB_WATCHER_APP_ID               GitHub App id
   GITHUB_WATCHER_APP_INSTALLATION_ID  installation id (or set OWNER+REPO)
   GITHUB_WATCHER_APP_OWNER            repository owner, resolves the installation id
   GITHUB_WATCHER_APP_REPO             repository name, resolves the installation id
   GITHUB_WATCHER_APP_PRIVATE_KEY_PATH path to the App's PEM private key
+  GITHUB_WATCHER_APP_TOKEN_COMMAND    JSON argument array for a host token command; alternative to the key path
   GITHUB_WATCHER_APP_BASE_URL         GitHub API base URL (default api.github.com)
   PLECT_CACHE_DIR                      plugin cache containing token and rate-budget files`)
 }
