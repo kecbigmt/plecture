@@ -1,6 +1,6 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 960 540" width="960" height="540" role="img" aria-labelledby="title desc">
   <title id="title">Change: core kicks carry no forge-shaped text</title>
-  <desc id="desc">Head structure of the tick's outbound messages. The plect tick, changed, reads the instance's observed state and sends three messages. To an already-active chain target session it sends a user.emit kick whose metadata holds every declared chain input plus the kick's own keys, and whose body lists each input as a key and value line; the named pr_url, revision and judge_ids picks are gone. To the work session it sends the done_when kick and the review_required notice; the review_required notice now carries only the pending judge leaves and plect judge commands. Two removed parts are drawn as faded dashed ghosts: the mergeability hint, which read mergeable_state from the observed state and appended rebase advice to the kick, and the reviewer dispatch suggestion, which printed a plect up command naming a workflow. The github-watcher plugin service is unchanged and remains the source of the github.mergeable event delivered to the work session.</desc>
+  <desc id="desc">Head structure of the tick's outbound messages. The plect tick, changed, reads the instance's observed state and sends three messages. To an already-active chain target session it sends a user.emit kick whose metadata holds every declared chain input under an input. prefix plus the kick's own keys, and whose body lists each input as a key and value line; the named pr_url, revision and judge_ids picks are gone. To the work session it sends the done_when kick and the review_required notice; the review_required notice now carries only the pending judge leaves and plect judge commands. Two removed parts are drawn as faded dashed ghosts: the mergeability hint, which read mergeable_state from the observed state and appended rebase advice to the kick, and the reviewer dispatch suggestion, which printed a plect up command naming a workflow. The github-watcher plugin service, changed, remains the source of the github.mergeable event delivered to the work session, and now also sends it when its first poll of a subscription already sees a conflict.</desc>
   <defs>
     <style>
       svg {
@@ -80,9 +80,9 @@
   <text class="name" x="754" y="371">Work session</text>
   <text class="note" x="754" y="388">event log</text>
 
-  <!-- Unchanged: github-watcher -->
-  <rect class="neutral" x="32" y="330" width="190" height="70" rx="6"/>
-  <text class="tag t-neutral" x="48" y="352">UNCHANGED</text>
+  <!-- Changed: github-watcher -->
+  <rect class="changed" x="32" y="330" width="190" height="70" rx="6"/>
+  <text class="tag t-changed" x="48" y="352">CHANGED</text>
   <text class="name" x="48" y="371">github-watcher</text>
   <text class="note" x="48" y="388">plugin service</text>
 
@@ -107,15 +107,15 @@
 
   <!-- Changed: chain kick -->
   <line class="flow-changed" x1="598" y1="135" x2="738" y2="135"/>
-  <text class="label t-changed" text-anchor="middle" x="668" y="80"><tspan x="668" font-weight="600">CHANGED</tspan><tspan x="668" dy="15">user.emit kick:</tspan><tspan x="668" dy="15">every input, sorted</tspan></text>
+  <text class="label t-changed" text-anchor="middle" x="668" y="80"><tspan x="668" font-weight="600">CHANGED</tspan><tspan x="668" dy="15">user.emit kick:</tspan><tspan x="668" dy="15">input.&lt;key&gt; per input</tspan></text>
 
   <!-- Changed: kick / review_required into work session -->
   <path class="flow-changed" d="M480,170 V365 H738"/>
   <text class="label t-changed" x="492" y="322"><tspan x="492" font-weight="600">CHANGED</tspan><tspan x="492" dy="15">done_when kick ·</tspan><tspan x="492" dy="15">review_required (judge cmds)</tspan></text>
 
-  <!-- Unchanged: plugin mergeability event -->
-  <line class="flow" x1="222" y1="385" x2="738" y2="385"/>
-  <text class="label" text-anchor="middle" x="320" y="410">github.mergeable event</text>
+  <!-- Changed: plugin mergeability event -->
+  <line class="flow-changed" x1="222" y1="385" x2="738" y2="385"/>
+  <text class="label t-changed" x="232" y="410"><tspan x="232" font-weight="600">CHANGED</tspan><tspan x="232" dy="15">github.mergeable event, also on</tspan><tspan x="232" dy="15">a conflict seen at first poll</tspan></text>
 
   <!-- Legend -->
   <rect class="changed" x="32" y="467" width="28" height="16" rx="3"/>
