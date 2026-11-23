@@ -192,9 +192,6 @@ wait_until() {
 }
 
 acked() { [ -f "$box/acked" ] && [ "$(wc -l < "$box/acked")" -ge "$1" ]; }
-# A pass's health write, reply cleanup and tick all follow its
-# acknowledgement, so the ack alone does not say the pass ended; the worker's
-# next take after it does.
 finished() {
   acked "$1" && awk '/^inbox ack /{a=NR} /^inbox take /{t=NR} END{exit !(a && t > a)}' "$PLECT_CALLS"
 }
