@@ -57,7 +57,9 @@ type sessionDispatcher struct {
 	// dispatcher build (see resolveTerminalOwner). Nil means the workflow
 	// declares none; a channel that consumes no terminal verb is unaffected
 	// either way.
-	terminal      *terminalOwner
+	terminal *terminalOwner
+	// runtimeNodes is resolveRuntimeNodes' answer at dispatcher build.
+	runtimeNodes  map[string]bool
 	currentConfig func() *config.Config
 	// awaitingRepair is injected because the judgment lives in internal/service,
 	// which imports this package. Nil means a failed delivery is never held.
@@ -235,7 +237,7 @@ func (d *sessionDispatcher) processEvent(ctx context.Context, s *domain.Session,
 			failures[i] = deliveryFailure{channel: ch.Name, cause: rootErr}
 			continue
 		}
-		if !recorded && carriesInstructions(ch) {
+		if !recorded && d.reachesRuntime(ch) {
 			recorded = d.recordDelivery(s, ev)
 		}
 		wg.Go(func() {
@@ -398,7 +400,7 @@ func (d *sessionDispatcher) handOver(s *domain.Session, evs []event.Event, seqs 
 				slog.Default().Warn("dispatcher: no inbox store for an inbox binding; skipping this drain", "session", d.session, "channel", ch.Name)
 				return false
 			}
-			recorded := carriesInstructions(ch) && d.recordDelivery(s, first)
+			recorded := d.reachesRuntime(ch) && d.recordDelivery(s, first)
 			if err := d.inbox.Add(d.session, selected, ch.Name); err != nil {
 				if recorded {
 					d.withdrawDelivery(first)
@@ -435,7 +437,7 @@ func (d *sessionDispatcher) withdrawDelivery(ev event.Event) {
 
 func (d *sessionDispatcher) reachedRuntime(delivered map[string]bool) bool {
 	for _, ch := range d.channels {
-		if delivered[ch.Name] && carriesInstructions(ch) {
+		if delivered[ch.Name] && d.reachesRuntime(ch) {
 			return true
 		}
 	}
@@ -447,13 +449,7 @@ func channelMatches(ch config.EventChannel, ev event.Event) bool {
 		if event.MatchType(include, ev.Type) {
 			return true
 		}
-	}
-	return ev.Type == event.TypeSessionResumed && carriesInstructions(ch)
-}
-
-func carriesInstructions(ch config.EventChannel) bool {
-	for _, include := range ch.Include {
-		if event.MatchType(include, event.TypeInstruction) {
+		if ev.Type == event.TypeSessionResumed && event.MatchType(include, event.TypeInstruction) {
 			return true
 		}
 	}

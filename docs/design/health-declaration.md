@@ -234,14 +234,19 @@ A probe's pardon covers waiting after a turn. It does not cover a runtime
 that ignores an event delivered to it, so core accuses that case from its own
 facts, without reading any envelope:
 
-- **Delivery.** The runtime channel is every binding whose `include` selects
-  `plect.instruction`, the binding that also relays `plect.session.resumed`
-  ([`../language/channels.md`](../language/channels.md#selecting-events)).
-  Core records an event as delivered when that binding delivers it, or hands
-  it to the session inbox. A failed attempt records nothing.
-- **Answer.** Any non-empty status the session writes answers every delivery
-  before it. Core keeps only the earliest delivery no status has answered, so
-  a later event never restarts the clock of one still waiting.
+- **Delivery.** The runtime is every run-scoped node whose effect, or a
+  layer of its chain, declares an `activity` probe: the nodes this cycle
+  reads activity from. A binding reaches the runtime when its inputs read
+  such a node's outputs, when its action drives that node's `terminal`
+  verbs, or when it is the `inbox` binding, which only a runtime takes from.
+  Core records an event as delivered when such a binding delivers it, or
+  hands it to the session inbox. A failed attempt records nothing, and a
+  binding that reaches no such node, a mirror, records nothing whatever it
+  includes.
+- **Answer.** A non-empty status answers every delivery recorded at or
+  before it, and none recorded after it. The earliest unanswered delivery is
+  the one judged, so a later event never restarts the clock of one still
+  waiting.
 - **Stall.** The session is stalled when its latest status is a clear, and
   the later of that clear and the delivery is older than the stall threshold.
   A delivery that arrives while a status is still non-empty waits for the

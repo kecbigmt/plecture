@@ -1,6 +1,6 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 960 600" width="960" height="600" role="img" aria-labelledby="title desc">
   <title id="title">Change: a delivered event with no turn after it is a stall</title>
-  <desc id="desc">Head structure with the diff marked. The session dispatcher, changed, reads events past its cursor from the unchanged event log and delivers them to the unchanged runtime by push or inbox hand-over. For a binding whose include selects plect.instruction it now records the delivery in the added unanswered_deliveries table before the attempt and withdraws it when the runtime did not receive the event. The runtime reports turn status through plect state set-message, changed, which now deletes the row on any non-empty status. The health cycle, changed, reads the record and the latest status from the event log; when the runtime has been idle longer than stall_threshold with a delivery unanswered it reports stalled and pushes health.stalled to the parent with the event id and type.</desc>
+  <desc id="desc">Head structure with the diff marked. The session dispatcher, changed, reads events past its cursor from the unchanged event log and delivers them to the unchanged runtime by push or inbox hand-over. For a binding that reaches a run-scoped node declaring an activity probe it now records the delivery in the added unanswered_deliveries table before the attempt and withdraws it when the runtime did not receive the event. The runtime reports turn status through plect state set-message, changed, which now deletes, on any non-empty status, the rows delivered at or before that status. The health cycle, changed, reads the record and the latest status from the event log; when the runtime has been idle longer than stall_threshold with a delivery unanswered it reports stalled and pushes health.stalled to the parent with the event id and type.</desc>
   <defs>
     <style>
       svg {
@@ -66,7 +66,7 @@
   <rect class="changed" x="340" y="100" width="260" height="70" rx="6"/>
   <text class="tag t-changed" x="356" y="122">CHANGED</text>
   <text class="name" x="356" y="141">Session dispatcher</text>
-  <text class="note" x="356" y="158">records runtime deliveries</text>
+  <text class="note" x="356" y="158">records deliveries to activity nodes</text>
 
   <rect class="neutral" x="708" y="100" width="220" height="70" rx="6"/>
   <text class="tag t-neutral" x="724" y="122">UNCHANGED</text>
@@ -76,13 +76,13 @@
   <rect class="added" x="340" y="270" width="260" height="70" rx="6"/>
   <text class="tag t-added" x="356" y="292">ADDED</text>
   <text class="name" x="356" y="311">unanswered_deliveries</text>
-  <text class="note" x="356" y="328">one row per session</text>
+  <text class="note" x="356" y="328">one row per unanswered event</text>
 
   <rect class="changed" x="708" y="270" width="220" height="78" rx="6"/>
   <text class="tag t-changed" x="724" y="292">CHANGED</text>
   <text class="name" x="724" y="311">plect state set-message</text>
   <text class="note" x="724" y="328">appends status_message;</text>
-  <text class="note" x="724" y="342">deletes row if non-empty</text>
+  <text class="note" x="724" y="342">answers earlier rows if non-empty</text>
 
   <rect class="changed" x="340" y="440" width="260" height="70" rx="6"/>
   <text class="tag t-changed" x="356" y="462">CHANGED</text>
@@ -108,7 +108,7 @@
   <text class="label" x="830" y="224">turn status</text>
 
   <line class="flow-added" x1="708" y1="305" x2="600" y2="305"/>
-  <text class="label t-added" text-anchor="middle" x="654" y="330"><tspan x="654" font-weight="600">ADDED</tspan><tspan x="654" dy="15">delete row</tspan></text>
+  <text class="label t-added" text-anchor="middle" x="654" y="330"><tspan x="654" font-weight="600">ADDED</tspan><tspan x="654" dy="15">delete rows up</tspan><tspan x="654" dy="15">to status time</tspan></text>
 
   <line class="flow-added" x1="470" y1="340" x2="470" y2="440"/>
   <text class="label t-added" x="482" y="385"><tspan x="482" font-weight="600">ADDED</tspan><tspan x="482" dy="15">reads record</tspan></text>
