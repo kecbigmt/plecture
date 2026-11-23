@@ -665,6 +665,7 @@ func TestDispatcher_CancelMidEventLeavesCursorForReplay(t *testing.T) {
 		channels: []config.EventChannel{{Name: "slow", Uses: "slow", Include: []string{"plect.instruction"}}},
 		defs:     map[string]config.ChannelDefinition{"slow": execChannel("sleep", literalArg("5"))},
 		log:      log,
+		state:    state.NewStore(log.Dir()),
 		policy:   channel.RetryPolicy{MaxAttempts: 1, Timeout: 10 * time.Second},
 	}
 	s := &domain.Session{Name: "o/r-1", Tasks: map[string]*contract.TaskState{}}

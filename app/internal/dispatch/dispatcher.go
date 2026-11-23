@@ -167,7 +167,7 @@ func (d *sessionDispatcher) drain(ctx context.Context, s *domain.Session, startG
 		slog.Default().Warn("dispatcher: list events failed; skipping this drain, will retry on next wake", "session", d.session, "error", err)
 		return
 	}
-	if !d.handOver(evs, offs) {
+	if !d.handOver(s, evs, offs) {
 		return
 	}
 	omitted := d.superseded(evs)
@@ -218,6 +218,7 @@ func (d *sessionDispatcher) processEvent(ctx context.Context, s *domain.Session,
 		}
 	}
 	rootErr := d.projectRootErr(s)
+	recorded := false
 	for i, ch := range d.channels {
 		if !selects(ch, ev) || omitted[ch.Name][ev.ID] {
 			continue
@@ -233,6 +234,9 @@ func (d *sessionDispatcher) processEvent(ctx context.Context, s *domain.Session,
 		if rootErr != nil {
 			failures[i] = deliveryFailure{channel: ch.Name, cause: rootErr}
 			continue
+		}
+		if !recorded && carriesInstructions(ch) {
+			recorded = d.recordDelivery(s, ev)
 		}
 		wg.Go(func() {
 			inputs, err := channelInputs(s, ch, def)
@@ -265,6 +269,9 @@ func (d *sessionDispatcher) processEvent(ctx context.Context, s *domain.Session,
 		})
 	}
 	wg.Wait()
+	if recorded && !d.reachedRuntime(delivered) {
+		d.withdrawDelivery(ev)
+	}
 	if ctx.Err() != nil {
 		return false // shutdown mid-event, not a delivery outcome either way
 	}
@@ -371,14 +378,18 @@ func (d *sessionDispatcher) superseded(evs []event.Event) map[string]map[string]
 // handOver adds a whole drain in one transaction, before any push delivery:
 // a runtime taking mid-backlog would otherwise get the backlog split across
 // batches and miss a supersession. False means the drain must be retried.
-func (d *sessionDispatcher) handOver(evs []event.Event, seqs []int64) bool {
+func (d *sessionDispatcher) handOver(s *domain.Session, evs []event.Event, seqs []int64) bool {
 	for _, ch := range d.channels {
 		if def, ok := d.defs[ch.Uses]; !ok || def.Type != config.ChannelTypeInbox {
 			continue
 		}
 		var selected []int64
+		var first event.Event
 		for i, ev := range evs {
 			if seqs[i] > d.handedOver && selects(ch, ev) {
+				if len(selected) == 0 {
+					first = ev
+				}
 				selected = append(selected, seqs[i])
 			}
 		}
@@ -387,7 +398,11 @@ func (d *sessionDispatcher) handOver(evs []event.Event, seqs []int64) bool {
 				slog.Default().Warn("dispatcher: no inbox store for an inbox binding; skipping this drain", "session", d.session, "channel", ch.Name)
 				return false
 			}
+			recorded := carriesInstructions(ch) && d.recordDelivery(s, first)
 			if err := d.inbox.Add(d.session, selected, ch.Name); err != nil {
+				if recorded {
+					d.withdrawDelivery(first)
+				}
 				slog.Default().Warn("dispatcher: inbox hand-over failed; skipping this drain, will retry on next wake", "session", d.session, "channel", ch.Name, "error", err)
 				return false
 			}
@@ -397,6 +412,34 @@ func (d *sessionDispatcher) handOver(evs []event.Event, seqs []int64) bool {
 		d.handedOver = seqs[len(seqs)-1]
 	}
 	return true
+}
+
+// recordDelivery runs before the attempt rather than after it: a runtime
+// that starts its turn while the attempt is still returning writes its first
+// status before a later record could exist, and that record would then accuse
+// a session that already answered.
+func (d *sessionDispatcher) recordDelivery(s *domain.Session, ev event.Event) bool {
+	rec := domain.UnansweredDelivery{EventID: ev.ID, EventType: ev.Type, DeliveredAt: time.Now()}
+	if err := d.state.RecordUnansweredDelivery(d.session, rec, domain.RunStartedAt(s)); err != nil {
+		slog.Default().Warn("dispatcher: record runtime delivery failed", "session", d.session, "event_id", ev.ID, "error", err)
+		return false
+	}
+	return true
+}
+
+func (d *sessionDispatcher) withdrawDelivery(ev event.Event) {
+	if err := d.state.WithdrawUnansweredDelivery(d.session, ev.ID); err != nil {
+		slog.Default().Warn("dispatcher: withdraw runtime delivery failed", "session", d.session, "event_id", ev.ID, "error", err)
+	}
+}
+
+func (d *sessionDispatcher) reachedRuntime(delivered map[string]bool) bool {
+	for _, ch := range d.channels {
+		if delivered[ch.Name] && carriesInstructions(ch) {
+			return true
+		}
+	}
+	return false
 }
 
 func channelMatches(ch config.EventChannel, ev event.Event) bool {

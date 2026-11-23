@@ -348,3 +348,39 @@ func (s *Store) AllE() (map[string]*domain.Session, error) {
 	}
 	return db.AllSessions(context.Background())
 }
+
+// RecordUnansweredDelivery; see persistence.DB.RecordUnansweredDelivery.
+func (s *Store) RecordUnansweredDelivery(name string, d domain.UnansweredDelivery, staleBefore time.Time) error {
+	db, err := s.dbHandle()
+	if err != nil {
+		return fmt.Errorf("state: record unanswered delivery for %q: %w", name, err)
+	}
+	return db.RecordUnansweredDelivery(context.Background(), name, d, staleBefore)
+}
+
+// UnansweredDelivery; see persistence.DB.UnansweredDelivery.
+func (s *Store) UnansweredDelivery(name string) (*domain.UnansweredDelivery, error) {
+	db, err := s.dbHandle()
+	if err != nil {
+		return nil, fmt.Errorf("state: read unanswered delivery for %q: %w", name, err)
+	}
+	return db.UnansweredDelivery(context.Background(), name)
+}
+
+// WithdrawUnansweredDelivery; see persistence.DB.WithdrawUnansweredDelivery.
+func (s *Store) WithdrawUnansweredDelivery(name, eventID string) error {
+	db, err := s.dbHandle()
+	if err != nil {
+		return fmt.Errorf("state: withdraw unanswered delivery for %q: %w", name, err)
+	}
+	return db.WithdrawUnansweredDelivery(context.Background(), name, eventID)
+}
+
+// ClearUnansweredDelivery; see persistence.DB.ClearUnansweredDelivery.
+func (s *Store) ClearUnansweredDelivery(name string) error {
+	db, err := s.dbHandle()
+	if err != nil {
+		return fmt.Errorf("state: clear unanswered delivery for %q: %w", name, err)
+	}
+	return db.ClearUnansweredDelivery(context.Background(), name)
+}
