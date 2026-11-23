@@ -88,6 +88,57 @@ beta  = { from = "session.name", expr = "1" }
 			},
 			want: `required input "alpha"`,
 		},
+		{
+			name: "a revision capture freezing three effects' missing schema files",
+			load: func(t *testing.T) error {
+				base := t.TempDir()
+				writeFile(t, filepath.Join(base, "workflows", "w.toml"), "[w]\nkind = \"workflow\"\nresource = \"issue\"\n")
+				for _, id := range []string{"gamma", "alpha", "beta"} {
+					writeFile(t, filepath.Join(base, "effects", id+".toml"),
+						"["+id+"]\nkind = \"effect\"\nscope = \"run\"\ninputs_schema_file = \"missing-"+id+".json\"\n")
+				}
+				_, err := (&Config{BaseDir: base}).CaptureWorkflowRevision("", "w")
+				return err
+			},
+			want: `effect "alpha"`,
+		},
+		{
+			name: "a revision capture freezing three task documents' missing schema files",
+			load: func(t *testing.T) error {
+				base := t.TempDir()
+				writeFile(t, filepath.Join(base, "workflows", "w.toml"), "[w]\nkind = \"workflow\"\nresource = \"issue\"\n")
+				writeFile(t, filepath.Join(base, "resources", "issue.toml"), "[issue]\nkind = \"resource\"\nmatch = \"^issue:\"\nname = \"issue\"\n\n[issue.observe]\ntype = \"exec\"\ncommand = \"true\"\n")
+				for _, id := range []string{"gamma", "alpha", "beta"} {
+					writeFile(t, filepath.Join(base, "tasks", id+".toml"),
+						"["+id+"]\nkind = \"task\"\nresource = \"issue\"\ninstructions = [{ text = \"x\" }]\ninputs_schema_file = \"missing-"+id+".json\"\n")
+				}
+				_, err := (&Config{BaseDir: base}).CaptureWorkflowRevision("", "w")
+				return err
+			},
+			want: `task "alpha"`,
+		},
+		{
+			name: "two channel files whose ids sort opposite to their paths",
+			load: func(t *testing.T) error {
+				base := t.TempDir()
+				writeChannelDoc(t, base, "a", "[z]\nkind = \"channel\"\ntype = \"exec\"\ncommand = \"true\"\n\n[z.input_schema]\n\"alpha-x\" = { type = \"string\" }\n")
+				writeChannelDoc(t, base, "z", "[a]\nkind = \"channel\"\ntype = \"exec\"\ncommand = \"true\"\n\n[a.input_schema]\n\"alpha-x\" = { type = \"string\" }\n")
+				_, err := (&Config{BaseDir: base}).LoadChannels("")
+				return err
+			},
+			want: filepath.Join("channels", "a.toml"),
+		},
+		{
+			name: "two workflow files whose ids sort opposite to their paths",
+			load: func(t *testing.T) error {
+				base := t.TempDir()
+				writeFile(t, filepath.Join(base, "workflows", "a.toml"), "[z]\nkind = \"workflow\"\nresource = \"issue\"\nalpha = 1\n")
+				writeFile(t, filepath.Join(base, "workflows", "z.toml"), "[a]\nkind = \"workflow\"\nresource = \"issue\"\nalpha = 1\n")
+				_, err := (&Config{BaseDir: base}).LoadWorkflows("")
+				return err
+			},
+			want: filepath.Join("workflows", "a.toml"),
+		},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
