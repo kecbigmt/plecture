@@ -189,7 +189,8 @@ jobs:
           path: |
             ~/go/pkg/mod
             ~/.cache/go-build
-          key: go-${{ runner.os }}-${{ github.job }}-${{ hashFiles('go.work.sum', '**/go.sum') }}
+            ~/.cache/plecture/lint-tools
+          key: go-${{ runner.os }}-${{ github.job }}-${{ hashFiles('go.work.sum', '**/go.sum', 'scripts/lint-tools.sh') }}
           restore-keys: go-${{ runner.os }}-${{ github.job }}-
       - uses: actions/setup-python@v5
         with:

@@ -1,6 +1,8 @@
 #!/usr/bin/env bash
 # Proves lint-tools.sh refuses a shellcheck tarball whose bytes do not match
-# the pinned checksum, and installs nothing in that case.
+# the pinned checksum, and installs nothing in that case; and that the yq it
+# provides is the pinned one whatever yq is on PATH, or a failure naming the
+# pinned version.
 set -euo pipefail
 
 root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
@@ -35,3 +37,31 @@ if [ -e "$work/tools/shellcheck@$SHELLCHECK_VERSION" ]; then
   exit 1
 fi
 echo "ok: a tarball that does not match the pinned checksum is refused"
+
+mkdir -p "$work/path"
+printf '#!/bin/sh\necho "yq 3.4.3"\n' > "$work/path/yq"
+chmod +x "$work/path/yq"
+if ! yq="$(PATH="$work/path:$PATH" lint_tool yq 2> "$work/log")"; then
+  echo "FAIL: the pinned yq did not install" >&2
+  cat "$work/log" >&2
+  exit 1
+fi
+if ! "$yq" --version | grep -qF "mikefarah/yq/) version $YQ_VERSION"; then
+  echo "FAIL: lint_tool yq is not mikefarah yq $YQ_VERSION: $("$yq" --version)" >&2
+  exit 1
+fi
+echo "ok: the pinned yq is used, not the yq on PATH"
+
+# An empty module cache with the proxy off stands in for a host that cannot
+# fetch the pinned version.
+if GOPROXY=off GOMODCACHE="$work/modcache" PLECTURE_LINT_TOOLS_DIR="$work/tools" \
+  lint_tool yq > "$work/log" 2>&1; then
+  echo "FAIL: yq installed with no way to fetch it" >&2
+  exit 1
+fi
+if ! grep -qF "$YQ_MODULE@$YQ_VERSION" "$work/log"; then
+  echo "FAIL: the failed yq install does not name the pinned version" >&2
+  cat "$work/log" >&2
+  exit 1
+fi
+echo "ok: a yq install that cannot fetch the pin names the pinned version"

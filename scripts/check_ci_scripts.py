@@ -1,12 +1,13 @@
 """Check that check-all.sh runs what the jobs an aggregator job requires run.
 
-Usage: check_ci_scripts.py <workflow> <aggregator-job> <check-all.sh>
+Usage: check_ci_scripts.py <yq> <workflow> <aggregator-job> <check-all.sh>
 
 Each job the aggregator needs, directly or transitively, must be setup
 actions followed by run steps that each call one scripts/ci/*.sh, and
 check-all.sh --list must name every script those steps call. The workflow is
-decoded by yq, which keeps line numbers; each run line is tokenized by shlex
-as the shell would split it.
+decoded by the given yq (mikefarah v4, as pinned in lint-tools.sh), which
+keeps line numbers; each run line is tokenized by shlex as the shell would
+split it.
 """
 
 import json
@@ -54,7 +55,8 @@ def omission_line():
 
 
 class Check:
-    def __init__(self, workflow, aggregator, check_all):
+    def __init__(self, yq, workflow, aggregator, check_all):
+        self.yq = yq
         self.workflow = workflow
         self.aggregator = aggregator
         self.check_all = check_all
@@ -67,7 +69,7 @@ class Check:
         self.add(self.workflow, line, message)
 
     def run(self):
-        proc = subprocess.run(["yq", "-o=json", YQ_ANNOTATE, self.workflow], capture_output=True, text=True)
+        proc = subprocess.run([self.yq, "-o=json", YQ_ANNOTATE, self.workflow], capture_output=True, text=True)
         if proc.returncode != 0:
             self.add(self.workflow, 0, f"yq could not decode the workflow: {proc.stderr.strip()}")
             return {}
@@ -171,7 +173,7 @@ class Check:
 
 
 def main():
-    if len(sys.argv) != 4:
+    if len(sys.argv) != 5:
         sys.exit(__doc__)
     check = Check(*sys.argv[1:])
     calls = check.run()

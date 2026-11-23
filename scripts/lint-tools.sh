@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
-# Sourced, not executed: the one place the linter versions are pinned, read
-# by every scripts/check-*.sh that runs a linter, so CI and a local
-# check-all.sh run the same binaries.
+# Sourced, not executed: the one place the versions of the linters and the
+# tools the checks decode with are pinned, read by every scripts/check-*.sh
+# that runs one, so CI and a local check-all.sh run the same binaries.
 #
 # A tool is installed on first use into a versioned cache directory and
 # reused afterwards. The release tarball of the one non-Go tool is verified
@@ -15,6 +15,8 @@ GOLANGCI_LINT_VERSION="v2.15.0"
 ACTIONLINT_MODULE="github.com/rhysd/actionlint/cmd/actionlint"
 ACTIONLINT_VERSION="v1.7.12"
 SHELLCHECK_VERSION="v0.11.0"
+YQ_MODULE="github.com/mikefarah/yq/v4"
+YQ_VERSION="v4.54.3"
 
 lint_tools_dir() {
   printf '%s\n' "${PLECTURE_LINT_TOOLS_DIR:-${XDG_CACHE_HOME:-$HOME/.cache}/plecture/lint-tools}"
@@ -110,6 +112,7 @@ lint_tool() {
     golangci-lint) install_go_tool golangci-lint "$GOLANGCI_LINT_MODULE" "$GOLANGCI_LINT_VERSION" ;;
     actionlint) install_go_tool actionlint "$ACTIONLINT_MODULE" "$ACTIONLINT_VERSION" ;;
     shellcheck) install_shellcheck ;;
+    yq) install_go_tool yq "$YQ_MODULE" "$YQ_VERSION" ;;
     *) echo "lint-tools: unknown tool $1" >&2; return 1 ;;
   esac
 }
