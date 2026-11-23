@@ -139,7 +139,9 @@ func TestDispatcher_RecordReplacesOneFromBeforeTheCurrentRun(t *testing.T) {
 	if err := d.state.RecordUnansweredDelivery(deliverySession, domain.UnansweredDelivery{EventID: "old", EventType: event.TypeUserEmit, DeliveredAt: previousRun}, time.Time{}); err != nil {
 		t.Fatal(err)
 	}
-	s.Tasks["claude"].SetupAt = previousRun.Add(30 * time.Minute)
+	for _, task := range s.Tasks {
+		task.SetupAt = previousRun.Add(30 * time.Minute)
+	}
 
 	ev := appendUserEmit(t, log, "emit-1")
 	drainOnce(d, s)
