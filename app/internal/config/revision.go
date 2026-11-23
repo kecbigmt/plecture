@@ -264,8 +264,8 @@ func (c *Config) CaptureWorkflowRevision(projectRoot, name string) (WorkflowRevi
 	if err != nil {
 		return WorkflowRevision{}, err
 	}
-	for key, def := range effects {
-		def, err = freezeEffectSchemas(def)
+	for _, key := range sortedKeys(effects) {
+		def, err := freezeEffectSchemas(effects[key])
 		if err != nil {
 			return WorkflowRevision{}, fmt.Errorf("effect %q: %w", key, err)
 		}
@@ -284,8 +284,8 @@ func (c *Config) CaptureWorkflowRevision(projectRoot, name string) (WorkflowRevi
 			return WorkflowRevision{}, err
 		}
 	}
-	for key, doc := range tasks {
-		doc, err = freezeTaskSchemas(doc)
+	for _, key := range sortedKeys(tasks) {
+		doc, err := freezeTaskSchemas(tasks[key])
 		if err != nil {
 			return WorkflowRevision{}, fmt.Errorf("task %q: %w", key, err)
 		}

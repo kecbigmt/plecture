@@ -63,13 +63,18 @@ func discoverLayer(layer layerDir) ([]*lang.Definition, error) {
 	if err != nil {
 		return nil, err
 	}
-	sort.SliceStable(defs, func(i, j int) bool { return defs[i].ID < defs[j].ID })
+	sort.Slice(defs, func(i, j int) bool {
+		if defs[i].File != defs[j].File {
+			return defs[i].File < defs[j].File
+		}
+		return defs[i].ID < defs[j].ID
+	})
 	return defs, nil
 }
 
 // ofKind selects one kind's declarations from a discovered layer, preserving
-// the layer's own id order so a diagnostic naming the first offender is
-// reproducible.
+// the layer's file-then-id order so the diagnostic naming the first offender
+// is the one first in file path order.
 func (d discoveredLayer) ofKind(kind lang.Kind) []*lang.Definition {
 	var out []*lang.Definition
 	for _, def := range d.defs {
@@ -210,7 +215,13 @@ func (c *Config) resolveNamespace(layers []discoveredLayer, kind lang.Kind) ([]r
 			g.pluginID = discovered.layer.pluginID
 		}
 	}
-	sort.Strings(order)
+	sort.Slice(order, func(i, j int) bool {
+		a, b := groups[order[i]].def.File, groups[order[j]].def.File
+		if a != b {
+			return a < b
+		}
+		return order[i] < order[j]
+	})
 	out := make([]resolvedDefinition, 0, len(order))
 	for _, address := range order {
 		g := groups[address]
