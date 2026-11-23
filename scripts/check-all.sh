@@ -1,19 +1,13 @@
 #!/usr/bin/env bash
-# Usage: check-all.sh [--list] [<base>]
+# Usage: check-all.sh [<base>]
 #
 # Runs the scripts/ci/ script of every job ci-ok requires, for every module
-# rather than a diff's selection. --list prints the scripts instead of
-# running them, which is how check-ci-scripts.sh learns what this runs.
+# rather than a diff's selection.
 set -euo pipefail
 
 scripts_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 cd "$scripts_dir/.."
 
-list=false
-if [ "${1:-}" = --list ]; then
-  list=true
-  shift
-fi
 # CI's pull_request base sha is the base branch's tip, not the merge-base.
 base_ref="${1:-origin/main}"
 
@@ -24,30 +18,24 @@ fail() {
 
 step() {
   local name="scripts/${1#"$scripts_dir"/}"
-  if [ "$list" = true ]; then
-    echo "$name"
-    return
-  fi
   echo "==> $name ${*:2}"
   "$@" || fail "$name"
 }
 
-if [ "$list" = false ]; then
-  # The scripts that compare commits see only what is committed, so an
-  # uncommitted change would be tested by some scripts and invisible to
-  # others. The override keeps a status.showUntrackedFiles=no setting from
-  # hiding an untracked file.
-  if [ -n "$(git -c status.showUntrackedFiles=normal status --porcelain)" ]; then
-    git -c status.showUntrackedFiles=normal status --short >&2
-    fail "uncommitted changes; commit them so every script sees the head CI will run"
-  fi
-  # CI installs pinned global tools (npm install -g); a throwaway prefix
-  # gives the same pinned versions without touching the developer's own.
-  npm_prefix="$(mktemp -d)"
-  trap 'rm -rf "$npm_prefix"' EXIT
-  export NPM_CONFIG_PREFIX="$npm_prefix"
-  export PATH="$npm_prefix/bin:$PATH"
+# The scripts that compare commits see only what is committed, so an
+# uncommitted change would be tested by some scripts and invisible to
+# others. The override keeps a status.showUntrackedFiles=no setting from
+# hiding an untracked file.
+if [ -n "$(git -c status.showUntrackedFiles=normal status --porcelain)" ]; then
+  git -c status.showUntrackedFiles=normal status --short >&2
+  fail "uncommitted changes; commit them so every script sees the head CI will run"
 fi
+# CI installs pinned global tools (npm install -g); a throwaway prefix
+# gives the same pinned versions without touching the developer's own.
+npm_prefix="$(mktemp -d)"
+trap 'rm -rf "$npm_prefix"' EXIT
+export NPM_CONFIG_PREFIX="$npm_prefix"
+export PATH="$npm_prefix/bin:$PATH"
 
 modules="$(FORCE_FULL_RUN=true "$scripts_dir/ci-changed-modules.sh" </dev/null | sed -n 's/^BUILD_TEST_MATRIX=//p')"
 mapfile -t modules < <(jq -r '.[]' <<<"$modules")
@@ -77,6 +65,4 @@ step "$scripts_dir/ci/integration-test.sh"
 step "$scripts_dir/ci/readme-verify.sh"
 step "$scripts_dir/check-agent-config.sh"
 
-if [ "$list" = false ]; then
-  echo "check-all.sh: all checks passed"
-fi
+echo "check-all.sh: all checks passed"

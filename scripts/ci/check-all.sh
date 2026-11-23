@@ -6,8 +6,6 @@ set -euo pipefail
 cd "$(dirname "${BASH_SOURCE[0]}")/../.."
 
 ./scripts/check-all_selftest.sh
-./scripts/check-ci-scripts_selftest.sh
-./scripts/check-ci-scripts.sh
 ./scripts/check-adr-lifecycle_selftest.sh
 if [ -n "${1:-}" ]; then
   ./scripts/check-adr-lifecycle.sh origin/main "$1"

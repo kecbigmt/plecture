@@ -1,9 +1,8 @@
 #!/usr/bin/env bash
 # Proves check-all.sh's own behavior against a copy of it beside stubs that
-# record each call: that --list names exactly what a run executes, that
-# build-test runs once per module, that the base and branch reach the
-# scripts that compare commits, and that a failure stops the run. Which
-# scripts it must call is check-ci-scripts.sh's concern.
+# record each call: that build-test runs once per module, that the base and
+# branch reach the scripts that compare commits, and that a failure stops
+# the run.
 set -euo pipefail
 
 root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
@@ -74,15 +73,7 @@ recorded "scripts/ci/comment-density.sh $base_sha HEAD HEAD_REF=main" ||
   die "comment-density did not get the base, the head, and the branch"
 grep -q "^scripts/ci/web-browser-acceptance-browser.sh " "$RECORD" && die "the browser half of web-browser-acceptance ran"
 recorded "scripts/check-agent-config.sh  HEAD_REF=" || die "the agent-config check did not run"
-ran="$(cut -d' ' -f1 "$RECORD")"
 echo "ok: check-all.sh runs each script once per call and every module through build-test"
-
-touch "$repo/uncommitted"
-run_check --list >/dev/null || die "--list failed with an uncommitted file"
-[ "$(cat "$log")" = "$ran" ] || die "--list does not name exactly the scripts a run executes, in order"
-[ -s "$RECORD" ] && die "--list ran a script"
-rm "$repo/uncommitted"
-echo "ok: --list names exactly what a run executes and runs nothing"
 
 run_check || die "check-all.sh failed with its default base"
 recorded "scripts/ci/lint.sh origin/main HEAD_REF=" || die "the default base is not origin/main"
