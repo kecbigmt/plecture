@@ -6,27 +6,21 @@ import (
 	"testing"
 )
 
-// repeatedLoads is how often each case is loaded. A walk that takes its first
-// error from Go's randomized map order disagrees with itself long before this
-// many loads, while the run stays fast.
+// A walk that takes its first error from Go's randomized map order disagrees
+// with itself long before this many loads, while the run stays fast.
 const repeatedLoads = 50
 
-// TestLoadReportsTheFirstDiagnosticInKeyOrder loads, again and again, one
-// document that breaks one rule at three sibling keys. Every load must report
-// the diagnostic of the key that sorts first.
 func TestLoadReportsTheFirstDiagnosticInKeyOrder(t *testing.T) {
 	fixtureRoot := filepath.Join(repoRoot(t), "testdata", "config-language")
 	context := fixtureContextDefs(t, fixtureRoot)
 	cases := []struct {
 		name string
-		// path matters to the load pipeline: a workflow declaring populations
-		// is user-owned only under workflows/populations.
-		path     string
-		body     string
-		wantCode Code
-		wantPath string
-		// wantReason is the reason of a diagnostic whose position every
-		// offending key shares.
+		// A workflow declaring populations is user-owned only under
+		// workflows/populations, so the path decides which rules apply.
+		path       string
+		body       string
+		wantCode   Code
+		wantPath   string
 		wantReason string
 	}{
 		{

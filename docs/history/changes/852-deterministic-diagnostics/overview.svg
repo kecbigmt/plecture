@@ -1,6 +1,6 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1000 500" width="1000" height="500" role="img" aria-labelledby="title desc">
   <title id="title">Change: config load walks every first-error table in key order</title>
-  <desc id="desc">The configuration load pipeline, left to right: definition files are read in path order by lang DiscoverRoot, whose ParseDefinitionDocument now walks a file's top-level tables in id order. The lang validators, changed, walk node, action, bind, tagged-value, json-operand, contract, instructions-element and query tables in key order. The config loaders, changed, walk channel input_schema, chain inputs and workflow channel bindings in key order. task CompileWorkflow, changed, walks public outputs in key order. Each changed stage takes its key order from a sortedKeys helper: the lang and config ones are changed to be generic, and task uses its existing sortedValueKeys. The per-type wrappers sortedBindKeys, sortedOperandKeys and sortedValueKeys in lang, and sortedSpecKeys in config, are removed and drawn as faded ghosts. Definition files themselves are unchanged and still read in path order.</desc>
+  <desc id="desc">The configuration load pipeline, left to right: definition files are read in path order by lang DiscoverRoot, whose ParseDefinitionDocument now walks a file's top-level tables in id order. The lang validators, changed, walk node, action, bind, tagged-value, json-operand, contract, instructions-element and query tables in key order. The config loaders, changed, take each layer's definitions in file path order and then id order, freeze revision schema files in key order, and walk channel input_schema, chain inputs and workflow channel bindings in key order. task CompileWorkflow, changed, walks public outputs in key order. Each changed stage takes its key order from a sortedKeys helper: the lang and config ones are changed to be generic, and task uses its existing sortedValueKeys. The per-type wrappers sortedBindKeys, sortedOperandKeys and sortedValueKeys in lang, and sortedSpecKeys in config, are removed and drawn as faded ghosts. Definition files themselves are unchanged and still read in path order.</desc>
   <defs>
     <style>
       svg {
@@ -51,37 +51,31 @@
   <text class="title" x="24" y="38">Change: config load walks every first-error table in key order</text>
   <text class="note" x="24" y="60">PR #852 · issue #839 · head structure of the load pipeline with the diff marked on it</text>
 
-  <!-- Unchanged: definition files -->
   <rect class="neutral" x="24" y="110" width="150" height="70" rx="6"/>
   <text class="tag t-neutral" x="38" y="132">UNCHANGED</text>
   <text class="name" x="38" y="151">definition files</text>
   <text class="note" x="38" y="168">read in path order</text>
 
-  <!-- Changed: ParseDefinitionDocument -->
   <rect class="changed" x="214" y="110" width="170" height="70" rx="6"/>
   <text class="tag t-changed" x="228" y="132">CHANGED</text>
   <text class="name" x="228" y="151">lang.DiscoverRoot</text>
   <text class="note" x="228" y="168">tables in id order</text>
 
-  <!-- Changed: lang validators -->
   <rect class="changed" x="424" y="110" width="170" height="70" rx="6"/>
   <text class="tag t-changed" x="438" y="132">CHANGED</text>
   <text class="name" x="438" y="151">lang validators</text>
   <text class="note" x="438" y="168">field walks in key order</text>
 
-  <!-- Changed: config loaders -->
   <rect class="changed" x="634" y="110" width="160" height="70" rx="6"/>
   <text class="tag t-changed" x="648" y="132">CHANGED</text>
   <text class="name" x="648" y="151">config loaders</text>
-  <text class="note" x="648" y="168">channels, chain inputs</text>
+  <text class="note" x="648" y="168">file order, revisions</text>
 
-  <!-- Changed: task.CompileWorkflow -->
   <rect class="changed" x="834" y="110" width="146" height="70" rx="6"/>
   <text class="tag t-changed" x="848" y="132">CHANGED</text>
   <text class="name" x="848" y="151">task.Compile…</text>
   <text class="note" x="848" y="168">public outputs</text>
 
-  <!-- Pipeline flows -->
   <line class="flow" x1="174" y1="145" x2="214" y2="145"/>
   <text class="label" text-anchor="middle" x="194" y="100">TOML</text>
   <line class="flow" x1="384" y1="145" x2="424" y2="145"/>
@@ -91,25 +85,21 @@
   <line class="flow" x1="794" y1="145" x2="834" y2="145"/>
   <text class="label" text-anchor="middle" x="814" y="100">workflow</text>
 
-  <!-- Changed: lang.sortedKeys -->
   <rect class="changed" x="214" y="290" width="380" height="64" rx="6"/>
   <text class="tag t-changed" x="228" y="312">CHANGED</text>
   <text class="name" x="228" y="331">lang.sortedKeys</text>
   <text class="note" x="228" y="346">generic over a table's value type</text>
 
-  <!-- Changed: config.sortedKeys -->
   <rect class="changed" x="634" y="290" width="160" height="64" rx="6"/>
   <text class="tag t-changed" x="648" y="312">CHANGED</text>
   <text class="name" x="648" y="331">config.sortedKeys</text>
   <text class="note" x="648" y="346">generic</text>
 
-  <!-- Unchanged: task.sortedValueKeys -->
   <rect class="neutral" x="834" y="290" width="146" height="64" rx="6"/>
   <text class="tag t-neutral" x="848" y="312">UNCHANGED</text>
   <text class="name" x="848" y="331">sortedValueKeys</text>
   <text class="note" x="848" y="346">task</text>
 
-  <!-- Key-order flows from helpers up to the stages -->
   <line class="flow-changed" x1="299" y1="290" x2="299" y2="180"/>
   <line class="flow-changed" x1="509" y1="290" x2="509" y2="180"/>
   <line class="flow-changed" x1="714" y1="290" x2="714" y2="180"/>
@@ -117,7 +107,6 @@
   <text class="label t-changed" text-anchor="middle" x="404" y="240"><tspan x="404" font-weight="600">CHANGED</tspan><tspan x="404" dy="15">sorted keys</tspan></text>
   <text class="label t-changed" text-anchor="middle" x="811" y="240"><tspan x="811" font-weight="600">CHANGED</tspan><tspan x="811" dy="15">sorted keys</tspan></text>
 
-  <!-- Removed wrappers, ghosts beside the helpers they wrapped -->
   <g class="ghost">
     <rect class="removed" x="24" y="290" width="170" height="64" rx="6"/>
     <text class="tag t-removed" x="38" y="312">REMOVED</text>
@@ -128,7 +117,6 @@
     <text class="note" x="648" y="408">config.sortedSpecKeys</text>
   </g>
 
-  <!-- Legend -->
   <rect class="changed" x="24" y="447" width="28" height="16" rx="3"/>
   <text class="label" x="62" y="459">CHANGED · solid blue</text>
   <rect class="removed ghost" x="244" y="447" width="28" height="16" rx="3"/>
