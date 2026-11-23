@@ -676,7 +676,9 @@ func TestPoller_InitialDirtyObservationNotifiesMergeable(t *testing.T) {
 			var notified []map[string]any
 			srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 				var body map[string]any
-				json.NewDecoder(r.Body).Decode(&body)
+				if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+					t.Errorf("decode notification: %v", err)
+				}
 				notified = append(notified, body)
 			}))
 			defer srv.Close()
