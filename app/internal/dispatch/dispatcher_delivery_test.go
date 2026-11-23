@@ -120,7 +120,10 @@ func TestDispatcher_InboxHandOverIsRecordedAsUnanswered(t *testing.T) {
 	log := eventlog.NewStore(t.TempDir())
 	d, _ := inboxDispatcher(t, log)
 	d.channels[0].Include = []string{"plect.instruction", "user.emit"}
-	s, _ := d.state.GetE(deliverySession)
+	s, err := d.state.GetE(deliverySession)
+	if err != nil {
+		t.Fatal(err)
+	}
 
 	ev := appendUserEmit(t, log, "emit-1")
 	drainOnce(d, s)

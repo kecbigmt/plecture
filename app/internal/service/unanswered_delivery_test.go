@@ -79,7 +79,9 @@ func evaluateDeliveryHealth(t *testing.T, cfg *config.Config, store *state.Store
 func TestSetMessage_WorkingStatusAnswersTheDelivery(t *testing.T) {
 	store := testStore(t)
 	now := time.Now()
-	store.Put(&domain.Session{Name: deliverySession, CreatedAt: now, UpdatedAt: now})
+	if err := store.Put(&domain.Session{Name: deliverySession, CreatedAt: now, UpdatedAt: now}); err != nil {
+		t.Fatal(err)
+	}
 	recordDeliveryAt(t, store, deliverySession, "emit-1", now.Add(-time.Minute))
 
 	if err := SetMessage(nil, store, deliverySession, "working", nil); err != nil {
@@ -94,7 +96,9 @@ func TestSetMessage_WorkingStatusAnswersTheDelivery(t *testing.T) {
 func TestSetMessage_RepeatedWorkingStatusStillAnswersTheDelivery(t *testing.T) {
 	store := testStore(t)
 	now := time.Now()
-	store.Put(&domain.Session{Name: deliverySession, CreatedAt: now, UpdatedAt: now})
+	if err := store.Put(&domain.Session{Name: deliverySession, CreatedAt: now, UpdatedAt: now}); err != nil {
+		t.Fatal(err)
+	}
 	if err := SetMessage(nil, store, deliverySession, "working", nil); err != nil {
 		t.Fatalf("SetMessage(working): %v", err)
 	}
@@ -112,7 +116,9 @@ func TestSetMessage_RepeatedWorkingStatusStillAnswersTheDelivery(t *testing.T) {
 func TestSetMessage_ClearedStatusDoesNotAnswerTheDelivery(t *testing.T) {
 	store := testStore(t)
 	now := time.Now()
-	store.Put(&domain.Session{Name: deliverySession, CreatedAt: now, UpdatedAt: now})
+	if err := store.Put(&domain.Session{Name: deliverySession, CreatedAt: now, UpdatedAt: now}); err != nil {
+		t.Fatal(err)
+	}
 	recordDeliveryAt(t, store, deliverySession, "emit-1", now.Add(-time.Minute))
 
 	if err := SetMessage(nil, store, deliverySession, "", nil); err != nil {
