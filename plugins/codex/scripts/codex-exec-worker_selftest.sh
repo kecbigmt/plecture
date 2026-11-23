@@ -192,6 +192,9 @@ wait_until() {
 }
 
 acked() { [ -f "$box/acked" ] && [ "$(wc -l < "$box/acked")" -ge "$1" ]; }
+finished() {
+  acked "$1" && awk '/^inbox ack /{a=NR} /^inbox take /{t=NR} END{exit !(a && t > a)}' "$PLECT_CALLS"
+}
 # A prompt spans several lines of the stub's argv log, so invocations are
 # counted by the line each one starts with.
 invocations() { grep -c '^exec ' "$STUB_ARGV" || true; }
@@ -222,7 +225,7 @@ scenario reply
 printf 'paragraph one\n\n' > "$STUB_REPLY_FILE"
 start_worker
 hand_over t1 user.emit "turn one"
-wait_until 'acked 1' || { echo "FAIL turn one was never acknowledged" >&2; fail=1; }
+wait_until 'finished 1' || { echo "FAIL turn one was never acknowledged" >&2; fail=1; }
 got="$(extract_publish)"
 if [[ "$got" == $'event publish selftest/worker-1 --type plect.message --summary paragraph one --body paragraph one\n\n --meta message_id=selftest/worker-1/batch-1 --meta message_id_origin=synthetic --meta role=assistant --meta source=codex --meta turn_id=batch-1'* ]]; then
   echo "ok   a trailing-newline reply reaches plect.message byte for byte under the batch's id"
@@ -235,7 +238,7 @@ check "the first turn starts a thread and records its id" '[ "$(cat "$state_dir/
 : > "$PLECT_CALLS"
 printf 'turn two reply' > "$STUB_REPLY_FILE"
 hand_over t2 user.emit "turn two"
-wait_until 'acked 2' || { echo "FAIL turn two was never acknowledged" >&2; fail=1; }
+wait_until 'finished 2' || { echo "FAIL turn two was never acknowledged" >&2; fail=1; }
 check "a later batch resumes the thread under its own message id" 'grep -q "^exec resume" "$STUB_ARGV" && extract_publish | grep -q -- "--meta message_id=selftest/worker-1/batch-2"'
 check "a turn ticks after its acknowledgement" '[ "$(calls "^tick selftest/worker-1")" -eq 1 ]'
 check "the kept reply is dropped after the acknowledgement" '! ls "$state_dir"/reply-* >/dev/null 2>&1'
@@ -246,7 +249,7 @@ hand_over a user.emit "first body"
 hand_over b github.pull_request "" "https://example.test/pr/1"
 hand_over c user.emit $'end\n\n'
 start_worker
-wait_until 'acked 1' || { echo "FAIL a three-event batch was never acknowledged" >&2; fail=1; }
+wait_until 'finished 1' || { echo "FAIL a three-event batch was never acknowledged" >&2; fail=1; }
 check "pending events form one turn" '[ "$(invocations)" -eq 1 ]'
 want="$(printf 'Consider and answer every numbered entry in this batch in one turn. Reply once after considering all entries.\n\n[1] id=a type=user.emit source=selftest\n[user.emit] first body\n\n[2] id=b type=github.pull_request source=selftest\n[github.pull_request] summary of b (https://example.test/pr/1)\n\n[3] id=c type=user.emit source=selftest\n[user.emit] end\n\n\n\n'; printf x)"
 if [ "$(cat "$STUB_PROMPT_FILE"; printf x)" = "$want" ]; then
@@ -260,7 +263,7 @@ scenario envelope
 printf '%s' '<{type}|{body}|{summary}|{url}>' > "$state_dir/message_envelope"
 hand_over e user.emit "the body" "https://example.test/x"
 start_worker
-wait_until 'acked 1' || { echo "FAIL an enveloped batch was never acknowledged" >&2; fail=1; }
+wait_until 'finished 1' || { echo "FAIL an enveloped batch was never acknowledged" >&2; fail=1; }
 check "message_envelope shapes each event" 'grep -qF "<user.emit|the body|summary of e|https://example.test/x>" "$STUB_PROMPT_FILE"'
 
 # --- termination ---------------------------------------------------------------
@@ -282,7 +285,7 @@ fi
 rm -f "$STUB_PAUSE_TURN"
 check "an interrupted batch stays unacknowledged" '[ ! -e "$box/acked" ] && [ -f "$box/batch.json" ]'
 start_worker
-wait_until 'acked 1' || { echo "FAIL an interrupted batch was not delivered again" >&2; fail=1; }
+wait_until 'finished 1' || { echo "FAIL an interrupted batch was not delivered again" >&2; fail=1; }
 check "a restarted worker runs the interrupted batch again and acknowledges it once" '[ "$(grep -c "turn four" "$STUB_ARGV")" -eq 2 ] && [ "$(cat "$box/acked")" = "batch-1" ]'
 
 scenario idle
@@ -309,7 +312,7 @@ sleep 1.5
 check "a failed working status write starts no turn and reports failure" '[ "$(invocations)" -eq 0 ] && jq -e ".last_exit_code == 1" "$state_dir/health.json" >/dev/null'
 check "a failed working status write does not take the batch again" '[ "$(jq ".deliveries" "$box/batch.json")" -eq 1 ]'
 rm -f "$PLECT_FAIL_WORKING"
-wait_until 'acked 1' || { echo "FAIL the held batch never ran" >&2; fail=1; }
+wait_until 'finished 1' || { echo "FAIL the held batch never ran" >&2; fail=1; }
 check "the held batch runs once the status write succeeds" '[ "$(invocations)" -eq 1 ]'
 
 scenario status-once
@@ -318,7 +321,7 @@ export STUB_HEALTH_FILE="$state_dir/health.json"
 touch "$PLECT_FAIL_WORKING_ONCE"
 start_worker
 hand_over s2 user.emit "retried status"
-wait_until 'acked 1' || { echo "FAIL a batch behind a retried status write never ran" >&2; fail=1; }
+wait_until 'finished 1' || { echo "FAIL a batch behind a retried status write never ran" >&2; fail=1; }
 check "health passes during a turn that follows a retried working write" '[ "$(cat "$STUB_HEALTH_LOG")" = "0" ]'
 
 # --- agent failure ---------------------------------------------------------------
@@ -333,7 +336,7 @@ check "a failing batch is run once per delivery and no more" '[ "$(grep -c "pois
 check "health recovers before every retry of the agent" '[ "$(sort -u "$STUB_HEALTH_LOG")" = "0" ]'
 printf 'ok' > "$STUB_MODE_FILE"
 hand_over p2 user.emit "after poison"
-wait_until 'acked 1' || { echo "FAIL a parked batch blocked newer work" >&2; fail=1; }
+wait_until 'finished 1' || { echo "FAIL a parked batch blocked newer work" >&2; fail=1; }
 check "the worker moves on to the next batch after core parks one" '[ "$(cat "$box/acked")" = "batch-2" ]'
 export STUB_HEALTH_FILE=""
 
@@ -345,7 +348,7 @@ hand_over r1 user.emit "publish turn"
 wait_until '[ "$(jq ".deliveries" "$box/batch.json" 2>/dev/null || echo 0)" -ge 2 ]' || { echo "FAIL a batch with a failed publication was not delivered again" >&2; fail=1; }
 check "a failed reply publication does not acknowledge the batch" '[ ! -e "$box/acked" ] && jq -e ".last_exit_code == 1" "$state_dir/health.json" >/dev/null'
 rm -f "$PLECT_FAIL_PUBLISH"
-wait_until 'acked 1' || { echo "FAIL the reply publication was not retried" >&2; fail=1; }
+wait_until 'finished 1' || { echo "FAIL the reply publication was not retried" >&2; fail=1; }
 check "a publication retry does not run the agent again" '[ "$(invocations)" -eq 1 ]'
 
 scenario ack
@@ -354,14 +357,14 @@ start_worker
 hand_over k1 user.emit "ack turn"
 wait_until '[ "$(jq ".deliveries" "$box/batch.json" 2>/dev/null || echo 0)" -ge 2 ]' || { echo "FAIL a batch with a failed acknowledgement was not delivered again" >&2; fail=1; }
 rm -f "$PLECT_FAIL_ACK"
-wait_until 'acked 1' || { echo "FAIL the acknowledgement was not retried" >&2; fail=1; }
+wait_until 'finished 1' || { echo "FAIL the acknowledgement was not retried" >&2; fail=1; }
 check "an acknowledgement retry neither runs the agent nor publishes again" '[ "$(invocations)" -eq 1 ] && [ "$(calls "^event publish")" -eq 1 ]'
 
 scenario opt-out
 export CODEX_PUBLISH_MESSAGE=false
 start_worker
 hand_over o1 user.emit "quiet turn"
-wait_until 'acked 1' || { echo "FAIL an opted-out batch was never acknowledged" >&2; fail=1; }
+wait_until 'finished 1' || { echo "FAIL an opted-out batch was never acknowledged" >&2; fail=1; }
 check "a runtime that publishes no reply still acknowledges its batch" '[ "$(invocations)" -eq 1 ] && [ "$(calls "^event publish")" -eq 0 ]'
 export CODEX_PUBLISH_MESSAGE=true
 
@@ -390,7 +393,7 @@ for turn in first resumed; do
   n=$((n + 1))
   : > "$STUB_ARGV_NUL"
   hand_over "m$n" user.emit "$turn turn"
-  wait_until "acked $n" || { echo "FAIL $turn mcp turn was never acknowledged" >&2; fail=1; }
+  wait_until "finished $n" || { echo "FAIL $turn mcp turn was never acknowledged" >&2; fail=1; }
   last_argv argv
   if [ "$turn" = resumed ] && [ "${argv[1]-}" != resume ]; then
     printf 'FAIL the second mcp turn was not a resume: %s\n' "${argv[*]}" >&2
@@ -407,7 +410,7 @@ scenario plain
 : > "$STUB_ARGV_NUL"
 start_worker
 hand_over plain user.emit "plain turn"
-wait_until 'acked 1' || { echo "FAIL plain turn was never acknowledged" >&2; fail=1; }
+wait_until 'finished 1' || { echo "FAIL plain turn was never acknowledged" >&2; fail=1; }
 last_argv argv
 if [ "${#argv[@]}" -eq 7 ] &&
    [ "${argv[*]:0:4}" = "exec --json --dangerously-bypass-approvals-and-sandbox --output-last-message" ] &&
