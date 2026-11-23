@@ -270,6 +270,13 @@ type TaskInstanceLayer struct {
 	Error                sql.NullString
 }
 
+type UnansweredDelivery struct {
+	SessionID   string
+	EventID     string
+	EventType   string
+	DeliveredAt string
+}
+
 type UpReservation struct {
 	ChildSessionName  string
 	ParentSessionName sql.NullString

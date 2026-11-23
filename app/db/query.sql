@@ -607,6 +607,23 @@ DELETE FROM inbox_entries WHERE session_id = ? AND batch_id = ?;
 -- name: CountInboxEntries :one
 SELECT COUNT(*) FROM inbox_entries WHERE session_id = ?;
 
+-- name: PutUnansweredDelivery :exec
+INSERT INTO unanswered_deliveries (session_id, event_id, event_type, delivered_at)
+VALUES (?, ?, ?, ?)
+ON CONFLICT (session_id) DO UPDATE SET
+    event_id = excluded.event_id,
+    event_type = excluded.event_type,
+    delivered_at = excluded.delivered_at;
+
+-- name: GetUnansweredDelivery :one
+SELECT event_id, event_type, delivered_at FROM unanswered_deliveries WHERE session_id = ?;
+
+-- name: DeleteUnansweredDeliveryForEvent :exec
+DELETE FROM unanswered_deliveries WHERE session_id = ? AND event_id = ?;
+
+-- name: DeleteUnansweredDelivery :exec
+DELETE FROM unanswered_deliveries WHERE session_id = ?;
+
 -- name: GetResourceByName :one
 SELECT id, type, name, locator, created_at, max_subscribers FROM resources WHERE name = ?;
 
