@@ -84,7 +84,6 @@ type CheckAction struct {
 	Warnings            []string         `json:"warnings,omitempty"`
 	Summary             string           `json:"summary,omitempty"`
 	Body                string           `json:"body,omitempty"`
-	ReviewerCommand     string           `json:"reviewer_command,omitempty"`
 	JudgeCommands       []string         `json:"judge_commands,omitempty"`
 	Fingerprint         string           `json:"fingerprint,omitempty"`
 	EscalationKind      string           `json:"escalation_kind,omitempty"`

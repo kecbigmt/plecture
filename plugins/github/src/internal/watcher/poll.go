@@ -724,9 +724,14 @@ type change struct {
 // summarizeChanges converts a diff into the change vocabulary the delivery
 // path already understands (state / ci_status / mergeable / new_commits /
 // draft). Initial observations (no baseline) produce no notifications — only
-// transitions do.
+// transitions do — except a conflict: a subscription that starts on an
+// already-conflicting pull request would otherwise never hear of it, since
+// that conflict blocks the CI run whose result would have been the next event.
 func summarizeChanges(old, current map[string]string) []change {
 	if len(old) == 0 {
+		if current["mergeable_state"] == "dirty" {
+			return []change{{Type: "mergeable", Summary: "Mergeable: dirty"}}
+		}
 		return nil
 	}
 	var out []change

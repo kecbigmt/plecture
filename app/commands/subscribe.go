@@ -26,7 +26,7 @@ state changes — readable with 'plect event list').
 
 This is the runtime counterpart to the auto-subscribe that runs at dispatch
 time: it ADDS a subscription to a live session without recreating it, and
-never replaces existing subscriptions. Subscribing a PR another session is
+never replaces existing subscriptions. Subscribing a resource another session is
 already watching does not take it over — each subscriber receives its own
 copy of the events in its own log.
 

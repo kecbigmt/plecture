@@ -435,11 +435,7 @@ func TestTickSession_HeartbeatKickPersistsHeartbeatTick(t *testing.T) {
 	}
 }
 
-// A dirty PR never gets a CI run from GitHub, so checks_status sits PENDING
-// forever and the kick loop would otherwise repeat with no way out.
-// mergeable_state is not a done_when leaf (a conflict is a work signal, not a
-// failure), so the rebase hint must ride along in the kick body instead.
-func TestTickSession_KickBodyAdvisesRebaseWhenMergeableStateDirty(t *testing.T) {
+func TestTickSession_KickBodyCarriesNoAdviceDerivedFromObservedState(t *testing.T) {
 	store := testStore(t)
 	cfg := checkScenarioConfig(t, 3)
 	seedSession(t, store, "owner/repo-1", "owner/repo", 1, "default", map[string]*contract.TaskState{
@@ -458,35 +454,11 @@ func TestTickSession_KickBodyAdvisesRebaseWhenMergeableStateDirty(t *testing.T) 
 	if len(result.Actions) != 1 || result.Actions[0].Action != "kick" {
 		t.Fatalf("actions = %+v", result.Actions)
 	}
-	if !strings.Contains(result.Actions[0].Body, "mergeable_state=dirty") {
-		t.Fatalf("kick body = %q, want a mergeable_state=dirty advisory", result.Actions[0].Body)
-	}
-}
-
-// A clean (or unknown/NULL) mergeable_state must not perturb the existing
-// kick body — the advisory is additive, not a replacement for the normal
-// unmet-items text.
-func TestTickSession_KickBodyOmitsRebaseHintWhenMergeableStateClean(t *testing.T) {
-	store := testStore(t)
-	cfg := checkScenarioConfig(t, 3)
-	seedSession(t, store, "owner/repo-1", "owner/repo", 1, "default", map[string]*contract.TaskState{
-		"initial": {
-			Scope:    contract.TaskScopeSession,
-			TaskID:   "work",
-			Status:   contract.TaskStatusProduced,
-			Observed: observedFacts(map[string]any{"checks_status": "FAILURE", "revision": "sha1", "mergeable_state": "clean"}),
-		},
-	})
-
-	result, err := TickSession(cfg, store, TickParams{SessionName: "owner/repo-1", Trigger: TickTriggerHeartbeat})
-	if err != nil {
-		t.Fatalf("TickSession: %v", err)
-	}
-	if len(result.Actions) != 1 || result.Actions[0].Action != "kick" {
-		t.Fatalf("actions = %+v", result.Actions)
-	}
-	if strings.Contains(result.Actions[0].Body, "mergeable_state") {
-		t.Fatalf("kick body = %q, want no mergeable_state mention", result.Actions[0].Body)
+	body := result.Actions[0].Body
+	for _, word := range []string{"mergeable", "PR", "branch", "Rebase"} {
+		if strings.Contains(body, word) {
+			t.Fatalf("kick body = %q, want no %q advice", body, word)
+		}
 	}
 }
 
@@ -719,7 +691,7 @@ func TestTickSession_EscalatesWhenJudgeKeepsRequestingChanges(t *testing.T) {
 	}
 }
 
-func TestCheckSession_StableOrderSkipsFailedAndReportsMissingReviewerCommand(t *testing.T) {
+func TestCheckSession_StableOrderSkipsFailedAndNeedsNoResourceForReview(t *testing.T) {
 	store := testStore(t)
 	cfg := checkScenarioConfig(t, 3)
 	seedSession(t, store, "owner/repo-1", "owner/repo", 1, "default", map[string]*contract.TaskState{
@@ -760,11 +732,8 @@ func TestCheckSession_StableOrderSkipsFailedAndReportsMissingReviewerCommand(t *
 		t.Fatalf("actions not sorted by instance: %+v", result.Actions)
 	}
 	for _, action := range result.Actions {
-		if action.ReviewerCommand != "" || !strings.Contains(action.Body, "reviewer dispatch command unavailable") {
-			t.Fatalf("action should report missing reviewer command: %+v", action)
-		}
-		if len(action.Warnings) != 1 || action.Warnings[0] != "reviewer dispatch command unavailable: task instance has no resource" {
-			t.Fatalf("warnings = %+v, want reviewer dispatch unavailable warning", action.Warnings)
+		if len(action.Warnings) != 0 || len(action.JudgeCommands) == 0 {
+			t.Fatalf("a resource-less review_required still carries its judge commands and no warning: %+v", action)
 		}
 	}
 }
@@ -794,8 +763,11 @@ func TestTickScenario_RequestChangesStaleThenApproved(t *testing.T) {
 	if err != nil {
 		t.Fatalf("first TickSession: %v", err)
 	}
-	if len(first.Actions) != 1 || first.Actions[0].Action != "review_required" || first.Actions[0].ReviewerCommand == "" {
+	if len(first.Actions) != 1 || first.Actions[0].Action != "review_required" {
 		t.Fatalf("first actions = %+v", first.Actions)
+	}
+	if strings.Contains(first.Actions[0].Body, "--workflow") || strings.Contains(first.Actions[0].Body, "plect up") {
+		t.Fatalf("review_required body = %q, want it to name no workflow", first.Actions[0].Body)
 	}
 	if len(first.Actions[0].UnmetItems) != 1 || first.Actions[0].UnmetItems[0].ID != "ac-met" || first.Actions[0].UnmetItems[0].PendingReason != "missing_judge" {
 		t.Fatalf("first unmet_items = %+v", first.Actions[0].UnmetItems)

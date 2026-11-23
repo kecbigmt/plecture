@@ -10,6 +10,7 @@ import (
 	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"reflect"
 	"runtime"
 	"strings"
 	"testing"
@@ -648,6 +649,70 @@ func TestPoller_InitialObservationDoesNotNotify(t *testing.T) {
 	subs, _ := store.All()
 	if subs[subKey("org/repo-8", "https://github.com/org/repo/pull/8")].Last["pr_state"] != "open" {
 		t.Errorf("baseline = %+v", subs)
+	}
+}
+
+// A subscription that starts on an already-conflicting pull request has no
+// transition to report, yet the subscriber still has to learn of the conflict.
+func TestPoller_InitialDirtyObservationNotifiesMergeable(t *testing.T) {
+	for _, tc := range []struct {
+		mergeable string
+		want      int
+	}{
+		{"dirty", 1},
+		{"clean", 0},
+		{"unknown", 0},
+	} {
+		t.Run(tc.mergeable, func(t *testing.T) {
+			store := NewStore(t.TempDir())
+			const res = "https://github.com/org/repo/pull/51"
+			if err := store.Subscribe(Subscription{SessionName: "org/repo-51", Resource: res}); err != nil {
+				t.Fatal(err)
+			}
+			gh := fakeGh(t, t.TempDir(), "", []ghRoute{
+				{match: "check-runs", stdout: ""},
+				{match: "/status", stdout: ""},
+				prCoreRouteFull("51", "open", false, "abc1234", tc.mergeable, false),
+			})
+			var notified []map[string]any
+			srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				var body map[string]any
+				if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+					t.Errorf("decode notification: %v", err)
+				}
+				notified = append(notified, body)
+			}))
+			defer srv.Close()
+
+			p := &Poller{Store: store, Logger: slog.New(slog.NewTextHandler(os.Stderr, nil)), PublishResource: publishToNotifyFixture(srv.URL), GhBin: gh, Guard: ratebudget.NewGuard(t.TempDir())}
+			p.Tick()
+			p.Tick()
+
+			if len(notified) != tc.want {
+				t.Fatalf("notifications over two polls = %+v, want %d", notified, tc.want)
+			}
+			if tc.want == 1 && (notified[0]["change_type"] != "mergeable" || !strings.Contains(notified[0]["summary"].(string), "dirty")) {
+				t.Errorf("notification = %+v, want mergeable/dirty", notified[0])
+			}
+		})
+	}
+}
+
+func TestSummarizeChanges_FirstObservationReportsOnlyAConflict(t *testing.T) {
+	for _, tc := range []struct {
+		name    string
+		current map[string]string
+		want    []change
+	}{
+		{"issue with a conflicting linked pull request", map[string]string{"issue_state": "open", "pr_state": "open", "checks_status": "PENDING", "mergeable_state": "dirty"}, []change{{Type: "mergeable", Summary: "Mergeable: dirty"}}},
+		{"issue with a clean linked pull request", map[string]string{"issue_state": "open", "pr_state": "open", "checks_status": "FAILURE", "mergeable_state": "clean"}, nil},
+		{"issue with no linked pull request", map[string]string{"issue_state": "open"}, nil},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			if got := summarizeChanges(nil, tc.current); !reflect.DeepEqual(got, tc.want) {
+				t.Fatalf("summarizeChanges(nil, %v) = %+v, want %+v", tc.current, got, tc.want)
+			}
+		})
 	}
 }
 

@@ -343,7 +343,7 @@ pr_url = { from = "resource.state.pr_url" }
 	if len(evs) != 1 {
 		t.Fatalf("user.emit count = %d, want 1: %+v", len(evs), evs)
 	}
-	if evs[0].Source != event.SourceTick || evs[0].Metadata["revision"] != "sha1" || evs[0].Metadata["judge_ids"] != "ac-met" {
+	if evs[0].Source != event.SourceTick || evs[0].Metadata["input.revision"] != "sha1" || evs[0].Metadata["input.judge_ids"] != "ac-met" {
 		t.Fatalf("unexpected kick event: %+v", evs[0])
 	}
 	if evs[0].Direction != event.Inbound || store.Get("owner/repo-1+review-work").Status != contract.SessionStatusDown {
@@ -366,6 +366,149 @@ pr_url = { from = "resource.state.pr_url" }
 	}
 	if len(evs) != 1 {
 		t.Fatalf("same revision should not emit a duplicate kick, got %d events: %+v", len(evs), evs)
+	}
+}
+
+func alreadyActiveKicks(t *testing.T, store *state.Store, target string) []event.Event {
+	t.Helper()
+	evs, _, _, err := eventlog.NewStore(store.Dir()).List(target, 0, event.Filter{
+		Types:   []string{event.TypeUserEmit},
+		Sources: []string{event.SourceTick},
+	})
+	if err != nil {
+		t.Fatalf("List: %v", err)
+	}
+	return evs
+}
+
+func setObservedFact(t *testing.T, store *state.Store, session, key string, value any) {
+	t.Helper()
+	if err := store.Update(session, func(s *domain.Session) error {
+		s.Nodes["work"].Observed.State[key] = value
+		return nil
+	}); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func TestTickSession_AlreadyActiveKickCarriesEveryChainInputUniformly(t *testing.T) {
+	store := testStore(t)
+	cfg := writeWorkflowFixture(t, "wf",
+		[]taskFixture{workTaskWithChain(`
+[[chains]]
+id       = "review"
+workflow = "codex"
+[chains.when]
+all = [ { judge_pending = "ac-met" } ]
+[chains.inputs]
+b = { from = "resource.state.beta" }
+a = { from = "resource.state.alpha" }
+`)},
+		[]nodeFixture{{id: "work"}})
+	writeWorkflowFile(t, cfg, "codex", "")
+	seedReviewWork(t, store, "owner/repo-1", map[string]any{"checks_status": "SUCCESS", "alpha": "one", "beta": "two"})
+	seedSessionWithNodes(t, store, "owner/repo-1+review-work", "owner/repo", 1, "codex", nil)
+	const target = "owner/repo-1+review-work"
+
+	if _, err := TickSession(cfg, store, TickParams{SessionName: "owner/repo-1", SkipRefresh: true}); err != nil {
+		t.Fatalf("TickSession: %v", err)
+	}
+	evs := alreadyActiveKicks(t, store, target)
+	if len(evs) != 1 {
+		t.Fatalf("kick count = %d, want 1: %+v", len(evs), evs)
+	}
+	if evs[0].Metadata["input.a"] != "one" || evs[0].Metadata["input.b"] != "two" {
+		t.Fatalf("kick metadata = %+v, want every chain input", evs[0].Metadata)
+	}
+	if !strings.Contains(evs[0].Body, "- a: one\n- b: two") {
+		t.Fatalf("kick body = %q, want each input listed in sorted key order", evs[0].Body)
+	}
+	if strings.Contains(evs[0].Body, "PR") || strings.Contains(evs[0].Summary, "revision") {
+		t.Fatalf("kick names a provider concept or an input it does not have: summary %q body %q", evs[0].Summary, evs[0].Body)
+	}
+
+	setObservedFact(t, store, "owner/repo-1", "beta", "three")
+	if _, err := TickSession(cfg, store, TickParams{SessionName: "owner/repo-1", SkipRefresh: true}); err != nil {
+		t.Fatalf("TickSession(2): %v", err)
+	}
+	evs = alreadyActiveKicks(t, store, target)
+	if len(evs) != 2 || evs[1].Metadata["input.b"] != "three" {
+		t.Fatalf("a change to any input must re-kick, got %d kicks: %+v", len(evs), evs)
+	}
+}
+
+func alreadyActiveKickFixture(t *testing.T, inputs string, observed map[string]any) (*config.Config, *state.Store) {
+	t.Helper()
+	store := testStore(t)
+	cfg := writeWorkflowFixture(t, "wf",
+		[]taskFixture{workTaskWithChain(`
+[[chains]]
+id       = "review"
+workflow = "codex"
+[chains.when]
+all = [ { judge_pending = "ac-met" } ]
+[chains.inputs]
+` + inputs)},
+		[]nodeFixture{{id: "work"}})
+	writeWorkflowFile(t, cfg, "codex", "")
+	seedReviewWork(t, store, "owner/repo-1", observed)
+	seedSessionWithNodes(t, store, "owner/repo-1+review-work", "owner/repo", 1, "codex", nil)
+	return cfg, store
+}
+
+func tickWork(t *testing.T, cfg *config.Config, store *state.Store) {
+	t.Helper()
+	if _, err := TickSession(cfg, store, TickParams{SessionName: "owner/repo-1", SkipRefresh: true}); err != nil {
+		t.Fatalf("TickSession: %v", err)
+	}
+}
+
+func TestTickSession_AlreadyActiveKickPreservesInputsNamedLikeItsOwnKeys(t *testing.T) {
+	cfg, store := alreadyActiveKickFixture(t, `
+chain_id        = { from = "resource.state.alpha" }
+instance        = { from = "resource.state.alpha" }
+work_session    = { from = "resource.state.alpha" }
+chain_dedup_key = { from = "resource.state.alpha" }
+`, map[string]any{"checks_status": "SUCCESS", "alpha": "one"})
+
+	tickWork(t, cfg, store)
+	tickWork(t, cfg, store)
+	evs := alreadyActiveKicks(t, store, "owner/repo-1+review-work")
+	if len(evs) != 1 {
+		t.Fatalf("inputs named like the kick's own keys must not defeat dedup, got %d kicks: %+v", len(evs), evs)
+	}
+	meta := evs[0].Metadata
+	for _, key := range []string{"chain_id", "instance", "work_session", "chain_dedup_key"} {
+		if meta["input."+key] != "one" {
+			t.Errorf("input %q lost from metadata: %+v", key, meta)
+		}
+	}
+	if meta["chain_id"] != "review" || meta["instance"] != "work" || meta["work_session"] != "owner/repo-1" || meta["chain_dedup_key"] == "one" {
+		t.Fatalf("an input overwrote the kick's own metadata: %+v", meta)
+	}
+}
+
+func TestTickSession_AlreadyActiveKickReKicksOnAnyDistinctInputValue(t *testing.T) {
+	for _, tc := range []struct {
+		name          string
+		before, after any
+	}{
+		{"trailing whitespace", "one", "one "},
+		{"string versus number", "1", float64(1)},
+		{"string versus boolean", "true", true},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			cfg, store := alreadyActiveKickFixture(t, `
+b = { from = "resource.state.beta" }
+`, map[string]any{"checks_status": "SUCCESS", "beta": tc.before})
+
+			tickWork(t, cfg, store)
+			setObservedFact(t, store, "owner/repo-1", "beta", tc.after)
+			tickWork(t, cfg, store)
+			if evs := alreadyActiveKicks(t, store, "owner/repo-1+review-work"); len(evs) != 2 {
+				t.Fatalf("%#v then %#v must kick twice, got %d kicks: %+v", tc.before, tc.after, len(evs), evs)
+			}
+		})
 	}
 }
 

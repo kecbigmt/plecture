@@ -15,7 +15,6 @@ import (
 )
 
 const outputKeyRevision = "revision"
-const outputKeyMergeableState = "mergeable_state"
 
 type JudgeParams struct {
 	SessionName  string

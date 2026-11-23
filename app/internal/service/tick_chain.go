@@ -2,7 +2,10 @@ package service
 
 import (
 	"crypto/sha256"
+	"encoding/json"
 	"fmt"
+	"maps"
+	"slices"
 	"strings"
 
 	"github.com/kecbigmt/plecture/app/internal/config"
@@ -15,7 +18,10 @@ func publishAlreadyActiveChainKick(cfg *config.Config, store *state.Store, workS
 	if sp.TargetSession == "" {
 		return false, nil
 	}
-	dedupKey := chainKickDedupKey(workSession, sp)
+	dedupKey, err := chainKickDedupKey(workSession, sp)
+	if err != nil {
+		return false, err
+	}
 	log := eventlog.NewStore(store.Dir())
 	evs, _, _, err := log.List(sp.TargetSession, 0, event.Filter{
 		Types:   []string{event.TypeUserEmit},
@@ -30,23 +36,22 @@ func publishAlreadyActiveChainKick(cfg *config.Config, store *state.Store, workS
 		}
 	}
 
-	meta := map[string]string{
-		"work_session":    workSession,
-		"chain_id":        sp.ChainID,
-		"instance":        sp.Instance,
-		"chain_dedup_key": dedupKey,
+	// Chain input names are unconstrained, so only a prefix keeps every input
+	// from colliding with the kick's own keys.
+	meta := make(map[string]string, len(sp.Inputs)+4)
+	for key := range sp.Inputs {
+		meta["input."+key] = chainInputString(sp.Inputs, key)
 	}
-	for _, key := range []string{"revision", "judge_ids", "pr_url"} {
-		if v := chainInputString(sp.Inputs, key); v != "" {
-			meta[key] = v
-		}
-	}
+	meta["work_session"] = workSession
+	meta["chain_id"] = sp.ChainID
+	meta["instance"] = sp.Instance
+	meta["chain_dedup_key"] = dedupKey
 	_, err = EventPublish(cfg, store, sp.TargetSession, EventPublishParams{
 		Type:      event.TypeUserEmit,
 		Source:    event.SourceTick,
 		Direction: event.Inbound,
-		Summary:   fmt.Sprintf("Re-evaluate %s at revision %s", workSession, metaValue(meta, "revision", "current")),
-		Body:      chainKickBody(workSession, sp, meta),
+		Summary:   fmt.Sprintf("Re-evaluate %s", workSession),
+		Body:      chainKickBody(workSession, sp),
 		Metadata:  meta,
 	})
 	if err != nil {
@@ -55,45 +60,46 @@ func publishAlreadyActiveChainKick(cfg *config.Config, store *state.Store, workS
 	return true, nil
 }
 
-func chainKickDedupKey(workSession string, sp ChainSpawn) string {
-	sum := sha256.Sum256([]byte(strings.Join([]string{
-		workSession,
-		sp.TargetSession,
-		sp.ChainID,
-		sp.Instance,
-		chainInputString(sp.Inputs, "revision"),
-		chainInputString(sp.Inputs, "judge_ids"),
-	}, "\x00")))
-	return fmt.Sprintf("%x", sum[:])
+// The key hashes the inputs' JSON rather than their rendered text, which
+// would make "1" and 1, or a value and its whitespace-padded twin, collide.
+func chainKickDedupKey(workSession string, sp ChainSpawn) (string, error) {
+	data, err := json.Marshal([]any{workSession, sp.TargetSession, sp.ChainID, sp.Instance, sp.Inputs})
+	if err != nil {
+		return "", fmt.Errorf("chain %q inputs: %w", sp.ChainID, err)
+	}
+	sum := sha256.Sum256(data)
+	return fmt.Sprintf("%x", sum[:]), nil
 }
 
+// A non-string input is rendered as JSON rather than with Go's default
+// formatting, so an array or object reads the same as it was declared.
 func chainInputString(inputs map[string]any, key string) string {
-	if len(inputs) == 0 {
+	switch v := inputs[key].(type) {
+	case nil:
 		return ""
-	}
-	v, ok := inputs[key]
-	if !ok || v == nil {
-		return ""
-	}
-	return strings.TrimSpace(fmt.Sprint(v))
-}
-
-func metaValue(meta map[string]string, key, fallback string) string {
-	if v := strings.TrimSpace(meta[key]); v != "" {
+	case string:
 		return v
+	default:
+		b, err := json.Marshal(v)
+		if err != nil {
+			return fmt.Sprint(v)
+		}
+		return string(b)
 	}
-	return fallback
 }
 
-func chainKickBody(workSession string, sp ChainSpawn, meta map[string]string) string {
+func chainKickBody(workSession string, sp ChainSpawn) string {
 	lines := []string{
 		fmt.Sprintf("Re-evaluate the work session `%s`.", workSession),
 		"",
-		fmt.Sprintf("- PR: %s", metaValue(meta, "pr_url", sp.Resource)),
-		fmt.Sprintf("- Revision: %s", metaValue(meta, "revision", "current")),
-		fmt.Sprintf("- Pending judge ids: %s", metaValue(meta, "judge_ids", "(unspecified)")),
-		"",
-		"Record one `plect judge` action per pending judge id against the work session.",
 	}
+	keys := slices.Sorted(maps.Keys(sp.Inputs))
+	if len(keys) == 0 {
+		lines = append(lines, "- (no inputs)")
+	}
+	for _, key := range keys {
+		lines = append(lines, fmt.Sprintf("- %s: %s", key, chainInputString(sp.Inputs, key)))
+	}
+	lines = append(lines, "", "Record one `plect judge` action per pending judge id against the work session.")
 	return strings.Join(lines, "\n")
 }

@@ -62,9 +62,6 @@ check/judge state.`,
 		}
 		for _, action := range result.Actions {
 			fmt.Fprintf(cmd.OutOrStdout(), "%s\t%s\t%s\n", action.Instance, action.Action, tickActionSummary(action))
-			if action.ReviewerCommand != "" {
-				fmt.Fprintf(cmd.OutOrStdout(), "  reviewer:\t%s\n", action.ReviewerCommand)
-			}
 		}
 		for _, sp := range result.Chains {
 			fmt.Fprintf(cmd.OutOrStdout(), "chain %s\t%s\t%s\n", sp.ChainID, sp.Instance, chainSpawnStatus(sp))
