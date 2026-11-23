@@ -252,14 +252,18 @@ script.
 
 - decodes structured input with a real parser, never a text scan;
 - pins no prose literal and asserts no count of document structure;
-- fails with the rule, the `file:line`, and the root-cause fix, naming
-  the exception syntax last;
+- fails with the rule, the `file:line`, and the root-cause fix;
 - has a selftest that proves it against a seeded defect;
 - runs from `scripts/check-all.sh` with the arguments CI uses;
-- takes exceptions per line, each with a reason and a removal condition
-  the check itself evaluates, and fails on an exception that no longer
-  suppresses anything. No file-level allowlists. Adding an exception
-  needs the owner.
+- ships with no exception mechanism: a suppression directive of the
+  underlying tool fails the check like any other finding.
+
+**Exceptions.** An exception is added when it is needed, not before.
+The first exception to a check is a separate change that the owner
+approves. That change brings the exception's form and whatever keeps it
+honest (a reason, a narrow scope, failing once it no longer suppresses
+anything), sized to that one case. A check that already carries
+exceptions keeps them as they are.
 
 **Retirement.** A check is deleted when a design change makes its class
 unrepresentable, when a broader check subsumes it, or when it produces
