@@ -1,6 +1,6 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 960 680" width="960" height="680" role="img" aria-labelledby="title desc">
   <title id="title">Change: worktree effect accepts token_command</title>
-  <desc id="desc">Head structure of the GitHub worktree effect's App auth with the diff marked. The shipped task documents, changed, accept a token_command session input. The worktree effect, changed, passes it to github-worktree setup as an added --token-command JSON argument. Setup, changed, runs the operator's token command once as an added preflight, hands git a credential helper argv through process-local -c config, and hands the unchanged ghapi.App metadata client the command over an added path. Git asks gh-app-token credential, changed to accept --token-command, for credentials; gh-app-token runs the command over an added path for each git authentication. ghapi.App runs the command over an added path for each request and sends the token as a Bearer header to the GitHub API. No token cache sits on any path.</desc>
+  <desc id="desc">Head structure of the GitHub worktree effect's App auth with the diff marked. The shipped task documents, changed, accept a token_command session input. The worktree effect, changed, passes it to github-worktree setup as an added --token-command JSON argument. Setup, changed, hands git a credential helper argv through process-local -c config and fetches PR or issue metadata through FetchIssueMeta or FetchPullMeta. FetchIssueMeta, changed, still tolerates a missing issue but re-raises a failed token command. The metadata fetch calls the unchanged ghapi.App client built with the command, which runs the command over an added path for each request and sends the token as a Bearer header to the GitHub API. Git asks gh-app-token credential, changed to accept --token-command, for credentials; gh-app-token runs the command over an added path for each git authentication. No token cache sits on any path.</desc>
   <defs>
     <style>
       svg {
@@ -48,91 +48,79 @@
   <text class="title" x="24" y="38">Change: worktree effect accepts token_command</text>
   <text class="note" x="24" y="60">PR #868 · github plugin · head structure with the diff marked on it · no path holds a token cache</text>
 
-  <!-- Task documents -->
   <rect class="changed" x="32" y="80" width="250" height="66" rx="6"/>
   <text class="tag t-changed" x="48" y="101">CHANGED</text>
   <text class="name" x="48" y="119">task documents</text>
   <text class="note" x="48" y="136">work · review · respond · investigate</text>
 
-  <!-- Worktree effect -->
   <rect class="changed" x="32" y="200" width="200" height="66" rx="6"/>
   <text class="tag t-changed" x="48" y="221">CHANGED</text>
   <text class="name" x="48" y="239">worktree effect</text>
   <text class="note" x="48" y="256">worktree.toml setup argv</text>
 
-  <!-- github-worktree setup -->
   <rect class="changed" x="362" y="200" width="236" height="66" rx="6"/>
   <text class="tag t-changed" x="378" y="221">CHANGED</text>
   <text class="name" x="378" y="239">github-worktree setup</text>
-  <text class="note" x="378" y="256">preflight · commandAuth</text>
+  <text class="note" x="378" y="256">commandAuth · App{TokenCommand}</text>
 
-  <!-- git -->
   <rect class="neutral" x="32" y="360" width="200" height="66" rx="6"/>
   <text class="tag t-neutral" x="48" y="381">UNCHANGED</text>
   <text class="name" x="48" y="399">git</text>
   <text class="note" x="48" y="416">HTTPS to github.com</text>
 
-  <!-- Host token command -->
   <rect class="external" x="362" y="360" width="236" height="66" rx="6"/>
   <text class="tag t-neutral" x="378" y="381">EXTERNAL</text>
   <text class="name" x="378" y="399">token command</text>
   <text class="note" x="378" y="416">operator's argv · one token line</text>
 
-  <!-- ghapi.App -->
   <rect class="neutral" x="728" y="360" width="200" height="66" rx="6"/>
   <text class="tag t-neutral" x="744" y="381">UNCHANGED</text>
   <text class="name" x="744" y="399">ghapi.App</text>
   <text class="note" x="744" y="416">metadata client</text>
 
-  <!-- gh-app-token credential -->
   <rect class="changed" x="32" y="510" width="200" height="66" rx="6"/>
   <text class="tag t-changed" x="48" y="531">CHANGED</text>
   <text class="name" x="48" y="549">gh-app-token credential</text>
   <text class="note" x="48" y="566">--token-command mode</text>
 
-  <!-- GitHub API -->
   <rect class="external" x="728" y="510" width="200" height="66" rx="6"/>
   <text class="tag t-neutral" x="744" y="531">EXTERNAL</text>
   <text class="name" x="744" y="549">GitHub REST API</text>
   <text class="note" x="744" y="566">PR / issue metadata</text>
 
-  <!-- Task documents → worktree effect -->
   <line class="flow-added" x1="132" y1="146" x2="132" y2="200"/>
   <text class="label t-added" x="144" y="168"><tspan x="144" font-weight="600">ADDED</tspan><tspan x="144" dy="15">session.inputs.token_command</tspan></text>
 
-  <!-- worktree effect → setup -->
   <line class="flow-added" x1="232" y1="233" x2="362" y2="233"/>
   <text class="label t-added" text-anchor="middle" x="297" y="252"><tspan x="297" font-weight="600">ADDED</tspan><tspan x="297" dy="15">--token-command</tspan><tspan x="297" dy="15">JSON argv</tspan></text>
 
-  <!-- setup → git -->
   <line class="flow" x1="400" y1="266" x2="232" y2="368"/>
   <text class="label" text-anchor="end" x="400" y="316"><tspan x="400">-c credential</tspan><tspan x="400" dy="15">helper argv</tspan></text>
 
-  <!-- setup → token command (preflight) -->
-  <line class="flow-added" x1="480" y1="266" x2="480" y2="360"/>
-  <text class="label t-added" x="492" y="300"><tspan x="492" font-weight="600">ADDED</tspan><tspan x="492" dy="15">preflight: run once</tspan></text>
 
-  <!-- setup → ghapi.App -->
-  <path class="flow-added" d="M598,233 H828 V360"/>
-  <text class="label t-added" text-anchor="middle" x="713" y="208"><tspan x="713" font-weight="600">ADDED</tspan><tspan x="713" dy="15">TokenCommand</tspan></text>
+  <rect class="changed" x="728" y="200" width="200" height="66" rx="6"/>
+  <text class="tag t-changed" x="744" y="221">CHANGED</text>
+  <text class="name" x="744" y="239">FetchIssueMeta</text>
+  <text class="note" x="744" y="256">re-raises command failure</text>
 
-  <!-- git → gh-app-token -->
+  <line class="flow" x1="598" y1="233" x2="728" y2="233"/>
+  <text class="label" text-anchor="middle" x="663" y="224">metadata fetch</text>
+
+  <line class="flow" x1="828" y1="266" x2="828" y2="360"/>
+  <text class="label" x="840" y="317">JSON call</text>
+
   <line class="flow" x1="132" y1="426" x2="132" y2="510"/>
   <text class="label" x="144" y="472">credential get</text>
 
-  <!-- gh-app-token → token command -->
   <path class="flow-added" d="M232,543 H480 V426"/>
   <text class="label t-added" x="300" y="508"><tspan x="300" font-weight="600">ADDED</tspan><tspan x="300" dy="15">run per git auth</tspan></text>
 
-  <!-- ghapi.App → token command -->
   <line class="flow-added" x1="728" y1="393" x2="598" y2="393"/>
   <text class="label t-added" text-anchor="middle" x="663" y="440"><tspan x="663" font-weight="600">ADDED</tspan><tspan x="663" dy="15">run per request</tspan></text>
 
-  <!-- ghapi.App → GitHub API -->
   <line class="flow" x1="828" y1="426" x2="828" y2="510"/>
   <text class="label" x="840" y="472"><tspan x="840">Authorization:</tspan><tspan x="840" dy="15">Bearer token</tspan></text>
 
-  <!-- Legend -->
   <rect class="changed" x="32" y="612" width="28" height="16" rx="3"/>
   <text class="label" x="70" y="624">CHANGED · solid blue</text>
   <rect class="neutral" x="264" y="612" width="28" height="16" rx="3"/>
