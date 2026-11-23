@@ -220,7 +220,10 @@ func (d *sessionDispatcher) processEvent(ctx context.Context, s *domain.Session,
 		}
 	}
 	rootErr := d.projectRootErr(s)
-	recorded := false
+	// An inbox hand-over is this event's delivery fact; a push attempt on the
+	// same event, a held retry included, must neither record it again after
+	// the runtime answered nor withdraw it.
+	recorded, handedOver := false, d.handedToRuntime(ev)
 	for i, ch := range d.channels {
 		if !selects(ch, ev) || omitted[ch.Name][ev.ID] {
 			continue
@@ -237,7 +240,7 @@ func (d *sessionDispatcher) processEvent(ctx context.Context, s *domain.Session,
 			failures[i] = deliveryFailure{channel: ch.Name, cause: rootErr}
 			continue
 		}
-		if !recorded && d.reachesRuntime(ch) {
+		if !recorded && !handedOver && d.reachesRuntime(ch) {
 			recorded = d.recordDelivery(s, ev)
 		}
 		wg.Go(func() {
@@ -271,7 +274,7 @@ func (d *sessionDispatcher) processEvent(ctx context.Context, s *domain.Session,
 		})
 	}
 	wg.Wait()
-	if recorded && !d.reachedRuntime(ev, delivered) {
+	if recorded && !d.reachedRuntime(delivered) {
 		d.withdrawDelivery(ev)
 	}
 	if ctx.Err() != nil {
@@ -433,15 +436,18 @@ func (d *sessionDispatcher) withdrawDelivery(ev event.Event) {
 	}
 }
 
-// reachedRuntime counts an inbox binding that selects ev as delivered: the
-// drain handed ev over before any push attempt, so a failed push must not
-// withdraw that record.
-func (d *sessionDispatcher) reachedRuntime(ev event.Event, delivered map[string]bool) bool {
+func (d *sessionDispatcher) reachedRuntime(delivered map[string]bool) bool {
 	for _, ch := range d.channels {
-		if !d.reachesRuntime(ch) {
-			continue
+		if delivered[ch.Name] && d.reachesRuntime(ch) {
+			return true
 		}
-		if delivered[ch.Name] || d.defs[ch.Uses].Type == config.ChannelTypeInbox && selects(ch, ev) {
+	}
+	return false
+}
+
+func (d *sessionDispatcher) handedToRuntime(ev event.Event) bool {
+	for _, ch := range d.channels {
+		if d.defs[ch.Uses].Type == config.ChannelTypeInbox && selects(ch, ev) && d.reachesRuntime(ch) {
 			return true
 		}
 	}

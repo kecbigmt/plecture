@@ -238,6 +238,36 @@ func TestDispatcher_InboxHandOverStaysRecordedWhenARuntimePushFails(t *testing.T
 	}
 }
 
+func TestDispatcher_HeldPushRetryDoesNotRecreateAnAnsweredInboxDelivery(t *testing.T) {
+	log := eventlog.NewStore(t.TempDir())
+	d, _ := inboxDispatcher(t, log)
+	s, err := d.state.GetE(deliverySession)
+	if err != nil {
+		t.Fatal(err)
+	}
+	runtimeOwnsActivity(d, s)
+	dead := filepath.Join(t.TempDir(), "absent.sock")
+	var deadPath string
+	for id, task := range domain.MergedTasks(s) {
+		task.Outputs["dead_path"] = dead
+		deadPath = "nodes." + id + ".outputs.dead_path"
+	}
+	d.channels = append(d.channels, config.EventChannel{Name: "push", Uses: "dead_socket", Inputs: map[string]*lang.Value{"path": fromValue(deadPath)}, Include: []string{"user.emit"}})
+	d.defs["dead_socket"] = socketChannel()
+	d.awaitingRepair = func(string) (bool, error) { return true, nil }
+
+	appendUserEmit(t, log, "emit-1")
+	drainOnce(d, s)
+	if err := d.state.AnswerUnansweredDelivery(deliverySession, time.Now()); err != nil {
+		t.Fatalf("answer: %v", err)
+	}
+	drainOnce(d, s)
+
+	if rec := unansweredDelivery(t, d); rec != nil {
+		t.Fatalf("unanswered delivery = %+v, want none: the runtime answered the inbox hand-over", rec)
+	}
+}
+
 func TestDispatcher_RecordReplacesOneFromBeforeTheCurrentRun(t *testing.T) {
 	log := eventlog.NewStore(t.TempDir())
 	sock, recv := startFakeSocket(t)
