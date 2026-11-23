@@ -18,7 +18,10 @@ func publishAlreadyActiveChainKick(cfg *config.Config, store *state.Store, workS
 	if sp.TargetSession == "" {
 		return false, nil
 	}
-	dedupKey := chainKickDedupKey(workSession, sp)
+	dedupKey, err := chainKickDedupKey(workSession, sp)
+	if err != nil {
+		return false, err
+	}
 	log := eventlog.NewStore(store.Dir())
 	evs, _, _, err := log.List(sp.TargetSession, 0, event.Filter{
 		Types:   []string{event.TypeUserEmit},
@@ -33,13 +36,12 @@ func publishAlreadyActiveChainKick(cfg *config.Config, store *state.Store, workS
 		}
 	}
 
+	// Chain input names are unconstrained, so only a prefix keeps every input
+	// from colliding with the kick's own keys.
 	meta := make(map[string]string, len(sp.Inputs)+4)
 	for key := range sp.Inputs {
-		meta[key] = chainInputString(sp.Inputs, key)
+		meta["input."+key] = chainInputString(sp.Inputs, key)
 	}
-	// The kick's own keys are written last so an input that happens to share
-	// a name cannot redirect dedup or misattribute the kick; the body still
-	// lists that input.
 	meta["work_session"] = workSession
 	meta["chain_id"] = sp.ChainID
 	meta["instance"] = sp.Instance
@@ -58,13 +60,15 @@ func publishAlreadyActiveChainKick(cfg *config.Config, store *state.Store, workS
 	return true, nil
 }
 
-func chainKickDedupKey(workSession string, sp ChainSpawn) string {
-	parts := []string{workSession, sp.TargetSession, sp.ChainID, sp.Instance}
-	for _, key := range slices.Sorted(maps.Keys(sp.Inputs)) {
-		parts = append(parts, key+"="+chainInputString(sp.Inputs, key))
+// The key hashes the inputs' JSON rather than their rendered text, which
+// would make "1" and 1, or a value and its whitespace-padded twin, collide.
+func chainKickDedupKey(workSession string, sp ChainSpawn) (string, error) {
+	data, err := json.Marshal([]any{workSession, sp.TargetSession, sp.ChainID, sp.Instance, sp.Inputs})
+	if err != nil {
+		return "", fmt.Errorf("chain %q inputs: %w", sp.ChainID, err)
 	}
-	sum := sha256.Sum256([]byte(strings.Join(parts, "\x00")))
-	return fmt.Sprintf("%x", sum[:])
+	sum := sha256.Sum256(data)
+	return fmt.Sprintf("%x", sum[:]), nil
 }
 
 // A non-string input is rendered as JSON rather than with Go's default
@@ -74,7 +78,7 @@ func chainInputString(inputs map[string]any, key string) string {
 	case nil:
 		return ""
 	case string:
-		return strings.TrimSpace(v)
+		return v
 	default:
 		b, err := json.Marshal(v)
 		if err != nil {
