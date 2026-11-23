@@ -1,0 +1,156 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 960 600" width="960" height="600" role="img" aria-labelledby="title desc">
+  <title id="title">Change: loader nesting, expression chain facts, kind-keyed registry</title>
+  <desc id="desc">Head structure of the configuration loader after the change. The global and project layers are read by the config loaders, which fold declarations per kind (unchanged). The loaders hand task documents, resources and workflows to the lang reference registry, which is changed to key every namespace by kind and id; the removed id-only key is shown as a dashed ghost. Reference sites (chain workflow, chain task, extends, resource) call ExpectKind with the kind they expect. Language diagnostics returned to the caller now name the definition by kind and id. The loaders also hand effects by address to the nesting resolver, which is changed to walk a chain by address and emit PLECTURE-CFG-NESTING-CYCLE. The loaders hand each [[chains]] when.all to the chain when decoder, which is changed to accept an expression fact and validate check and expression facts through the done_when leaf rules, an added shared path. The chain evaluator is unchanged.</desc>
+  <defs>
+    <style>
+      svg {
+        --bg: #ffffff; --fg: #1f2328; --muted: #59636e;
+        --neutral: #8c959f; --neutral-bg: #f6f8fa;
+        --added: #1a7f37; --added-bg: #dafbe1;
+        --changed: #0969da; --changed-bg: #ddf4ff;
+        --removed: #cf222e; --removed-bg: #ffebe9;
+      }
+      @media (prefers-color-scheme: dark) {
+        svg {
+          --bg: #0d1117; --fg: #e6edf3; --muted: #9198a1;
+          --neutral: #656c76; --neutral-bg: #151b23;
+          --added: #3fb950; --added-bg: #0f2a1a;
+          --changed: #4493f8; --changed-bg: #0c2441;
+          --removed: #f85149; --removed-bg: #3a1416;
+        }
+      }
+      text { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Helvetica, Arial, sans-serif; font-size: 13px; fill: var(--fg); }
+      .bg { fill: var(--bg); }
+      .title { font-size: 18px; font-weight: 600; }
+      .name { font-weight: 600; }
+      .note { font-size: 12px; fill: var(--muted); }
+      .label { font-size: 12px; }
+      .tag { font-size: 11px; font-weight: 700; letter-spacing: 0.06em; }
+      .neutral { fill: var(--neutral-bg); stroke: var(--neutral); stroke-width: 1.5; }
+      .added { fill: var(--added-bg); stroke: var(--added); stroke-width: 3; }
+      .changed { fill: var(--changed-bg); stroke: var(--changed); stroke-width: 2; }
+      .removed { fill: var(--removed-bg); stroke: var(--removed); stroke-width: 1.5; stroke-dasharray: 8 4; }
+      .ghost { opacity: 0.65; }
+      .t-neutral { fill: var(--muted); }
+      .t-added { fill: var(--added); }
+      .t-changed { fill: var(--changed); }
+      .t-removed { fill: var(--removed); }
+      .flow { fill: none; stroke: var(--fg); stroke-width: 1.5; marker-end: url(#arrow); }
+      .flow-changed { fill: none; stroke: var(--changed); stroke-width: 2; marker-end: url(#arrow-changed); }
+      .flow-added { fill: none; stroke: var(--added); stroke-width: 3; marker-end: url(#arrow-added); }
+      .head { fill: var(--fg); }
+      .head-changed { fill: var(--changed); }
+      .head-added { fill: var(--added); }
+    </style>
+    <marker id="arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path class="head" d="M0,0 L10,5 L0,10 z"/>
+    </marker>
+    <marker id="arrow-changed" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
+      <path class="head-changed" d="M0,0 L10,5 L0,10 z"/>
+    </marker>
+    <marker id="arrow-added" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="4" markerHeight="4" orient="auto-start-reverse">
+      <path class="head-added" d="M0,0 L10,5 L0,10 z"/>
+    </marker>
+  </defs>
+
+  <rect class="bg" x="0" y="0" width="960" height="600"/>
+
+  <text class="title" x="24" y="38">Change: nesting by address, expression chain facts, kind-keyed registry</text>
+  <text class="note" x="24" y="60">PR #857 · head structure of the configuration loader with the diff marked on it</text>
+
+  <!-- Layers -->
+  <rect class="neutral" x="32" y="90" width="220" height="56" rx="6"/>
+  <text class="tag t-neutral" x="46" y="110">UNCHANGED</text>
+  <text class="name" x="46" y="128">Global layer</text>
+  <text class="note" x="140" y="128">task review</text>
+
+  <rect class="neutral" x="32" y="160" width="220" height="56" rx="6"/>
+  <text class="tag t-neutral" x="46" y="180">UNCHANGED</text>
+  <text class="name" x="46" y="198">Project layer</text>
+  <text class="note" x="146" y="198">workflow review</text>
+
+  <!-- Config loaders -->
+  <rect class="neutral" x="330" y="120" width="210" height="66" rx="6"/>
+  <text class="tag t-neutral" x="344" y="141">UNCHANGED</text>
+  <text class="name" x="344" y="160">Config loaders</text>
+  <text class="note" x="344" y="176">fold declarations per kind</text>
+
+  <line class="flow" x1="252" y1="118" x2="330" y2="140"/>
+  <line class="flow" x1="252" y1="188" x2="330" y2="166"/>
+  <text class="label" text-anchor="middle" x="291" y="156">TOML</text>
+
+  <!-- Registry -->
+  <rect class="changed" x="650" y="110" width="270" height="86" rx="6"/>
+  <text class="tag t-changed" x="664" y="131">CHANGED</text>
+  <text class="name" x="664" y="150">lang reference registry</text>
+  <text class="note" x="664" y="167">key (kind, id) per namespace</text>
+  <text class="note" x="664" y="183">mismatch names the kind found</text>
+
+  <line class="flow" x1="540" y1="153" x2="650" y2="153"/>
+  <text class="label" text-anchor="middle" x="595" y="128"><tspan x="595">tasks, resources,</tspan><tspan x="595" dy="15">workflows</tspan></text>
+
+  <!-- Removed id-only key -->
+  <g class="ghost">
+    <rect class="removed" x="760" y="214" width="160" height="50" rx="6"/>
+    <text class="tag t-removed" x="774" y="234">REMOVED</text>
+    <text class="name" x="774" y="252">key by id only</text>
+  </g>
+
+  <!-- Reference sites -->
+  <rect class="neutral" x="650" y="300" width="270" height="66" rx="6"/>
+  <text class="tag t-neutral" x="664" y="321">UNCHANGED</text>
+  <text class="name" x="664" y="340">Reference sites</text>
+  <text class="note" x="664" y="356">chain workflow/task, extends, resource</text>
+
+  <line class="flow-changed" x1="700" y1="300" x2="700" y2="196"/>
+  <text class="label t-changed" x="586" y="244"><tspan x="586" font-weight="600">CHANGED</tspan><tspan x="586" dy="15">ExpectKind(ref, kind)</tspan></text>
+
+  <!-- Caller -->
+  <rect class="neutral" x="330" y="236" width="170" height="56" rx="6"/>
+  <text class="tag t-neutral" x="344" y="256">UNCHANGED</text>
+  <text class="name" x="344" y="274">Caller</text>
+  <text class="note" x="390" y="274">up, tick, task setup</text>
+
+  <line class="flow-changed" x1="435" y1="186" x2="435" y2="236"/>
+  <text class="label t-changed" text-anchor="end" x="425" y="206"><tspan x="425" font-weight="600">CHANGED</tspan><tspan x="425" dy="15">error names kind + id</tspan></text>
+
+  <!-- Nesting resolver -->
+  <rect class="changed" x="32" y="300" width="240" height="70" rx="6"/>
+  <text class="tag t-changed" x="46" y="321">CHANGED</text>
+  <text class="name" x="46" y="340">Nesting resolver</text>
+  <text class="note" x="46" y="357">walk chain by address</text>
+
+  <path class="flow" d="M330,178 H295 V250 H152 V300"/>
+  <text class="label" x="162" y="270">effects by address</text>
+
+  <text class="label t-changed" x="46" y="394"><tspan x="46" font-weight="600">CHANGED · real cycle</tspan><tspan x="46" dy="15">PLECTURE-CFG-NESTING-CYCLE</tspan></text>
+
+  <!-- Chain when decoder -->
+  <rect class="changed" x="330" y="420" width="240" height="70" rx="6"/>
+  <text class="tag t-changed" x="344" y="441">CHANGED</text>
+  <text class="name" x="344" y="460">Chain when decoder</text>
+  <text class="note" x="344" y="477">accepts an expr fact</text>
+
+  <path class="flow" d="M525,186 V420"/>
+  <text class="label" x="535" y="360">[[chains]] when.all</text>
+
+  <!-- done_when leaf rules -->
+  <rect class="changed" x="680" y="420" width="240" height="70" rx="6"/>
+  <text class="tag t-changed" x="694" y="441">CHANGED</text>
+  <text class="name" x="694" y="460">done_when leaf rules</text>
+  <text class="note" x="694" y="477">one check/expr rule set</text>
+
+  <line class="flow-added" x1="570" y1="455" x2="680" y2="455"/>
+  <text class="label t-added" text-anchor="middle" x="625" y="430"><tspan x="625" font-weight="600">ADDED</tspan><tspan x="625" dy="15">ValueLeaf()</tspan></text>
+
+  <!-- Legend -->
+  <rect class="added" x="32" y="530" width="28" height="16" rx="3"/>
+  <text class="label" x="70" y="542">ADDED · thick solid</text>
+  <rect class="changed" x="230" y="530" width="28" height="16" rx="3"/>
+  <text class="label" x="268" y="542">CHANGED · blue solid</text>
+  <rect class="removed ghost" x="440" y="530" width="28" height="16" rx="3"/>
+  <text class="label" x="478" y="542">REMOVED · faded dashed ghost</text>
+  <rect class="neutral" x="700" y="530" width="28" height="16" rx="3"/>
+  <text class="label" x="738" y="542">UNCHANGED · grey</text>
+  <text class="note" x="32" y="574">each state is named in text; colour only repeats it · arrows are labelled with what crosses them</text>
+</svg>
