@@ -47,15 +47,20 @@ type HealthReport struct {
 	// an envelope this cycle. They contribute no evidence, exactly like a
 	// probe reporting no basis, so without this list a persistently broken
 	// probe would be indistinguishable from a quiet one.
-	ProbeErrors         []ProbeError `json:"probe_errors,omitempty"`
-	Reason              string       `json:"reason,omitempty"`
-	Repairable          bool         `json:"repairable,omitempty"`
-	ProbeUnevaluable    bool         `json:"probe_unevaluable,omitempty"`
-	LastCheckedAt       time.Time    `json:"last_checked_at,omitzero"`
-	LastActivityAt      time.Time    `json:"last_activity_at,omitzero"`
-	ActivityFingerprint string       `json:"-"`
-	Pushed              bool         `json:"pushed,omitempty"`
-	PushTarget          string       `json:"push_target,omitempty"`
+	ProbeErrors []ProbeError `json:"probe_errors,omitempty"`
+	// UnansweredDelivery is an event the runtime channel delivered longer
+	// than the stall threshold ago with no turn started since. No pardon
+	// excuses it: silence_expected covers waiting after a turn, not ignoring
+	// a new event.
+	UnansweredDelivery  *domain.UnansweredDelivery `json:"unanswered_delivery,omitempty"`
+	Reason              string                     `json:"reason,omitempty"`
+	Repairable          bool                       `json:"repairable,omitempty"`
+	ProbeUnevaluable    bool                       `json:"probe_unevaluable,omitempty"`
+	LastCheckedAt       time.Time                  `json:"last_checked_at,omitzero"`
+	LastActivityAt      time.Time                  `json:"last_activity_at,omitzero"`
+	ActivityFingerprint string                     `json:"-"`
+	Pushed              bool                       `json:"pushed,omitempty"`
+	PushTarget          string                     `json:"push_target,omitempty"`
 	// WakeWarning is set when the dead event was recorded on PushTarget but
 	// best-effort waking it (Up) failed — the push itself still succeeded.
 	WakeWarning string `json:"wake_warning,omitempty"`
@@ -120,6 +125,9 @@ func (r HealthReport) State() domain.HealthState {
 	if !r.Healthy {
 		return domain.HealthUnhealthy
 	}
+	if r.UnansweredDelivery != nil {
+		return domain.HealthStalled
+	}
 	if !r.ActivityDue {
 		return domain.HealthHealthy
 	}
@@ -171,10 +179,41 @@ func EvaluateHealth(cfg *config.Config, store *state.Store, name string) (Health
 	// through it too), so the structural gate below defers to it rather than
 	// deriving its own answer.
 	repairObservationEnabled := wf != nil && wf.Health.AutoRepairAttempts > 0 && s.Status == contract.SessionStatusUp
-	report := evaluateHealthFor(name, cfg.RunScopeUp(s), repairObservationEnabled, domain.MergedTasks(s), docs, defs, nodes, sessionVars(cfg, s, plan), healthCfg.StallThreshold.Duration, s.Health, now)
+	gateOpen := cfg.RunScopeUp(s)
+	report := evaluateHealthFor(name, gateOpen, repairObservationEnabled, domain.MergedTasks(s), docs, defs, nodes, sessionVars(cfg, s, plan), healthCfg.StallThreshold.Duration, s.Health, now)
 	finalizeActivityObservation(&report, s.Health, healthCfg.StallThreshold.Duration, now)
+	if gateOpen && (report.ActivityDeclared || !report.LastActivityAt.IsZero()) {
+		overdue, err := overdueDelivery(store, s, healthCfg.StallThreshold.Duration, now)
+		if err != nil {
+			return HealthReport{}, &Error{Code: ErrExecutionFailed, Message: fmt.Sprintf("read unanswered delivery: %v", err)}
+		}
+		report.UnansweredDelivery = overdue
+	}
 	persistHealthState(store, name, report, now)
 	return report, nil
+}
+
+// overdueDelivery leaves a delivery that arrived during a still running turn
+// to the activity probe: only a cleared status says the runtime is idle, and
+// the runtime's grace period starts when it became idle, not when the event
+// reached its turn's queue.
+func overdueDelivery(store *state.Store, s *domain.Session, stallThreshold time.Duration, now time.Time) (*domain.UnansweredDelivery, error) {
+	rec, err := store.UnansweredDelivery(s.Name)
+	if err != nil || rec == nil || rec.DeliveredAt.Before(domain.RunStartedAt(s)) {
+		return nil, err
+	}
+	status, ok, err := eventlog.NewStore(store.Dir()).LatestByType(s.Name, event.TypeStatusMessage)
+	if err != nil || !ok || status.Metadata["cleared"] != "true" {
+		return nil, err
+	}
+	idleSince := rec.DeliveredAt
+	if status.Time.After(idleSince) {
+		idleSince = status.Time
+	}
+	if now.Sub(idleSince) <= stallThreshold {
+		return nil, nil
+	}
+	return rec, nil
 }
 
 // currentPlanNodeIDs returns every node the session's frozen workflow
@@ -630,6 +669,11 @@ func pushHealthEscalation(cfg *config.Config, store *state.Store, origin string,
 	if !report.LastActivityAt.IsZero() {
 		meta["last_activity_at"] = report.LastActivityAt.UTC().Format(time.RFC3339)
 	}
+	if d := report.UnansweredDelivery; d != nil {
+		meta["event_id"] = d.EventID
+		meta["event_type"] = d.EventType
+		meta["delivered_at"] = d.DeliveredAt.UTC().Format(time.RFC3339)
+	}
 	id, wakeErr, err := publishHealthEscalationToLiveAncestor(cfg, store, origin, TerminalParams{
 		Type:     event.TypeTerminalEscalate,
 		Summary:  fmt.Sprintf("%s healthcheck is %s", origin, stateText),
@@ -710,6 +754,9 @@ func healthEscalationBody(origin string, report *HealthReport) string {
 	}
 	if !report.LastActivityAt.IsZero() {
 		lines = append(lines, "last_activity_at: "+report.LastActivityAt.UTC().Format(time.RFC3339))
+	}
+	if d := report.UnansweredDelivery; d != nil {
+		lines = append(lines, fmt.Sprintf("unanswered_event: %s %s, delivered_at %s", d.EventType, d.EventID, d.DeliveredAt.UTC().Format(time.RFC3339)))
 	}
 	return strings.Join(lines, "\n")
 }

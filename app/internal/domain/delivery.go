@@ -16,11 +16,10 @@ type UnansweredDelivery struct {
 	DeliveredAt time.Time
 }
 
-// RunStartedAt is when the session's current run began: its creation, or the
-// latest setup of a produced run-scoped task. A fact recorded before it
-// belongs to a runtime that no longer exists.
+// RunStartedAt is the latest setup of a produced run-scoped task. A fact
+// recorded before it belongs to a runtime that no longer exists.
 func RunStartedAt(s *Session) time.Time {
-	started := s.CreatedAt
+	var started time.Time
 	for _, task := range MergedTasks(s) {
 		if task != nil && task.Scope == contract.TaskScopeRun && task.Status == contract.TaskStatusProduced && task.SetupAt.After(started) {
 			started = task.SetupAt

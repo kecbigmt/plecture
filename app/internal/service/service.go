@@ -611,7 +611,7 @@ func SetMessage(cfg *config.Config, store *state.Store, identifier string, text 
 		latestTurnID, latestHasTurnID := latest.Metadata["turn_id"]
 		turnIDMatches := turnID == nil && !latestHasTurnID || turnID != nil && latestHasTurnID && *turnID == latestTurnID
 		if text != "" && previous == text && ok && turnIDMatches {
-			return nil
+			return answerDelivery(store, sessionName, text)
 		}
 		cleared := "false"
 		if text == "" {
@@ -635,6 +635,19 @@ func SetMessage(cfg *config.Config, store *state.Store, identifier string, text 
 		}); err != nil {
 			return &Error{Code: ErrExecutionFailed, Message: err.Error()}
 		}
-		return nil
+		return answerDelivery(store, sessionName, text)
 	})
+}
+
+// answerDelivery treats any non-empty status as the runtime's answer, a tool
+// step inside an already running turn included, because a turn that keeps
+// reporting work after the delivery is not ignoring it.
+func answerDelivery(store *state.Store, sessionName, text string) error {
+	if text == "" {
+		return nil
+	}
+	if err := store.ClearUnansweredDelivery(sessionName); err != nil {
+		return &Error{Code: ErrExecutionFailed, Message: err.Error()}
+	}
+	return nil
 }
