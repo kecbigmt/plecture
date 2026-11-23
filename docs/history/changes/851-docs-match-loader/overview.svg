@@ -1,0 +1,123 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 960 580" width="960" height="580" role="img" aria-labelledby="title desc">
+  <title id="title">Change 851: docs and schema corrected to match the loader</title>
+  <desc id="desc">The loader (app/internal/config, lang and plugins) is unchanged and is the authority. The docs/language chapters and one migration procedure, changed, now restate its rules: schema_version 2, one file per definition, an optional state_schema, and the local-id grammar for chain and judge ids. plecture.schema.json, changed, takes the loader's chain id grammar. An added conformance fixture with a hyphenated chain id is validated against the schema by TestConformanceFixtures and loaded by the lang validators in TestNativeConformanceFixtures. Deferred to issue 846: the judge-id check in the loader and the schema, and the LoadConfigToml inputs_schema fix.</desc>
+  <defs>
+    <style>
+      svg {
+        --bg: #ffffff; --fg: #1f2328; --muted: #59636e;
+        --neutral: #8c959f; --neutral-bg: #f6f8fa;
+        --added: #1a7f37; --added-bg: #dafbe1;
+        --changed: #0969da; --changed-bg: #ddf4ff;
+        --deferred: #9a6700; --deferred-bg: #fff8c5;
+      }
+      @media (prefers-color-scheme: dark) {
+        svg {
+          --bg: #0d1117; --fg: #e6edf3; --muted: #9198a1;
+          --neutral: #656c76; --neutral-bg: #151b23;
+          --added: #3fb950; --added-bg: #0f2a1a;
+          --changed: #4493f8; --changed-bg: #0c2441;
+          --deferred: #d29922; --deferred-bg: #2b2111;
+        }
+      }
+      text { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Helvetica, Arial, sans-serif; font-size: 13px; fill: var(--fg); }
+      .bg { fill: var(--bg); }
+      .title { font-size: 18px; font-weight: 600; }
+      .name { font-weight: 600; }
+      .note { font-size: 12px; fill: var(--muted); }
+      .label { font-size: 12px; }
+      .tag { font-size: 11px; font-weight: 700; letter-spacing: 0.06em; }
+      .neutral { fill: var(--neutral-bg); stroke: var(--neutral); stroke-width: 1.5; }
+      .added { fill: var(--added-bg); stroke: var(--added); stroke-width: 3; }
+      .changed { fill: var(--changed-bg); stroke: var(--changed); stroke-width: 2; }
+      .deferred { fill: var(--deferred-bg); stroke: var(--deferred); stroke-width: 1.5; stroke-dasharray: 3 3; }
+      .t-neutral { fill: var(--muted); }
+      .t-added { fill: var(--added); }
+      .t-changed { fill: var(--changed); }
+      .t-deferred { fill: var(--deferred); }
+      .flow { fill: none; stroke: var(--fg); stroke-width: 1.5; marker-end: url(#arrow); }
+      .flow-added { fill: none; stroke: var(--added); stroke-width: 3; marker-end: url(#arrow-added); }
+      .flow-deferred { fill: none; stroke: var(--deferred); stroke-width: 1.5; stroke-dasharray: 3 3; marker-end: url(#arrow-deferred); }
+      .head { fill: var(--fg); }
+      .head-added { fill: var(--added); }
+      .head-deferred { fill: var(--deferred); }
+    </style>
+    <marker id="arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path class="head" d="M0,0 L10,5 L0,10 z"/>
+    </marker>
+    <marker id="arrow-added" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="4" markerHeight="4" orient="auto-start-reverse">
+      <path class="head-added" d="M0,0 L10,5 L0,10 z"/>
+    </marker>
+    <marker id="arrow-deferred" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path class="head-deferred" d="M0,0 L10,5 L0,10 z"/>
+    </marker>
+  </defs>
+
+  <rect class="bg" x="0" y="0" width="960" height="580"/>
+
+  <text class="title" x="24" y="38">Change: docs and schema corrected to match the loader</text>
+  <text class="note" x="24" y="60">PR 851 · issue 842 · the loader is unchanged and is the authority each corrected statement follows</text>
+
+  <!-- Unchanged: Loader -->
+  <rect class="neutral" x="32" y="100" width="250" height="80" rx="6"/>
+  <text class="tag t-neutral" x="48" y="122">UNCHANGED</text>
+  <text class="name" x="48" y="142">Loader</text>
+  <text class="note" x="48" y="160">app/internal config · lang · plugins</text>
+
+  <!-- Changed: docs -->
+  <rect class="changed" x="640" y="100" width="288" height="80" rx="6"/>
+  <text class="tag t-changed" x="656" y="122">CHANGED</text>
+  <text class="name" x="656" y="142">docs/language + one migration</text>
+  <text class="note" x="656" y="160">config · declarations · resources</text>
+
+  <!-- Changed: schema -->
+  <rect class="changed" x="640" y="260" width="288" height="80" rx="6"/>
+  <text class="tag t-changed" x="656" y="282">CHANGED</text>
+  <text class="name" x="656" y="302">plecture.schema.json</text>
+  <text class="note" x="656" y="320">chain id pattern</text>
+
+  <!-- Added: fixture -->
+  <rect class="added" x="32" y="260" width="250" height="80" rx="6"/>
+  <text class="tag t-added" x="48" y="282">ADDED</text>
+  <text class="name" x="48" y="302">chains/local-id-hyphen.toml</text>
+  <text class="note" x="48" y="320">conformance fixture</text>
+
+  <!-- Deferred: issue 846 -->
+  <rect class="deferred" x="336" y="420" width="250" height="80" rx="6"/>
+  <text class="tag t-deferred" x="352" y="442">DEFERRED</text>
+  <text class="name" x="352" y="462">Issue 846, items 6 and 7</text>
+  <text class="note" x="352" y="480">load-time checks</text>
+
+  <!-- Loader → docs -->
+  <line class="flow" x1="282" y1="140" x2="640" y2="140"/>
+  <text class="label" text-anchor="middle" x="461" y="116"><tspan x="461" font-weight="600">rules restated</tspan><tspan x="461" dy="15">schema_version 2 · one file per definition</tspan></text>
+  <text class="label" text-anchor="middle" x="461" y="158">optional state_schema · local-id grammar</text>
+
+  <!-- Loader → schema -->
+  <path class="flow" d="M282,170 H480 V280 H640"/>
+  <text class="label" x="492" y="220"><tspan x="492" font-weight="600">chain id grammar</tspan><tspan x="492" dy="15">^[A-Za-z0-9_-]+$</tspan></text>
+
+  <!-- Fixture → schema and → loader -->
+  <line class="flow-added" x1="282" y1="310" x2="640" y2="310"/>
+  <text class="label t-added" text-anchor="middle" x="461" y="330"><tspan x="461" font-weight="600">ADDED</tspan><tspan x="461" dy="15">validated by TestConformanceFixtures</tspan></text>
+
+  <line class="flow-added" x1="157" y1="260" x2="157" y2="180"/>
+  <text class="label t-added" x="168" y="214"><tspan x="168" font-weight="600">ADDED</tspan><tspan x="168" dy="15">loaded by</tspan><tspan x="168" dy="15">TestNativeConformanceFixtures</tspan></text>
+
+  <!-- Deferred → schema and → loader -->
+  <path class="flow-deferred" d="M586,460 H784 V340"/>
+  <text class="label t-deferred" x="600" y="450">judge id pattern</text>
+
+  <path class="flow-deferred" d="M336,480 H16 V140 H32"/>
+  <text class="label t-deferred" x="28" y="372"><tspan x="28">judge-id check ·</tspan><tspan x="28" dy="15">LoadConfigToml</tspan><tspan x="28" dy="15">inputs_schema fix</tspan></text>
+
+  <!-- Legend -->
+  <rect class="added" x="32" y="527" width="28" height="16" rx="3"/>
+  <text class="label" x="70" y="539">ADDED · thick solid</text>
+  <rect class="changed" x="264" y="527" width="28" height="16" rx="3"/>
+  <text class="label" x="302" y="539">CHANGED · solid</text>
+  <rect class="deferred" x="496" y="527" width="28" height="16" rx="3"/>
+  <text class="label" x="534" y="539">DEFERRED · dotted, later PR</text>
+  <rect class="neutral" x="752" y="527" width="28" height="16" rx="3"/>
+  <text class="label" x="790" y="539">UNCHANGED · grey</text>
+  <text class="note" x="32" y="566">each state is named in text; colour only repeats it · arrows labelled with what crosses them</text>
+</svg>

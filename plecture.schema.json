@@ -682,11 +682,6 @@
         }
       }
     },
-    "localId": {
-      "description": "A chain id or a judge leaf id: local to the declaring task, never a reference segment or a node id.",
-      "type": "string",
-      "pattern": "^[A-Za-z0-9_-]+$"
-    },
     "judgeLeaf": {
       "type": "object",
       "additionalProperties": false,
@@ -699,7 +694,7 @@
           "type": "string"
         },
         "id": {
-          "$ref": "#/$defs/localId"
+          "type": "string"
         },
         "relation": {
           "type": "array",
@@ -789,7 +784,8 @@
       ],
       "properties": {
         "id": {
-          "$ref": "#/$defs/localId"
+          "type": "string",
+          "pattern": "^[A-Za-z0-9_-]+$"
         },
         "workflow": {
           "$ref": "#/$defs/staticReference"

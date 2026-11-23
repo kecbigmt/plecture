@@ -1,5 +1,5 @@
 # plect-fixture: result=valid entry=definitions
-# reason: a chain id and a judge leaf id are local ids, never reference segments or node ids, so they may contain a hyphen.
+# reason: a chain id is a local id, never a reference segment or a node id, so it may contain a hyphen.
 
 [pursue_goal]
 kind              = "task"
