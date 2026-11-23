@@ -1,0 +1,14 @@
+# plect-fixture: result=invalid layer=structural diagnostic=PLECTURE-CFG-FIELD-UNKNOWN entry=definitions
+# reason: a completion predicate is its leaves and nothing else, so a bound declared inside it is refused rather than read as one.
+
+[work]
+kind         = "task"
+description  = "Implement a fix or feature for an issue and create a PR"
+resource     = "issue_pr"
+instructions = [{ text = "Resolve the issue at {{ resource.id }}." }]
+
+[work.done_when]
+heartbeat_budget = 3
+all = [
+  { judge = "acceptance criteria are satisfied, with a concrete reason", id = "ac-met" },
+]

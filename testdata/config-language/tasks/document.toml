@@ -20,7 +20,3 @@ all = [
   { judge = "acceptance criteria are satisfied, with a concrete reason", id = "ac-met" },
   { judge = "the resource change actually resolves the requested work without unaddressed risks", id = "solves" },
 ]
-
-[work.budget]
-heartbeat_budget = 3
-on_exhaust       = "escalate"

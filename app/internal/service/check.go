@@ -1,6 +1,7 @@
 package service
 
 import (
+	"fmt"
 	"os"
 	"slices"
 	"sort"
@@ -186,6 +187,10 @@ func evaluateSessionActions(cfg *config.Config, store *state.Store, sessionName 
 	if err != nil {
 		return "", nil, nil, nil, err
 	}
+	heartbeatBudget, err := sessionHeartbeatBudget(cfg, session)
+	if err != nil {
+		return "", nil, nil, nil, err
+	}
 	var liveChildren []LiveChild
 	if trigger == TickTriggerHeartbeat {
 		liveChildren = liveChildrenOf(cfg, allSessions, resolvedName)
@@ -206,7 +211,7 @@ func evaluateSessionActions(cfg *config.Config, store *state.Store, sessionName 
 		if doc.DoneWhen == nil && len(doc.Chains) == 0 && len(st.ExtraDoneWhen) == 0 {
 			continue
 		}
-		action, spawns, derr := evaluateDocumentInstance(cfg, store, doc, resolvedName, session, key, st, allSessions, trigger, liveChildren)
+		action, spawns, derr := evaluateDocumentInstance(cfg, store, doc, resolvedName, session, key, st, allSessions, trigger, liveChildren, heartbeatBudget)
 		if derr != nil {
 			return "", nil, nil, nil, derr
 		}
@@ -216,6 +221,20 @@ func evaluateSessionActions(cfg *config.Config, store *state.Store, sessionName 
 		chainPlan = append(chainPlan, spawns...)
 	}
 	return resolvedName, session, computed, chainPlan, nil
+}
+
+// sessionHeartbeatBudget reads the budget from the workflow revision the
+// session runs, not from live config, so editing a workflow changes a running
+// session's patience only when that session is rebased onto the edit.
+func sessionHeartbeatBudget(cfg *config.Config, session *domain.Session) (int, error) {
+	wf, err := cfg.ResolveSessionWorkflow(session)
+	if err != nil {
+		return 0, &Error{Code: ErrExecutionFailed, Message: fmt.Sprintf("resolve workflow: %v", err)}
+	}
+	if wf == nil || wf.Tick == nil {
+		return 0, nil
+	}
+	return wf.Tick.HeartbeatBudget, nil
 }
 
 // CheckSession reports the same done_when/chain evaluation tick would act on,

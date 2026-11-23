@@ -190,6 +190,27 @@ func TestTaskSetup_AppendsExtraDoneWhen(t *testing.T) {
 	}
 }
 
+func TestTaskSetup_RejectsAnExtraDoneWhenBudget(t *testing.T) {
+	cfg := writeWorkflowFixture(t, "coding",
+		[]taskFixture{{id: "work", scope: "session", setup: `echo '{}'`}},
+		[]nodeFixture{{id: "work"}},
+	)
+	store := testStore(t)
+	seedSession(t, store, "o/r-1", "o/r", 1, "coding", map[string]*contract.TaskState{})
+
+	_, err := TaskSetup(cfg, store, TaskSetupParams{
+		TaskID:            "work",
+		SessionName:       "o/r-1",
+		ExtraDoneWhenJSON: `{"all":[{"judge":"approved","id":"ok"}],"budget":{"heartbeat_budget":3}}`,
+	})
+	if svcErr, ok := err.(*Error); !ok || svcErr.Code != ErrInvalidInput || !strings.Contains(svcErr.Message, "heartbeat_budget") {
+		t.Fatalf("err = %v, want an invalid-input error pointing at the workflow heartbeat_budget", err)
+	}
+	if got := store.Get("o/r-1").Tasks; len(got) != 0 {
+		t.Fatalf("tasks = %+v, want no instance reserved for a refused setup", got)
+	}
+}
+
 func TestTaskSetup_RunScopedRejectedWhenDown(t *testing.T) {
 	cfg := writeWorkflowFixture(t, "coding",
 		[]taskFixture{{id: "storybook", scope: "run", setup: `echo '{}'`}},

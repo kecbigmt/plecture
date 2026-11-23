@@ -527,6 +527,22 @@ func setWorkflowResource(t *testing.T, cfg *config.Config, wfID, resource string
 	}
 }
 
+func setWorkflowHeartbeatBudget(t *testing.T, cfg *config.Config, wfID string, budget int) {
+	t.Helper()
+	path := filepath.Join(cfg.BaseDir, "workflows", wfID+".toml")
+	existing, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	tick := fmt.Sprintf("\n[%s.tick]\nheartbeat = \"15m\"\n", wfID)
+	if budget > 0 {
+		tick += fmt.Sprintf("heartbeat_budget = %d\n", budget)
+	}
+	if err := os.WriteFile(path, append(existing, tick...), 0o644); err != nil {
+		t.Fatal(err)
+	}
+}
+
 var resourceLine = regexp.MustCompile(`(?m)^resource = "[^"]*"\n`)
 
 func setWorkflowsResource(t *testing.T, cfg *config.Config, resource string) {

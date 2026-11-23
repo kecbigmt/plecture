@@ -335,6 +335,13 @@ func tickFrom(body map[string]any) (*TickConfig, error) {
 		}
 		*field.field = value
 	}
+	if raw, declared := tbl["heartbeat_budget"]; declared {
+		n, ok := raw.(int64)
+		if !ok || n < 1 {
+			return nil, fmt.Errorf("tick: `heartbeat_budget` is a positive integer; omit it for an unbounded wait")
+		}
+		tick.HeartbeatBudget = int(n)
+	}
 	if _, declared := tbl["backoff_reset"]; declared {
 		names, err := stringList(tbl, "backoff_reset")
 		if err != nil {

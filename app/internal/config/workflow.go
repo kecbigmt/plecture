@@ -96,6 +96,10 @@ type TickConfig struct {
 	// reactor's default (4h) applies — declaring it is optional.
 	MaxHeartbeat Duration
 	BackoffReset []string
+	// HeartbeatBudget sits beside Heartbeat rather than on a task because one
+	// budget means a different wait under every heartbeat length, and only the
+	// workflow knows which length applies. Zero means unbounded.
+	HeartbeatBudget int
 }
 
 const (
@@ -330,13 +334,12 @@ func (d TaskDefinition) Ownership() lang.Ownership {
 }
 
 // DoneWhen is the structured completion predicate a task definition may
-// declare. It is a conjunction of leaves (All) plus an optional Budget.
+// declare. It is a conjunction of leaves (All).
 //
 // done_when has two leaf kinds: check leaves compare observed outputs, while
 // judge leaves wait for independent reviewer input recorded by `plect judge`.
 type DoneWhen struct {
-	All    []DoneWhenLeaf `toml:"all" json:"all"`
-	Budget map[string]any `toml:"budget" json:"budget,omitempty"`
+	All []DoneWhenLeaf `toml:"all" json:"all"`
 }
 
 // DoneWhenLeaf is one conjunct of a done_when. It is either a check leaf or a

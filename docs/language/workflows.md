@@ -283,6 +283,29 @@ the judge builtin trigger. `on` lists event-type globs; `heartbeat` ticks after
 that quiet duration; and `max_heartbeat` caps quiet-tick backoff. Omitting all
 of them leaves manual ticks and the judge builtin as the only drivers.
 
+`heartbeat_budget` bounds how many heartbeat ticks a task instance's
+`done_when` may stay unmet. When the count of heartbeat-triggered ticks reaches
+it with `done_when` still unmet, the instance escalates
+`done_when.non_convergence`. Event, manual, and judge ticks do not count. It
+applies to every task instance with a `done_when` in a session this workflow
+produces. Omitting it leaves the wait unbounded, which is what a standing goal
+needs: continuing to exist is not exhaustion. When declared, it is a positive
+integer; `0` fails to load with `PLECTURE-CFG-FIELD-TYPE`, since unbounded is
+declared by omission only. `plect status` reports each instance's
+`heartbeat budget <ticks>/<budget>`.
+
+<!-- fixture: workflows/tick-heartbeat-budget.toml -->
+```toml
+[issue_worker]
+kind     = "workflow"
+resource = "issue"
+
+[issue_worker.tick]
+on               = ["resource.*"]
+heartbeat        = "15m"
+heartbeat_budget = 3
+```
+
 `backoff_reset` names which conditions reset the quiet-tick backoff counter to
 0 at a heartbeat sweep, holding the interval at `heartbeat`:
 

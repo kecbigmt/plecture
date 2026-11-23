@@ -5,6 +5,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/kecbigmt/plecture/app/internal/lang"
 	"github.com/kecbigmt/plecture/app/internal/plugins"
 )
 
@@ -536,9 +537,6 @@ gte   = 80
 [[review.done_when.all]]
 judge = "reviewer approved"
 id    = "ac-met"
-
-[review.budget]
-max_iterations = 5
 `)
 	docs, err := (&Config{BaseDir: base}).LoadTaskDocuments("")
 	if err != nil {
@@ -557,8 +555,28 @@ max_iterations = 5
 	if dw.All[2].Judge == "" || dw.All[2].ID != "ac-met" {
 		t.Errorf("judge leaf not parsed: %+v", dw.All[2])
 	}
-	if dw.Budget["max_iterations"] == nil {
-		t.Errorf("budget not joined to the predicate it bounds: %+v", dw.Budget)
+}
+
+func TestLoadTaskDocuments_RejectsATaskBudgetWithTheMigrationGuide(t *testing.T) {
+	base := t.TempDir()
+	writeFile(t, filepath.Join(base, "resources", "issue_pr.toml"), minimalObserver)
+	writeFile(t, filepath.Join(base, "tasks", "review.toml"), `
+[review]
+kind         = "task"
+description  = "Review a resource"
+resource     = "issue_pr"
+instructions = [{ text = "Review it." }]
+
+[[review.done_when.all]]
+judge = "reviewer approved"
+id    = "ac-met"
+
+[review.budget]
+heartbeat_budget = 3
+`)
+	_, err := (&Config{BaseDir: base}).LoadTaskDocuments("")
+	if err == nil || !strings.Contains(err.Error(), lang.HeartbeatBudgetMigrationGuide) {
+		t.Fatalf("LoadTaskDocuments error = %v, want a load error naming %s", err, lang.HeartbeatBudgetMigrationGuide)
 	}
 }
 

@@ -287,6 +287,15 @@ func parseExtraDoneWhen(raw string) (json.RawMessage, error) {
 	if strings.TrimSpace(raw) == "" {
 		return nil, nil
 	}
+	var top map[string]json.RawMessage
+	if err := json.Unmarshal([]byte(raw), &top); err != nil {
+		return nil, &Error{Code: ErrInvalidInput, Message: fmt.Sprintf("invalid --done-when-json: %v", err)}
+	}
+	for key := range top {
+		if key != "all" {
+			return nil, &Error{Code: ErrInvalidInput, Message: fmt.Sprintf("invalid --done-when-json: %q is not a done_when field; a done_when is its `all` leaves, and the heartbeat budget is the workflow's `[tick] heartbeat_budget`", key)}
+		}
+	}
 	var dw config.DoneWhen
 	if err := json.Unmarshal([]byte(raw), &dw); err != nil {
 		return nil, &Error{Code: ErrInvalidInput, Message: fmt.Sprintf("invalid --done-when-json: %v", err)}

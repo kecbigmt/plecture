@@ -1081,6 +1081,12 @@
             "max_heartbeat": {
               "type": "string"
             },
+            "heartbeat_budget": {
+              "$comment": "PLECTURE-CFG-FIELD-TYPE: a heartbeat budget is a positive integer; unbounded is declared by omission.",
+              "type": "integer",
+              "minimum": 1,
+              "description": "How many heartbeat ticks a task instance's done_when may stay unmet before it escalates done_when.non_convergence. Omitting it leaves the wait unbounded."
+            },
             "backoff_reset": {
               "type": "array",
               "minItems": 1,
@@ -2039,22 +2045,6 @@
         },
         "done_when": {
           "$ref": "#/$defs/doneWhen"
-        },
-        "budget": {
-          "type": "object",
-          "additionalProperties": false,
-          "properties": {
-            "heartbeat_budget": {
-              "type": "integer",
-              "minimum": 1
-            },
-            "on_exhaust": {
-              "enum": [
-                "escalate",
-                "stop"
-              ]
-            }
-          }
         },
         "chains": {
           "type": "array",

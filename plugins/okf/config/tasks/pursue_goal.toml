@@ -65,6 +65,3 @@ all = [
   { check = "resource.state.checklist_status", in = ["SUCCESS"] },
   { judge = "goal is achieved according to the goal file and event evidence", id = "goal-met", relation = ["sibling"] },
 ]
-
-# No budget: heartbeat_budget is a convergence bound, and a long-lived goal
-# existing is not exhaustion — unbounded by omission.

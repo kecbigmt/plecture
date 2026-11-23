@@ -27,7 +27,3 @@ all = [
   { check = "resource.state.resource_kind", in = ["pull", "issue"] },
   { expr = "self.state.verdict_revision == resource.state.revision" },
 ]
-
-[review.budget]
-heartbeat_budget = 3
-on_exhaust       = "escalate"

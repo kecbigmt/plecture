@@ -3,7 +3,7 @@ package service
 import (
 	"encoding/json"
 	"errors"
-	"fmt"
+	"slices"
 	"strings"
 	"testing"
 
@@ -652,6 +652,64 @@ func TestTickSession_EscalatesOnNthHeartbeatTick(t *testing.T) {
 	}
 }
 
+func TestTickSession_WorkflowHeartbeatBudgetEscalatesOnTheThirdHeartbeat(t *testing.T) {
+	store := testStore(t)
+	cfg := checkScenarioConfig(t, 3)
+	seedSession(t, store, "owner/repo-1", "owner/repo", 1, "default", map[string]*contract.TaskState{
+		"initial": {
+			Scope:    contract.TaskScopeSession,
+			TaskID:   "work",
+			Status:   contract.TaskStatusProduced,
+			Observed: observedFacts(map[string]any{"checks_status": "FAILURE", "revision": "sha1"}),
+		},
+	})
+
+	var actions []string
+	for range 3 {
+		result, err := TickSession(cfg, store, TickParams{SessionName: "owner/repo-1", Trigger: TickTriggerHeartbeat})
+		if err != nil {
+			t.Fatalf("TickSession: %v", err)
+		}
+		actions = append(actions, result.Actions[0].Action)
+	}
+	if want := []string{"kick", "kick", "escalate"}; !slices.Equal(actions, want) {
+		t.Fatalf("actions = %v, want %v", actions, want)
+	}
+	escalated, _, _, err := eventlog.NewStore(store.Dir()).List("owner/repo-1", 0, event.Filter{Types: []string{"plect.tick.escalated"}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(escalated) != 1 || escalated[0].Metadata["escalation_kind"] != "done_when.non_convergence" || escalated[0].Metadata["heartbeat_budget"] != "3" {
+		t.Fatalf("escalations = %+v, want one done_when.non_convergence at budget 3", escalated)
+	}
+}
+
+func TestTickSession_WorkflowWithoutHeartbeatBudgetNeverEscalatesForNonConvergence(t *testing.T) {
+	store := testStore(t)
+	cfg := checkScenarioConfig(t, 0)
+	seedSession(t, store, "owner/repo-1", "owner/repo", 1, "default", map[string]*contract.TaskState{
+		"initial": {
+			Scope:    contract.TaskScopeSession,
+			TaskID:   "work",
+			Status:   contract.TaskStatusProduced,
+			Observed: observedFacts(map[string]any{"checks_status": "FAILURE", "revision": "sha1"}),
+		},
+	})
+
+	for i := range 100 {
+		result, err := TickSession(cfg, store, TickParams{SessionName: "owner/repo-1", Trigger: TickTriggerHeartbeat})
+		if err != nil {
+			t.Fatalf("tick %d: %v", i+1, err)
+		}
+		if got := result.Actions[0]; got.Action == "escalate" || got.HeartbeatBudget != 0 {
+			t.Fatalf("tick %d action = %+v, want an unbounded non-escalation", i+1, got)
+		}
+	}
+	if got := store.Get("owner/repo-1").Tasks["initial"].DoneWhen.HeartbeatTicks; got != 100 {
+		t.Fatalf("heartbeat ticks = %d, want 100", got)
+	}
+}
+
 func TestTickSession_EscalatesWhenJudgeKeepsRequestingChanges(t *testing.T) {
 	store := testStore(t)
 	cfg := checkScenarioConfig(t, 1)
@@ -844,10 +902,10 @@ func checkFixtureConfig(t *testing.T) *config.Config {
 
 func checkScenarioConfig(t *testing.T, heartbeatBudget int) *config.Config {
 	t.Helper()
-	return writeWorkflowFixture(t, "default", []taskFixture{{
+	cfg := writeWorkflowFixture(t, "default", []taskFixture{{
 		id:    "work",
 		scope: contract.TaskScopeSession,
-		extra: fmt.Sprintf(`
+		extra: `
 requires = ["checks_status"]
 
 [done_when]
@@ -856,17 +914,16 @@ all = [
   { judge = "AC met", id = "ac-met" },
 ]
 
-[done_when.budget]
-heartbeat_budget = %d
-
 [outputs_schema]
 type = "object"
 
 [outputs_schema.properties]
 checks_status = { type = "string", mutable = true }
 revision = { type = "string", mutable = true }
-`, heartbeatBudget),
+`,
 	}}, []nodeFixture{{id: "initial", uses: "work"}})
+	setWorkflowHeartbeatBudget(t, cfg, "default", heartbeatBudget)
+	return cfg
 }
 
 // The satisfied action pushes a `done` terminal event one hop to the parent,
@@ -985,10 +1042,10 @@ func TestTickSession_EscalatesAfterHeartbeatBudget_PushesToParent(t *testing.T) 
 
 func checkStatusOnlyConfig(t *testing.T, heartbeatBudget int) *config.Config {
 	t.Helper()
-	return writeWorkflowFixture(t, "default", []taskFixture{{
+	cfg := writeWorkflowFixture(t, "default", []taskFixture{{
 		id:    "work",
 		scope: contract.TaskScopeSession,
-		extra: fmt.Sprintf(`
+		extra: `
 requires = ["checks_status"]
 
 [done_when]
@@ -996,17 +1053,16 @@ all = [
   { check = "resource.state.checks_status", eq = "SUCCESS" },
 ]
 
-[done_when.budget]
-heartbeat_budget = %d
-
 [outputs_schema]
 type = "object"
 
 [outputs_schema.properties]
 checks_status = { type = "string", mutable = true }
 revision = { type = "string", mutable = true }
-`, heartbeatBudget),
+`,
 	}}, []nodeFixture{{id: "initial", uses: "work"}})
+	setWorkflowHeartbeatBudget(t, cfg, "default", heartbeatBudget)
+	return cfg
 }
 
 // blockEventsDir arms a one-shot failure for store's next eventlog.Append, to

@@ -33,10 +33,6 @@ all = [
   { judge = "acceptance criteria are satisfied, with a concrete reason", id = "ac-met" },
   { judge = "the resource change actually resolves the requested work without unaddressed risks", id = "solves" },
 ]
-
-[work.budget]
-heartbeat_budget = 3
-on_exhaust       = "escalate"
 ```
 
 <!-- fixture: tasks/document.md -->
@@ -130,7 +126,6 @@ no identity spelling of its own.
 | `[<id>.inputs_schema]` | The instruction's author-declared parameters. |
 | `[<id>.state_schema]` | This task's own state: the keys something else writes. |
 | `[<id>.done_when]` | The completion predicate. |
-| `[<id>.budget]` | The convergence bound, if any. |
 | `[[<id>.chains]]` | What this task spawns, and when. See [`chains.md`](chains.md). |
 
 Identity follows [`declarations.md`](declarations.md) unchanged: the id is the
@@ -194,10 +189,6 @@ all = [
   { check = "resource.state.resource_kind", in = ["pull", "issue"] },
   { expr = "self.state.verdict_revision == resource.state.revision" },
 ]
-
-[review.budget]
-heartbeat_budget = 3
-on_exhaust       = "escalate"
 ```
 
 ## Completion
@@ -213,8 +204,12 @@ A leaf reads `resource.state.*` or `self.state.*`, and nothing else. Both are
 resolved at load against the schemas that declare them, so a misspelled key
 fails before anything runs.
 
-`budget` bounds convergence. Omitting it leaves completion unbounded, which is
-what a standing goal needs: continuing to exist is not exhaustion.
+A task declares no bound on how long its completion may stay unmet. That bound
+is the workflow's `[tick] heartbeat_budget` (see
+[`workflows.md`](workflows.md#clocks)), because what one heartbeat lasts, and
+how long a deployment waits before calling a human, are the workflow's to
+declare. A task that declares `[<id>.budget]` fails to load with
+`PLECTURE-CFG-FIELD-UNKNOWN`. `done_when` itself holds only its `all` leaves.
 
 ## What a task document is not
 

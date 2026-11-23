@@ -119,25 +119,6 @@ reviewed_by = { type = "string", default = "" }
 	}
 }
 
-func TestExtendsAllowsBudgetAlongsideExtends(t *testing.T) {
-	src := `[base_task]
-kind              = "task"
-resource          = "issue_pr"
-instructions      = [{ text = "Base." }]
-
-[ext_task]
-kind    = "task"
-extends = "base_task"
-
-[ext_task.budget]
-heartbeat_budget = 3
-on_exhaust       = "escalate"
-`
-	if err := resolveTaskDocuments(t, src); err != nil {
-		t.Fatalf("budget is independent of extends composition: %v", err)
-	}
-}
-
 func TestExtendsRejectsAComputedReference(t *testing.T) {
 	src := `[base_task]
 kind              = "task"

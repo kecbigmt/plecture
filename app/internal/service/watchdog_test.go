@@ -1620,7 +1620,7 @@ func TestHealthcheckSession_NudgesPendingWaitOnceAfterHealthRecovers(t *testing.
 	cfg := activityFixtureConfig(t, activityProbeCmd(t, "fp-1", false, time.Now()))
 	name := "owner/repo-1"
 	gate := gateInstance("no")
-	gate.ExtraDoneWhen = json.RawMessage(`{"all":[{"expr":"self.state.verdict_revision == 'r1'"}],"heartbeat_budget":3}`)
+	gate.ExtraDoneWhen = json.RawMessage(`{"all":[{"expr":"self.state.verdict_revision == 'r1'"}]}`)
 	gate.DoneWhen = &contract.DoneWhenState{HeartbeatTicks: 103, LastAction: "wait"}
 	seedSessionWithNodes(t, store, name, "owner/repo", 1, "default", map[string]*contract.TaskState{
 		"initial": {Scope: contract.TaskScopeRun, TaskID: "runner", Status: contract.TaskStatusProduced},

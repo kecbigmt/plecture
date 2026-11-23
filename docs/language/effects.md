@@ -30,8 +30,8 @@ through `PATH` is intercepted this way.
 | `[terminal]` | The interactive endpoint, if this effect owns one. |
 | `inner`, `[inner.inputs]`, `[inner.env]`, `[outputs.bind]`, `locals_schema` | The nesting joint. |
 
-That is the whole grammar. A completion predicate, the keys it reads, its
-budget, and the workflows it spawns all belong to a task document.
+That is the whole grammar. A completion predicate, the keys it reads, and the
+workflows it spawns all belong to a task document.
 
 ```toml
 [pane]

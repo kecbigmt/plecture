@@ -5,14 +5,12 @@ import (
 	"slices"
 	"strings"
 
-	"github.com/kecbigmt/plecture/app/internal/config"
 	"github.com/kecbigmt/plecture/app/internal/domain"
 	"github.com/kecbigmt/plecture/app/internal/task"
 	contract "github.com/kecbigmt/plecture/contracts/state"
 )
 
-func checkActionForResult(sessionName, instance, resource string, dw *config.DoneWhen, st *contract.TaskState, result task.DoneWhenResult, trigger TickTrigger, liveChildren []LiveChild) CheckAction {
-	heartbeatBudget := doneWhenHeartbeatBudget(dw)
+func checkActionForResult(sessionName, instance, resource string, heartbeatBudget int, st *contract.TaskState, result task.DoneWhenResult, trigger TickTrigger, liveChildren []LiveChild) CheckAction {
 	heartbeatTicks := 0
 	heartbeatEscalations := 0
 	if st.DoneWhen != nil {
@@ -132,31 +130,6 @@ func judgeCommands(sessionName, instance string, items []CheckUnmetItem) []strin
 
 func judgeCommand(action, sessionName, instance, id string) string {
 	return fmt.Sprintf("plect judge %s %q %q %q --reason %q", action, sessionName, instance, id, "<reason>")
-}
-
-const defaultHeartbeatBudget = 3
-
-func doneWhenHeartbeatBudget(dw *config.DoneWhen) int {
-	if dw == nil {
-		return 0
-	}
-	if len(dw.Budget) == 0 {
-		return defaultHeartbeatBudget
-	}
-	v, ok := dw.Budget["heartbeat_budget"]
-	if !ok {
-		return defaultHeartbeatBudget
-	}
-	switch x := v.(type) {
-	case int:
-		return x
-	case int64:
-		return int(x)
-	case float64:
-		return int(x)
-	default:
-		return 0
-	}
 }
 
 func checkFingerprint(result task.DoneWhenResult) string {
