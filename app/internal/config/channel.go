@@ -98,7 +98,7 @@ func (c *Config) channelFromDefinition(def *lang.Definition, fromPlugin bool) (C
 		Executables: c.binResolver(def.File),
 	}
 	if err := validation.ValidateDefinition(def); err != nil {
-		return ChannelDefinition{}, err
+		return ChannelDefinition{}, definitionError(def, err)
 	}
 	channel, err := channelDefinitionFrom(def, def.File, fromPlugin)
 	if err != nil {

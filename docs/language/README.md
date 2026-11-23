@@ -111,7 +111,9 @@ accepted-invalid conformance fixture rather than forgotten.
 
 Diagnostics are part of the tooling interface. A code identifies the language
 rule that was broken and the layer that found it; the human-readable message
-may improve over time.
+may improve over time. A message about a definition names its kind as well as
+its id (`task "review"`, `workflow "review"`), because one id can name a
+definition of each kind across user-owned layers.
 
 Codes carry the `PLECTURE-` prefix because they belong to the language, not to
 one program. Any implementation emits them — an editor server, an independent

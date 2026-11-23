@@ -14,7 +14,7 @@ func (c *Config) effectFromDefinition(def *lang.Definition, fromPlugin bool) (Ta
 		Executables: c.binResolver(def.File),
 	}
 	if err := validation.ValidateDefinition(def); err != nil {
-		return TaskDefinition{}, err
+		return TaskDefinition{}, definitionError(def, err)
 	}
 	effect, err := effectFrom(def, def.File, fromPlugin)
 	if err != nil {

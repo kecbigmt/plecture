@@ -26,8 +26,8 @@ type PluginLayer struct {
 // each enabled plugin's own namespace, plus the (already layer-merged)
 // user-owned namespace.
 type Registry struct {
-	plugins map[string]map[string]*Definition // "<alias>.<path>" -> id -> Definition
-	user    map[string]*Definition
+	plugins map[string]namespace // "<alias>.<path>" -> namespace
+	user    namespace
 	// owner records which layer wrote each definition this registry holds, so
 	// a caller resolving a second reference hop — extends walking a base's own
 	// extends, for instance — resolves it in that base's namespace rather than
@@ -35,25 +35,58 @@ type Registry struct {
 	owner map[*Definition]Ownership
 }
 
+// namespace is keyed by kind too: one id may name a definition of each kind
+// across user-owned layers, and every reference site expects one kind.
+type namespace map[namespaceKey]*Definition
+
+type namespaceKey struct {
+	kind Kind
+	id   string
+}
+
+func newNamespace(defs []*Definition) namespace {
+	n := make(namespace, len(defs))
+	for _, d := range defs {
+		n[namespaceKey{kind: d.Kind, id: d.ID}] = d
+	}
+	return n
+}
+
+func (n namespace) lookup(id string, kind Kind) (*Definition, bool) {
+	def, ok := n[namespaceKey{kind: kind, id: id}]
+	return def, ok
+}
+
+// otherKind picks the smallest kind so a diagnostic naming it is reproducible.
+func (n namespace) otherKind(id string, want Kind) (*Definition, bool) {
+	var found *Definition
+	for key, def := range n {
+		if key.id != id || key.kind == want {
+			continue
+		}
+		if found == nil || key.kind < found.Kind {
+			found = def
+		}
+	}
+	return found, found != nil
+}
+
 // NewRegistry builds a Registry from the enabled plugin layers and the
-// user-owned namespace after its layers have replaced same-id declarations.
+// user-owned namespace after its layers have replaced same-kind declarations.
 func NewRegistry(plugins []PluginLayer, user []*Definition) *Registry {
 	r := &Registry{
-		plugins: make(map[string]map[string]*Definition, len(plugins)),
-		user:    make(map[string]*Definition, len(user)),
+		plugins: make(map[string]namespace, len(plugins)),
+		user:    newNamespace(user),
 		owner:   make(map[*Definition]Ownership),
 	}
 	for _, p := range plugins {
-		layer := make(map[string]*Definition, len(p.Defs))
 		from := Ownership{IsPlugin: true, Alias: p.Alias, Path: p.Path}
 		for _, d := range p.Defs {
-			layer[d.ID] = d
 			r.owner[d] = from
 		}
-		r.plugins[p.Alias+"."+p.Path] = layer
+		r.plugins[p.Alias+"."+p.Path] = newNamespace(p.Defs)
 	}
 	for _, d := range user {
-		r.user[d.ID] = d
 		r.owner[d] = Ownership{}
 	}
 	return r
@@ -62,56 +95,53 @@ func NewRegistry(plugins []PluginLayer, user []*Definition) *Registry {
 // OwnerOf reports the Ownership def was registered under, for resolving a
 // reference written inside def itself. A def this registry did not load
 // resolves as user-owned, the safe default for a definition reached only
-// through a value it does not itself control (a Resolve result is always
+// through a value it does not itself control (an ExpectKind result is always
 // registered, so this only matters for a def a caller constructed outside
 // the registry).
 func (r *Registry) OwnerOf(def *Definition) Ownership {
 	return r.owner[def]
 }
 
-// existsUnderSomeEnabledPlugin reports whether id is declared by any
-// registered plugin layer — what distinguishes PLECTURE-CFG-REF-ALIAS-
-// REQUIRED (the id exists, just unqualified) from PLECTURE-CFG-UNKNOWN-REF
-// (it does not exist anywhere this registry knows about).
-func (r *Registry) existsUnderSomeEnabledPlugin(id string) bool {
+// declaredByAnEnabledPlugin is what tells PLECTURE-CFG-REF-ALIAS-REQUIRED (the
+// id exists, just unqualified) apart from an id only the user namespace answers.
+func (r *Registry) declaredByAnEnabledPlugin(id string, kinds func(Kind) bool) bool {
 	for _, layer := range r.plugins {
-		if _, ok := layer[id]; ok {
-			return true
+		for key := range layer {
+			if key.id == id && kinds(key.kind) {
+				return true
+			}
 		}
 	}
 	return false
 }
 
-// Resolve looks up ref (a bare id, or a catalog-qualified dotted address)
-// from the given Ownership, applying declarations.md's References rules.
-func (r *Registry) Resolve(ref string, from Ownership) (*Definition, error) {
+// ExpectKind resolves ref (a bare id, or a catalog-qualified dotted address)
+// to a definition of kind want, applying declarations.md's References rules.
+func (r *Registry) ExpectKind(ref string, from Ownership, want Kind, site string) (*Definition, error) {
 	parts := strings.Split(ref, ".")
-
 	if from.IsPlugin {
 		if len(parts) > 1 {
 			return nil, newDiag(CodeRefCrossPlugin, LayerSemantic, Position{Path: ref},
 				fmt.Sprintf("a plugin-owned reference must be relative; %q names a catalog alias or another plugin's ownership segment", ref))
 		}
-		layer := r.plugins[from.Alias+"."+from.Path]
-		if def, ok := layer[ref]; ok {
-			return def, nil
-		}
-		return nil, newDiag(CodeUnknownRef, LayerSemantic, Position{Path: ref},
-			fmt.Sprintf("%q resolves to no definition in this plugin", ref))
+		return resolveIn(r.plugins[from.Alias+"."+from.Path], ref, ref, want, site, "in this plugin")
 	}
-
 	if len(parts) == 1 {
-		if def, ok := r.user[ref]; ok {
+		if def, ok := r.user.lookup(ref, want); ok {
 			return def, nil
 		}
-		if r.existsUnderSomeEnabledPlugin(ref) {
-			return nil, newDiag(CodeRefAliasRequired, LayerSemantic, Position{Path: ref},
-				fmt.Sprintf("%q is not user-owned; a user-owned reference to catalog content must carry its catalog alias", ref))
+		if r.declaredByAnEnabledPlugin(ref, func(k Kind) bool { return k == want }) {
+			return nil, aliasRequired(ref)
+		}
+		if other, ok := r.user.otherKind(ref, want); ok {
+			return nil, kindMismatch(ref, other, want, site)
+		}
+		if r.declaredByAnEnabledPlugin(ref, func(Kind) bool { return true }) {
+			return nil, aliasRequired(ref)
 		}
 		return nil, newDiag(CodeUnknownRef, LayerSemantic, Position{Path: ref},
 			fmt.Sprintf("%q resolves to no definition", ref))
 	}
-
 	alias := parts[0]
 	id := parts[len(parts)-1]
 	pluginPath := strings.Join(parts[1:len(parts)-1], ".")
@@ -120,25 +150,28 @@ func (r *Registry) Resolve(ref string, from Ownership) (*Definition, error) {
 		return nil, newDiag(CodeUnknownRef, LayerSemantic, Position{Path: ref},
 			fmt.Sprintf("%q names no enabled plugin at %s.%s", ref, alias, pluginPath))
 	}
-	if def, ok := layer[id]; ok {
-		return def, nil
-	}
-	return nil, newDiag(CodeUnknownRef, LayerSemantic, Position{Path: ref},
-		fmt.Sprintf("%q resolves to no definition in %s.%s", ref, alias, pluginPath))
+	return resolveIn(layer, ref, id, want, site, "in "+alias+"."+pluginPath)
 }
 
-// ExpectKind resolves ref and checks its declared kind against want, naming
-// site in the diagnostic when it does not match.
-func (r *Registry) ExpectKind(ref string, from Ownership, want Kind, site string) (*Definition, error) {
-	def, err := r.Resolve(ref, from)
-	if err != nil {
-		return nil, err
+func resolveIn(layer namespace, ref, id string, want Kind, site, where string) (*Definition, error) {
+	if def, ok := layer.lookup(id, want); ok {
+		return def, nil
 	}
-	if def.Kind != want {
-		return nil, newDiag(CodeKindMismatch, LayerSemantic, Position{Path: site},
-			fmt.Sprintf("%s expects kind %q; %q resolves to kind %q", site, want, ref, def.Kind))
+	if other, ok := layer.otherKind(id, want); ok {
+		return nil, kindMismatch(ref, other, want, site)
 	}
-	return def, nil
+	return nil, newDiag(CodeUnknownRef, LayerSemantic, Position{Path: ref},
+		fmt.Sprintf("%q resolves to no definition %s", ref, where))
+}
+
+func aliasRequired(ref string) *Diagnostic {
+	return newDiag(CodeRefAliasRequired, LayerSemantic, Position{Path: ref},
+		fmt.Sprintf("%q is not user-owned; a user-owned reference to catalog content must carry its catalog alias", ref))
+}
+
+func kindMismatch(ref string, found *Definition, want Kind, site string) *Diagnostic {
+	return newDiag(CodeKindMismatch, LayerSemantic, Position{Path: site},
+		fmt.Sprintf("%s expects a definition of kind %q; %q names %s", site, want, ref, found.Label()))
 }
 
 // staticRef reads a field expected to hold a plain reference string. A

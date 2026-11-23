@@ -1,6 +1,7 @@
 package lang
 
 import (
+	"fmt"
 	"io/fs"
 	"os"
 	"path/filepath"
@@ -53,12 +54,12 @@ func DiscoverRoot(root string, reserved map[string]bool, excludedRootDirs ...str
 		for _, def := range fileDefs {
 			if def.Kind == KindTask {
 				if err := resolveTaskInstructions(def, root); err != nil {
-					return err
+					return fmt.Errorf("%s: %w", def.Label(), err)
 				}
 			}
 			if prior, dup := seen[def.ID]; dup {
 				return newDiag(CodeIDDuplicate, LayerSemantic, Position{File: path, Path: def.ID},
-					"id "+def.ID+" is already declared in "+prior.File)
+					fmt.Sprintf("%s shares its id with %s in %s; an id is declared once per layer", def.Label(), prior.Label(), prior.File))
 			}
 			seen[def.ID] = def
 			defs = append(defs, def)

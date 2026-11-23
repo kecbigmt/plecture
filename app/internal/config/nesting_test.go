@@ -203,7 +203,7 @@ kind = "effect"
 uses = "outer"
 `,
 			},
-			wantErr: "nesting cycle",
+			wantErr: "PLECTURE-CFG-NESTING-CYCLE",
 		},
 		{
 			name: "inner forms a nesting cycle through another task",
@@ -223,7 +223,7 @@ kind = "effect"
 uses = "outer"
 `,
 			},
-			wantErr: "nesting cycle",
+			wantErr: "PLECTURE-CFG-NESTING-CYCLE",
 		},
 		{
 			name: "the outer task declares a scope that differs from the inner task's",
@@ -568,4 +568,47 @@ pid = "{{.Inner.outputs.pid}}"
 	if !strings.Contains(err.Error(), `"bind" is not part of the effect surface`) {
 		t.Errorf("LoadTaskDefinitions error = %v, want it to name the unknown bind table", err)
 	}
+}
+
+// Which file a definition sits in carries no meaning, so a nesting pair
+// declared together loads exactly as it does split across two files, and a
+// cycle is a cycle wherever its members are filed.
+func TestLoadTaskDefinitions_NestingIgnoresFileSplit(t *testing.T) {
+	outer := `
+[outer]
+kind = "effect"
+
+[outer.inner]
+uses = "claude"
+`
+	t.Run("an acyclic pair in one file loads", func(t *testing.T) {
+		defs, err := loadTasksFromFiles(t, map[string]string{"pair": innerRuntime + outer})
+		if err != nil {
+			t.Fatalf("LoadTaskDefinitions: %v", err)
+		}
+		if got := len(defs["outer"].InnerChain); got != 1 {
+			t.Errorf("outer resolves %d inner layers, want 1", got)
+		}
+	})
+	t.Run("a cycle in one file is still a cycle", func(t *testing.T) {
+		_, err := loadTasksFromFiles(t, map[string]string{"pair": `
+[left]
+kind = "effect"
+
+[left.inner]
+uses = "right"
+
+[right]
+kind = "effect"
+
+[right.inner]
+uses = "left"
+`})
+		if err == nil || !strings.Contains(err.Error(), "PLECTURE-CFG-NESTING-CYCLE") {
+			t.Fatalf("LoadTaskDefinitions = %v, want PLECTURE-CFG-NESTING-CYCLE", err)
+		}
+		if !strings.Contains(err.Error(), `effect "left"`) {
+			t.Errorf("error = %v, want it to name the definition with its kind", err)
+		}
+	})
 }

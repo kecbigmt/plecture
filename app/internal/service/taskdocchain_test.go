@@ -352,3 +352,113 @@ func TestCheckSession_ChainResourceThatCannotBeCarriedIsAFault(t *testing.T) {
 		t.Errorf("warning = %v, want it to name what a resource has to be", sp.Warnings)
 	}
 }
+
+// An expression fact alone is a whole trigger: the chain fires exactly while
+// the expression holds against the live roots.
+func TestCheckSession_ChainWithOnlyAnExpressionFactFiresWhileItHolds(t *testing.T) {
+	document := `[pursue]
+kind              = "task"
+description       = "A document whose chain triggers on an expression alone"
+resource          = "issue_pr"
+instructions      = [{ text = "Pursue the work at {{ resource.id }}." }]
+
+[[pursue.chains]]
+id       = "review"
+workflow = "wf"
+
+[pursue.chains.when]
+all = [{ expr = "resource.state.revision == 'sha2'" }]
+`
+	for _, tc := range []struct {
+		revision string
+		fired    bool
+	}{
+		{revision: "sha2", fired: true},
+		{revision: "sha1", fired: false},
+	} {
+		t.Run(tc.revision, func(t *testing.T) {
+			store := testStore(t)
+			revision := filepath.Join(t.TempDir(), "revision")
+			if err := os.WriteFile(revision, []byte(tc.revision), 0o644); err != nil {
+				t.Fatal(err)
+			}
+			cfg := writeObservedRevisionFixture(t, revision, document)
+			seedSession(t, store, "org/repo-1", "org/repo", 1, "wf", nil)
+			setUpDocumentInstance(t, cfg, store, "pursue")
+
+			sp := chainSpawnFor(t, cfg, store, "review")
+			if sp.Fired != tc.fired {
+				t.Fatalf("Fired = %v at revision %s, want %v: %+v", sp.Fired, tc.revision, tc.fired, sp)
+			}
+			if !tc.fired && sp.BlockedReason != chainBlockedWhenUnmet {
+				t.Errorf("blocked reason: got %q, want %q", sp.BlockedReason, chainBlockedWhenUnmet)
+			}
+		})
+	}
+}
+
+// A global task and a project workflow named alike are two definitions: the
+// task instantiates by its id, and a chain naming that id as its workflow
+// plans the project's workflow.
+func TestTaskSetupAndChain_GlobalTaskAndProjectWorkflowShareAnID(t *testing.T) {
+	store := testStore(t)
+	revision := filepath.Join(t.TempDir(), "revision")
+	if err := os.WriteFile(revision, []byte("sha2"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	review := `[review]
+kind              = "task"
+description       = "Review the work"
+resource          = "issue_pr"
+instructions      = [{ text = "Review {{ resource.id }}." }]
+`
+	pursue := `[pursue]
+kind              = "task"
+description       = "Pursue one goal until it is reviewed"
+resource          = "issue_pr"
+instructions      = [{ text = "Pursue {{ resource.id }}." }]
+
+[pursue.done_when]
+all = [{ judge = "the work is done", id = "goal-met" }]
+
+[[pursue.chains]]
+id       = "review"
+workflow = "review"
+task     = "review"
+
+[pursue.chains.when]
+all = [{ judge_pending = "goal-met" }]
+`
+	cfg := writeObservedRevisionFixture(t, revision, review, pursue)
+	root := filepath.Join(t.TempDir(), "widgets")
+	wdWrite(t, filepath.Join(root, ".plect", "project.toml"), "schema_version = 2\n")
+	wdWrite(t, filepath.Join(root, ".plect", "workflows", "review.toml"),
+		"[review]\nkind = \"workflow\"\nresource = \"issue_pr\"\n\n[[review.nodes]]\nuses = \"noop\"\n")
+	cfg.TrustedProjectRoots = []string{root}
+	seedSession(t, store, "org/repo-1", "org/repo", 1, "", nil)
+	session := store.Get("org/repo-1")
+	session.Workflow, session.ProjectRoot = "wf", root
+	pinSessionRevision(t, cfg, session)
+	if err := store.Put(session); err != nil {
+		t.Fatal(err)
+	}
+
+	setup, err := TaskSetup(cfg, store, TaskSetupParams{
+		TaskID: "review", SessionName: "org/repo-1", Resource: "https://example.test/pull/1",
+	})
+	if err != nil {
+		t.Fatalf("TaskSetup(review): %v", err)
+	}
+	if setup.TaskID != "review" {
+		t.Errorf("TaskSetup instantiated %q, want the review task", setup.TaskID)
+	}
+	setUpDocumentInstance(t, cfg, store, "pursue")
+
+	sp := chainSpawnFor(t, cfg, store, "review")
+	if !sp.Fired {
+		t.Fatalf("a chain whose when holds fires: %+v", sp)
+	}
+	if sp.Workflow != "review" {
+		t.Errorf("chain workflow = %q, want the project's review workflow", sp.Workflow)
+	}
+}

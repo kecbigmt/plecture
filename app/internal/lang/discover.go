@@ -93,6 +93,12 @@ type Definition struct {
 	File                string
 }
 
+// Label names a definition by its kind as well as its id, because one id may
+// name a definition of each kind across user-owned layers.
+func (d *Definition) Label() string {
+	return fmt.Sprintf("%s %q", d.Kind, d.ID)
+}
+
 // ParseDefinitionDocument decodes a TOML definition document (one that is
 // not a reserved root file) into its top-level definitions, applying the
 // structural rules that gate whether each block is even a definition: `kind`

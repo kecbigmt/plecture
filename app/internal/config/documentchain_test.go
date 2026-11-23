@@ -40,6 +40,16 @@ func TestDocumentChain_Validate(t *testing.T) {
 			wantErr: "more than one",
 		},
 		{
+			name:    "expression with an operator",
+			chain:   "[[pursue.chains]]\nid=\"r\"\nworkflow=\"wf\"\n[pursue.chains.when]\nall=[{expr=\"resource.state.revision == 'A'\", eq=\"A\"}]\n",
+			wantErr: "must not set comparison operators",
+		},
+		{
+			name:    "expression beside a judge fact",
+			chain:   "[[pursue.chains]]\nid=\"r\"\nworkflow=\"wf\"\n[pursue.chains.when]\nall=[{expr=\"resource.state.revision == 'A'\", judge_pending=\"goal-met\"}]\n",
+			wantErr: "more than one",
+		},
+		{
 			name:    "judge_action without is",
 			chain:   "[[pursue.chains]]\nid=\"r\"\nworkflow=\"wf\"\n[pursue.chains.when]\nall=[{judge_action=\"goal-met\"}]\n",
 			wantErr: "`is` to be",
@@ -150,5 +160,39 @@ workflow = "`+target+`"
 				t.Fatalf("err = %v, want contains %q", err, tc.wantErr)
 			}
 		})
+	}
+}
+
+// An expression fact is one of the trigger kinds a chain accepts, exactly as
+// an expression leaf is in done_when.
+func TestLoadTaskDocuments_ChainWithOnlyAnExpressionFactLoads(t *testing.T) {
+	base := t.TempDir()
+	writeFile(t, filepath.Join(base, "resources", "issue_pr.toml"), minimalObserver)
+	writeFile(t, filepath.Join(base, "workflows", "wf.toml"), "[wf]\nkind = \"workflow\"\nresource = \"issue\"\n\n[[wf.nodes]]\nuses = \"noop\"\n")
+	writeFile(t, filepath.Join(base, "tasks", "pursue.toml"), `
+[pursue]
+kind              = "task"
+description       = "Pursue one goal"
+resource          = "issue_pr"
+instructions      = [{ text = "Pursue the goal." }]
+
+[[pursue.chains]]
+id       = "r"
+workflow = "wf"
+
+[pursue.chains.when]
+all = [{ expr = "resource.state.revision == 'A'" }]
+`)
+	cfg := &Config{BaseDir: base}
+	docs, observers := loadDocsAndObservers(t, cfg)
+	workflows, err := cfg.LoadWorkflows("")
+	if err != nil {
+		t.Fatalf("LoadWorkflows: %v", err)
+	}
+	if err := cfg.ValidateTaskDocuments(docs, observers, workflows); err != nil {
+		t.Fatalf("ValidateTaskDocuments: %v", err)
+	}
+	if got := docs["pursue"].Chains[0].When.All[0].Expr; got != "resource.state.revision == 'A'" {
+		t.Errorf("when.all[0].expr = %q", got)
 	}
 }

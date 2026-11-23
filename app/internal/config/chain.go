@@ -42,10 +42,12 @@ type ChainWhen struct {
 
 // ChainWhenFact is one trigger predicate, evaluated directly against raw facts
 // (outputs / judge records / revision) — never a managed gate state. It is one
-// of three kinds, exclusively:
+// of four kinds, exclusively:
 //
 //   - check: names an output and applies one comparison operator, exactly like
 //     a done_when check leaf.
+//   - expr: states a computed predicate, exactly like a done_when expression
+//     leaf.
 //   - judge_pending: names a judge leaf id; holds when that leaf has no usable
 //     verdict at the current revision (missing / stale / self / wrong relation).
 //   - judge_action: names a judge leaf id and the action (`is`) its current
@@ -67,57 +69,44 @@ type ChainWhenFact struct {
 	Is           string `toml:"is"`
 }
 
-func (f ChainWhenFact) operatorCount() int {
-	n := 0
-	if f.Eq != nil {
-		n++
-	}
-	if f.Ne != nil {
-		n++
-	}
-	if f.In != nil {
-		n++
-	}
-	if f.Gte != nil {
-		n++
-	}
-	if f.Lte != nil {
-		n++
-	}
-	return n
+// ValueLeaf is the check or expression leaf this fact states, read exactly as
+// the same leaf in a done_when; it is meaningful only when the fact is
+// neither judge_pending nor judge_action.
+func (f ChainWhenFact) ValueLeaf() DoneWhenLeaf {
+	return DoneWhenLeaf{Check: f.Check, Eq: f.Eq, Ne: f.Ne, In: f.In, Gte: f.Gte, Lte: f.Lte, Expr: f.Expr}
 }
 
 func (f ChainWhenFact) validate() error {
-	hasCheck := strings.TrimSpace(f.Check) != ""
+	leaf := f.ValueLeaf()
 	hasPending := strings.TrimSpace(f.JudgePending) != ""
 	hasAction := strings.TrimSpace(f.JudgeAction) != ""
 	kinds := 0
-	for _, set := range []bool{hasCheck, hasPending, hasAction} {
+	for _, set := range []bool{leaf.IsCheck(), leaf.IsExpr(), hasPending, hasAction} {
 		if set {
 			kinds++
 		}
 	}
 	switch {
 	case kinds == 0:
-		return fmt.Errorf("sets none of `check` / `judge_pending` / `judge_action`; exactly one is required")
+		return fmt.Errorf("sets none of `check` / `expr` / `judge_pending` / `judge_action`; exactly one is required")
 	case kinds > 1:
-		return fmt.Errorf("sets more than one of `check` / `judge_pending` / `judge_action`; exactly one is allowed")
-	case hasCheck:
-		if f.operatorCount() != 1 {
-			return fmt.Errorf("check %q must set exactly one operator (eq/ne/in/gte/lte), got %d", f.Check, f.operatorCount())
+		return fmt.Errorf("sets more than one of `check` / `expr` / `judge_pending` / `judge_action`; exactly one is allowed")
+	case leaf.IsCheck(), leaf.IsExpr():
+		if err := leaf.validateValueLeaf(); err != nil {
+			return err
 		}
 		if f.Is != "" {
-			return fmt.Errorf("check leaf must not set `is`")
+			return fmt.Errorf("%s leaf must not set `is`", leaf.valueLeafKind())
 		}
 	case hasPending:
-		if f.operatorCount() > 0 {
+		if leaf.operatorCount() > 0 {
 			return fmt.Errorf("judge_pending must not set comparison operators")
 		}
 		if f.Is != "" {
 			return fmt.Errorf("judge_pending must not set `is`")
 		}
 	case hasAction:
-		if f.operatorCount() > 0 {
+		if leaf.operatorCount() > 0 {
 			return fmt.Errorf("judge_action must not set comparison operators")
 		}
 		switch f.Is {
