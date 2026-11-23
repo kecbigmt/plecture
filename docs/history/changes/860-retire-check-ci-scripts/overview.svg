@@ -1,0 +1,110 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 960 400" width="960" height="400" role="img" aria-labelledby="title desc">
+  <title id="title">Change: retire check-ci-scripts, keep the shared job scripts</title>
+  <desc id="desc">The unchanged ci.yml's required jobs and the changed check-all.sh both call the unchanged scripts/ci job scripts, one of which is scripts/ci/check-all.sh. check-all.sh loses its --list mode. scripts/ci/check-all.sh still runs the changed check-all_selftest.sh, which loses its --list case, and no longer runs check-ci-scripts.sh. The removed check-ci-scripts.sh, with check_ci_scripts.py and its selftest, which decoded ci.yml with yq and read check-all.sh --list, is a faded ghost.</desc>
+  <defs>
+    <style>
+      svg {
+        --bg: #ffffff; --fg: #1f2328; --muted: #59636e;
+        --neutral: #8c959f; --neutral-bg: #f6f8fa;
+        --added: #1a7f37; --added-bg: #dafbe1;
+        --changed: #0969da; --changed-bg: #ddf4ff;
+        --removed: #cf222e; --removed-bg: #ffebe9;
+      }
+      @media (prefers-color-scheme: dark) {
+        svg {
+          --bg: #0d1117; --fg: #e6edf3; --muted: #9198a1;
+          --neutral: #656c76; --neutral-bg: #151b23;
+          --added: #3fb950; --added-bg: #0f2a1a;
+          --changed: #4493f8; --changed-bg: #0c2441;
+          --removed: #f85149; --removed-bg: #3a1416;
+        }
+      }
+      text { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Helvetica, Arial, sans-serif; font-size: 13px; fill: var(--fg); }
+      .bg { fill: var(--bg); }
+      .title { font-size: 18px; font-weight: 600; }
+      .name { font-weight: 600; }
+      .note { font-size: 12px; fill: var(--muted); }
+      .label { font-size: 12px; }
+      .tag { font-size: 11px; font-weight: 700; letter-spacing: 0.06em; }
+      .neutral { fill: var(--neutral-bg); stroke: var(--neutral); stroke-width: 1.5; }
+      .added { fill: var(--added-bg); stroke: var(--added); stroke-width: 3; }
+      .changed { fill: var(--changed-bg); stroke: var(--changed); stroke-width: 2; }
+      .removed { fill: var(--removed-bg); stroke: var(--removed); stroke-width: 1.5; stroke-dasharray: 8 4; }
+      .ghost { opacity: 0.65; }
+      .t-neutral { fill: var(--muted); }
+      .t-added { fill: var(--added); }
+      .t-changed { fill: var(--changed); }
+      .t-removed { fill: var(--removed); }
+      .flow { fill: none; stroke: var(--fg); stroke-width: 1.5; marker-end: url(#arrow); }
+      .flow-added { fill: none; stroke: var(--added); stroke-width: 3; marker-end: url(#arrow-added); }
+      .flow-removed { fill: none; stroke: var(--removed); stroke-width: 1.5; stroke-dasharray: 6 4; marker-end: url(#arrow-removed); }
+      .head { fill: var(--fg); }
+      .head-added { fill: var(--added); }
+      .head-removed { fill: var(--removed); }
+    </style>
+    <marker id="arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path class="head" d="M0,0 L10,5 L0,10 z"/>
+    </marker>
+    <marker id="arrow-added" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="4" markerHeight="4" orient="auto-start-reverse">
+      <path class="head-added" d="M0,0 L10,5 L0,10 z"/>
+    </marker>
+    <marker id="arrow-removed" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path class="head-removed" d="M0,0 L10,5 L0,10 z"/>
+    </marker>
+  </defs>
+  <rect class="bg" x="0" y="0" width="960" height="400"/>
+  <text class="title" x="24" y="38">Change: retire check-ci-scripts, keep the shared job scripts</text>
+
+  <rect class="changed" x="32" y="100" width="230" height="70" rx="6"/>
+  <text class="tag t-changed" x="48" y="122">CHANGED</text>
+  <text class="name" x="48" y="141">scripts/check-all.sh</text>
+  <text class="note" x="48" y="158">--list removed</text>
+
+  <rect class="neutral" x="345" y="100" width="270" height="70" rx="6"/>
+  <text class="tag t-neutral" x="361" y="122">UNCHANGED</text>
+  <text class="name" x="361" y="141">scripts/ci/&lt;job&gt;.sh</text>
+  <text class="note" x="361" y="158">one per required job</text>
+
+  <rect class="neutral" x="700" y="100" width="230" height="70" rx="6"/>
+  <text class="tag t-neutral" x="716" y="122">UNCHANGED</text>
+  <text class="name" x="716" y="141">.github/workflows/ci.yml</text>
+  <text class="note" x="716" y="158">setup actions, then calls</text>
+
+  <rect class="changed" x="32" y="240" width="230" height="70" rx="6"/>
+  <text class="tag t-changed" x="48" y="262">CHANGED</text>
+  <text class="name" x="48" y="281">scripts/check-all_selftest.sh</text>
+  <text class="note" x="48" y="298">--list case removed</text>
+
+  <rect class="changed" x="345" y="240" width="270" height="70" rx="6"/>
+  <text class="tag t-changed" x="361" y="262">CHANGED</text>
+  <text class="name" x="361" y="281">scripts/ci/check-all.sh</text>
+  <text class="note" x="361" y="298">check-all job's script</text>
+
+  <g class="ghost">
+    <rect class="removed" x="700" y="240" width="230" height="70" rx="6"/>
+    <text class="tag t-removed" x="716" y="262">REMOVED</text>
+    <text class="name" x="716" y="281">scripts/check-ci-scripts.sh</text>
+    <text class="note" x="716" y="298">+ check_ci_scripts.py, selftest</text>
+
+    <line class="flow-removed" x1="615" y1="275" x2="696" y2="275"/>
+    <text class="label t-removed" x="626" y="265">ran</text>
+
+    <line class="flow-removed" x1="815" y1="240" x2="815" y2="174"/>
+    <text class="label t-removed" x="825" y="211">decoded by yq</text>
+
+    <polyline class="flow-removed" points="760,310 760,360 16,360 16,150 28,150"/>
+    <text class="label t-removed" x="380" y="378">read check-all.sh --list</text>
+  </g>
+
+  <line class="flow" x1="262" y1="128" x2="341" y2="128"/>
+  <text class="label" x="268" y="118">calls each</text>
+
+  <line class="flow" x1="700" y1="128" x2="619" y2="128"/>
+  <text class="label" x="626" y="118">run: one call</text>
+
+  <line class="flow" x1="480" y1="170" x2="480" y2="236"/>
+  <text class="label" x="490" y="208">one of them</text>
+
+  <line class="flow" x1="345" y1="275" x2="266" y2="275"/>
+  <text class="label" x="280" y="265">runs</text>
+</svg>
