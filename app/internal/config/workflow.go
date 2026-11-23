@@ -437,19 +437,12 @@ func (d *DoneWhen) Validate() error {
 					return fmt.Errorf("done_when.all[%d] judge relation %q is not assignable; use sibling/parent/child (self is always rejected)", i, r)
 				}
 			}
-		case leaf.IsExpr():
-			if ops > 0 {
-				return fmt.Errorf("done_when.all[%d] is an expression leaf and must not set comparison operators (eq/ne/in/gte/lte); the expression states the whole predicate", i)
+		case leaf.IsExpr(), leaf.IsCheck():
+			if err := leaf.validateValueLeaf(); err != nil {
+				return fmt.Errorf("done_when.all[%d] %w", i, err)
 			}
 			if len(leaf.Relation) > 0 {
-				return fmt.Errorf("done_when.all[%d] expression leaf must not set judge relation policy", i)
-			}
-		case leaf.IsCheck():
-			if ops != 1 {
-				return fmt.Errorf("done_when.all[%d] check %q must set exactly one operator (eq/ne/in/gte/lte), got %d", i, leaf.Check, ops)
-			}
-			if len(leaf.Relation) > 0 {
-				return fmt.Errorf("done_when.all[%d] check leaf must not set judge relation policy", i)
+				return fmt.Errorf("done_when.all[%d] %s leaf must not set judge relation policy", i, leaf.valueLeafKind())
 			}
 		default:
 			if ops > 0 {
@@ -459,6 +452,30 @@ func (d *DoneWhen) Validate() error {
 		}
 	}
 	return nil
+}
+
+// validateValueLeaf holds the rules a check or expression leaf obeys wherever
+// it is written, so a chain trigger and a completion predicate cannot come to
+// disagree about what such a leaf is.
+func (l DoneWhenLeaf) validateValueLeaf() error {
+	ops := l.operatorCount()
+	if l.IsExpr() {
+		if ops > 0 {
+			return fmt.Errorf("is an expression leaf and must not set comparison operators (eq/ne/in/gte/lte); the expression states the whole predicate")
+		}
+		return nil
+	}
+	if ops != 1 {
+		return fmt.Errorf("check %q must set exactly one operator (eq/ne/in/gte/lte), got %d", l.Check, ops)
+	}
+	return nil
+}
+
+func (l DoneWhenLeaf) valueLeafKind() string {
+	if l.IsExpr() {
+		return "expression"
+	}
+	return "check"
 }
 
 // EffectiveScope returns the scope, defaulting to "run" when unset. A nested

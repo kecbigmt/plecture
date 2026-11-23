@@ -52,15 +52,7 @@ func factHolds(fact config.ChainWhenFact, facts Facts) bool {
 	case fact.JudgeAction != "":
 		return facts.Judges[fact.JudgeAction].Action == fact.Is
 	default:
-		leaf := config.DoneWhenLeaf{
-			Check: fact.Check,
-			Eq:    fact.Eq,
-			Ne:    fact.Ne,
-			In:    fact.In,
-			Gte:   fact.Gte,
-			Lte:   fact.Lte,
-			Expr:  fact.Expr,
-		}
+		leaf := fact.ValueLeaf()
 		return task.CheckLeafStatus(leaf, facts.State) == task.DoneSatisfied
 	}
 }

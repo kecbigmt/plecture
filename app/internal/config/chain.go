@@ -67,27 +67,15 @@ type ChainWhenFact struct {
 	Is           string `toml:"is"`
 }
 
-func (f ChainWhenFact) operatorCount() int {
-	n := 0
-	if f.Eq != nil {
-		n++
-	}
-	if f.Ne != nil {
-		n++
-	}
-	if f.In != nil {
-		n++
-	}
-	if f.Gte != nil {
-		n++
-	}
-	if f.Lte != nil {
-		n++
-	}
-	return n
+// ValueLeaf is the check or expression leaf this fact states, read exactly as
+// the same leaf in a done_when; it is meaningful only when the fact is
+// neither judge_pending nor judge_action.
+func (f ChainWhenFact) ValueLeaf() DoneWhenLeaf {
+	return DoneWhenLeaf{Check: f.Check, Eq: f.Eq, Ne: f.Ne, In: f.In, Gte: f.Gte, Lte: f.Lte, Expr: f.Expr}
 }
 
 func (f ChainWhenFact) validate() error {
+	leaf := f.ValueLeaf()
 	hasCheck := strings.TrimSpace(f.Check) != ""
 	hasPending := strings.TrimSpace(f.JudgePending) != ""
 	hasAction := strings.TrimSpace(f.JudgeAction) != ""
@@ -103,21 +91,21 @@ func (f ChainWhenFact) validate() error {
 	case kinds > 1:
 		return fmt.Errorf("sets more than one of `check` / `judge_pending` / `judge_action`; exactly one is allowed")
 	case hasCheck:
-		if f.operatorCount() != 1 {
-			return fmt.Errorf("check %q must set exactly one operator (eq/ne/in/gte/lte), got %d", f.Check, f.operatorCount())
+		if leaf.operatorCount() != 1 {
+			return fmt.Errorf("check %q must set exactly one operator (eq/ne/in/gte/lte), got %d", f.Check, leaf.operatorCount())
 		}
 		if f.Is != "" {
 			return fmt.Errorf("check leaf must not set `is`")
 		}
 	case hasPending:
-		if f.operatorCount() > 0 {
+		if leaf.operatorCount() > 0 {
 			return fmt.Errorf("judge_pending must not set comparison operators")
 		}
 		if f.Is != "" {
 			return fmt.Errorf("judge_pending must not set `is`")
 		}
 	case hasAction:
-		if f.operatorCount() > 0 {
+		if leaf.operatorCount() > 0 {
 			return fmt.Errorf("judge_action must not set comparison operators")
 		}
 		switch f.Is {
