@@ -6,9 +6,9 @@ import (
 	contract "github.com/kecbigmt/plecture/contracts/state"
 )
 
-// UnansweredDelivery is the earliest event the session's runtime channel
-// delivered with no non-empty status written since. A non-empty status
-// removes it, so its existence alone says no turn has started after
+// UnansweredDelivery is an event the session's runtime channel delivered
+// with no non-empty status written since. A non-empty status removes every
+// delivery before it, so its existence alone says no turn has started after
 // DeliveredAt.
 type UnansweredDelivery struct {
 	EventID     string

@@ -396,12 +396,13 @@ CREATE TABLE event_cursors (
     PRIMARY KEY (session_id, kind)
 );
 
--- At most one row per session incarnation: a non-empty status deletes it.
+-- A non-empty status deletes every row delivered before it.
 CREATE TABLE unanswered_deliveries (
-    session_id TEXT PRIMARY KEY REFERENCES sessions(id) ON DELETE CASCADE,
+    session_id TEXT NOT NULL REFERENCES sessions(id) ON DELETE CASCADE,
     event_id TEXT NOT NULL,
     event_type TEXT NOT NULL,
-    delivered_at TEXT NOT NULL
+    delivered_at TEXT NOT NULL,
+    PRIMARY KEY (session_id, event_id)
 );
 
 -- An entry names an event its session's runtime has not acknowledged; events keeps the only copy.

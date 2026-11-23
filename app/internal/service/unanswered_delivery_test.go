@@ -113,6 +113,25 @@ func TestSetMessage_RepeatedWorkingStatusStillAnswersTheDelivery(t *testing.T) {
 	}
 }
 
+func TestSetMessage_StatusDoesNotAnswerADeliveryRecordedAfterIt(t *testing.T) {
+	store := testStore(t)
+	now := time.Now()
+	if err := store.Put(&domain.Session{Name: deliverySession, CreatedAt: now, UpdatedAt: now}); err != nil {
+		t.Fatal(err)
+	}
+	// A delivery stamped after the status stands for one the dispatcher
+	// recorded between the status append and its acknowledgement.
+	recordDeliveryAt(t, store, deliverySession, "emit-1", now.Add(time.Minute))
+
+	if err := SetMessage(nil, store, deliverySession, "working", nil); err != nil {
+		t.Fatalf("SetMessage(working): %v", err)
+	}
+
+	if rec := readUnansweredDelivery(t, store, deliverySession); rec == nil || rec.EventID != "emit-1" {
+		t.Fatalf("unanswered delivery = %+v, want emit-1 kept: the status predates it", rec)
+	}
+}
+
 func TestSetMessage_ClearedStatusDoesNotAnswerTheDelivery(t *testing.T) {
 	store := testStore(t)
 	now := time.Now()

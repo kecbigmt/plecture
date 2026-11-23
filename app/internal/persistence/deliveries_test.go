@@ -68,6 +68,21 @@ func TestRecordUnansweredDelivery_ReplacesADeliveryFromBeforeTheRun(t *testing.T
 	}
 }
 
+func TestAnswerUnansweredDelivery_KeepsALaterDeliveryBehindAnEarlierOne(t *testing.T) {
+	db := migratedTestDB(t)
+	createSessionForTest(t, db, "s1")
+	first := time.Now().UTC().Add(-time.Minute)
+	recordDeliveryForTest(t, db, "s1", "e1", first, time.Time{})
+	recordDeliveryForTest(t, db, "s1", "e2", first.Add(2*time.Second), time.Time{})
+
+	if err := db.AnswerUnansweredDelivery(context.Background(), "s1", first.Add(time.Second)); err != nil {
+		t.Fatalf("answer: %v", err)
+	}
+	if got := unansweredDeliveryForTest(t, db, "s1"); got == nil || got.EventID != "e2" {
+		t.Fatalf("after answer = %+v, want e2: the status came before it", got)
+	}
+}
+
 func TestWithdrawUnansweredDelivery_RemovesOnlyTheNamedEvent(t *testing.T) {
 	db := migratedTestDB(t)
 	ctx := context.Background()
@@ -88,16 +103,31 @@ func TestWithdrawUnansweredDelivery_RemovesOnlyTheNamedEvent(t *testing.T) {
 	}
 }
 
-func TestClearUnansweredDelivery_RemovesTheRecord(t *testing.T) {
+func TestAnswerUnansweredDelivery_RemovesADeliveryMadeBeforeTheStatus(t *testing.T) {
 	db := migratedTestDB(t)
 	createSessionForTest(t, db, "s1")
-	recordDeliveryForTest(t, db, "s1", "e1", time.Now().UTC(), time.Time{})
+	delivered := time.Now().UTC()
+	recordDeliveryForTest(t, db, "s1", "e1", delivered, time.Time{})
 
-	if err := db.ClearUnansweredDelivery(context.Background(), "s1"); err != nil {
-		t.Fatalf("clear: %v", err)
+	if err := db.AnswerUnansweredDelivery(context.Background(), "s1", delivered); err != nil {
+		t.Fatalf("answer: %v", err)
 	}
 	if got := unansweredDeliveryForTest(t, db, "s1"); got != nil {
-		t.Fatalf("after clear = %+v, want none", got)
+		t.Fatalf("after answer = %+v, want none", got)
+	}
+}
+
+func TestAnswerUnansweredDelivery_KeepsADeliveryMadeAfterTheStatus(t *testing.T) {
+	db := migratedTestDB(t)
+	createSessionForTest(t, db, "s1")
+	status := time.Now().UTC()
+	recordDeliveryForTest(t, db, "s1", "e1", status.Add(time.Nanosecond), time.Time{})
+
+	if err := db.AnswerUnansweredDelivery(context.Background(), "s1", status); err != nil {
+		t.Fatalf("answer: %v", err)
+	}
+	if got := unansweredDeliveryForTest(t, db, "s1"); got == nil || got.EventID != "e1" {
+		t.Fatalf("after answer = %+v, want e1 kept: no status followed it", got)
 	}
 }
 

@@ -11,10 +11,10 @@ import (
 	"github.com/kecbigmt/plecture/app/internal/persistence/sqlcgen"
 )
 
-// RecordUnansweredDelivery keeps an existing record unless it predates
-// staleBefore: a later delivery must not move the clock of one still
-// waiting for its turn, but a previous run's record accuses no current
-// runtime.
+// RecordUnansweredDelivery keeps every unanswered delivery rather than the
+// earliest alone: a status that answers the earliest must not take a later
+// one with it. Deliveries before staleBefore are dropped, because a previous
+// run's record accuses no current runtime.
 func (db *DB) RecordUnansweredDelivery(ctx context.Context, session string, d domain.UnansweredDelivery, staleBefore time.Time) error {
 	return db.WithImmediateTx(ctx, func(tx *sql.Tx) error {
 		q := sqlcgen.New(tx)
@@ -22,14 +22,10 @@ func (db *DB) RecordUnansweredDelivery(ctx context.Context, session string, d do
 		if err != nil {
 			return err
 		}
-		existing, err := getUnansweredDelivery(ctx, q, sessionID)
-		if err != nil {
-			return err
+		if err := q.DeleteUnansweredDeliveriesBefore(ctx, sqlcgen.DeleteUnansweredDeliveriesBeforeParams{SessionID: sessionID, DeliveredAt: formatTime(staleBefore)}); err != nil {
+			return fmt.Errorf("drop stale deliveries for %q: %w", session, err)
 		}
-		if existing != nil && !existing.DeliveredAt.Before(staleBefore) {
-			return nil
-		}
-		if err := q.PutUnansweredDelivery(ctx, sqlcgen.PutUnansweredDeliveryParams{
+		if err := q.InsertUnansweredDelivery(ctx, sqlcgen.InsertUnansweredDeliveryParams{
 			SessionID:   sessionID,
 			EventID:     d.EventID,
 			EventType:   d.EventType,
@@ -41,7 +37,8 @@ func (db *DB) RecordUnansweredDelivery(ctx context.Context, session string, d do
 	})
 }
 
-// UnansweredDelivery returns nil when every delivery has been answered.
+// UnansweredDelivery returns the earliest unanswered delivery, or nil when
+// every delivery has been answered.
 func (db *DB) UnansweredDelivery(ctx context.Context, session string) (*domain.UnansweredDelivery, error) {
 	var out *domain.UnansweredDelivery
 	err := db.WithReadTx(ctx, func(tx *sql.Tx) error {
@@ -56,8 +53,6 @@ func (db *DB) UnansweredDelivery(ctx context.Context, session string) (*domain.U
 	return out, err
 }
 
-// WithdrawUnansweredDelivery removes the record only while it still names
-// eventID, so a failed attempt never erases another event's delivery.
 func (db *DB) WithdrawUnansweredDelivery(ctx context.Context, session, eventID string) error {
 	return db.WithImmediateTx(ctx, func(tx *sql.Tx) error {
 		q := sqlcgen.New(tx)
@@ -72,22 +67,25 @@ func (db *DB) WithdrawUnansweredDelivery(ctx context.Context, session, eventID s
 	})
 }
 
-func (db *DB) ClearUnansweredDelivery(ctx context.Context, session string) error {
+// AnswerUnansweredDelivery compares delivery and status times instead of
+// deleting unconditionally: a delivery recorded after the status was written
+// and before this call runs is one the status could not have answered.
+func (db *DB) AnswerUnansweredDelivery(ctx context.Context, session string, statusAt time.Time) error {
 	return db.WithImmediateTx(ctx, func(tx *sql.Tx) error {
 		q := sqlcgen.New(tx)
 		sessionID, err := currentSessionID(ctx, q, session)
 		if err != nil {
 			return err
 		}
-		if err := q.DeleteUnansweredDelivery(ctx, sessionID); err != nil {
-			return fmt.Errorf("clear unanswered delivery for %q: %w", session, err)
+		if err := q.DeleteUnansweredDeliveryThrough(ctx, sqlcgen.DeleteUnansweredDeliveryThroughParams{SessionID: sessionID, DeliveredAt: formatTime(statusAt)}); err != nil {
+			return fmt.Errorf("answer unanswered delivery for %q: %w", session, err)
 		}
 		return nil
 	})
 }
 
 func getUnansweredDelivery(ctx context.Context, q *sqlcgen.Queries, sessionID string) (*domain.UnansweredDelivery, error) {
-	row, err := q.GetUnansweredDelivery(ctx, sessionID)
+	row, err := q.GetEarliestUnansweredDelivery(ctx, sessionID)
 	if errors.Is(err, sql.ErrNoRows) {
 		return nil, nil
 	}

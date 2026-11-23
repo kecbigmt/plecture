@@ -322,12 +322,17 @@ func (q *Queries) DeleteTaskInstanceLayersByInstanceID(ctx context.Context, task
 	return err
 }
 
-const deleteUnansweredDelivery = `-- name: DeleteUnansweredDelivery :exec
-DELETE FROM unanswered_deliveries WHERE session_id = ?
+const deleteUnansweredDeliveriesBefore = `-- name: DeleteUnansweredDeliveriesBefore :exec
+DELETE FROM unanswered_deliveries WHERE session_id = ? AND delivered_at < ?
 `
 
-func (q *Queries) DeleteUnansweredDelivery(ctx context.Context, sessionID string) error {
-	_, err := q.db.ExecContext(ctx, deleteUnansweredDelivery, sessionID)
+type DeleteUnansweredDeliveriesBeforeParams struct {
+	SessionID   string
+	DeliveredAt string
+}
+
+func (q *Queries) DeleteUnansweredDeliveriesBefore(ctx context.Context, arg DeleteUnansweredDeliveriesBeforeParams) error {
+	_, err := q.db.ExecContext(ctx, deleteUnansweredDeliveriesBefore, arg.SessionID, arg.DeliveredAt)
 	return err
 }
 
@@ -342,6 +347,20 @@ type DeleteUnansweredDeliveryForEventParams struct {
 
 func (q *Queries) DeleteUnansweredDeliveryForEvent(ctx context.Context, arg DeleteUnansweredDeliveryForEventParams) error {
 	_, err := q.db.ExecContext(ctx, deleteUnansweredDeliveryForEvent, arg.SessionID, arg.EventID)
+	return err
+}
+
+const deleteUnansweredDeliveryThrough = `-- name: DeleteUnansweredDeliveryThrough :exec
+DELETE FROM unanswered_deliveries WHERE session_id = ? AND delivered_at <= ?
+`
+
+type DeleteUnansweredDeliveryThroughParams struct {
+	SessionID   string
+	DeliveredAt string
+}
+
+func (q *Queries) DeleteUnansweredDeliveryThrough(ctx context.Context, arg DeleteUnansweredDeliveryThroughParams) error {
+	_, err := q.db.ExecContext(ctx, deleteUnansweredDeliveryThrough, arg.SessionID, arg.DeliveredAt)
 	return err
 }
 
@@ -370,6 +389,24 @@ type EnsureNodeInstanceParams struct {
 func (q *Queries) EnsureNodeInstance(ctx context.Context, arg EnsureNodeInstanceParams) error {
 	_, err := q.db.ExecContext(ctx, ensureNodeInstance, arg.SessionID, arg.NodeID)
 	return err
+}
+
+const getEarliestUnansweredDelivery = `-- name: GetEarliestUnansweredDelivery :one
+SELECT event_id, event_type, delivered_at FROM unanswered_deliveries
+WHERE session_id = ? ORDER BY delivered_at, event_id LIMIT 1
+`
+
+type GetEarliestUnansweredDeliveryRow struct {
+	EventID     string
+	EventType   string
+	DeliveredAt string
+}
+
+func (q *Queries) GetEarliestUnansweredDelivery(ctx context.Context, sessionID string) (GetEarliestUnansweredDeliveryRow, error) {
+	row := q.db.QueryRowContext(ctx, getEarliestUnansweredDelivery, sessionID)
+	var i GetEarliestUnansweredDeliveryRow
+	err := row.Scan(&i.EventID, &i.EventType, &i.DeliveredAt)
+	return i, err
 }
 
 const getEventCursor = `-- name: GetEventCursor :one
@@ -523,23 +560,6 @@ func (q *Queries) GetResourceByName(ctx context.Context, name string) (Resource,
 		&i.CreatedAt,
 		&i.MaxSubscribers,
 	)
-	return i, err
-}
-
-const getUnansweredDelivery = `-- name: GetUnansweredDelivery :one
-SELECT event_id, event_type, delivered_at FROM unanswered_deliveries WHERE session_id = ?
-`
-
-type GetUnansweredDeliveryRow struct {
-	EventID     string
-	EventType   string
-	DeliveredAt string
-}
-
-func (q *Queries) GetUnansweredDelivery(ctx context.Context, sessionID string) (GetUnansweredDeliveryRow, error) {
-	row := q.db.QueryRowContext(ctx, getUnansweredDelivery, sessionID)
-	var i GetUnansweredDeliveryRow
-	err := row.Scan(&i.EventID, &i.EventType, &i.DeliveredAt)
 	return i, err
 }
 
@@ -1022,6 +1042,29 @@ func (q *Queries) InsertTaskInstanceLayer(ctx context.Context, arg InsertTaskIns
 		arg.FailedAt,
 		arg.CleanedAt,
 		arg.Error,
+	)
+	return err
+}
+
+const insertUnansweredDelivery = `-- name: InsertUnansweredDelivery :exec
+INSERT INTO unanswered_deliveries (session_id, event_id, event_type, delivered_at)
+VALUES (?, ?, ?, ?)
+ON CONFLICT (session_id, event_id) DO NOTHING
+`
+
+type InsertUnansweredDeliveryParams struct {
+	SessionID   string
+	EventID     string
+	EventType   string
+	DeliveredAt string
+}
+
+func (q *Queries) InsertUnansweredDelivery(ctx context.Context, arg InsertUnansweredDeliveryParams) error {
+	_, err := q.db.ExecContext(ctx, insertUnansweredDelivery,
+		arg.SessionID,
+		arg.EventID,
+		arg.EventType,
+		arg.DeliveredAt,
 	)
 	return err
 }
@@ -2646,32 +2689,6 @@ func (q *Queries) NodeExecutionByID(ctx context.Context, id string) (NodeExecuti
 		&i.Directory,
 	)
 	return i, err
-}
-
-const putUnansweredDelivery = `-- name: PutUnansweredDelivery :exec
-INSERT INTO unanswered_deliveries (session_id, event_id, event_type, delivered_at)
-VALUES (?, ?, ?, ?)
-ON CONFLICT (session_id) DO UPDATE SET
-    event_id = excluded.event_id,
-    event_type = excluded.event_type,
-    delivered_at = excluded.delivered_at
-`
-
-type PutUnansweredDeliveryParams struct {
-	SessionID   string
-	EventID     string
-	EventType   string
-	DeliveredAt string
-}
-
-func (q *Queries) PutUnansweredDelivery(ctx context.Context, arg PutUnansweredDeliveryParams) error {
-	_, err := q.db.ExecContext(ctx, putUnansweredDelivery,
-		arg.SessionID,
-		arg.EventID,
-		arg.EventType,
-		arg.DeliveredAt,
-	)
-	return err
 }
 
 const sessionEverExistedByName = `-- name: SessionEverExistedByName :one
