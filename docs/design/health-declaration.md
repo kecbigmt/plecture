@@ -228,6 +228,32 @@ Declare an activity probe only for resources whose activity indicates session
 progress: a chatty sidecar with an activity probe would mask a stalled agent,
 so the author-declared-surface principle applies to probe placement too.
 
+## Unanswered deliveries
+
+A probe's pardon covers waiting after a turn. It does not cover a runtime
+that ignores an event delivered to it, so core accuses that case from its own
+facts, without reading any envelope:
+
+- **Delivery.** The runtime channel is every binding whose `include` selects
+  `plect.instruction`, the binding that also relays `plect.session.resumed`
+  ([`../language/channels.md`](../language/channels.md#selecting-events)).
+  Core records an event as delivered when that binding delivers it, or hands
+  it to the session inbox. A failed attempt records nothing.
+- **Answer.** Any non-empty status the session writes answers every delivery
+  before it. Core keeps only the earliest delivery no status has answered, so
+  a later event never restarts the clock of one still waiting.
+- **Stall.** The session is stalled when its latest status is a clear, and
+  the later of that clear and the delivery is older than the stall threshold.
+  A delivery that arrives while a status is still non-empty waits for the
+  clear that ends that turn. A delivery made before the current run's setup
+  accuses no runtime, and a session that has never written a status is not
+  judged.
+
+The rule applies only to an up session with activity evidence: a probe that
+contributes this tick, or one observed before. The `health.stalled`
+escalation it raises carries the event's `event_id`, `event_type`, and
+`delivered_at` in its metadata, so the parent can send the event again.
+
 ## Relationship to the workflow health cycle
 
 A workflow's `[healthcheck]` table declares the sampling cycle — how often the

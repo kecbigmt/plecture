@@ -109,6 +109,7 @@ func runAliveForHealth(probe task.Probe, vars task.SessionVars, timeout time.Dur
 //     session.
 //   - Unhealthy beats activity: a failing alive probe is reported as such
 //     regardless of activity evidence.
+//   - An overdue unanswered delivery is stalled before any pardon is read.
 //   - When no activity is due, a passing alive probe is healthy outright.
 //   - When activity is due but no activity probe contributes this tick and
 //     none has ever been observed, there is no basis to call it either

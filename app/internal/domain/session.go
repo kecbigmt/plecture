@@ -27,7 +27,8 @@ const (
 //   - Healthy: the alive probe passes and either no activity is currently
 //     expected, or fresh activity evidence exists within the stall threshold.
 //   - Stalled: the surface is present, activity is expected, but no fresh
-//     activity evidence exists.
+//     activity evidence exists; or the runtime has left a delivered event
+//     without a turn for longer than the stall threshold.
 type HealthState string
 
 const (
