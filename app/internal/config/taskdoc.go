@@ -3,7 +3,6 @@ package config
 import (
 	"bytes"
 	"fmt"
-	"sort"
 
 	"github.com/BurntSushi/toml"
 
@@ -250,12 +249,7 @@ func decodeDoneWhen(def *lang.Definition) (*DoneWhen, error) {
 // missing key in a contract the root never had.
 func (c *Config) ValidateTaskDocuments(docs map[string]TaskDocument, observers map[string]ResourceDef, workflows map[string]WorkflowFile) error {
 	registry := c.taskReferenceRegistry(docs, observers, workflows)
-	ids := make([]string, 0, len(docs))
-	for id := range docs {
-		ids = append(ids, id)
-	}
-	sort.Strings(ids)
-	for _, id := range ids {
+	for _, id := range inFileOrder(docs, func(d TaskDocument) string { return d.SourcePath }) {
 		doc := docs[id]
 		validation := lang.Validation{From: doc.Ownership(), Executables: c.binResolver(doc.SourcePath)}
 		// ValidateTaskContracts reads doc.Definition, not the composed

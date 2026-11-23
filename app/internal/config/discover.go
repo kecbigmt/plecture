@@ -1,9 +1,12 @@
 package config
 
 import (
+	"cmp"
 	"fmt"
+	"maps"
 	"os"
 	"path/filepath"
+	"slices"
 	"sort"
 	"strings"
 
@@ -72,9 +75,8 @@ func discoverLayer(layer layerDir) ([]*lang.Definition, error) {
 	return defs, nil
 }
 
-// ofKind selects one kind's declarations from a discovered layer, preserving
-// the layer's file-then-id order so the diagnostic naming the first offender
-// is the one first in file path order.
+// ofKind selects one kind's declarations from a discovered layer, in the
+// layer's file-then-id order.
 func (d discoveredLayer) ofKind(kind lang.Kind) []*lang.Definition {
 	var out []*lang.Definition
 	for _, def := range d.defs {
@@ -194,7 +196,6 @@ func (c *Config) resolveNamespace(layers []discoveredLayer, kind lang.Kind) ([]r
 		unaliased string
 	}
 	groups := make(map[string]*group)
-	var order []string
 	for _, discovered := range layers {
 		for _, def := range discovered.ofKind(kind) {
 			address := definitionAddress(discovered.layer, def.ID)
@@ -202,7 +203,6 @@ func (c *Config) resolveNamespace(layers []discoveredLayer, kind lang.Kind) ([]r
 			if !seen {
 				g = &group{prefix: addressPrefix(discovered.layer)}
 				groups[address] = g
-				order = append(order, address)
 			}
 			if discovered.layer.plugin && discovered.layer.pluginID == "" {
 				if g.unaliased != "" {
@@ -215,13 +215,7 @@ func (c *Config) resolveNamespace(layers []discoveredLayer, kind lang.Kind) ([]r
 			g.pluginID = discovered.layer.pluginID
 		}
 	}
-	sort.Slice(order, func(i, j int) bool {
-		a, b := groups[order[i]].def.File, groups[order[j]].def.File
-		if a != b {
-			return a < b
-		}
-		return order[i] < order[j]
-	})
+	order := inFileOrder(groups, func(g *group) string { return g.def.File })
 	out := make([]resolvedDefinition, 0, len(order))
 	for _, address := range order {
 		g := groups[address]
@@ -235,6 +229,15 @@ func (c *Config) resolveNamespace(layers []discoveredLayer, kind lang.Kind) ([]r
 		})
 	}
 	return out, nil
+}
+
+// inFileOrder lists a loaded namespace's addresses by source file and then
+// address, so every pass over it reports the offender first in file path
+// order rather than the one whose address sorts first.
+func inFileOrder[T any](namespace map[string]T, file func(T) string) []string {
+	return slices.SortedFunc(maps.Keys(namespace), func(a, b string) int {
+		return cmp.Or(cmp.Compare(file(namespace[a]), file(namespace[b])), cmp.Compare(a, b))
+	})
 }
 
 // canonicalizeWorkflowRefs rewrites a workflow's static references — its

@@ -4,7 +4,6 @@ import (
 	"fmt"
 	"maps"
 	"slices"
-	"sort"
 	"strings"
 
 	"github.com/kecbigmt/plecture/app/internal/lang"
@@ -24,12 +23,7 @@ func composeExtendedTaskDocuments(docs map[string]TaskDocument, registry *lang.R
 		original[address] = doc
 		byDef[doc.Definition] = address
 	}
-	addresses := make([]string, 0, len(docs))
-	for address := range docs {
-		addresses = append(addresses, address)
-	}
-	sort.Strings(addresses)
-	for _, address := range addresses {
+	for _, address := range inFileOrder(docs, func(d TaskDocument) string { return d.SourcePath }) {
 		doc := original[address]
 		if doc.Extends == "" {
 			continue
