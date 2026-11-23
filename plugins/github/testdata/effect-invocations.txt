@@ -58,7 +58,7 @@ alive
 cleaned
 
 == worktree:policy-set-at-creation / setup
-call[0]: "github-worktree" "setup" "--resource" "example://acme/widget/1" "--session" "acme/widget-1" "--tag" "" "--workspace-dirs-root" "/spy/workspace_dirs" "--workspace-layout-root" "/spy/layout" "--issue-branch-template" "work/{number}" "--tagged-branch-suffix" "-{tag}" "--delete-branch" "true" "--watcher-bin" "<plugin>/bin/github-watcher" "--app-token-bin" "<plugin>/bin/gh-app-token" "--app-id" "" "--installation-id" "" "--owner" "" "--repo" "" "--private-key-path" ""
+call[0]: "github-worktree" "setup" "--resource" "example://acme/widget/1" "--session" "acme/widget-1" "--tag" "" "--workspace-dirs-root" "/spy/workspace_dirs" "--workspace-layout-root" "/spy/layout" "--issue-branch-template" "work/{number}" "--tagged-branch-suffix" "-{tag}" "--delete-branch" "true" "--watcher-bin" "<plugin>/bin/github-watcher" "--app-token-bin" "<plugin>/bin/gh-app-token" "--app-id" "" "--installation-id" "" "--owner" "" "--repo" "" "--private-key-path" "" "--token-command" "[]"
 outputs: {"branch":"spy-branch","delete_branch":true,"workspace_dir":"<state>/worktree"}
 
 == worktree:policy-set-at-creation / health.alive
@@ -69,7 +69,7 @@ call[0]: "github-worktree" "cleanup" "--workspace-dir" "<state>/worktree" "--bra
 cleaned
 
 == worktree:policy-defaults-to-keep / setup
-call[0]: "github-worktree" "setup" "--resource" "example://acme/widget/1" "--session" "acme/widget-1" "--tag" "" "--workspace-dirs-root" "" "--workspace-layout-root" "" "--issue-branch-template" "" "--tagged-branch-suffix" "" "--delete-branch" "false" "--watcher-bin" "<plugin>/bin/github-watcher" "--app-token-bin" "<plugin>/bin/gh-app-token" "--app-id" "" "--installation-id" "" "--owner" "" "--repo" "" "--private-key-path" ""
+call[0]: "github-worktree" "setup" "--resource" "example://acme/widget/1" "--session" "acme/widget-1" "--tag" "" "--workspace-dirs-root" "" "--workspace-layout-root" "" "--issue-branch-template" "" "--tagged-branch-suffix" "" "--delete-branch" "false" "--watcher-bin" "<plugin>/bin/github-watcher" "--app-token-bin" "<plugin>/bin/gh-app-token" "--app-id" "" "--installation-id" "" "--owner" "" "--repo" "" "--private-key-path" "" "--token-command" "[]"
 outputs: {"branch":"spy-branch","delete_branch":false,"workspace_dir":"<state>/worktree"}
 
 == worktree:policy-defaults-to-keep / cleanup

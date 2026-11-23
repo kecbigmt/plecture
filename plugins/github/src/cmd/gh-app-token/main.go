@@ -16,6 +16,7 @@ import (
 
 	"github.com/kecbigmt/plecture/plugins/github/src/internal/apptoken"
 	"github.com/kecbigmt/plecture/plugins/github/src/internal/githubapp"
+	"github.com/kecbigmt/plecture/plugins/github/src/internal/tokencommand"
 )
 
 func main() {
@@ -34,9 +35,9 @@ func main() {
 		os.Exit(2)
 	}
 	if err != nil {
-		// Every error reaching here is built from githubapp/apptoken, which
-		// never fold key or token bytes into an error string — this prefix
-		// is the only thing added at this layer.
+		// Every error reaching here is built from githubapp/apptoken or
+		// tokencommand, which never fold key or token bytes into an error
+		// string — this prefix is the only thing added at this layer.
 		fmt.Fprintf(os.Stderr, "gh-app-token: %v\n", err)
 		os.Exit(1)
 	}
@@ -45,7 +46,8 @@ func main() {
 func usage() {
 	fmt.Fprintln(os.Stderr, `usage:
   gh-app-token print --app-id <id> (--installation-id <id> | --owner <owner> --repo <repo>) --private-key-path <path> --cache-path <path> [--base-url <url>] [--skew <duration>]
-  gh-app-token credential --app-id <id> (--installation-id <id> | --owner <owner> --repo <repo>) --private-key-path <path> --cache-path <path> [--base-url <url>] [--skew <duration>] get`)
+  gh-app-token credential --app-id <id> (--installation-id <id> | --owner <owner> --repo <repo>) --private-key-path <path> --cache-path <path> [--base-url <url>] [--skew <duration>] get
+  gh-app-token credential --token-command <json-argv> get`)
 }
 
 // cmdPrint mints (or reuses a cached, unexpired) installation token and
@@ -53,7 +55,7 @@ func usage() {
 // A caller capturing this command's stdout (the gh-app-guard wrapper does,
 // via `$(...)`) gets the token and nothing it would need to strip.
 func cmdPrint(args []string, stdout io.Writer) error {
-	opts, rest, err := parseTokenOptions(args)
+	opts, rest, err := parseTokenOptions(args, false)
 	if err != nil {
 		return err
 	}
@@ -70,7 +72,7 @@ func cmdPrint(args []string, stdout io.Writer) error {
 }
 
 func cmdCredential(args []string, stdin io.Reader, stdout io.Writer) error {
-	opts, rest, err := parseTokenOptions(args)
+	opts, rest, err := parseTokenOptions(args, true)
 	if err != nil {
 		return err
 	}
@@ -111,9 +113,12 @@ type tokenOptions struct {
 	cachePath      string
 	baseURL        string
 	skew           time.Duration
+	tokenCommand   []string
 }
 
-func parseTokenOptions(args []string) (tokenOptions, []string, error) {
+// print has no --token-command: a caller holding a command can run it
+// directly, so only git, which needs the credential protocol, is offered one.
+func parseTokenOptions(args []string, acceptCommand bool) (tokenOptions, []string, error) {
 	fs := flag.NewFlagSet("print", flag.ContinueOnError)
 	fs.SetOutput(io.Discard) // caller reports the returned error itself
 	appID := fs.String("app-id", "", "GitHub App id")
@@ -124,8 +129,23 @@ func parseTokenOptions(args []string) (tokenOptions, []string, error) {
 	cachePath := fs.String("cache-path", "", "path to the token cache file")
 	baseURL := fs.String("base-url", githubapp.DefaultBaseURL, "GitHub API base URL")
 	skew := fs.Duration("skew", 5*time.Minute, "refresh the cached token this long before it actually expires")
+	var tokenCommand *string
+	if acceptCommand {
+		tokenCommand = fs.String("token-command", "", "JSON argument array of a host command that prints one installation token line; replaces the App key flags")
+	}
 	if err := fs.Parse(args); err != nil {
 		return tokenOptions{}, nil, err
+	}
+
+	if tokenCommand != nil && *tokenCommand != "" {
+		if *privateKeyPath != "" {
+			return tokenOptions{}, nil, fmt.Errorf("--token-command and --private-key-path are mutually exclusive")
+		}
+		command, err := tokencommand.Parse(*tokenCommand)
+		if err != nil {
+			return tokenOptions{}, nil, fmt.Errorf("--token-command: %w", err)
+		}
+		return tokenOptions{tokenCommand: command}, fs.Args(), nil
 	}
 
 	if *appID == "" {
@@ -153,6 +173,9 @@ func parseTokenOptions(args []string) (tokenOptions, []string, error) {
 }
 
 func tokenFromOptions(opts tokenOptions) (string, error) {
+	if len(opts.tokenCommand) != 0 {
+		return tokencommand.Run(opts.tokenCommand)
+	}
 	key, err := githubapp.LoadPrivateKey(opts.privateKeyPath)
 	if err != nil {
 		return "", err

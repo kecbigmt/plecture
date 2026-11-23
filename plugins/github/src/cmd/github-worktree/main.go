@@ -13,6 +13,7 @@ import (
 
 	"github.com/kecbigmt/plecture/plugins/github/src/internal/ghapi"
 	"github.com/kecbigmt/plecture/plugins/github/src/internal/github"
+	"github.com/kecbigmt/plecture/plugins/github/src/internal/tokencommand"
 	"github.com/kecbigmt/plecture/plugins/github/src/internal/worktree"
 )
 
@@ -23,6 +24,20 @@ func ghClient(watcherBin string) github.GHClient {
 		return ghapi.Direct()
 	}
 	return ghapi.ViaWatcher(watcherBin)
+}
+
+// parseTokenCommand reads "[]" as unset because the effect passes an empty
+// array when the session has no token_command: an absent argv element would
+// leave the flag without its value.
+func parseTokenCommand(raw string) ([]string, error) {
+	if raw == "" || raw == "[]" {
+		return nil, nil
+	}
+	command, err := tokencommand.Parse(raw)
+	if err != nil {
+		return nil, fmt.Errorf("--token-command: %w", err)
+	}
+	return command, nil
 }
 
 func main() {
@@ -55,7 +70,12 @@ func run(args []string) error {
 		owner := fs.String("owner", "", "repository owner used to resolve a GitHub App installation id")
 		repo := fs.String("repo", "", "repository name used to resolve a GitHub App installation id")
 		privateKeyPath := fs.String("private-key-path", "", "path to the GitHub App private key for git and metadata-fetch authentication")
+		tokenCommandJSON := fs.String("token-command", "", "JSON argument array of a host command that prints one GitHub App installation token line; an alternative to --private-key-path for git and metadata-fetch authentication")
 		if err := fs.Parse(args[1:]); err != nil {
+			return err
+		}
+		tokenCommand, err := parseTokenCommand(*tokenCommandJSON)
+		if err != nil {
 			return err
 		}
 		if *resource == "" || *session == "" {
@@ -82,6 +102,7 @@ func run(args []string) error {
 			Owner:               *owner,
 			Repo:                *repo,
 			PrivateKeyPath:      *privateKeyPath,
+			TokenCommand:        tokenCommand,
 			GHClient:            ghClient(*watcherBin),
 		})
 		if err != nil {

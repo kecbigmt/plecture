@@ -11,6 +11,7 @@ import (
 	"context"
 	"crypto/sha256"
 	"encoding/hex"
+	"encoding/json"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -19,6 +20,7 @@ import (
 
 	"github.com/kecbigmt/plecture/plugins/github/src/internal/ghapi"
 	"github.com/kecbigmt/plecture/plugins/github/src/internal/github"
+	"github.com/kecbigmt/plecture/plugins/github/src/internal/tokencommand"
 	"github.com/kecbigmt/plecture/plugins/github/src/internal/workspace"
 )
 
@@ -73,6 +75,9 @@ type SetupOptions struct {
 	Owner          string
 	Repo           string
 	PrivateKeyPath string
+	// TokenCommand ignores AppID, InstallationID, Owner, and Repo, since the
+	// command already names its installation.
+	TokenCommand []string
 	// Manager lets tests observe acquisition without a real repository.
 	Manager WorktreeManager
 	// GHClient fetches title/state metadata. Defaults to ghapi.Direct(); a
@@ -97,6 +102,13 @@ func Setup(ctx context.Context, opts SetupOptions) (map[string]any, error) {
 	gitAuth, appClient, err := appAuth(opts, parsed)
 	if err != nil {
 		return nil, err
+	}
+	// The tolerated issue-metadata fetch, and a git that never needs
+	// credentials, would otherwise hide a broken command.
+	if len(opts.TokenCommand) != 0 {
+		if _, err := tokencommand.Run(opts.TokenCommand); err != nil {
+			return nil, fmt.Errorf("app git auth: %w", err)
+		}
 	}
 	client := selectGHClient(appClient, opts.GHClient)
 
@@ -169,6 +181,9 @@ func Setup(ctx context.Context, opts SetupOptions) (map[string]any, error) {
 // first mints the installation token and the other reuses it. A nil
 // GHClient means the inputs opted out.
 func appAuth(opts SetupOptions, parsed *github.ParsedURL) (workspace.GitAuthConfig, github.GHClient, error) {
+	if len(opts.TokenCommand) != 0 {
+		return commandAuth(opts)
+	}
 	if opts.AppID == "" && opts.InstallationID == "" && opts.PrivateKeyPath == "" {
 		return workspace.GitAuthConfig{}, nil, nil
 	}
@@ -177,10 +192,6 @@ func appAuth(opts SetupOptions, parsed *github.ParsedURL) (workspace.GitAuthConf
 	}
 	if opts.PrivateKeyPath == "" {
 		return workspace.GitAuthConfig{}, nil, fmt.Errorf("app git auth requires private_key_path")
-	}
-	tokenBin := opts.AppTokenBin
-	if tokenBin == "" {
-		tokenBin = "gh-app-token"
 	}
 	owner, repo, err := appInstallationOwnerRepo(opts, parsed)
 	if err != nil {
@@ -195,7 +206,7 @@ func appAuth(opts SetupOptions, parsed *github.ParsedURL) (workspace.GitAuthConf
 	}
 
 	helper := []string{
-		tokenBin,
+		appTokenBin(opts),
 		"credential",
 		"--app-id", opts.AppID,
 		"--private-key-path", opts.PrivateKeyPath,
@@ -216,6 +227,25 @@ func appAuth(opts SetupOptions, parsed *github.ParsedURL) (workspace.GitAuthConf
 		CachePath:      cachePath,
 	}
 	return workspace.GitAuthConfig{CredentialHelper: helper}, client, nil
+}
+
+func commandAuth(opts SetupOptions) (workspace.GitAuthConfig, github.GHClient, error) {
+	if opts.PrivateKeyPath != "" {
+		return workspace.GitAuthConfig{}, nil, fmt.Errorf("app git auth: private_key_path and token_command are mutually exclusive")
+	}
+	commandJSON, err := json.Marshal(opts.TokenCommand)
+	if err != nil {
+		return workspace.GitAuthConfig{}, nil, fmt.Errorf("app git auth: encode token_command: %w", err)
+	}
+	helper := []string{appTokenBin(opts), "credential", "--token-command", string(commandJSON)}
+	return workspace.GitAuthConfig{CredentialHelper: helper}, &ghapi.App{TokenCommand: opts.TokenCommand}, nil
+}
+
+func appTokenBin(opts SetupOptions) string {
+	if opts.AppTokenBin == "" {
+		return "gh-app-token"
+	}
+	return opts.AppTokenBin
 }
 
 // selectGHClient favors an opted-in App auth client over whatever the
