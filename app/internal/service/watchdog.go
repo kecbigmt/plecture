@@ -194,27 +194,31 @@ func EvaluateHealth(cfg *config.Config, store *state.Store, name string) (Health
 	return report, nil
 }
 
-// overdueDelivery leaves a delivery that arrived during a still running turn
-// to the activity probe: only a cleared status says the runtime is idle, and
-// the runtime's grace period starts when it became idle, not when the event
-// reached its turn's queue.
 func overdueDelivery(store *state.Store, s *domain.Session, stallThreshold time.Duration, now time.Time) (*domain.UnansweredDelivery, error) {
 	rec, err := store.UnansweredDelivery(s.Name)
-	if err != nil || rec == nil || rec.DeliveredAt.Before(domain.RunStartedAt(s)) {
+	if err != nil || rec == nil {
 		return nil, err
 	}
 	status, ok, err := eventlog.NewStore(store.Dir()).LatestByType(s.Name, event.TypeStatusMessage)
-	if err != nil || !ok || status.Metadata["cleared"] != "true" {
+	if err != nil || !deliveryOverdue(*rec, domain.RunStartedAt(s), status, ok, stallThreshold, now) {
 		return nil, err
 	}
-	idleSince := rec.DeliveredAt
-	if status.Time.After(idleSince) {
-		idleSince = status.Time
-	}
-	if now.Sub(idleSince) <= stallThreshold {
-		return nil, nil
-	}
 	return rec, nil
+}
+
+// deliveryOverdue leaves a delivery that arrived during a still running turn
+// to the activity probe: only a cleared status says the runtime is idle, and
+// the runtime's grace period starts when it became idle, not when the event
+// reached its turn's queue.
+func deliveryOverdue(rec domain.UnansweredDelivery, runStarted time.Time, latestStatus event.Event, hasStatus bool, stallThreshold time.Duration, now time.Time) bool {
+	if rec.DeliveredAt.Before(runStarted) || !hasStatus || latestStatus.Metadata["cleared"] != "true" {
+		return false
+	}
+	idleSince := rec.DeliveredAt
+	if latestStatus.Time.After(idleSince) {
+		idleSince = latestStatus.Time
+	}
+	return now.Sub(idleSince) > stallThreshold
 }
 
 // currentPlanNodeIDs returns every node the session's frozen workflow
