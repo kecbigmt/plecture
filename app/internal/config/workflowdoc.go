@@ -21,7 +21,10 @@ func (c *Config) checkWorkflowDefinition(def *lang.Definition, layer layerDir) e
 		From:        lang.Ownership{IsPlugin: layer.plugin},
 		Executables: c.binResolver(def.File),
 	}
-	return validation.ValidateDefinition(def)
+	if err := validation.ValidateDefinition(def); err != nil {
+		return definitionError(def, err)
+	}
+	return nil
 }
 
 // workflowFrom reads the fields the runtime needs off one merged workflow

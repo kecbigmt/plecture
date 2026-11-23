@@ -86,7 +86,7 @@ func (c *Config) resourceDefFromDefinition(def *lang.Definition, fromPlugin bool
 		Executables: c.binResolver(def.File),
 	}
 	if err := validation.ValidateDefinition(def); err != nil {
-		return ResourceDef{}, err
+		return ResourceDef{}, definitionError(def, err)
 	}
 	observer, err := resourceDefFrom(def, def.File, fromPlugin)
 	if err != nil {

@@ -20,7 +20,7 @@ func (v Validation) ValidatePlan(workflow *Definition, r *Registry) error {
 		if !ok {
 			continue
 		}
-		effect, err := r.Resolve(ref, v.From)
+		effect, err := r.ExpectKind(ref, v.From, KindEffect, "")
 		if err != nil {
 			continue
 		}
@@ -38,7 +38,7 @@ func (v Validation) ValidatePlan(workflow *Definition, r *Registry) error {
 		if !ok {
 			continue
 		}
-		def, err := r.Resolve(ref, v.From)
+		def, err := r.ExpectKind(ref, v.From, KindChannel, "")
 		if err != nil {
 			continue
 		}

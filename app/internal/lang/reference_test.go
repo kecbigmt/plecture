@@ -2,6 +2,7 @@ package lang
 
 import (
 	"os"
+	"strings"
 	"testing"
 )
 
@@ -238,4 +239,38 @@ func TestResolveConfigChannelsWrongKind(t *testing.T) {
 
 func defOf(id string, kind Kind, body map[string]any) *Definition {
 	return &Definition{ID: id, Kind: kind, Body: body, File: id + ".toml"}
+}
+
+// The user-owned namespace holds one definition per kind and id, so two
+// same-id definitions of different kinds each answer the site expecting them,
+// whichever order they were registered in.
+func TestExpectKind_SameIDDifferentKindsBothResolve(t *testing.T) {
+	task := defOf("review", KindTask, nil)
+	workflow := defOf("review", KindWorkflow, nil)
+	for name, user := range map[string][]*Definition{
+		"task first":     {task, workflow},
+		"workflow first": {workflow, task},
+	} {
+		t.Run(name, func(t *testing.T) {
+			reg := NewRegistry(nil, user)
+			for want, def := range map[Kind]*Definition{KindTask: task, KindWorkflow: workflow} {
+				got, err := reg.ExpectKind("review", Ownership{}, want, "site")
+				if err != nil {
+					t.Fatalf("ExpectKind(%s): %v", want, err)
+				}
+				if got != def {
+					t.Errorf("ExpectKind(%s) = %s %q, want %s %q", want, got.Kind, got.ID, def.Kind, def.ID)
+				}
+			}
+		})
+	}
+}
+
+func TestExpectKind_MismatchNamesTheKindFound(t *testing.T) {
+	reg := NewRegistry(nil, []*Definition{defOf("review", KindWorkflow, nil)})
+	_, err := reg.ExpectKind("review", Ownership{}, KindTask, "pursue.chains[0].task")
+	assertDiagnostic(t, err, CodeKindMismatch, LayerSemantic)
+	if !strings.Contains(err.Error(), `workflow "review"`) {
+		t.Errorf("error = %v, want it to name workflow \"review\"", err)
+	}
 }

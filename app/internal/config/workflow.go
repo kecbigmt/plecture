@@ -594,7 +594,7 @@ func (c *Config) LoadWorkflows(projectRoot string) (map[string]WorkflowFile, err
 		}
 		validation := lang.Validation{From: registry.OwnerOf(wf.Definition), Executables: c.binResolver(wf.SourcePath)}
 		if err := validation.ValidatePopulationContracts(wf.Definition, registry); err != nil {
-			return nil, err
+			return nil, definitionError(wf.Definition, err)
 		}
 	}
 	return out, nil

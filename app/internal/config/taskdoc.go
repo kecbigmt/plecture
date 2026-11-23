@@ -130,6 +130,12 @@ func (c *Config) LoadTaskDocuments(projectRoot string) (map[string]TaskDocument,
 	return out, nil
 }
 
+// definitionError names the definition a language diagnostic is about by its
+// kind as well as its id, because one id may name a definition of each kind.
+func definitionError(def *lang.Definition, err error) error {
+	return fmt.Errorf("%s %q: %w", def.Kind, def.ID, err)
+}
+
 // taskDocumentFromDefinition checks one discovered task document against the
 // task surface and reads the fields the runtime needs off it. Contract
 // validation — the observer reference, and every completion key against the
@@ -145,7 +151,7 @@ func (c *Config) taskDocumentFromDefinition(def *lang.Definition, fromPlugin boo
 	}
 	validation := lang.Validation{From: doc.Ownership(), Executables: c.binResolver(def.File)}
 	if err := validation.ValidateDefinition(def); err != nil {
-		return TaskDocument{}, err
+		return TaskDocument{}, definitionError(def, err)
 	}
 	doc.Definition = def
 	return doc, nil
@@ -263,7 +269,7 @@ func (c *Config) ValidateTaskDocuments(docs map[string]TaskDocument, observers m
 		// chain on its own — unaffected by composition having already run
 		// inside LoadTaskDocuments.
 		if err := validation.ValidateTaskContracts(doc.Definition, registry); err != nil {
-			return err
+			return definitionError(doc.Definition, err)
 		}
 	}
 	return nil

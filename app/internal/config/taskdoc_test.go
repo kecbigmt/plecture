@@ -582,3 +582,94 @@ judge = "both set"
 		t.Fatal("expected a load error for a leaf that is both a check and a judge")
 	}
 }
+
+// A global task and a project workflow sharing an id coexist: a chain's
+// `workflow` site wants the workflow and its `task` site wants the task, so
+// neither reference is ambiguous and neither declaration hides the other.
+func TestValidateTaskDocuments_GlobalTaskAndProjectWorkflowShareAnID(t *testing.T) {
+	base := t.TempDir()
+	project := t.TempDir()
+	markProject(t, project)
+	writeFile(t, filepath.Join(base, "resources", "issue_pr.toml"), minimalObserver)
+	writeFile(t, filepath.Join(base, "tasks", "review.toml"), duplicateTaskDoc)
+	writeFile(t, filepath.Join(base, "tasks", "pursue.toml"), `
+[pursue]
+kind              = "task"
+description       = "Pursue one goal"
+resource          = "issue_pr"
+instructions      = [{ text = "Pursue the goal." }]
+
+[pursue.done_when]
+all = [{ judge = "the goal is achieved", id = "goal-met" }]
+
+[[pursue.chains]]
+id       = "r"
+workflow = "review"
+task     = "review"
+
+[pursue.chains.when]
+all = [{ judge_pending = "goal-met" }]
+`)
+	writeFile(t, filepath.Join(project, ".plect", "workflows", "review.toml"),
+		"[review]\nkind = \"workflow\"\nresource = \"issue_pr\"\n\n[[review.nodes]]\nuses = \"noop\"\n")
+	cfg := &Config{BaseDir: base, TrustedProjectRoots: []string{project}}
+
+	docs, err := cfg.LoadTaskDocuments(project)
+	if err != nil {
+		t.Fatalf("LoadTaskDocuments: %v", err)
+	}
+	observers, err := cfg.LoadResourceDefs(project)
+	if err != nil {
+		t.Fatalf("LoadResourceDefs: %v", err)
+	}
+	workflows, err := cfg.LoadWorkflows(project)
+	if err != nil {
+		t.Fatalf("LoadWorkflows: %v", err)
+	}
+	if _, ok := workflows["review"]; !ok {
+		t.Fatalf("the project workflow is missing: %v", workflows)
+	}
+	if err := cfg.ValidateTaskDocuments(docs, observers, workflows); err != nil {
+		t.Fatalf("ValidateTaskDocuments: %v", err)
+	}
+}
+
+// A diagnostic about one of two same-id definitions says which one it means.
+func TestValidateTaskDocuments_DiagnosticNamesTheDefinitionKind(t *testing.T) {
+	base := t.TempDir()
+	project := t.TempDir()
+	markProject(t, project)
+	writeFile(t, filepath.Join(base, "resources", "issue_pr.toml"), minimalObserver)
+	writeFile(t, filepath.Join(base, "tasks", "review.toml"), `
+[review]
+kind              = "task"
+description       = "Review a resource"
+resource          = "issue_pr"
+instructions      = [{ text = "Review it." }]
+
+[review.done_when]
+all = [{ check = "resource.state.nope", eq = "x" }]
+`)
+	writeFile(t, filepath.Join(project, ".plect", "workflows", "review.toml"),
+		"[review]\nkind = \"workflow\"\nresource = \"issue_pr\"\n\n[[review.nodes]]\nuses = \"noop\"\n")
+	cfg := &Config{BaseDir: base, TrustedProjectRoots: []string{project}}
+	docs, err := cfg.LoadTaskDocuments(project)
+	if err != nil {
+		t.Fatalf("LoadTaskDocuments: %v", err)
+	}
+	observers, err := cfg.LoadResourceDefs(project)
+	if err != nil {
+		t.Fatalf("LoadResourceDefs: %v", err)
+	}
+	workflows, err := cfg.LoadWorkflows(project)
+	if err != nil {
+		t.Fatalf("LoadWorkflows: %v", err)
+	}
+	err = cfg.ValidateTaskDocuments(docs, observers, workflows)
+	if err == nil || !strings.Contains(err.Error(), "PLECTURE-CFG-FROM-PATH") {
+		t.Fatalf("ValidateTaskDocuments = %v, want PLECTURE-CFG-FROM-PATH", err)
+	}
+	if !strings.Contains(err.Error(), `task "review"`) {
+		t.Errorf("error = %v, want it to name task \"review\"", err)
+	}
+}
