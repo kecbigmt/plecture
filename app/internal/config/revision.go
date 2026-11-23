@@ -230,7 +230,9 @@ func restoreNumbers(v reflect.Value) error {
 func restoreNumber(value any) (any, error) {
 	switch x := value.(type) {
 	case json.Number:
-		if n, err := x.Int64(); err == nil {
+		// Negative zero is a float that parses as an integer, and an int64 would
+		// drop its sign.
+		if n, err := x.Int64(); err == nil && !strings.HasPrefix(string(x), "-0") {
 			return n, nil
 		}
 		return x.Float64()

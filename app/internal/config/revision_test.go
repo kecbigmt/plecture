@@ -3,6 +3,8 @@ package config
 import (
 	"crypto/sha256"
 	"encoding/hex"
+	"fmt"
+	"math"
 	"path/filepath"
 	"reflect"
 	"slices"
@@ -269,7 +271,8 @@ big = 9007199254740993
 small = 3
 negative = -9007199254740993
 fraction = 1.5
-list = [9007199254740993, 2.5]
+zero = -0.0
+list = [9007199254740993, 2.5, -0.0]
 `)
 	revision, err := (&Config{BaseDir: base}).CaptureWorkflowRevision("", "work")
 	if err != nil {
@@ -292,10 +295,13 @@ list = [9007199254740993, 2.5]
 		{"small", int64(3)},
 		{"negative", int64(-9007199254740993)},
 		{"fraction", 1.5},
-		{"list", []any{int64(9007199254740993), 2.5}},
+		{"zero", math.Copysign(0, -1)},
+		{"list", []any{int64(9007199254740993), 2.5, math.Copysign(0, -1)}},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
-			if got := inputs[tc.name].Literal; !reflect.DeepEqual(got, tc.want) {
+			// Equality ignores the sign of zero, so the formatted value checks it.
+			got := inputs[tc.name].Literal
+			if !reflect.DeepEqual(got, tc.want) || fmt.Sprintf("%#v", got) != fmt.Sprintf("%#v", tc.want) {
 				t.Fatalf("input %s = %#v, want %#v", tc.name, got, tc.want)
 			}
 		})
