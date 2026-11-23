@@ -404,7 +404,13 @@ func channelMatches(ch config.EventChannel, ev event.Event) bool {
 		if event.MatchType(include, ev.Type) {
 			return true
 		}
-		if ev.Type == event.TypeSessionResumed && event.MatchType(include, event.TypeInstruction) {
+	}
+	return ev.Type == event.TypeSessionResumed && carriesInstructions(ch)
+}
+
+func carriesInstructions(ch config.EventChannel) bool {
+	for _, include := range ch.Include {
+		if event.MatchType(include, event.TypeInstruction) {
 			return true
 		}
 	}
