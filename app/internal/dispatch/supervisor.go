@@ -173,7 +173,8 @@ func (sup *Supervisor) buildDispatcher(name string, s *domain.Session) (*session
 		plugins:  cfg.Plugins,
 		terminal: terminal,
 
-		runtimeNodes: resolveRuntimeNodes(sup.logger, cfg, s, *wf),
+		runtimeNodes:  resolveRuntimeNodes(sup.logger, cfg, s, *wf),
+		publicOutputs: wf.Outputs,
 
 		currentConfig: sup.cfg,
 

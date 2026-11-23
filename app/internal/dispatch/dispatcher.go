@@ -58,8 +58,11 @@ type sessionDispatcher struct {
 	// declares none; a channel that consumes no terminal verb is unaffected
 	// either way.
 	terminal *terminalOwner
-	// runtimeNodes is resolveRuntimeNodes' answer at dispatcher build.
+	// runtimeNodes is resolveRuntimeNodes' answer at dispatcher build, and
+	// publicOutputs the workflow's output bindings a channel input can reach
+	// a runtime node through.
 	runtimeNodes  map[string]bool
+	publicOutputs map[string]*lang.Value
 	currentConfig func() *config.Config
 	// awaitingRepair is injected because the judgment lives in internal/service,
 	// which imports this package. Nil means a failed delivery is never held.
@@ -271,7 +274,7 @@ func (d *sessionDispatcher) processEvent(ctx context.Context, s *domain.Session,
 		})
 	}
 	wg.Wait()
-	if recorded && !d.reachedRuntime(delivered) {
+	if recorded && !d.reachedRuntime(ev, delivered) {
 		d.withdrawDelivery(ev)
 	}
 	if ctx.Err() != nil {
@@ -435,9 +438,15 @@ func (d *sessionDispatcher) withdrawDelivery(ev event.Event) {
 	}
 }
 
-func (d *sessionDispatcher) reachedRuntime(delivered map[string]bool) bool {
+// reachedRuntime counts an inbox binding that selects ev as delivered: the
+// drain handed ev over before any push attempt, so a failed push must not
+// withdraw that record.
+func (d *sessionDispatcher) reachedRuntime(ev event.Event, delivered map[string]bool) bool {
 	for _, ch := range d.channels {
-		if delivered[ch.Name] && d.reachesRuntime(ch) {
+		if !d.reachesRuntime(ch) {
+			continue
+		}
+		if delivered[ch.Name] || d.defs[ch.Uses].Type == config.ChannelTypeInbox && selects(ch, ev) {
 			return true
 		}
 	}

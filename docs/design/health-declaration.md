@@ -237,10 +237,12 @@ facts, without reading any envelope:
 - **Delivery.** The runtime is every run-scoped node whose effect, or a
   layer of its chain, declares an `activity` probe: the nodes this cycle
   reads activity from. A binding reaches the runtime when its inputs read
-  such a node's outputs, when its action drives that node's `terminal`
-  verbs, or when it is the `inbox` binding, which only a runtime takes from.
+  such a node's outputs, directly or through a workflow output that node
+  backs, when its action drives that node's `terminal` verbs, or when it is
+  the `inbox` binding, which only a runtime takes from.
   Core records an event as delivered when such a binding delivers it, or
-  hands it to the session inbox. A failed attempt records nothing, and a
+  hands it to the session inbox. A failed attempt records nothing unless
+  another runtime binding received the event, and a
   binding that reaches no such node, a mirror, records nothing whatever it
   includes.
 - **Answer.** A non-empty status answers every delivery recorded at or

@@ -33,6 +33,15 @@ func runtimeOwnsActivity(d *sessionDispatcher, s *domain.Session) {
 	}
 }
 
+// missingRuntimeOutput names an output of one of the fixture's nodes that
+// holds no socket, so a push binding reading it reaches the runtime and fails.
+func missingRuntimeOutput(s *domain.Session) string {
+	for id := range domain.MergedTasks(s) {
+		return "nodes." + id + ".outputs.missing_socket"
+	}
+	return ""
+}
+
 func unansweredDelivery(t *testing.T, d *sessionDispatcher) *domain.UnansweredDelivery {
 	t.Helper()
 	rec, err := d.state.UnansweredDelivery(deliverySession)
@@ -136,6 +145,8 @@ func TestReachesRuntime(t *testing.T) {
 		{"input reads the activity node", config.EventChannel{Uses: "socket", Inputs: reads("agent")}, "", map[string]bool{"agent": true}, true},
 		{"input reads another node", config.EventChannel{Uses: "socket", Inputs: reads("thread")}, "", map[string]bool{"agent": true}, false},
 		{"literal input", config.EventChannel{Uses: "socket", Inputs: map[string]*lang.Value{"path": literalValue("/tmp/x.sock")}}, "", map[string]bool{"agent": true}, false},
+		{"input reads a public output the activity node backs", config.EventChannel{Uses: "socket", Inputs: map[string]*lang.Value{"path": fromValue("workflow.outputs.endpoint")}}, "", map[string]bool{"agent": true}, true},
+		{"input reads a public output another node backs", config.EventChannel{Uses: "socket", Inputs: map[string]*lang.Value{"path": fromValue("workflow.outputs.thread")}}, "", map[string]bool{"agent": true}, false},
 		{"terminal verb of the activity node", config.EventChannel{Uses: "terminal"}, "pane", map[string]bool{"pane": true}, true},
 		{"terminal verb of a node without activity", config.EventChannel{Uses: "terminal"}, "pane", map[string]bool{"agent": true}, false},
 		{"inbox with an activity node", config.EventChannel{Uses: "inbox"}, "", map[string]bool{"agent": true}, true},
@@ -144,7 +155,10 @@ func TestReachesRuntime(t *testing.T) {
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
-			d := &sessionDispatcher{defs: defs, runtimeNodes: tc.runtime}
+			d := &sessionDispatcher{defs: defs, runtimeNodes: tc.runtime, publicOutputs: map[string]*lang.Value{
+				"endpoint": fromValue("nodes.agent.outputs.socket_path"),
+				"thread":   fromValue("nodes.thread.outputs.thread_id"),
+			}}
 			if tc.terminal != "" {
 				d.terminal = &terminalOwner{NodeID: tc.terminal}
 			}
@@ -202,6 +216,25 @@ func TestDispatcher_InboxHandOverIsRecordedAsUnanswered(t *testing.T) {
 
 	if rec := unansweredDelivery(t, d); rec == nil || rec.EventID != ev.ID || rec.EventType != event.TypeUserEmit {
 		t.Fatalf("unanswered delivery = %+v, want %s handed to the inbox", rec, ev.ID)
+	}
+}
+
+func TestDispatcher_InboxHandOverStaysRecordedWhenARuntimePushFails(t *testing.T) {
+	log := eventlog.NewStore(t.TempDir())
+	d, _ := inboxDispatcher(t, log)
+	s, err := d.state.GetE(deliverySession)
+	if err != nil {
+		t.Fatal(err)
+	}
+	runtimeOwnsActivity(d, s)
+	d.channels = append(d.channels, config.EventChannel{Name: "push", Uses: "dead_socket", Inputs: map[string]*lang.Value{"path": fromValue(missingRuntimeOutput(s))}, Include: []string{"user.emit"}})
+	d.defs["dead_socket"] = socketChannel()
+
+	ev := appendUserEmit(t, log, "emit-1")
+	drainOnce(d, s)
+
+	if rec := unansweredDelivery(t, d); rec == nil || rec.EventID != ev.ID {
+		t.Fatalf("unanswered delivery = %+v, want %s: the inbox handed it to the runtime", rec, ev.ID)
 	}
 }
 

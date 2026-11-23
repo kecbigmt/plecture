@@ -52,7 +52,7 @@ func (d *sessionDispatcher) reachesRuntime(ch config.EventChannel) bool {
 	if def.Type == config.ChannelTypeInbox {
 		return len(d.runtimeNodes) > 0
 	}
-	for _, id := range lang.NodeReads(ch.Inputs, nil) {
+	for _, id := range lang.NodeReads(ch.Inputs, d.publicOutputs) {
 		if d.runtimeNodes[id] {
 			return true
 		}
